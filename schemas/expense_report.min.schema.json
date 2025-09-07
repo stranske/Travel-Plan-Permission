@@ -1,1 +1,42 @@
-# schemas/expense_report.min.schema.json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/expense_report.min.schema.json",
+  "title": "ExpenseReport v0.1 (minimal)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "lines"],
+  "properties": {
+    "type": { "const": "expense" },
+    "mileage_rate": { "type": "number", "minimum": 0 },
+    "travel_advance": { "type": "number", "minimum": 0 },
+    "lines": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["date"],
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "from_to": { "type": "string" },
+          "miles": { "type": "number", "minimum": 0 },
+          "breakfast": { "type": "number", "minimum": 0 },
+          "lunch": { "type": "number", "minimum": 0 },
+          "dinner": { "type": "number", "minimum": 0 },
+          "hotel": { "type": "number", "minimum": 0 },
+          "airfare": { "type": "number", "minimum": 0 },
+          "rideshare_taxi": { "type": "number", "minimum": 0 },
+          "bus_train": { "type": "number", "minimum": 0 },
+          "parking_tolls": { "type": "number", "minimum": 0 },
+          "other": { "type": "number", "minimum": 0 },
+          "paid_by_third_party": { "type": "boolean" }
+        }
+      }
+    },
+    "attestations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "true_and_correct": { "type": "boolean" } }
+    }
+  }
+}
