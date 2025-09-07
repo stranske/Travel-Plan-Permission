@@ -17,16 +17,10 @@ reimbursement process.
 Compile schemas and validate sample data using [AJV](https://ajv.js.org/):
 
 ```bash
-ajv compile -s schemas/trip_plan.min.schema.json \
-  --spec=draft2020 -c ajv-formats
-ajv compile -s schemas/expense_report.min.schema.json \
-  --spec=draft2020 -c ajv-formats
-ajv validate -s schemas/trip_plan.min.schema.json \
-  -d tests/fixtures/sample_trip_plan_minimal.json \
-  --spec=draft2020 -c ajv-formats
-ajv validate -s schemas/expense_report.min.schema.json \
-  -d tests/fixtures/sample_expense_report_minimal.json \
-  --spec=draft2020 -c ajv-formats
+ajv compile -s schemas/trip_plan.min.schema.json
+ajv compile -s schemas/expense_report.min.schema.json
+ajv validate -s schemas/trip_plan.min.schema.json -d tests/fixtures/sample_trip_plan_minimal.json
+ajv validate -s schemas/expense_report.min.schema.json -d tests/fixtures/sample_expense_report_minimal.json
 ```
 
 ## Contributing
