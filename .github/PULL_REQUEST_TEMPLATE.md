@@ -14,3 +14,4 @@ One sentence.
 
 Add `stage:*`, `type:*`, and size (`XS/S/M/L`).
 
+Add `stage:*`, `type:*`, and size (`XS/S/M/L`).
