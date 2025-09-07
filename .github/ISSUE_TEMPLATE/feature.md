@@ -2,15 +2,20 @@
 name: Feature
 labels: ["type:workflow"]
 ---
-**What**
+
+# What
+
 Brief description.
 
-**Definition of done**
+## Definition of done
+
 - [ ] …
 - [ ] …
 
-**Stage**
+## Stage
+
 `stage:1` | `stage:2` | `stage:3` | `stage:4`
 
-**Risk**
+## Risk
+
 `risk:minor` unless it touches protected paths.
