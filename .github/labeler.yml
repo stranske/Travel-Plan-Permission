@@ -1,23 +1,35 @@
-type:docs:
-  - docs/**
+"type:docs":
+  - changed-files:
+    - any-glob-to-any-file:
+      - docs/**
 
-type:schema:
-  - schemas/**
+"type:schema":
+  - changed-files:
+    - any-glob-to-any-file:
+      - schemas/**
 
-type:policy:
-  - policy/**
+"type:policy":
+  - changed-files:
+    - any-glob-to-any-file:
+      - policy/**
 
-type:mapping:
-  - mapping/**
+"type:mapping":
+  - changed-files:
+    - any-glob-to-any-file:
+      - mapping/**
 
-type:workflow:
-  - .github/workflows/**
+"type:workflow":
+  - changed-files:
+    - any-glob-to-any-file:
+      - .github/workflows/**
 
-risk:major:
-  - schemas/**
-  - policy/**
-  - mapping/**
-  - docs/workflows.md
-  - docs/field-mapping.md
-  - docs/policy-lite-checklist.md
-  - .github/workflows/**
+"risk:major":
+  - changed-files:
+    - any-glob-to-any-file:
+      - schemas/**
+      - policy/**
+      - mapping/**
+      - docs/workflows.md
+      - docs/field-mapping.md
+      - docs/policy-lite-checklist.md
+      - .github/workflows/**
