@@ -1,0 +1,41 @@
+{
+  "type": "trip",
+  "traveler_name": "Jane Doe",
+  "business_purpose": "Conference attendance",
+  "cost_center": "INV",
+  "destination_zip": "65201",
+  "city_state": "Columbia, MO",
+  "depart_date": "2025-10-01",
+  "return_date": "2025-10-04",
+  "event_registration_cost": 350,
+  "flight_pref_outbound": {
+    "carrier_flight": "AA123",
+    "depart_time": "2025-10-01T08:00",
+    "arrive_time": "2025-10-01T10:10",
+    "roundtrip_cost": 550
+  },
+  "flight_pref_return": {
+    "carrier_flight": "AA456",
+    "depart_time": "2025-10-04T16:30",
+    "arrive_time": "2025-10-04T18:45"
+  },
+  "lowest_cost_roundtrip": 480,
+  "parking_estimate": 36,
+  "hotel": {
+    "name": "Conference Hotel",
+    "address": "123 Main St",
+    "city_state": "Chicago, IL",
+    "nightly_rate": 210,
+    "nights": 3,
+    "conference_hotel": true,
+    "price_compare_notes": "Compared with two nearby hotels"
+  },
+  "comparable_hotels": [
+    { "name": "Hotel A", "nightly_rate": 185 },
+    { "name": "Hotel B", "nightly_rate": 199 }
+  ],
+  "ground_transport_pref": "rideshare",
+  "notes": "Attach conference agenda PDF",
+  "attachments": { "conference_agenda": "TBD" },
+  "attestations": { "budget_ok": true }
+}
