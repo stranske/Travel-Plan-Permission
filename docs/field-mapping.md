@@ -1,8 +1,10 @@
 # Field Mapping Plan
 
-We maintain a canonical JSON for trips and expenses. A small mapping file translates canonical fields to each spreadsheet cell.
+We maintain a canonical JSON for trips and expenses. A small mapping file
+translates canonical fields to each spreadsheet cell.
 
 ## Canonical Trip fields (initial)
+
 - traveler_name
 - business_purpose
 - cost_center
@@ -11,24 +13,33 @@ We maintain a canonical JSON for trips and expenses. A small mapping file transl
 - depart_date
 - return_date
 - event_registration_cost
-- flight_pref_outbound {carrier_flight, depart_time, arrive_time, roundtrip_cost}
+- flight_pref_outbound {carrier_flight, depart_time, arrive_time,
+  roundtrip_cost}
 - flight_pref_return {carrier_flight, depart_time, arrive_time}
 - lowest_cost_roundtrip
 - parking_estimate
-- hotel {name, address, city_state, nightly_rate, nights, conference_hotel, price_compare_notes}
+- hotel {name, address, city_state, nightly_rate, nights, conference_hotel,
+  price_compare_notes}
 - comparable_hotels [{name, nightly_rate}] (optional)
 - ground_transport_pref
 - notes
 
 ## Canonical Expense fields (initial)
-- lines: [{date, from_to, miles, breakfast, lunch, dinner, hotel, airfare, rideshare_taxi, bus_train, parking_tolls, other, paid_by_third_party}]
+
+- lines: [{
+  date, from_to, miles, breakfast, lunch, dinner, hotel, airfare,
+  rideshare_taxi, bus_train, parking_tolls, other, paid_by_third_party
+  }]
 - mileage_rate
 - travel_advance
 - totals (computed)
 
 ## Spreadsheet templates and version IDs
 
-- Travel_Itinerary_Form_2025.xlsx — **Template ID**: ITIN-2025.1 (last reviewed: 2025‑09‑06)
-- Expense_Report_Form_FY2025_revised_Jan_2025.xlsx — **Template ID**: EXP-2025.1 (last reviewed: 2025‑09‑06)
+- Travel_Itinerary_Form_2025.xlsx — **Template ID**: ITIN-2025.1 (last
+  reviewed: 2025‑09‑06)
+- Expense_Report_Form_FY2025_revised_Jan_2025.xlsx — **Template ID**:
+  EXP-2025.1 (last reviewed: 2025‑09‑06)
 
-When a template changes cell positions or validation rules, bump the Template ID and update mapping notes.
+When a template changes cell positions or validation rules, bump the Template
+ID and update mapping notes.
