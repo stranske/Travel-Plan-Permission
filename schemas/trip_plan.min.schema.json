@@ -1,1 +1,84 @@
-# schemas/trip_plan.min.schema.json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/trip_plan.min.schema.json",
+  "title": "TripPlan v0.1 (minimal)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "traveler_name", "business_purpose", "destination_zip", "depart_date", "return_date"],
+  "properties": {
+    "type": { "const": "trip" },
+    "traveler_name": { "type": "string", "minLength": 1 },
+    "business_purpose": { "type": "string", "minLength": 1 },
+    "cost_center": { "type": "string" },
+    "destination_zip": { "type": "string", "pattern": "^[0-9]{5}(-[0-9]{4})?$" },
+    "city_state": { "type": "string" },
+    "depart_date": { "type": "string", "format": "date" },
+    "return_date": { "type": "string", "format": "date" },
+    "event_registration_cost": { "type": "number", "minimum": 0 },
+
+    "flight_pref_outbound": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "carrier_flight": { "type": "string" },
+        "depart_time": { "type": "string" },
+        "arrive_time": { "type": "string" },
+        "roundtrip_cost": { "type": "number", "minimum": 0 }
+      }
+    },
+    "flight_pref_return": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "carrier_flight": { "type": "string" },
+        "depart_time": { "type": "string" },
+        "arrive_time": { "type": "string" }
+      }
+    },
+    "lowest_cost_roundtrip": { "type": "number", "minimum": 0 },
+    "parking_estimate": { "type": "number", "minimum": 0 },
+
+    "hotel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "city_state": { "type": "string" },
+        "nightly_rate": { "type": "number", "minimum": 0 },
+        "nights": { "type": "integer", "minimum": 0 },
+        "conference_hotel": { "type": "boolean" },
+        "price_compare_notes": { "type": "string" }
+      }
+    },
+    "comparable_hotels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "nightly_rate": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+
+    "ground_transport_pref": { "type": "string" },
+    "notes": { "type": "string" },
+
+    "attachments": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conference_agenda": { "type": "string" }
+      }
+    },
+    "attestations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "budget_ok": { "type": "boolean" }
+      }
+    }
+  }
+}
