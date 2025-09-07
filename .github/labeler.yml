@@ -1,29 +1,29 @@
-"type:docs":
+type-docs:
   - changed-files:
     - any-glob-to-any-file:
       - docs/**
 
-"type:schema":
+type-schema:
   - changed-files:
     - any-glob-to-any-file:
       - schemas/**
 
-"type:policy":
+type-policy:
   - changed-files:
     - any-glob-to-any-file:
       - policy/**
 
-"type:mapping":
+type-mapping:
   - changed-files:
     - any-glob-to-any-file:
       - mapping/**
 
-"type:workflow":
+type-workflow:
   - changed-files:
     - any-glob-to-any-file:
       - .github/workflows/**
 
-risk:major:
+risk-major:
   - schemas/**
   - policy/**
   - mapping/**
