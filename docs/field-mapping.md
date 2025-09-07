@@ -26,3 +26,9 @@ We maintain a canonical JSON for trips and expenses. A small mapping file transl
 - travel_advance
 - totals (computed)
 
+## Spreadsheet templates and version IDs
+
+- Travel_Itinerary_Form_2025.xlsx — **Template ID**: ITIN-2025.1 (last reviewed: 2025‑09‑06)
+- Expense_Report_Form_FY2025_revised_Jan_2025.xlsx — **Template ID**: EXP-2025.1 (last reviewed: 2025‑09‑06)
+
+When a template changes cell positions or validation rules, bump the Template ID and update mapping notes.
