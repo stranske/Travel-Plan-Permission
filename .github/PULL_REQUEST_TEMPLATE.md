@@ -9,4 +9,3 @@ One sentence.
 
 ## Labels
 Add `stage:*`, `type:*`, and size (`XS/S/M/L`).
-
