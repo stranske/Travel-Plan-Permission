@@ -13,7 +13,7 @@ type:mapping:
 type:workflow:
   - .github/workflows/**
 
-"risk:major":
+risk:major:
   - schemas/**
   - policy/**
   - mapping/**
