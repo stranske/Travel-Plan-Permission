@@ -11,7 +11,7 @@ perfection.
 - **Stage 0 — Repo scaffolding**: docs, schemas, labels, CODEOWNERS,
   branch rules.
 - **Stage 1 — Excel Agent Bridge**: agent completes existing Itinerary and
-  Expense spreadsheets; Policy–Lite checks; no new UI.
+  Expense spreadsheets; Policy‑Lite checks; no new UI.
 - **Stage 2 — Workflow Lite**: lightweight portal for submit/approve,
   minimal receipts; exports for accounting.
 - **Stage 3 — Agentic Verify**: pre‑approved providers, snapshot options,
@@ -28,5 +28,5 @@ scope and guardrails.
 
 - Minutes saved per itinerary vs baseline
 - Back‑and‑forth count before approval
-- First-pass Policy–Lite pass rate
+- First-pass Policy‑Lite pass rate
 - % of trips processed without manual spreadsheet edits
