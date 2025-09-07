@@ -28,5 +28,5 @@ scope and guardrails.
 
 - Minutes saved per itinerary vs baseline
 - Back‑and‑forth count before approval
-- First-pass Policy-Lite pass rate
+- First-pass Policy‑Lite pass rate
 - % of trips processed without manual spreadsheet edits
