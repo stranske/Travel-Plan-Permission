@@ -1,0 +1,11 @@
+{
+  "type": "expense",
+  "mileage_rate": 0.67,
+  "travel_advance": 0,
+  "lines": [
+    { "date": "2025-10-01", "from_to": "ORD → hotel", "rideshare_taxi": 45, "paid_by_third_party": false },
+    { "date": "2025-10-02", "breakfast": 18, "dinner": 32, "paid_by_third_party": false },
+    { "date": "2025-10-03", "hotel": 210, "paid_by_third_party": false }
+  ],
+  "attestations": { "true_and_correct": true }
+}
