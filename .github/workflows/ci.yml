@@ -32,16 +32,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Install ajv
-        run: npm i -g ajv-cli@5 ajv-formats
+      - name: Install dependencies
+        run: npm ci
       - name: Compile schemas
         run: |
-          ajv compile -s schemas/trip_plan.min.schema.json
-          ajv compile -s schemas/expense_report.min.schema.json
+          npx ajv compile --spec=draft2020 -c ajv-formats -s schemas/trip_plan.min.schema.json
+          npx ajv compile --spec=draft2020 -c ajv-formats -s schemas/expense_report.min.schema.json
       - name: Validate examples
         run: |
-          ajv validate -s schemas/trip_plan.min.schema.json -d tests/fixtures/sample_trip_plan_minimal.json
-          ajv validate -s schemas/expense_report.min.schema.json -d tests/fixtures/sample_expense_report_minimal.json
+          npx ajv validate --spec=draft2020 -c ajv-formats -s schemas/trip_plan.min.schema.json -d tests/fixtures/sample_trip_plan_minimal.json
+          npx ajv validate --spec=draft2020 -c ajv-formats -s schemas/expense_report.min.schema.json -d tests/fixtures/sample_expense_report_minimal.json
 
   gate:
     runs-on: ubuntu-latest
