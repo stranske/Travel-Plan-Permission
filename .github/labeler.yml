@@ -1,0 +1,23 @@
+type:docs:
+  - docs/**
+
+type:schema:
+  - schemas/**
+
+type:policy:
+  - policy/**
+
+type:mapping:
+  - mapping/**
+
+type:workflow:
+  - .github/workflows/**
+
+"risk:major":
+  - schemas/**
+  - policy/**
+  - mapping/**
+  - docs/workflows.md
+  - docs/field-mapping.md
+  - docs/policy-lite-checklist.md
+  - .github/workflows/**
