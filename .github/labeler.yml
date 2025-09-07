@@ -23,13 +23,11 @@
     - any-glob-to-any-file:
       - .github/workflows/**
 
-"risk:major":
-  - changed-files:
-    - any-glob-to-any-file:
-      - schemas/**
-      - policy/**
-      - mapping/**
-      - docs/workflows.md
-      - docs/field-mapping.md
-      - docs/policy-lite-checklist.md
-      - .github/workflows/**
+risk:major:
+  - schemas/**
+  - policy/**
+  - mapping/**
+  - docs/workflows.md
+  - docs/field-mapping.md
+  - docs/policy-lite-checklist.md
+  - .github/workflows/**
