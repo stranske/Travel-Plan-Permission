@@ -67,6 +67,25 @@ variables) but referenced `BLACK_VERSION` before it was defined.
 **Status**: ✅ FIXED in Workflows repo (2025-12-22)  
 **Fix**: Changed `$BLACK_VERSION` to `${BLACK_VERSION:-}` (default empty string)
 
+### Bug: Incompatible Default Version Pins
+
+The reusable workflow defaults to incompatible versions:
+- `pydantic==2.10.3` (default)
+- `pydantic-core==2.23.4` (default)
+
+But pydantic 2.10.x requires pydantic-core 2.27.x. This causes dependency
+resolution failures when consumers don't override these values.
+
+**Workaround**: Add to consumer's `autofix-versions.env`:
+```bash
+PYDANTIC_VERSION=2.10.4
+PYDANTIC_CORE_VERSION=2.27.2
+```
+
+**Fix needed in Workflows repo**: Update default PYDANTIC_CORE_VERSION to match
+pydantic's requirements, or don't install pydantic-core separately (let pip
+resolve it as a transitive dependency).
+
 ## What Works Now
 
 | Feature | Status | Notes |
