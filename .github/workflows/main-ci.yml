@@ -1,5 +1,6 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-name: CI Main
+# Simplified CI to test reusable workflow + gate pattern
+name: CI Simple
 
 on:
   push:
