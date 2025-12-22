@@ -109,8 +109,21 @@ modern version compatible with Python 3.11+.
 | Secrets | ✅ Configured | SERVICE_BOT_PAT, OWNER_PR_PAT, ACTIONS_BOT_PAT |
 | `ci.yml` | ✅ Works | Thin caller to reusable-10-ci-python.yml |
 | `lint.yml` | ✅ Works | Local linting jobs (separate file for mixed job workaround) |
-| Reusable Python CI | ✅ Fixed | BLACK_VERSION bug resolved |
+| Reusable Python CI | ✅ Works | With version overrides in autofix-versions.env |
 | Gate job pattern | ❌ Blocked | Mixing job types causes startup_failure |
+
+### Required Version Overrides
+
+Consumer repos using the reusable Python CI need these overrides in
+`.github/workflows/autofix-versions.env` to avoid dependency conflicts:
+
+```bash
+# Override outdated Workflows defaults
+PYDANTIC_VERSION=2.10.4
+PYDANTIC_CORE_VERSION=2.27.2
+HYPOTHESIS_VERSION=6.122.3
+PYYAML_VERSION=6.0.3  # if using newer PyYAML
+```
 
 ## Immediate Next Steps
 
