@@ -14,23 +14,14 @@
 name: CI
 
 on:
-  pull_request:
-    branches: [main]
+  # pull_request:
+  #   branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      debug:
-        description: "Enable debug logging"
-        type: boolean
-        default: false
 
 permissions:
   contents: read
-
-env:
-  # Centralized pin for stranske/Workflows — update here when upgrading
-  WORKFLOWS_REF: 07c3a6ce10ff00953624e9f0705c44190ec7b33c
 
 jobs:
   # ---------------------------------------------------------------------------
