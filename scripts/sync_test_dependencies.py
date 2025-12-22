@@ -39,21 +39,74 @@ except ImportError as exc:
 
 # Standard library modules that don't need to be installed
 STDLIB_MODULES = {
-    "abc", "argparse", "ast", "asyncio", "base64", "builtins",
-    "collections", "contextlib", "configparser", "copy", "csv",
-    "datetime", "decimal", "enum", "fractions", "functools", "gc",
-    "glob", "hashlib", "importlib", "inspect", "io", "itertools",
-    "json", "logging", "math", "multiprocessing", "os", "pathlib",
-    "pickle", "platform", "random", "re", "shlex", "shutil", "signal",
-    "socket", "stat", "string", "struct", "subprocess", "sys",
-    "tempfile", "textwrap", "threading", "time", "traceback", "types",
-    "typing", "unittest", "urllib", "uuid", "warnings", "weakref",
-    "xml", "zipfile", "__future__", "dataclasses", "pprint", "typing_extensions",
+    "abc",
+    "argparse",
+    "ast",
+    "asyncio",
+    "base64",
+    "builtins",
+    "collections",
+    "contextlib",
+    "configparser",
+    "copy",
+    "csv",
+    "datetime",
+    "decimal",
+    "enum",
+    "fractions",
+    "functools",
+    "gc",
+    "glob",
+    "hashlib",
+    "importlib",
+    "inspect",
+    "io",
+    "itertools",
+    "json",
+    "logging",
+    "math",
+    "multiprocessing",
+    "os",
+    "pathlib",
+    "pickle",
+    "platform",
+    "random",
+    "re",
+    "shlex",
+    "shutil",
+    "signal",
+    "socket",
+    "stat",
+    "string",
+    "struct",
+    "subprocess",
+    "sys",
+    "tempfile",
+    "textwrap",
+    "threading",
+    "time",
+    "traceback",
+    "types",
+    "typing",
+    "unittest",
+    "urllib",
+    "uuid",
+    "warnings",
+    "weakref",
+    "xml",
+    "zipfile",
+    "__future__",
+    "dataclasses",
+    "pprint",
+    "typing_extensions",
 }
 
 # Known test framework modules
 TEST_FRAMEWORK_MODULES = {
-    "pytest", "hypothesis", "_pytest", "pluggy",
+    "pytest",
+    "hypothesis",
+    "_pytest",
+    "pluggy",
 }
 
 # Project modules (installed via `pip install -e .`)
@@ -255,7 +308,9 @@ def main(argv: list[str] | None = None) -> int:
         added = add_dependencies_to_pyproject(missing, fix=True)
         if added:
             print("\n✅ Added dependencies to [project.optional-dependencies.dev]")
-            print("Please run: pip-compile --extra=dev --output-file=requirements-dev.lock pyproject.toml")
+            print(
+                "Please run: pip-compile --extra=dev --output-file=requirements-dev.lock pyproject.toml"
+            )
         else:
             print("\nℹ️  Dependencies already declared in dev extra")
         return 0

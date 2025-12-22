@@ -188,7 +188,9 @@ def main(argv: Iterable[str] | None = None) -> int:
     if apply_changes and pyproject_updated != pyproject_content:
         PYPROJECT_FILE.write_text(pyproject_updated, encoding="utf-8")
         print("✓ tool pins synced to pyproject.toml")
-        print("Run: pip-compile --extra=dev --output-file=requirements-dev.lock pyproject.toml")
+        print(
+            "Run: pip-compile --extra=dev --output-file=requirements-dev.lock pyproject.toml"
+        )
         return 0
 
     if not project_mismatches:
