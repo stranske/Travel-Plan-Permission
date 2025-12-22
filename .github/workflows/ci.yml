@@ -6,7 +6,7 @@
 #   1. Local jobs: domain-specific validation (docs, JSON schemas)
 #   2. Reusable workflows: language CI from stranske/Workflows (when applicable)
 #
-# Pin reference: stranske/Workflows@dc46ca4fa721e31df650e999d0fe108da7e4574c
+# Pin reference: stranske/Workflows@07c3a6ce10ff00953624e9f0705c44190ec7b33c
 # Update pin via: gh api repos/stranske/Workflows/commits/main --jq '.sha'
 # See: .github/workflows/README.md for architecture decisions
 # -----------------------------------------------------------------------------
@@ -30,7 +30,7 @@ permissions:
 
 env:
   # Centralized pin for stranske/Workflows — update here when upgrading
-  WORKFLOWS_REF: dc46ca4fa721e31df650e999d0fe108da7e4574c
+  WORKFLOWS_REF: 07c3a6ce10ff00953624e9f0705c44190ec7b33c
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -102,7 +102,7 @@ jobs:
 
   python-ci:
     name: Python CI
-    uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@dc46ca4fa721e31df650e999d0fe108da7e4574c
+    uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@07c3a6ce10ff00953624e9f0705c44190ec7b33c
     with:
       python-versions: '["3.11", "3.12"]'
       coverage-min: "80"
