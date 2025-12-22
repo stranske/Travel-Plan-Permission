@@ -60,8 +60,17 @@ jobs:
 
 ### Additional Bug Found
 
-The reusable workflow has a bug: `BLACK_VERSION: unbound variable` when `format_check=false`.
-This needs to be fixed in the Workflows repo.
+The reusable workflow has a bug: `BLACK_VERSION: unbound variable` in the
+"Prepare Python environment" step. The script uses `set -u` (fail on undefined
+variables) but references `BLACK_VERSION` before it's defined. This happens
+regardless of the `format_check` setting.
+
+**Error log:**
+```
+/home/runner/work/_temp/xxx.sh: line 72: BLACK_VERSION: unbound variable
+```
+
+This must be fixed in stranske/Workflows - likely in the prepare-python step.
 
 ## What Works Now
 
@@ -71,8 +80,10 @@ This needs to be fixed in the Workflows repo.
 | `agents-70-orchestrator.yml` | ✅ Works | Thin caller to reusable-16-agents.yml (runs, has own failures) |
 | Labels | ✅ Synced | All required labels created |
 | Secrets | ✅ Configured | SERVICE_BOT_PAT, OWNER_PR_PAT, ACTIONS_BOT_PAT |
-| Reusable Python CI | ✅ Works | Works without gate job using `needs` |
-| Gate job pattern | ❌ Blocked | `needs` on reusable workflow jobs causes startup_failure |
+| `ci.yml` | ✅ Works | Calls reusable Python CI (6 jobs start successfully) |
+| `lint.yml` | ✅ Works | Local linting jobs (separate file workaround) |
+| Reusable Python CI | ⚠️ Has bug | BLACK_VERSION unbound variable - needs Workflows repo fix |
+| Gate job pattern | ❌ Blocked | Mixing job types causes startup_failure |
 
 ## Immediate Next Steps
 
