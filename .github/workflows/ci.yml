@@ -1,21 +1,7 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-# -----------------------------------------------------------------------------
-# CI Workflow — Travel-Plan-Permission
-# -----------------------------------------------------------------------------
-# Hybrid workflow combining:
-#   1. Local jobs: domain-specific validation (docs, JSON schemas)
-#   2. Reusable workflows: language CI from stranske/Workflows (when applicable)
-#
-# Pin reference: stranske/Workflows@07c3a6ce10ff00953624e9f0705c44190ec7b33c
-# Update pin via: gh api repos/stranske/Workflows/commits/main --jq '.sha'
-# See: .github/workflows/README.md for architecture decisions
-# -----------------------------------------------------------------------------
-
 name: CI
 
 on:
-  # pull_request:
-  #   branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -24,75 +10,6 @@ permissions:
   contents: read
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Local Jobs: Domain-specific validation unique to this repository
-  # ---------------------------------------------------------------------------
-
-  # Temporarily disabled - investigating startup_failure
-  # actionlint:
-  #   name: Actionlint
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #
-  #     - name: Run actionlint
-  #       uses: raven-actions/actionlint@v2
-  #       with:
-  #         flags: "-color"
-
-  # Temporarily disabled - investigating startup_failure
-  # docs-lint:
-  #   name: Docs Lint
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #
-  #     - name: Markdownlint
-  #       uses: DavidAnson/markdownlint-cli2-action@v16
-  #       with:
-  #         globs: |
-  #           **/*.md
-  #           !**/node_modules/**
-  #
-  #     - name: Link check
-  #       uses: lycheeverse/lychee-action@v1
-  #       with:
-  #         args: --no-progress --exclude-mail --accept 200,429 -- .**/*.md *.md
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # schema-validate:
-  #   name: Schema Validation
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: "20"
-  #         cache: "npm"
-  #
-  #     - name: Install dependencies
-  #       run: npm ci
-  #
-  #     - name: Compile schemas
-  #       run: |
-  #         npx ajv compile --spec=draft2020 -c ajv-formats -s schemas/trip_plan.min.schema.json
-  #         npx ajv compile --spec=draft2020 -c ajv-formats -s schemas/expense_report.min.schema.json
-  #
-  #     - name: Validate fixture data
-  #       run: |
-  #         npx ajv validate --spec=draft2020 -c ajv-formats \
-  #           -s schemas/trip_plan.min.schema.json \
-  #           -d tests/fixtures/sample_trip_plan_minimal.json
-  #         npx ajv validate --spec=draft2020 -c ajv-formats \
-  #           -s schemas/expense_report.min.schema.json \
-  #           -d tests/fixtures/sample_expense_report_minimal.json
-
-  # ---------------------------------------------------------------------------
-  # Reusable Workflows: Language CI from stranske/Workflows
-  # ---------------------------------------------------------------------------
-
   python-ci:
     name: Python CI
     uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@07c3a6ce10ff00953624e9f0705c44190ec7b33c
@@ -100,10 +17,6 @@ jobs:
       python-versions: '["3.11", "3.12"]'
       coverage-min: "80"
     secrets: inherit
-
-  # ---------------------------------------------------------------------------
-  # Gate: Aggregate all checks for branch protection
-  # ---------------------------------------------------------------------------
 
   gate:
     name: Gate
@@ -122,4 +35,4 @@ jobs:
           exit 1
 
       - name: All checks passed
-        run: echo "✅ All required checks passed"
+        run: echo "All required checks passed"
