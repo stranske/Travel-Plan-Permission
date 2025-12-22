@@ -1,14 +1,10 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-# Simplified CI to test reusable workflow + gate pattern
-name: CI Simple
+name: Main CI
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   python-ci:
@@ -22,12 +18,3 @@ jobs:
       typecheck: false
       coverage: false
     secrets: inherit
-
-  gate:
-    name: Gate
-    runs-on: ubuntu-latest
-    needs: [python-ci]
-    if: always()
-    steps:
-      - name: Check result
-        run: echo "python-ci: ${{ needs.python-ci.result }}"
