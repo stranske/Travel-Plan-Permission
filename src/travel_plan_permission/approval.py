@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 import yaml
 
@@ -19,7 +19,7 @@ from .models import (
 )
 
 
-def _load_rules(raw_rules: Iterable[dict]) -> list[ApprovalRule]:
+def _load_rules(raw_rules: Iterable[dict[str, object]]) -> list[ApprovalRule]:
     """Convert raw rule dictionaries into validated ApprovalRule objects."""
 
     return [ApprovalRule.model_validate(rule) for rule in raw_rules]
@@ -42,7 +42,7 @@ class ApprovalEngine:
     rules: list[ApprovalRule]
 
     @classmethod
-    def from_yaml(cls, content: str) -> "ApprovalEngine":
+    def from_yaml(cls, content: str) -> ApprovalEngine:
         """Load approval rules from YAML content."""
 
         data = yaml.safe_load(content) or {}
@@ -52,14 +52,10 @@ class ApprovalEngine:
         return cls(_load_rules(raw_rules))
 
     @classmethod
-    def from_file(cls, path: str | Path | None = None) -> "ApprovalEngine":
+    def from_file(cls, path: str | Path | None = None) -> ApprovalEngine:
         """Load approval rules from a YAML file."""
 
-        target_path: Path | None
-        if path is not None:
-            target_path = Path(path)
-        else:
-            target_path = _default_rules_path()
+        target_path = Path(path) if path is not None else _default_rules_path()
 
         if target_path is None:
             raise FileNotFoundError("No approval rules file found")
@@ -68,7 +64,7 @@ class ApprovalEngine:
         return cls.from_yaml(content)
 
     @classmethod
-    def from_environment(cls, env_var: str = "APPROVAL_RULES") -> "ApprovalEngine":
+    def from_environment(cls, env_var: str = "APPROVAL_RULES") -> ApprovalEngine:
         """Load approval rules from an environment variable containing YAML."""
 
         content = os.getenv(env_var)
@@ -79,7 +75,7 @@ class ApprovalEngine:
     def evaluate_expense(self, expense: ExpenseItem) -> ApprovalDecision:
         """Evaluate a single expense and return a decision."""
 
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         for rule in self.rules:
             if not rule.matches(expense):
                 continue

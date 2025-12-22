@@ -62,14 +62,14 @@ class ApprovalRule(BaseModel):
         description="Action to take when the rule matches",
     )
 
-    def matches(self, expense: "ExpenseItem") -> bool:
+    def matches(self, expense: ExpenseItem) -> bool:
         """Return True when the rule applies to the expense category."""
 
         if self.category is None:
             return True
         return expense.category == self.category
 
-    def evaluate(self, expense: "ExpenseItem") -> ApprovalStatus | None:
+    def evaluate(self, expense: ExpenseItem) -> ApprovalStatus | None:
         """Evaluate the expense against the rule and return a status when triggered."""
 
         if self.action == ApprovalAction.AUTO_APPROVE and expense.amount <= self.threshold:
@@ -82,7 +82,7 @@ class ApprovalRule(BaseModel):
 class ApprovalDecision(BaseModel):
     """Result of evaluating an expense against the approval rules."""
 
-    expense: "ExpenseItem" = Field(..., description="Expense evaluated")
+    expense: ExpenseItem = Field(..., description="Expense evaluated")
     status: ApprovalStatus = Field(..., description="Outcome of the evaluation")
     rule_name: str = Field(..., description="Name of the rule that triggered the decision")
     approver: str = Field(..., description="Approver or role responsible")
