@@ -72,3 +72,478 @@ Implementation notes
 - Each rule should be independently testable
 - Consider caching rule configurations for performance
 - Follow existing test patterns in tests/python/test_models.py
+3) Excel Agent Bridge: Field mapping and Q&A flow
+Labels: agent:codex, enhancement, stage:1, mapping
+
+Why
+The current workflow requires manual data entry into Excel spreadsheets. An agent-driven bridge can collect travel information through a conversational Q&A flow and populate the canonical JSON, which then maps to specific spreadsheet cells. This reduces errors and ensures policy compliance is checked before submission.
+
+Scope
+- Map itinerary spreadsheet fields to canonical JSON schema (v2025)
+- Define minimal Q&A prompts to collect required trip information
+- Support conference brochure attachment requirement
+- Handle Columbia-flight rule and other carrier-specific logic
+- Define output bundle specification (itinerary.xlsx, summary, prompt archive)
+
+Non-Goals
+- Full OCR/document parsing (handled separately in receipt ingestion)
+- Real-time flight pricing lookups
+
+Tasks
+- [ ] Enumerate cell targets in Travel_Itinerary_Form_2025.xlsx (Template ID: ITIN-2025.1)
+- [ ] Map each canonical trip field to spreadsheet cell coordinates
+- [ ] Identify checkboxes and dropdowns that require specific value formats
+- [ ] Confirm per-diem logic is formula-driven vs manual entry
+- [ ] Design minimal question set to reach field completeness
+- [ ] Implement prompt flow that asks for missing required fields
+- [ ] Create output bundle spec: itinerary.xlsx, one-page summary PDF, prompt archive JSON
+- [ ] Write integration tests for field mapping accuracy
+- [ ] Document mapping in docs/field-mapping.md with version tracking
+
+Acceptance criteria
+- All canonical trip fields from docs/field-mapping.md map to spreadsheet cells
+- Q&A flow collects all required fields with ≤10 questions for typical trips
+- Conference brochure can be attached and referenced in output
+- Output bundle includes populated Excel, summary, and conversation log
+- Mapping handles template version ITIN-2025.1; version bump triggers review
+
+Implementation notes
+- Use openpyxl for Excel manipulation
+- Store cell mappings in config/excel_mappings.yaml
+- Q&A flow should be stateless and resumable
+- Reference existing schema in schemas/trip_plan.min.schema.json
+
+4) Policy-Lite validation engine
+Labels: agent:codex, enhancement, stage:1, policy, validation
+
+Why
+The Policy-Lite checklist (docs/policy-lite-checklist.md) defines 10 rules that must be evaluated against trip plans and expenses. Currently these are checked manually. Automating them reduces approval delays and ensures consistent enforcement.
+
+Scope
+- Implement all 10 Policy-Lite rules as code
+- Wire each rule to the appropriate canonical fields
+- Produce clear pass/fail/warning messages with remediation guidance
+- Support blocking rules vs advisory rules
+
+Non-Goals
+- Exception workflow (handled in separate issue)
+- Integration with external fare comparison APIs
+
+Tasks
+- [ ] Create PolicyRule base class with evaluate() and message() methods
+- [ ] Implement AdvanceBookingRule (14 days, advisory)
+- [ ] Implement FareComparisonRule ($200 threshold, blocking)
+- [ ] Implement CabinClassRule (economy unless >5hr flight, advisory/blocking)
+- [ ] Implement FareEvidenceRule (screenshot required, blocking)
+- [ ] Implement DrivingVsFlyingRule (lesser cost reimbursement, advisory)
+- [ ] Implement HotelComparisonRule (2 alternatives required, advisory)
+- [ ] Implement LocalOvernightRule (50 mile waiver, advisory)
+- [ ] Implement MealPerDiemRule (exclude conference-provided, advisory)
+- [ ] Implement NonReimbursableRule (liquor/personal items, blocking)
+- [ ] Implement ThirdPartyPaidRule (itemize and exclude, blocking)
+- [ ] Create PolicyEngine that runs all rules and aggregates results
+- [ ] Write unit tests for each rule with edge cases
+- [ ] Document rule configurations in docs/validation-rules.md
+
+Acceptance criteria
+- All 10 Policy-Lite rules implemented and individually testable
+- Blocking rules return errors that prevent submission
+- Advisory rules return warnings that allow submission with flag
+- Each rule message includes the specific threshold or policy text
+- PolicyEngine.validate() returns structured results with rule ID, severity, message
+- Rule thresholds configurable via policy.yaml
+
+Implementation notes
+- Use strategy pattern for rule implementation
+- Rules should be composable (e.g., combine fare + cabin checks)
+- Follow existing ApprovalRule patterns in src/travel_plan_permission/approval.py
+- Consider caching compiled rules for performance
+
+5) Approval packet design and delivery
+Labels: agent:codex, enhancement, stage:2, workflow
+
+Why
+Managers and board members need a standardized approval packet to review trip requests. This packet must include all relevant information in both email and PDF formats, with clear capture of approval/override decisions.
+
+Scope
+- Design email notification content for approval requests
+- Generate PDF summary for board-level reviews
+- Capture and record approval/override decisions with timestamps
+- Support multi-level approval hierarchies (manager → board)
+
+Non-Goals
+- Email sending infrastructure (assume SMTP/API is available)
+- Digital signature integration
+
+Tasks
+- [ ] Define email template for manager approval requests
+- [ ] Define email template for board-level approval requests
+- [ ] Design PDF layout with trip summary, policy compliance status, cost breakdown
+- [ ] Implement ApprovalPacket model with all required fields
+- [ ] Create PDF generator using reportlab or weasyprint
+- [ ] Implement approval/override capture with approver ID and timestamp
+- [ ] Add approval_history field to TripPlan model
+- [ ] Write tests for packet generation with various trip scenarios
+- [ ] Document approval workflow in docs/approval-workflow.md
+
+Acceptance criteria
+- Email includes trip summary, total cost, policy compliance status, approve/reject links
+- PDF is single-page for routine trips, multi-page for complex itineraries
+- Override decisions require justification text and are logged with approver ID
+- Approval history is immutable and auditable
+- Packet generation completes in <2 seconds for typical trips
+
+Implementation notes
+- Use Jinja2 templates for email and PDF content
+- Store approval history as append-only list
+- Consider async generation for large batches
+- PDF should be accessible (tagged PDF) for compliance
+
+6) Receipt ingestion and expense classification
+Labels: agent:codex, enhancement, stage:2, workflow
+
+Why
+Expense reports require receipts as evidence. Manual entry is error-prone and time-consuming. Minimal OCR or manual capture of key fields (total, date, vendor) streamlines the process while supporting the "paid by third party" classification required by policy.
+
+Scope
+- Define allowed file types for receipt upload
+- Extract minimal fields: total amount, date, vendor name
+- Support manual entry fallback when OCR fails
+- Implement "paid by third party" classification
+
+Non-Goals
+- Full line-item extraction from receipts
+- Integration with accounting systems (separate export issue)
+
+Tasks
+- [ ] Define allowed file types (PDF, JPEG, PNG, HEIC)
+- [ ] Create Receipt model with total, date, vendor, file_reference, paid_by_third_party
+- [ ] Implement basic OCR extraction using pytesseract or cloud API
+- [ ] Create manual entry form for receipt fields
+- [ ] Add receipt_references list to ExpenseItem model
+- [ ] Implement third-party payment flagging with required explanation
+- [ ] Write tests for receipt parsing and classification
+- [ ] Document receipt requirements in docs/expense-workflow.md
+
+Acceptance criteria
+- Receipts in PDF, JPEG, PNG formats are accepted
+- OCR extracts total and date with >80% accuracy on clear receipts
+- Manual entry available for all fields when OCR fails
+- Third-party paid items are flagged and excluded from reimbursement total
+- Each expense line can reference multiple receipts
+- File size limit of 10MB per receipt enforced
+
+Implementation notes
+- Store receipts in cloud storage with signed URLs
+- Use content-type validation, not just file extension
+- Consider async processing for OCR on large batches
+- Reference Policy-Lite rule #10 for third-party classification
+
+7) Accounting exports (CSV/Excel)
+Labels: agent:codex, enhancement, stage:2, workflow
+
+Why
+Finance teams need to import approved expense data into accounting systems. Standardized CSV and Excel exports with consistent column naming and attachment links enable this integration.
+
+Scope
+- Define export column schema matching accounting system requirements
+- Generate CSV and Excel files with expense line items
+- Include links to receipt attachments
+- Support batch export of multiple expense reports
+
+Non-Goals
+- Direct API integration with accounting software
+- Real-time sync with ERP systems
+
+Tasks
+- [ ] Define export column schema (date, vendor, amount, category, cost_center, receipt_link)
+- [ ] Create ExportService class with to_csv() and to_excel() methods
+- [ ] Implement file naming convention: expense_export_{date}_{batch_id}.{ext}
+- [ ] Generate signed URLs for receipt attachments valid for 7 days
+- [ ] Add batch export endpoint for multiple expense reports
+- [ ] Write tests for export format correctness
+- [ ] Document export schema in docs/accounting-integration.md
+
+Acceptance criteria
+- CSV export is UTF-8 encoded with header row
+- Excel export includes formatted columns with currency formatting
+- Receipt links are clickable and valid for 7 days
+- Batch export supports up to 100 expense reports
+- Export completes in <5 seconds for typical batch sizes
+- Column order matches documented schema exactly
+
+Implementation notes
+- Use pandas for CSV generation, openpyxl for Excel
+- Include metadata sheet in Excel with export timestamp and filter criteria
+- Consider streaming for large exports to manage memory
+
+8) Pre-approved provider list management
+Labels: agent:codex, enhancement, stage:3, policy
+
+Why
+Organizations often have pre-negotiated rates with preferred travel providers (airlines, hotels, car rentals). A managed list of pre-approved providers enables automatic policy compliance checks and guides travelers toward cost-effective options.
+
+Scope
+- Define provider list data format and required fields
+- Implement CRUD operations for provider management
+- Integrate provider checks into trip validation
+- Support provider governance workflow (add/remove/update approvals)
+
+Non-Goals
+- Real-time rate lookups from provider APIs
+- Booking integration with provider systems
+
+Tasks
+- [ ] Design Provider model (name, type, contract_id, valid_from, valid_to, rate_notes)
+- [ ] Create providers.yaml configuration file format
+- [ ] Implement ProviderRegistry class with lookup by type and location
+- [ ] Add validation rule: warn if selected provider not in approved list
+- [ ] Create governance workflow for adding/removing providers
+- [ ] Write tests for provider lookup and validation integration
+- [ ] Document provider management in docs/provider-governance.md
+
+Acceptance criteria
+- Provider list supports airlines, hotels, and ground transport categories
+- Lookup by provider type and destination returns matching approved providers
+- Validation warns (not blocks) when traveler selects non-approved provider
+- Provider records include contract validity dates
+- Changes to provider list require designated approver
+- Provider list is versioned and changes are auditable
+
+Implementation notes
+- Use YAML for initial provider configuration
+- Consider database storage for larger deployments
+- Cache provider list with TTL for performance
+- Reference in Policy-Lite advisory rules
+
+9) Normalized result snapshots for deterministic re-check
+Labels: agent:codex, enhancement, stage:3, workflow
+
+Why
+When policies change or audits occur, we need to re-evaluate past trip plans against current or historical rules. Storing normalized snapshots of validation results enables deterministic re-checking without re-running the full approval process.
+
+Scope
+- Capture complete validation state at approval time
+- Store snapshots in immutable format
+- Support re-validation against new policy versions
+- Enable comparison of original vs re-checked results
+
+Non-Goals
+- Real-time policy hot-reloading
+- Automatic re-approval based on re-check results
+
+Tasks
+- [ ] Design ValidationSnapshot model (trip_id, timestamp, policy_version, results[])
+- [ ] Implement snapshot capture on approval decision
+- [ ] Create snapshot storage with immutable writes
+- [ ] Implement re-check function that loads snapshot and applies new policy
+- [ ] Add comparison report showing delta between original and re-check
+- [ ] Write tests for snapshot integrity and re-check accuracy
+- [ ] Document snapshot format in docs/audit-trail.md
+
+Acceptance criteria
+- Snapshots captured for every approval decision (approve, reject, flag)
+- Snapshots include all input data and all rule evaluation results
+- Re-check produces identical results when policy unchanged
+- Comparison clearly shows which rules changed outcome
+- Snapshots are tamper-evident (hash-chained or signed)
+- Storage efficient: <10KB per typical trip snapshot
+
+Implementation notes
+- Use JSON with canonical serialization for deterministic hashing
+- Consider SQLite or append-only file for storage
+- Include policy version hash in snapshot
+- Useful for compliance audits and policy tuning
+
+10) Policy-as-code engine selection and versioning
+Labels: enhancement, stage:4, policy, architecture
+
+Why
+As the policy system grows, we need a principled approach to policy versioning, rollback, and potentially adopting a dedicated policy-as-code engine (OPA, Cedar, etc.) for more complex rule evaluation.
+
+Scope
+- Evaluate policy engine options (native Python, OPA, Cedar, custom DSL)
+- Define policy versioning and migration strategy
+- Plan for policy testing and simulation
+- Document decision rationale
+
+Non-Goals
+- Full implementation of chosen engine (separate issue)
+- Real-time policy distribution infrastructure
+
+Tasks
+- [ ] Research and compare: native Python rules, Open Policy Agent, AWS Cedar
+- [ ] Evaluate criteria: performance, expressiveness, tooling, team familiarity
+- [ ] Define policy versioning scheme (semver, date-based, hash-based)
+- [ ] Design policy migration workflow for breaking changes
+- [ ] Create policy testing framework requirements
+- [ ] Document ADR (Architecture Decision Record) in docs/adr/
+- [ ] Prototype chosen approach with subset of Policy-Lite rules
+
+Acceptance criteria
+- ADR documents evaluation criteria and decision rationale
+- Versioning scheme supports backward compatibility checking
+- Migration workflow handles policy updates without service interruption
+- Testing framework can simulate policy changes against historical data
+- Decision considers 2-year operational horizon
+
+Implementation notes
+- Start with native Python for MVP, plan migration path
+- OPA provides good Kubernetes integration if that's the deployment target
+- Cedar offers fine-grained authorization but may be overkill
+- Consider policy-as-data (YAML/JSON) vs policy-as-code tradeoffs
+
+11) Exception taxonomy and approval workflow
+Labels: enhancement, stage:4, policy
+
+Why
+Real-world travel often requires exceptions to standard policies. A structured taxonomy of exception types with defined approval paths ensures consistent handling while maintaining flexibility.
+
+Scope
+- Define exception categories (timing, cost, destination, class of service)
+- Map each exception type to required approval level
+- Implement exception request and approval capture
+- Track exception patterns for policy improvement
+
+Non-Goals
+- Automatic exception granting based on patterns
+- Integration with HR systems for approval hierarchies
+
+Tasks
+- [ ] Define ExceptionType enum with categories from Policy-Lite analysis
+- [ ] Create ExceptionRequest model (type, justification, supporting_docs, requestor)
+- [ ] Map exception types to approval levels (manager, director, board)
+- [ ] Implement exception approval workflow with escalation
+- [ ] Add exception_requests list to TripPlan model
+- [ ] Create exception reporting for pattern analysis
+- [ ] Write tests for exception workflow edge cases
+- [ ] Document exception handling in docs/exception-policy.md
+
+Acceptance criteria
+- All Policy-Lite advisory rules have corresponding exception types
+- Exception requests require justification text (min 50 chars)
+- Approval routing based on exception type and amount
+- Approved exceptions are recorded with approver and timestamp
+- Exception dashboard shows patterns by type, requestor, approver
+- Escalation triggers if approval not received within 48 hours
+
+Implementation notes
+- Reuse ApprovalEngine patterns for exception routing
+- Consider tiered approval thresholds within exception types
+- Store exception history for audit and policy refinement
+- Reference Policy-Lite rules by ID in exception mapping
+
+12) SSO and role-based access control
+Labels: enhancement, stage:4, ops, security
+
+Why
+Production deployment requires integration with organizational identity providers (SSO) and role-based access control to ensure appropriate permissions for travelers, approvers, and administrators.
+
+Scope
+- Define RBAC roles and permissions matrix
+- Plan SSO integration approach (SAML, OIDC)
+- Design role assignment and delegation workflow
+- Document security model
+
+Non-Goals
+- Implementation of specific IdP integration (separate issue per provider)
+- Fine-grained attribute-based access control (ABAC)
+
+Tasks
+- [ ] Define roles: traveler, approver, finance_admin, policy_admin, system_admin
+- [ ] Create permissions matrix: view, create, approve, export, configure
+- [ ] Design OIDC integration architecture with token validation
+- [ ] Plan role assignment workflow (self-service vs admin-assigned)
+- [ ] Define audit logging requirements for access events
+- [ ] Document security model in docs/security-model.md
+- [ ] Create ADR for SSO provider selection
+
+Acceptance criteria
+- Each API endpoint mapped to required permissions
+- Role hierarchy supports delegation (approver can delegate to backup)
+- SSO integration plan supports major IdPs (Azure AD, Okta, Google)
+- Audit log captures authentication and authorization events
+- Role changes require admin approval and are logged
+- Security model reviewed by security team before implementation
+
+Implementation notes
+- Use standard OIDC libraries (authlib for Python)
+- Consider group-based role assignment from IdP
+- Plan for service accounts and API keys for integrations
+- Token refresh and session management critical for UX
+
+13) CI gates and documentation linting
+Labels: agent:codex, enhancement, stage:0, ops
+
+Why
+Consistent CI checks ensure code quality and documentation standards are maintained. Defining gate criteria upfront prevents merge of non-compliant changes.
+
+Scope
+- Define required CI checks for PRs
+- Implement documentation linting (markdown, spelling, links)
+- Set up test coverage thresholds
+- Configure branch protection rules
+
+Non-Goals
+- Performance testing infrastructure
+- Deployment pipelines (separate issue)
+
+Tasks
+- [ ] Define CI check matrix: lint, type-check, test, coverage, doc-lint
+- [ ] Configure pytest with coverage threshold (80% minimum)
+- [ ] Add mypy strict mode configuration
+- [ ] Implement markdown linting with markdownlint
+- [ ] Add link checking for documentation
+- [ ] Configure branch protection: require CI pass, require review
+- [ ] Write CI workflow documentation in docs/ci-system-guide.md
+
+Acceptance criteria
+- All PRs must pass lint, type-check, and test checks
+- Coverage cannot drop below 80% without explicit override
+- Markdown files pass linting with consistent style
+- Dead links in documentation are detected and flagged
+- Branch protection prevents force-push to main
+- CI results visible in PR checks with clear failure messages
+
+Implementation notes
+- Use GitHub Actions for CI
+- Consider pre-commit hooks for local validation
+- Cache dependencies for faster CI runs
+- Reference existing pyproject.toml configuration
+
+14) Auto-merge policy for documentation PRs
+Labels: enhancement, stage:0, ops
+
+Why
+Small documentation-only PRs (typo fixes, clarifications) shouldn't require the same review overhead as code changes. An auto-merge policy for qualifying PRs reduces friction for documentation improvements.
+
+Scope
+- Define criteria for auto-merge eligible PRs
+- Implement auto-merge workflow with safety checks
+- Maintain audit trail of auto-merged PRs
+
+Non-Goals
+- Auto-merge for code changes
+- Auto-merge without any CI checks
+
+Tasks
+- [ ] Define auto-merge criteria: docs-only, <50 lines changed, CI passing
+- [ ] Implement GitHub Action to detect eligible PRs
+- [ ] Add label-based opt-out mechanism
+- [ ] Configure merge delay (e.g., 1 hour) for human intervention opportunity
+- [ ] Create audit log of auto-merged PRs
+- [ ] Document policy in CONTRIBUTING.md
+
+Acceptance criteria
+- PRs modifying only docs/ or *.md files are candidates
+- Changes must be under 50 lines total
+- All CI checks must pass
+- 1-hour delay before auto-merge allows human review
+- "no-auto-merge" label prevents automatic merging
+- Audit log shows all auto-merged PRs with timestamps
+
+Implementation notes
+- Use GitHub Actions with workflow_dispatch for flexibility
+- Consider using GitHub's built-in auto-merge feature with rules
+- Ensure branch protection still applies
+- Notify in Slack/Teams when auto-merge triggers
