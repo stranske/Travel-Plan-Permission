@@ -57,7 +57,9 @@ class ExpenseItem(BaseModel):
     description: str = Field(..., description="Description of the expense")
     amount: Annotated[Decimal, Field(ge=0)] = Field(..., description="Amount spent")
     expense_date: date = Field(..., description="Date of the expense")
-    receipt_attached: bool = Field(default=False, description="Whether a receipt is attached")
+    receipt_attached: bool = Field(
+        default=False, description="Whether a receipt is attached"
+    )
 
 
 class ExpenseReport(BaseModel):
@@ -66,7 +68,9 @@ class ExpenseReport(BaseModel):
     report_id: str = Field(..., description="Unique identifier for the report")
     trip_id: str = Field(..., description="Associated trip ID")
     traveler_name: str = Field(..., description="Name of the traveler")
-    expenses: list[ExpenseItem] = Field(default_factory=list, description="List of expenses")
+    expenses: list[ExpenseItem] = Field(
+        default_factory=list, description="List of expenses"
+    )
     submitted_date: date | None = Field(default=None, description="Date submitted")
     approved_date: date | None = Field(default=None, description="Date approved")
 
@@ -78,5 +82,7 @@ class ExpenseReport(BaseModel):
         """Group expenses by category and sum amounts."""
         totals: dict[ExpenseCategory, Decimal] = {}
         for expense in self.expenses:
-            totals[expense.category] = totals.get(expense.category, Decimal("0")) + expense.amount
+            totals[expense.category] = (
+                totals.get(expense.category, Decimal("0")) + expense.amount
+            )
         return totals
