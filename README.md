@@ -1,5 +1,7 @@
 # Travel-Plan-Permission
 
+[![CI](https://github.com/stranske/Travel-Plan-Permission/actions/workflows/ci.yml/badge.svg)](https://github.com/stranske/Travel-Plan-Permission/actions/workflows/ci.yml)
+
 Project to automate and make reproducible the travel plan approval and
 reimbursement process.
 

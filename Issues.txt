@@ -1,0 +1,74 @@
+1) Implement expense approval workflow
+Labels: agent:codex, enhancement, workflow
+
+Why
+The travel plan system needs automated expense approval based on configurable rules. Currently there's no way to automatically approve or flag expenses that meet certain criteria (amount thresholds, category rules, etc.). This creates manual overhead for routine approvals.
+
+Scope
+- Approval rule engine with configurable thresholds
+- Integration with the existing ExpenseReport model
+- Support for multi-level approval hierarchies
+
+Non-Goals
+- Payment processing integration (separate future work)
+- Email notifications (will be added in a follow-up issue)
+
+Tasks
+- [ ] Create ApprovalRule pydantic model with threshold, category, and approver fields
+- [ ] Implement ApprovalEngine class that evaluates rules against expense reports
+- [ ] Add approval_status field to ExpenseReport model
+- [ ] Create default approval rules configuration in config/approval_rules.yaml
+- [ ] Write unit tests for approval engine with various scenarios
+- [ ] Update documentation with approval workflow examples
+
+Acceptance criteria
+- ApprovalEngine can load rules from YAML configuration
+- Expenses under $100 are auto-approved by default rule
+- Expenses over $5000 require manager approval (flagged, not auto-approved)
+- Category-specific rules can override default thresholds
+- All approval decisions are logged with timestamp and rule that triggered
+
+Implementation notes
+- Use pydantic for rule validation
+- Follow existing model patterns in src/travel_plan_permission/models.py
+- Configuration should support both YAML files and environment variables
+- Consider using a strategy pattern for different approval rule types
+
+2) Add trip plan validation rules
+Labels: agent:codex, enhancement, validation
+
+Why
+Trip plans need validation to ensure they meet organizational policies before submission. Currently the JSON schema validates structure but not business rules (e.g., advance booking requirements, destination restrictions, budget limits).
+
+Scope
+- Policy validation layer for TripPlan objects
+- Configurable validation rules with clear error messages
+- Support for warning vs blocking violations
+
+Non-Goals
+- Real-time travel advisories (requires external API integration)
+- Calendar integration for availability checking
+
+Tasks
+- [ ] Create ValidationRule base class with evaluate() method
+- [ ] Implement AdvanceBookingRule (e.g., 14 days notice for international)
+- [ ] Implement BudgetLimitRule (per-trip and per-category limits)
+- [ ] Implement DurationLimitRule (max consecutive days)
+- [ ] Create PolicyValidator class that runs all rules
+- [ ] Add validation_results field to TripPlan model
+- [ ] Write comprehensive unit tests for each rule type
+- [ ] Document validation rules in docs/validation-rules.md
+
+Acceptance criteria
+- TripPlan.validate() returns list of ValidationResult objects
+- Each result has severity (error, warning, info), code, and message
+- Blocking rules prevent trip submission when violated
+- Warning rules allow submission but flag for review
+- Rules are configurable via policy.yaml
+- Validation runs in <100ms for typical trip plans
+
+Implementation notes
+- Use the visitor pattern for rule evaluation
+- Each rule should be independently testable
+- Consider caching rule configurations for performance
+- Follow existing test patterns in tests/python/test_models.py
