@@ -32,4 +32,3 @@ jobs:
       enable-coverage-delta: false
       enable-soft-gate: false
     secrets: inherit
-# trigger CI
