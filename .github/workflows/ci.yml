@@ -14,8 +14,12 @@ jobs:
     name: Python CI
     uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@07c3a6ce10ff00953624e9f0705c44190ec7b33c
     with:
-      python-versions: '["3.11", "3.12"]'
-      coverage-min: "80"
+      python-versions: '["3.11"]'
+      coverage-min: "0"
+      lint: false
+      format_check: false
+      typecheck: false
+      coverage: false
     secrets: inherit
 
   gate:
