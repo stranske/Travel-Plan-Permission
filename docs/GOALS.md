@@ -1,0 +1,108 @@
+# Integration Goals
+
+This document captures the primary objectives for this repository to prevent
+losing focus during implementation.
+
+## Phase Goal: External Workflow Consumer Pattern
+
+**This repository is the FIRST external consumer of stranske/Workflows.**
+
+The purpose is to:
+
+1. **Test the pattern** of using a centralized Workflows repo from satellite repos
+2. **Identify coordination issues** that need to be resolved in the Workflows repo
+3. **Establish a reusable template** that other repos can follow
+4. **Minimize duplication** - satellite repos should contain thin callers only
+
+## Design Principles
+
+1. **Workflows repo is the single source of truth** for automation logic
+2. **Satellite repos use thin callers** that reference reusable workflows
+3. **No standalone workflow duplication** in satellite repos
+4. **Fix issues at the source** - if something doesn't work cross-repo, fix it in
+   Workflows, don't work around it locally
+
+## Current Blocker: RESOLVED - Mixing Job Types Causes startup_failure
+
+**Issue discovered 2025-12-22, RESOLVED 2025-12-22**
+
+### Root Cause Identified
+
+**GitHub Actions fails with `startup_failure` when a workflow contains BOTH:**
+1. A job that calls a reusable workflow (`uses:`)  
+2. Regular jobs (`runs-on:`)
+
+This is likely a GitHub Actions bug or undocumented limitation.
+
+### Proof
+
+```yaml
+# ❌ FAILS with startup_failure - mixed job types
+jobs:
+  local-job:
+    runs-on: ubuntu-latest
+    steps: [...]
+  
+  python-ci:
+    uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@SHA
+
+# ✅ WORKS - only reusable workflow job
+jobs:
+  python-ci:
+    uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@SHA
+```
+
+### Workarounds
+
+1. **Separate workflows** - Put reusable workflow call in its own file, local jobs in another
+2. **Use only reusable workflows** - Move all logic to Workflows repo
+3. **Wait for GitHub fix** - This may be a bug that gets resolved
+
+### Additional Bug Found
+
+The reusable workflow has a bug: `BLACK_VERSION: unbound variable` in the
+"Prepare Python environment" step. The script uses `set -u` (fail on undefined
+variables) but references `BLACK_VERSION` before it's defined. This happens
+regardless of the `format_check` setting.
+
+**Error log:**
+```
+/home/runner/work/_temp/xxx.sh: line 72: BLACK_VERSION: unbound variable
+```
+
+This must be fixed in stranske/Workflows - likely in the prepare-python step.
+
+## What Works Now
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `agents-63-issue-intake.yml` | ✅ Works | Thin caller to reusable-agents-issue-bridge.yml |
+| `agents-70-orchestrator.yml` | ✅ Works | Thin caller to reusable-16-agents.yml (runs, has own failures) |
+| Labels | ✅ Synced | All required labels created |
+| Secrets | ✅ Configured | SERVICE_BOT_PAT, OWNER_PR_PAT, ACTIONS_BOT_PAT |
+| `ci.yml` | ✅ Works | Calls reusable Python CI (6 jobs start successfully) |
+| `lint.yml` | ✅ Works | Local linting jobs (separate file workaround) |
+| Reusable Python CI | ⚠️ Has bug | BLACK_VERSION unbound variable - needs Workflows repo fix |
+| Gate job pattern | ❌ Blocked | Mixing job types causes startup_failure |
+
+## Immediate Next Steps
+
+1. **Fix BLACK_VERSION bug** in Workflows repo - unbound variable when format_check=false
+2. **Decide on gate pattern** - use workflow_run trigger or remove gate entirely
+3. **Re-enable full CI** once gate pattern is resolved
+4. **Continue testing agent workflows** which do work
+
+## Tasks Pending
+
+- [ ] Report `needs` + reusable workflow bug to GitHub or find documentation
+- [ ] Fix BLACK_VERSION unbound variable in Workflows repo
+- [ ] Implement alternative gate pattern (workflow_run or required checks)
+- [ ] Re-enable actionlint, docs-lint, schema-validate jobs
+- [ ] Evaluate labeler.yml and archive if not useful
+- [ ] Rewrite GitHub Issues #3-19 into Issues.txt format
+
+## References
+
+- [belt-automation-plan.md](./belt-automation-plan.md) - Thin caller pattern
+- [ci-system-guide.md](./ci-system-guide.md) - CI integration docs
+- [agent-integration-status.md](./agent-integration-status.md) - Agent setup status

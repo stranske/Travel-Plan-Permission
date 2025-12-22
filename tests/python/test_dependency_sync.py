@@ -12,8 +12,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 PYPROJECT_FILE = REPO_ROOT / "pyproject.toml"
@@ -86,16 +84,16 @@ class TestLockFiles:
         """requirements.lock must exist."""
         lock_file = REPO_ROOT / "requirements.lock"
         assert lock_file.exists(), (
-            f"requirements.lock not found. "
-            f"Generate with: pip-compile --output-file=requirements.lock pyproject.toml"
+            "requirements.lock not found. "
+            "Generate with: pip-compile --output-file=requirements.lock pyproject.toml"
         )
 
     def test_requirements_dev_lock_exists(self) -> None:
         """requirements-dev.lock must exist."""
         lock_file = REPO_ROOT / "requirements-dev.lock"
         assert lock_file.exists(), (
-            f"requirements-dev.lock not found. "
-            f"Generate with: pip-compile --extra=dev --output-file=requirements-dev.lock pyproject.toml"
+            "requirements-dev.lock not found. "
+            "Generate with: pip-compile --extra=dev --output-file=requirements-dev.lock pyproject.toml"
         )
 
     def test_lock_file_header(self) -> None:
@@ -121,23 +119,23 @@ class TestPinFileFormat:
     def test_pin_file_format(self) -> None:
         """Pin file should have valid format."""
         content = PIN_FILE.read_text(encoding="utf-8")
-        
+
         required_vars = [
             "RUFF_VERSION",
             "MYPY_VERSION",
             "PYTEST_VERSION",
         ]
-        
+
         for var in required_vars:
             assert f"{var}=" in content, f"Pin file missing {var}"
 
     def test_pin_file_versions_are_valid(self) -> None:
         """Pin file versions should be valid semver-like."""
         import re
-        
+
         content = PIN_FILE.read_text(encoding="utf-8")
         version_pattern = re.compile(r"^\d+\.\d+(\.\d+)?$")
-        
+
         for line in content.splitlines():
             if "=" in line and not line.strip().startswith("#"):
                 key, value = line.split("=", 1)
