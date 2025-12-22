@@ -2,7 +2,10 @@
 # -----------------------------------------------------------------------------
 # CI Workflow — Travel-Plan-Permission
 # -----------------------------------------------------------------------------
-# Simple CI workflow for this consumer repository.
+# Thin caller to stranske/Workflows reusable Python CI.
+# This is the consumer pattern that other repos should follow.
+# -----------------------------------------------------------------------------
+# Workflows repo SHA: d6c17892b17f2c6f2bd2440cb7b7a6eef08d7ea7 (2025-12-22)
 # -----------------------------------------------------------------------------
 
 name: CI
@@ -15,58 +18,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
-    name: Test (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12"]
-      fail-fast: false
+  python-ci:
+    name: Python CI
+    uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@main
+    with:
+      python-versions: '["3.11", "3.12"]'
+      coverage-min: "80"
+      format_check: false  # Using ruff for formatting
+      working-directory: "."
+    secrets: inherit
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-
-      - name: Lint with ruff
-        run: ruff check src/ tests/
-
-      - name: Type check with mypy
-        run: mypy src/
-
-      - name: Run tests with coverage
-        run: pytest -v --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=80
-
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-${{ matrix.python-version }}
-          path: coverage.xml
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install ruff
-
-      - name: Lint with ruff
-        run: ruff check src/ tests/

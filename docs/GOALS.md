@@ -58,36 +58,31 @@ jobs:
 2. **Use only reusable workflows** - Move all logic to Workflows repo
 3. **Wait for GitHub fix** - This may be a bug that gets resolved
 
-### Additional Bug Found
+### Additional Bug Found - FIXED
 
-The reusable workflow has a bug: `BLACK_VERSION: unbound variable` in the
-"Prepare Python environment" step. The script uses `set -u` (fail on undefined
-variables) but references `BLACK_VERSION` before it's defined. This happens
-regardless of the `format_check` setting.
+The reusable workflow had a bug: `BLACK_VERSION: unbound variable` in the
+"Prepare Python environment" step. The script used `set -u` (fail on undefined
+variables) but referenced `BLACK_VERSION` before it was defined.
 
-**Error log:**
-```
-/home/runner/work/_temp/xxx.sh: line 72: BLACK_VERSION: unbound variable
-```
-
-This must be fixed in stranske/Workflows - likely in the prepare-python step.
+**Status**: ✅ FIXED in Workflows repo (2025-12-22)  
+**Fix**: Changed `$BLACK_VERSION` to `${BLACK_VERSION:-}` (default empty string)
 
 ## What Works Now
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | `agents-63-issue-intake.yml` | ✅ Works | Thin caller to reusable-agents-issue-bridge.yml |
-| `agents-70-orchestrator.yml` | ✅ Works | Thin caller to reusable-16-agents.yml (runs, has own failures) |
+| `agents-70-orchestrator.yml` | ✅ Works | Thin caller to reusable-16-agents.yml |
 | Labels | ✅ Synced | All required labels created |
 | Secrets | ✅ Configured | SERVICE_BOT_PAT, OWNER_PR_PAT, ACTIONS_BOT_PAT |
-| `ci.yml` | ✅ Works | Calls reusable Python CI (6 jobs start successfully) |
-| `lint.yml` | ✅ Works | Local linting jobs (separate file workaround) |
-| Reusable Python CI | ⚠️ Has bug | BLACK_VERSION unbound variable - needs Workflows repo fix |
+| `ci.yml` | ✅ Works | Thin caller to reusable-10-ci-python.yml |
+| `lint.yml` | ✅ Works | Local linting jobs (separate file for mixed job workaround) |
+| Reusable Python CI | ✅ Fixed | BLACK_VERSION bug resolved |
 | Gate job pattern | ❌ Blocked | Mixing job types causes startup_failure |
 
 ## Immediate Next Steps
 
-1. **Fix BLACK_VERSION bug** in Workflows repo - unbound variable when format_check=false
+1. ~~**Fix BLACK_VERSION bug** in Workflows repo~~ ✅ DONE
 2. **Decide on gate pattern** - use workflow_run trigger or remove gate entirely
 3. **Re-enable full CI** once gate pattern is resolved
 4. **Continue testing agent workflows** which do work
@@ -95,10 +90,10 @@ This must be fixed in stranske/Workflows - likely in the prepare-python step.
 ## Tasks Pending
 
 - [ ] Report `needs` + reusable workflow bug to GitHub or find documentation
-- [ ] Fix BLACK_VERSION unbound variable in Workflows repo
+- [x] Fix BLACK_VERSION unbound variable in Workflows repo
 - [ ] Implement alternative gate pattern (workflow_run or required checks)
 - [ ] Re-enable actionlint, docs-lint, schema-validate jobs
-- [ ] Evaluate labeler.yml and archive if not useful
+- [x] Evaluate labeler.yml and archive if not useful (archived 2025-12-22)
 - [ ] Rewrite GitHub Issues #3-19 into Issues.txt format
 
 ## References
