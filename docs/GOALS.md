@@ -22,51 +22,84 @@ The purpose is to:
 4. **Fix issues at the source** - if something doesn't work cross-repo, fix it in
    Workflows, don't work around it locally
 
-## Current Blocker: Composite Actions
+## Current Blocker: startup_failure (Under Investigation)
 
-**Issue discovered 2024-12-22:**
+**Issue discovered 2025-12-22:**
 
-The `reusable-10-ci-python.yml` workflow uses composite actions with relative paths:
-
+### Original Problem (Fixed)
+The `reusable-10-ci-python.yml` workflow used composite actions with relative paths:
 ```yaml
 uses: ./.github/actions/python-ci-setup
 ```
+This was fixed in Workflows repo PR #49 by inlining the composite action logic.
 
-When called from Travel-Plan-Permission, this resolves to the CALLER repo's
-`.github/actions/` directory, not the Workflows repo. This causes `startup_failure`
-because the action doesn't exist in the caller repo.
+### Current Problem (Unresolved)
+Despite the fix, CI still fails with `startup_failure`:
+- **SHA updated:** `dc46ca4` → `07c3a6ce10ff00953624e9f0705c44190ec7b33c` (PR #49 merge)
+- **Failure type:** `startup_failure` with 0 jobs created
+- **No error message:** GitHub API provides no details for startup failures
 
-**Required fix (in Workflows repo):**
+### Investigation Findings (2025-12-22)
 
-The reusable workflows need to be refactored so they work when called externally.
-Options:
+**Verified working:**
+- ✅ SHA `07c3a6c` exists and contains the inlined composite action fix
+- ✅ Reusable workflow YAML is valid (2050 lines, parses correctly)
+- ✅ No relative action paths (`uses: ./`) remain in the workflow
+- ✅ Workflows repo is public and accessible
+- ✅ "Allow all actions and reusable workflows" is enabled in repo settings
+- ✅ Fork pull request settings are not restrictive
 
-1. Publish composite actions to a separate action repo
-2. Inline the composite action logic into the reusable workflow
-3. Use a different pattern that works cross-repo
+**Verified NOT the cause:**
+- ❌ Composite action paths (fixed in PR #49)
+- ❌ Repository access settings (all actions allowed)
+- ❌ YAML syntax errors (validated locally)
+- ❌ Missing required inputs (all have defaults)
+
+**Key observations:**
+1. The Workflows repo's own "Selftest CI" passes (runs locally)
+2. The Workflows repo's "Maint 62 Integration Consumer" ran at `05:12:21Z` on SHA `dc46ca4`
+3. PR #49 merged at `05:12:43Z` creating SHA `07c3a6c` - **22 seconds after** the test
+4. No integration test has run yet with the fixed SHA
+5. Other workflows in this repo (agents-70-orchestrator) start successfully
+
+**Possible remaining causes:**
+1. **GitHub caching issue** - GitHub may cache workflow resolution
+2. **Expression evaluation failure** - Complex matrix expression in reusable workflow
+3. **Unknown GitHub Actions limitation** - Something specific to external reusable workflow calls
+4. **Timing/propagation delay** - New SHA may not have fully propagated
+
+### Next Steps
+
+1. **Wait and retry** - GitHub may need time to propagate the new SHA
+2. **Trigger new integration consumer run** in Workflows repo to validate fix
+3. **Try branch reference** as diagnostic: `@main` instead of SHA
+4. **Check GitHub status** for any Actions-related incidents
+5. **Open GitHub support ticket** if issue persists (no actionable error message)
 
 ## What Works Now
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | `agents-63-issue-intake.yml` | ✅ Works | Thin caller to reusable-agents-issue-bridge.yml |
-| `agents-70-orchestrator.yml` | ✅ Created | Thin caller to reusable-16-agents.yml |
+| `agents-70-orchestrator.yml` | ✅ Works | Thin caller to reusable-16-agents.yml (runs, has own failures) |
 | Labels | ✅ Synced | All required labels created |
 | Secrets | ✅ Configured | SERVICE_BOT_PAT, OWNER_PR_PAT, ACTIONS_BOT_PAT |
-| Reusable Python CI | ❌ Blocked | Composite action path issue |
+| Reusable Python CI | ❌ Blocked | startup_failure - cause under investigation |
 
 ## Immediate Next Steps
 
-1. **Document the composite action issue** as a problem to fix in Workflows repo
-2. **Do NOT create standalone CI** - wait for Workflows fix
+1. **Trigger Workflows integration test** to validate PR #49 fix works externally
+2. **Retry CI in this repo** after integration test passes
 3. **Continue testing agent workflows** which do work
 4. **Convert existing Issues** to Issues.txt format
 
 ## Tasks Pending
 
+- [ ] Trigger Maint 62 Integration Consumer in Workflows repo with current main
+- [ ] Re-run CI after integration test validates the fix
 - [ ] Evaluate labeler.yml and archive if not useful
 - [ ] Rewrite GitHub Issues #3-19 into Issues.txt format
-- [ ] Coordinate with Workflows repo to fix reusable CI for external callers
+- [ ] If startup_failure persists after integration test passes, open GitHub support ticket
 
 ## References
 
