@@ -47,7 +47,7 @@ jobs:
         run: pytest -v --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=80
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-${{ matrix.python-version }}
           path: coverage.xml
