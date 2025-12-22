@@ -109,6 +109,10 @@ class ApprovalEngine:
         decisions = [self.evaluate_expense(expense) for expense in report.expenses]
         report.approval_decisions = decisions
 
+        # If there are no expenses, keep the report in a PENDING state.
+        if not decisions:
+            report.approval_status = ApprovalStatus.PENDING
+            return report
         if any(decision.status == ApprovalStatus.FLAGGED for decision in decisions):
             report.approval_status = ApprovalStatus.FLAGGED
         elif all(decision.status == ApprovalStatus.AUTO_APPROVED for decision in decisions):
