@@ -18,14 +18,16 @@ classifiers = [
 
 dependencies = [
     "pydantic>=2.0",
+    "pyyaml>=6.0.2",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=9.0.1",
-    "pytest-cov>=7.0.0",
-    "ruff>=0.14.7",
-    "mypy>=1.19.0",
+    "pytest>=8.3.4",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.4",
+    "mypy>=1.13.0",
+    "types-PyYAML>=6.0.12",
 ]
 
 [build-system]

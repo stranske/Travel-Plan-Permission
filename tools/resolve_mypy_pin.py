@@ -38,6 +38,7 @@ def get_mypy_python_version() -> str | None:
                 # New section started
                 break
             if stripped.startswith("python_version") and "=" in stripped:
+                # Extract version value
                 value = stripped.split("=", 1)[1].strip().strip('"').strip("'")
                 return value
     return None
