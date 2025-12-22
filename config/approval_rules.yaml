@@ -1,0 +1,14 @@
+rules:
+  - name: meals_manager_review
+    category: meals
+    threshold: 300
+    action: require_approval
+    approver: manager
+  - name: default_under_100
+    threshold: 100
+    action: auto_approve
+    approver: system
+  - name: high_amount_flag
+    threshold: 5000
+    action: require_approval
+    approver: manager

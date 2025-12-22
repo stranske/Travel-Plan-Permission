@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Annotated
@@ -29,6 +29,65 @@ class ExpenseCategory(str, Enum):
     MEALS = "meals"
     CONFERENCE_FEES = "conference_fees"
     OTHER = "other"
+
+
+class ApprovalStatus(str, Enum):
+    """Status of expense approval processing."""
+
+    PENDING = "pending"
+    AUTO_APPROVED = "auto_approved"
+    FLAGGED = "flagged"
+
+
+class ApprovalAction(str, Enum):
+    """Action to take when a rule matches an expense."""
+
+    AUTO_APPROVE = "auto_approve"
+    REQUIRE_APPROVAL = "require_approval"
+
+
+class ApprovalRule(BaseModel):
+    """Approval rule for expense items."""
+
+    name: str = Field(..., description="Unique rule name")
+    threshold: Annotated[Decimal, Field(ge=0)] = Field(
+        ..., description="Amount threshold that triggers the rule"
+    )
+    category: ExpenseCategory | None = Field(
+        default=None, description="Optional category this rule applies to"
+    )
+    approver: str = Field(..., description="Approver or role responsible for the decision")
+    action: ApprovalAction = Field(
+        default=ApprovalAction.AUTO_APPROVE,
+        description="Action to take when the rule matches",
+    )
+
+    def matches(self, expense: "ExpenseItem") -> bool:
+        """Return True when the rule applies to the expense category."""
+
+        if self.category is None:
+            return True
+        return expense.category == self.category
+
+    def evaluate(self, expense: "ExpenseItem") -> ApprovalStatus | None:
+        """Evaluate the expense against the rule and return a status when triggered."""
+
+        if self.action == ApprovalAction.AUTO_APPROVE and expense.amount <= self.threshold:
+            return ApprovalStatus.AUTO_APPROVED
+        if self.action == ApprovalAction.REQUIRE_APPROVAL and expense.amount >= self.threshold:
+            return ApprovalStatus.FLAGGED
+        return None
+
+
+class ApprovalDecision(BaseModel):
+    """Result of evaluating an expense against the approval rules."""
+
+    expense: "ExpenseItem" = Field(..., description="Expense evaluated")
+    status: ApprovalStatus = Field(..., description="Outcome of the evaluation")
+    rule_name: str = Field(..., description="Name of the rule that triggered the decision")
+    approver: str = Field(..., description="Approver or role responsible")
+    timestamp: datetime = Field(..., description="Time when the decision was made")
+    reason: str | None = Field(default=None, description="Optional explanation for the decision")
 
 
 class TripPlan(BaseModel):
@@ -67,6 +126,12 @@ class ExpenseReport(BaseModel):
     trip_id: str = Field(..., description="Associated trip ID")
     traveler_name: str = Field(..., description="Name of the traveler")
     expenses: list[ExpenseItem] = Field(default_factory=list, description="List of expenses")
+    approval_status: ApprovalStatus = Field(
+        default=ApprovalStatus.PENDING, description="Status after approval evaluation"
+    )
+    approval_decisions: list[ApprovalDecision] = Field(
+        default_factory=list, description="Decision log for each expense item"
+    )
     submitted_date: date | None = Field(default=None, description="Date submitted")
     approved_date: date | None = Field(default=None, description="Date approved")
 

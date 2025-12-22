@@ -10,6 +10,8 @@ pydantic==2.10.4
     # via travel-plan-permission (pyproject.toml)
 pydantic-core==2.27.2
     # via pydantic
+pyyaml==6.0.3
+    # via travel-plan-permission (pyproject.toml)
 typing-extensions==4.12.2
     # via
     #   pydantic
