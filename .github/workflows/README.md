@@ -1,69 +1,54 @@
 # Workflow Architecture
 
-This repository uses a **hybrid CI approach** combining local domain-specific
-jobs with reusable workflows from [stranske/Workflows](https://github.com/stranske/Workflows).
+This repository uses a **standalone CI approach** with self-contained workflows
+optimized for this project's specific needs.
 
 For comprehensive documentation, see [docs/ci-system-guide.md](../../docs/ci-system-guide.md).
 
-## Current Pin
-
-| Repository | Ref | SHA | Updated |
-|------------|-----|-----|---------|
-| stranske/Workflows | main | `dc46ca4fa721e31df650e999d0fe108da7e4574c` | 2024-12-22 |
-
-### Updating the pin
-
-```bash
-# Get latest SHA
-gh api repos/stranske/Workflows/commits/main --jq '.sha'
-
-# Update ci.yml header comment and python-ci job reference
-```
-
 ## Workflow Files
 
-| File | Purpose | Type |
-|------|---------|------|
-| `ci.yml` | Main CI pipeline (lint, schema validation, gate) | Hybrid |
-| `labeler.yml` | Auto-label PRs based on paths | Local |
+| File | Purpose | Description |
+|------|---------|-------------|
+| `ci.yml` | Main CI pipeline | Python testing (3.11, 3.12), linting with ruff, type checking with mypy |
+| `lint.yml` | Additional linting | actionlint, JSON schema validation, docs link checking |
+| `agents-*.yml` | Agent automation | Issue intake and automation workflows |
+| `maint-*.yml` | Maintenance | Dependency refresh and other maintenance tasks |
 
-## Job Responsibilities
+## Archived Workflows
 
-### Local Jobs (domain-specific)
+The following workflows have been archived to `.github/workflows-archive/`:
 
-These jobs contain logic unique to Travel-Plan-Permission and are maintained
-in this repository:
+| File | Reason |
+|------|--------|
+| `labeler.yml` | PR auto-labeling provided marginal value; labels not used by CI gates |
 
-| Job | What it validates | Why local |
-|-----|-------------------|-----------|
-| `docs-lint` | Markdown formatting, link integrity | Travel-specific documentation standards |
-| `schema-validate` | JSON Schema (trip_plan, expense_report) | Domain schemas unique to this project |
+## CI Jobs
 
-### Reusable Jobs (from stranske/Workflows)
+### ci.yml
 
-These jobs call reusable workflows for standard language CI:
+| Job | Description |
+|-----|-------------|
+| `test` | Matrix job running pytest on Python 3.11 and 3.12 with coverage |
+| `lint` | Runs ruff to check code style |
 
-| Job | Workflow | When to enable |
-|-----|----------|----------------|
-| `python-ci` | `reusable-10-ci-python.yml` | When Python implementation code is added |
+### lint.yml
 
-## Adding Python CI
+| Job | Description |
+|-----|-------------|
+| `actionlint` | Validates GitHub Actions workflow syntax |
+| `docs-lint` | Checks documentation links |
+| `schema-validate` | Validates JSON schema files |
 
-When Stage 1 (Excel Agent Bridge) or later stages add Python code:
+## Configuration
 
-1. Uncomment the `python-ci` job in `ci.yml`
-2. Add `python-ci` to the `gate` job's `needs` array
-3. Configure inputs as needed:
+Tool versions are pinned in `autofix-versions.env` for consistency between
+local development and CI:
 
-```yaml
-python-ci:
-  name: Python CI
-  uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@dc46ca4...
-  with:
-    python-versions: '["3.11", "3.12"]'
-    coverage-min: "80"
-    working-directory: "src"  # if code is in a subdirectory
-  secrets: inherit
+```bash
+RUFF_VERSION=0.8.4
+MYPY_VERSION=1.13.0
+PYTEST_VERSION=8.3.4
+# ... see file for full list
 ```
 
 ## Secrets
@@ -72,34 +57,8 @@ python-ci:
 |--------|---------|---------|
 | `GITHUB_TOKEN` | All jobs | Default token, auto-provided |
 
-Additional secrets may be needed when Python CI is enabled (e.g., `CODECOV_TOKEN`
-for coverage reporting).
-
-## Troubleshooting
-
-### Workflow not found
-
-If GitHub can't find a reusable workflow:
-- Verify the SHA exists: `gh api repos/stranske/Workflows/commits/<sha>`
-- Check that stranske/Workflows is public (or configure PAT if private)
-
-### Permission denied
-
-Ensure workflow has required permissions. Current `ci.yml` uses minimal:
-```yaml
-permissions:
-  contents: read
-```
-
-For Python CI with coverage comments, you may need:
-```yaml
-permissions:
-  contents: read
-  pull-requests: write
-```
-
 ## References
 
-- [stranske/Workflows Integration Guide](https://github.com/stranske/Workflows/blob/main/docs/INTEGRATION_GUIDE.md)
-- [Reusable CI Documentation](https://github.com/stranske/Workflows/blob/main/docs/ci_reuse.md)
-- [GitHub Reusable Workflows](https://docs.github.com/en/actions/using-workflows/reusing-workflows)
+- [GitHub Actions Documentation](https://docs.github.com/en/actions)
+- [ruff Documentation](https://docs.astral.sh/ruff/)
+- [pytest Documentation](https://docs.pytest.org/)
