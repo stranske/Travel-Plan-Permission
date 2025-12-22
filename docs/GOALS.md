@@ -86,6 +86,19 @@ PYDANTIC_CORE_VERSION=2.27.2
 pydantic's requirements, or don't install pydantic-core separately (let pip
 resolve it as a transitive dependency).
 
+### Bug: Outdated hypothesis Version
+
+The reusable workflow defaults to `hypothesis==6.0.0` (from 2020) which is
+incompatible with Python 3.12 (`EntryPoints` object has no attribute `get`).
+
+**Workaround**: Add to consumer's `autofix-versions.env`:
+```bash
+HYPOTHESIS_VERSION=6.122.3
+```
+
+**Fix needed in Workflows repo**: Update default HYPOTHESIS_VERSION to a
+modern version compatible with Python 3.11+.
+
 ## What Works Now
 
 | Feature | Status | Notes |
