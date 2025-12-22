@@ -56,7 +56,9 @@ class ApprovalRule(BaseModel):
     category: ExpenseCategory | None = Field(
         default=None, description="Optional category this rule applies to"
     )
-    approver: str = Field(..., description="Approver or role responsible for the decision")
+    approver: str = Field(
+        ..., description="Approver or role responsible for the decision"
+    )
     action: ApprovalAction = Field(
         default=ApprovalAction.AUTO_APPROVE,
         description="Action to take when the rule matches",
@@ -72,9 +74,15 @@ class ApprovalRule(BaseModel):
     def evaluate(self, expense: ExpenseItem) -> ApprovalStatus | None:
         """Evaluate the expense against the rule and return a status when triggered."""
 
-        if self.action == ApprovalAction.AUTO_APPROVE and expense.amount <= self.threshold:
+        if (
+            self.action == ApprovalAction.AUTO_APPROVE
+            and expense.amount <= self.threshold
+        ):
             return ApprovalStatus.AUTO_APPROVED
-        if self.action == ApprovalAction.REQUIRE_APPROVAL and expense.amount >= self.threshold:
+        if (
+            self.action == ApprovalAction.REQUIRE_APPROVAL
+            and expense.amount >= self.threshold
+        ):
             return ApprovalStatus.FLAGGED
         return None
 
@@ -84,10 +92,14 @@ class ApprovalDecision(BaseModel):
 
     expense: ExpenseItem = Field(..., description="Expense evaluated")
     status: ApprovalStatus = Field(..., description="Outcome of the evaluation")
-    rule_name: str = Field(..., description="Name of the rule that triggered the decision")
+    rule_name: str = Field(
+        ..., description="Name of the rule that triggered the decision"
+    )
     approver: str = Field(..., description="Approver or role responsible")
     timestamp: datetime = Field(..., description="Time when the decision was made")
-    reason: str | None = Field(default=None, description="Optional explanation for the decision")
+    reason: str | None = Field(
+        default=None, description="Optional explanation for the decision"
+    )
 
 
 class TripPlan(BaseModel):
@@ -99,7 +111,9 @@ class TripPlan(BaseModel):
     departure_date: date = Field(..., description="Date of departure")
     return_date: date = Field(..., description="Date of return")
     purpose: str = Field(..., description="Business purpose of the trip")
-    estimated_cost: Annotated[Decimal, Field(ge=0)] = Field(..., description="Estimated total cost")
+    estimated_cost: Annotated[Decimal, Field(ge=0)] = Field(
+        ..., description="Estimated total cost"
+    )
     status: TripStatus = Field(default=TripStatus.DRAFT, description="Current status")
 
     def duration_days(self) -> int:
@@ -114,7 +128,9 @@ class ExpenseItem(BaseModel):
     description: str = Field(..., description="Description of the expense")
     amount: Annotated[Decimal, Field(ge=0)] = Field(..., description="Amount spent")
     expense_date: date = Field(..., description="Date of the expense")
-    receipt_attached: bool = Field(default=False, description="Whether a receipt is attached")
+    receipt_attached: bool = Field(
+        default=False, description="Whether a receipt is attached"
+    )
 
 
 class ExpenseReport(BaseModel):
@@ -123,7 +139,9 @@ class ExpenseReport(BaseModel):
     report_id: str = Field(..., description="Unique identifier for the report")
     trip_id: str = Field(..., description="Associated trip ID")
     traveler_name: str = Field(..., description="Name of the traveler")
-    expenses: list[ExpenseItem] = Field(default_factory=list, description="List of expenses")
+    expenses: list[ExpenseItem] = Field(
+        default_factory=list, description="List of expenses"
+    )
     approval_status: ApprovalStatus = Field(
         default=ApprovalStatus.PENDING, description="Status after approval evaluation"
     )
@@ -141,5 +159,7 @@ class ExpenseReport(BaseModel):
         """Group expenses by category and sum amounts."""
         totals: dict[ExpenseCategory, Decimal] = {}
         for expense in self.expenses:
-            totals[expense.category] = totals.get(expense.category, Decimal("0")) + expense.amount
+            totals[expense.category] = (
+                totals.get(expense.category, Decimal("0")) + expense.amount
+            )
         return totals
