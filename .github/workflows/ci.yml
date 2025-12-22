@@ -17,7 +17,7 @@ on:
 
 jobs:
   python:
-    uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@main
+    uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@v1
     with:
       python-versions: '["3.11", "3.12"]'
       coverage: true
