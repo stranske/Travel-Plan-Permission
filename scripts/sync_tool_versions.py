@@ -17,8 +17,9 @@ import argparse
 import dataclasses
 import re
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Dict, Iterable, Pattern, Tuple
+from re import Pattern
 
 PIN_FILE = Path(".github/workflows/autofix-versions.env")
 PYPROJECT_FILE = Path("pyproject.toml")
@@ -42,7 +43,7 @@ def _format_entry(pattern: str, version: str) -> str:
     return pattern.format(version=version)
 
 
-TOOL_CONFIGS: Tuple[ToolConfig, ...] = (
+TOOL_CONFIGS: tuple[ToolConfig, ...] = (
     ToolConfig(
         env_key="RUFF_VERSION",
         package_name="ruff",
@@ -74,12 +75,12 @@ class SyncError(RuntimeError):
     """Raised when the repository is misconfigured or a sync fails."""
 
 
-def parse_env_file(path: Path) -> Dict[str, str]:
+def parse_env_file(path: Path) -> dict[str, str]:
     """Parse the pin file and return a mapping of variable names to versions."""
     if not path.exists():
         raise SyncError(f"Pin file '{path}' does not exist")
 
-    values: Dict[str, str] = {}
+    values: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line or line.lstrip().startswith("#"):
             continue
@@ -95,13 +96,13 @@ def parse_env_file(path: Path) -> Dict[str, str]:
 
 
 def ensure_pyproject(
-    content: str, configs: Iterable[ToolConfig], env: Dict[str, str], apply: bool
-) -> Tuple[str, Dict[str, str]]:
+    content: str, configs: Iterable[ToolConfig], env: dict[str, str], apply: bool
+) -> tuple[str, dict[str, str]]:
     """Check/update pyproject.toml against pinned versions.
-    
+
     Returns the (possibly updated) content and a dict of mismatches found.
     """
-    mismatches: Dict[str, str] = {}
+    mismatches: dict[str, str] = {}
     updated_content = content
 
     for cfg in configs:
@@ -115,12 +116,12 @@ def ensure_pyproject(
             if not match:
                 print(f"⚠ {cfg.package_name}: not found in pyproject.toml (skipped)")
                 continue
-                
+
         current = match.group("version")
         # Compare major.minor version numbers
         current_parts = current.split(".")[:2]
         expected_parts = expected.split(".")[:2]
-        
+
         if current_parts != expected_parts:
             mismatches[cfg.package_name] = (
                 f"pyproject has {current}, pin file has {expected}"
@@ -128,7 +129,7 @@ def ensure_pyproject(
             if apply:
                 replacement = _format_entry(cfg.pyproject_format, expected)
                 updated_content = cfg.pyproject_pattern.sub(
-                    lambda m, repl=replacement: repl,
+                    lambda _m, repl=replacement: repl,
                     updated_content,
                     count=1,
                 )

@@ -37,11 +37,10 @@ def get_mypy_python_version() -> str | None:
             if stripped.startswith("["):
                 # New section started
                 break
-            if stripped.startswith("python_version"):
+            if stripped.startswith("python_version") and "=" in stripped:
                 # Extract version value
-                if "=" in stripped:
-                    value = stripped.split("=", 1)[1].strip().strip('"').strip("'")
-                    return value
+                value = stripped.split("=", 1)[1].strip().strip('"').strip("'")
+                return value
     return None
 
 
@@ -55,11 +54,7 @@ def main() -> int:
 
     # Determine which version to output
     # If mypy has a configured version, use it; otherwise use matrix version
-    if mypy_version:
-        output_version = mypy_version
-    else:
-        # Default to the primary Python version (first in typical matrices)
-        output_version = matrix_version or "3.11"
+    output_version = mypy_version or (matrix_version or "3.11")
 
     # Write to GITHUB_OUTPUT
     github_output = os.environ.get("GITHUB_OUTPUT")

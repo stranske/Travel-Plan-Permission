@@ -17,7 +17,7 @@ import ast
 import re
 import sys
 from pathlib import Path
-from typing import Any, Set, cast
+from typing import Any, cast
 
 try:
     import tomllib
@@ -101,43 +101,42 @@ def _extract_requirement_name(entry: str) -> str | None:
     return token or None
 
 
-def extract_imports_from_file(file_path: Path) -> Set[str]:
+def extract_imports_from_file(file_path: Path) -> set[str]:
     """Extract all top-level import names from a Python file."""
-    imports: Set[str] = set()
-    
+    imports: set[str] = set()
+
     try:
         content = file_path.read_text(encoding="utf-8")
         tree = ast.parse(content, filename=str(file_path))
     except (SyntaxError, UnicodeDecodeError):
         return imports
-    
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 top_level = alias.name.split(".")[0]
                 imports.add(top_level)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                top_level = node.module.split(".")[0]
-                imports.add(top_level)
-    
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            top_level = node.module.split(".")[0]
+            imports.add(top_level)
+
     return imports
 
 
-def get_all_test_imports() -> Set[str]:
+def get_all_test_imports() -> set[str]:
     """Get all imports used across all test files."""
-    all_imports: Set[str] = set()
-    
+    all_imports: set[str] = set()
+
     if not TESTS_DIR.exists():
         return all_imports
-    
+
     for py_file in TESTS_DIR.rglob("*.py"):
         all_imports.update(extract_imports_from_file(py_file))
-    
+
     return all_imports
 
 
-def get_declared_dependencies() -> tuple[Set[str], dict[str, list[str]]]:
+def get_declared_dependencies() -> tuple[set[str], dict[str, list[str]]]:
     """Return declared dependency module names and raw dependency groups."""
     if not PYPROJECT_FILE.exists():
         return set(), {}
@@ -145,7 +144,7 @@ def get_declared_dependencies() -> tuple[Set[str], dict[str, list[str]]]:
     data = tomllib.loads(PYPROJECT_FILE.read_text(encoding="utf-8"))
     project = data.get("project", {})
 
-    declared: Set[str] = set()
+    declared: set[str] = set()
     groups: dict[str, list[str]] = {}
 
     for entry in project.get("dependencies", []):
@@ -166,14 +165,14 @@ def get_declared_dependencies() -> tuple[Set[str], dict[str, list[str]]]:
     return declared, groups
 
 
-def find_missing_dependencies() -> Set[str]:
+def find_missing_dependencies() -> set[str]:
     """Find imports that are not declared as dependencies."""
     declared, _ = get_declared_dependencies()
     all_imports = get_all_test_imports()
 
     potential = all_imports - STDLIB_MODULES - TEST_FRAMEWORK_MODULES - PROJECT_MODULES
 
-    missing: Set[str] = set()
+    missing: set[str] = set()
     for import_name in potential:
         package_name = MODULE_TO_PACKAGE.get(import_name, import_name)
         normalised = _normalise_package_name(package_name)
@@ -183,7 +182,7 @@ def find_missing_dependencies() -> Set[str]:
     return missing
 
 
-def add_dependencies_to_pyproject(missing: Set[str], fix: bool = False) -> bool:
+def add_dependencies_to_pyproject(missing: set[str], fix: bool = False) -> bool:
     """Add missing dependencies to the dev extra inside pyproject.toml."""
     if not missing or not fix:
         return False
