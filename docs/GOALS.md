@@ -22,54 +22,46 @@ The purpose is to:
 4. **Fix issues at the source** - if something doesn't work cross-repo, fix it in
    Workflows, don't work around it locally
 
-## Current Blocker: RESOLVED - `needs` on Reusable Workflow Jobs
+## Current Blocker: RESOLVED - Mixing Job Types Causes startup_failure
 
 **Issue discovered 2025-12-22, RESOLVED 2025-12-22**
 
 ### Root Cause Identified
 
-**The `startup_failure` was caused by having a regular job with `needs: [reusable-workflow-job]`.**
+**GitHub Actions fails with `startup_failure` when a workflow contains BOTH:**
+1. A job that calls a reusable workflow (`uses:`)  
+2. Regular jobs (`runs-on:`)
 
-When a workflow has:
-1. A job that calls a reusable workflow (`uses:`)
-2. Another job with `needs:` referencing that reusable workflow job
-
-GitHub Actions fails at startup with no error message. This appears to be a GitHub Actions bug or undocumented limitation.
+This is likely a GitHub Actions bug or undocumented limitation.
 
 ### Proof
 
 ```yaml
-# ❌ FAILS with startup_failure
+# ❌ FAILS with startup_failure - mixed job types
 jobs:
-  python-ci:
-    uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@SHA
-    ...
-  gate:
-    needs: [python-ci]  # THIS CAUSES startup_failure
+  local-job:
     runs-on: ubuntu-latest
-    ...
+    steps: [...]
+  
+  python-ci:
+    uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@SHA
 
-# ✅ WORKS - no needs referencing reusable workflow
+# ✅ WORKS - only reusable workflow job
 jobs:
   python-ci:
     uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@SHA
-    ...
-  gate:
-    runs-on: ubuntu-latest  # No needs clause
-    ...
 ```
 
 ### Workarounds
 
-1. **Remove gate job entirely** - Let GitHub's required checks handle gating
-2. **Use workflow_run trigger** - Separate workflow that runs after CI completes
+1. **Separate workflows** - Put reusable workflow call in its own file, local jobs in another
+2. **Use only reusable workflows** - Move all logic to Workflows repo
 3. **Wait for GitHub fix** - This may be a bug that gets resolved
 
-### Previous Investigation (for reference)
+### Additional Bug Found
 
-The original composite action path issue was fixed in PR #49 (SHA `07c3a6c`).
-That fix was valid - the reusable workflow works when called directly.
-The `startup_failure` was caused by the `needs` clause, not the workflow itself.
+The reusable workflow has a bug: `BLACK_VERSION: unbound variable` when `format_check=false`.
+This needs to be fixed in the Workflows repo.
 
 ## What Works Now
 
