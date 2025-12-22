@@ -7,8 +7,6 @@
 # NOTE: Cannot use `needs` to reference a reusable workflow job from a regular
 # job - this causes startup_failure. Gate job pattern must use workflow_run
 # trigger in a separate workflow or rely on GitHub required checks.
-#
-# Pin reference: stranske/Workflows@07c3a6ce10ff00953624e9f0705c44190ec7b33c
 # -----------------------------------------------------------------------------
 
 name: CI
@@ -24,7 +22,7 @@ jobs:
   # Reusable Python CI from stranske/Workflows
   python-ci:
     name: Python CI
-    uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@07c3a6ce10ff00953624e9f0705c44190ec7b33c
+    uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@main
     with:
       python-versions: '["3.11", "3.12"]'
       coverage-min: "80"
