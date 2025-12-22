@@ -62,7 +62,7 @@ jobs:
             !**/node_modules/**
 
       - name: Link check
-        uses: lycheeverse/lychee-action@v1
+        uses: lycheeverse/lychee-action@v2
         with:
           args: --no-progress --exclude-mail --accept 200,429 -- .**/*.md *.md
         env:
