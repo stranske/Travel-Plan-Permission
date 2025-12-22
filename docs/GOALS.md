@@ -22,59 +22,54 @@ The purpose is to:
 4. **Fix issues at the source** - if something doesn't work cross-repo, fix it in
    Workflows, don't work around it locally
 
-## Current Blocker: startup_failure (Under Investigation)
+## Current Blocker: RESOLVED - `needs` on Reusable Workflow Jobs
 
-**Issue discovered 2025-12-22:**
+**Issue discovered 2025-12-22, RESOLVED 2025-12-22**
 
-### Original Problem (Fixed)
-The `reusable-10-ci-python.yml` workflow used composite actions with relative paths:
+### Root Cause Identified
+
+**The `startup_failure` was caused by having a regular job with `needs: [reusable-workflow-job]`.**
+
+When a workflow has:
+1. A job that calls a reusable workflow (`uses:`)
+2. Another job with `needs:` referencing that reusable workflow job
+
+GitHub Actions fails at startup with no error message. This appears to be a GitHub Actions bug or undocumented limitation.
+
+### Proof
+
 ```yaml
-uses: ./.github/actions/python-ci-setup
+# ❌ FAILS with startup_failure
+jobs:
+  python-ci:
+    uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@SHA
+    ...
+  gate:
+    needs: [python-ci]  # THIS CAUSES startup_failure
+    runs-on: ubuntu-latest
+    ...
+
+# ✅ WORKS - no needs referencing reusable workflow
+jobs:
+  python-ci:
+    uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@SHA
+    ...
+  gate:
+    runs-on: ubuntu-latest  # No needs clause
+    ...
 ```
-This was fixed in Workflows repo PR #49 by inlining the composite action logic.
 
-### Current Problem (Unresolved)
-Despite the fix, CI still fails with `startup_failure`:
-- **SHA updated:** `dc46ca4` → `07c3a6ce10ff00953624e9f0705c44190ec7b33c` (PR #49 merge)
-- **Failure type:** `startup_failure` with 0 jobs created
-- **No error message:** GitHub API provides no details for startup failures
+### Workarounds
 
-### Investigation Findings (2025-12-22)
+1. **Remove gate job entirely** - Let GitHub's required checks handle gating
+2. **Use workflow_run trigger** - Separate workflow that runs after CI completes
+3. **Wait for GitHub fix** - This may be a bug that gets resolved
 
-**Verified working:**
-- ✅ SHA `07c3a6c` exists and contains the inlined composite action fix
-- ✅ Reusable workflow YAML is valid (2050 lines, parses correctly)
-- ✅ No relative action paths (`uses: ./`) remain in the workflow
-- ✅ Workflows repo is public and accessible
-- ✅ "Allow all actions and reusable workflows" is enabled in repo settings
-- ✅ Fork pull request settings are not restrictive
+### Previous Investigation (for reference)
 
-**Verified NOT the cause:**
-- ❌ Composite action paths (fixed in PR #49)
-- ❌ Repository access settings (all actions allowed)
-- ❌ YAML syntax errors (validated locally)
-- ❌ Missing required inputs (all have defaults)
-
-**Key observations:**
-1. The Workflows repo's own "Selftest CI" passes (runs locally)
-2. The Workflows repo's "Maint 62 Integration Consumer" ran at `05:12:21Z` on SHA `dc46ca4`
-3. PR #49 merged at `05:12:43Z` creating SHA `07c3a6c` - **22 seconds after** the test
-4. No integration test has run yet with the fixed SHA
-5. Other workflows in this repo (agents-70-orchestrator) start successfully
-
-**Possible remaining causes:**
-1. **GitHub caching issue** - GitHub may cache workflow resolution
-2. **Expression evaluation failure** - Complex matrix expression in reusable workflow
-3. **Unknown GitHub Actions limitation** - Something specific to external reusable workflow calls
-4. **Timing/propagation delay** - New SHA may not have fully propagated
-
-### Next Steps
-
-1. **Wait and retry** - GitHub may need time to propagate the new SHA
-2. **Trigger new integration consumer run** in Workflows repo to validate fix
-3. **Try branch reference** as diagnostic: `@main` instead of SHA
-4. **Check GitHub status** for any Actions-related incidents
-5. **Open GitHub support ticket** if issue persists (no actionable error message)
+The original composite action path issue was fixed in PR #49 (SHA `07c3a6c`).
+That fix was valid - the reusable workflow works when called directly.
+The `startup_failure` was caused by the `needs` clause, not the workflow itself.
 
 ## What Works Now
 
@@ -84,22 +79,24 @@ Despite the fix, CI still fails with `startup_failure`:
 | `agents-70-orchestrator.yml` | ✅ Works | Thin caller to reusable-16-agents.yml (runs, has own failures) |
 | Labels | ✅ Synced | All required labels created |
 | Secrets | ✅ Configured | SERVICE_BOT_PAT, OWNER_PR_PAT, ACTIONS_BOT_PAT |
-| Reusable Python CI | ❌ Blocked | startup_failure - cause under investigation |
+| Reusable Python CI | ✅ Works | Works without gate job using `needs` |
+| Gate job pattern | ❌ Blocked | `needs` on reusable workflow jobs causes startup_failure |
 
 ## Immediate Next Steps
 
-1. **Trigger Workflows integration test** to validate PR #49 fix works externally
-2. **Retry CI in this repo** after integration test passes
-3. **Continue testing agent workflows** which do work
-4. **Convert existing Issues** to Issues.txt format
+1. **Fix BLACK_VERSION bug** in Workflows repo - unbound variable when format_check=false
+2. **Decide on gate pattern** - use workflow_run trigger or remove gate entirely
+3. **Re-enable full CI** once gate pattern is resolved
+4. **Continue testing agent workflows** which do work
 
 ## Tasks Pending
 
-- [ ] Trigger Maint 62 Integration Consumer in Workflows repo with current main
-- [ ] Re-run CI after integration test validates the fix
+- [ ] Report `needs` + reusable workflow bug to GitHub or find documentation
+- [ ] Fix BLACK_VERSION unbound variable in Workflows repo
+- [ ] Implement alternative gate pattern (workflow_run or required checks)
+- [ ] Re-enable actionlint, docs-lint, schema-validate jobs
 - [ ] Evaluate labeler.yml and archive if not useful
 - [ ] Rewrite GitHub Issues #3-19 into Issues.txt format
-- [ ] If startup_failure persists after integration test passes, open GitHub support ticket
 
 ## References
 
