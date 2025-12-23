@@ -6,11 +6,13 @@ from datetime import date
 from decimal import Decimal
 
 from travel_plan_permission.models import ExpenseCategory, TripPlan
+from travel_plan_permission.providers import ProviderRegistry, ProviderType
 from travel_plan_permission.validation import (
     AdvanceBookingRule,
     BudgetLimitRule,
     DurationLimitRule,
     PolicyValidator,
+    ProviderApprovalRule,
     ValidationResult,
     ValidationSeverity,
 )
@@ -188,6 +190,59 @@ class TestDurationLimitRule:
         assert rule.evaluate(plan) == []
 
 
+class TestProviderApprovalRule:
+    """Provider approval rule behavior."""
+
+    def test_warns_when_provider_not_approved(self) -> None:
+        rule = ProviderApprovalRule(
+            name="provider_warning",
+            code="PROV-TEST",
+            providers_path="config/providers.yaml",
+        )
+        plan = _build_plan(
+            departure=date(2024, 6, 10),
+            return_date=date(2024, 6, 15),
+            destination="New York, NY",
+        )
+        plan.selected_providers = {ExpenseCategory.AIRFARE: "Unlisted Air"}
+
+        results = rule.evaluate(plan, reference_date=date(2024, 6, 1))
+
+        assert results == [
+            ValidationResult(
+                code="PROV-TEST",
+                message=(
+                    "Provider 'Unlisted Air' is not in the approved airline list for destination "
+                    "'New York, NY'."
+                ),
+                severity=ValidationSeverity.WARNING,
+                rule_name="provider_warning",
+                blocking=False,
+            )
+        ]
+
+    def test_skips_when_provider_is_approved_for_destination(self) -> None:
+        registry = ProviderRegistry.from_file("config/providers.yaml")
+        approved = registry.lookup(
+            ProviderType.AIRLINE, "San Francisco, CA", reference_date=date(2024, 6, 1)
+        )
+        assert approved, "Expected at least one approved airline for San Francisco"
+
+        rule = ProviderApprovalRule(
+            name="provider_warning",
+            code="PROV-TEST",
+            providers_path="config/providers.yaml",
+        )
+        plan = _build_plan(
+            departure=date(2024, 7, 10),
+            return_date=date(2024, 7, 12),
+            destination="San Francisco, CA",
+        )
+        plan.selected_providers = {ExpenseCategory.AIRFARE: approved[0].name}
+
+        assert rule.evaluate(plan, reference_date=date(2024, 6, 1)) == []
+
+
 class TestPolicyValidator:
     """End-to-end validation integration tests."""
 
@@ -227,3 +282,21 @@ class TestPolicyValidator:
 
         assert plan.validation_results == results
         assert results[0].is_blocking is True
+
+    def test_provider_rule_warns_for_unapproved_selection(self) -> None:
+        plan = _build_plan(
+            departure=date(2024, 6, 20),
+            return_date=date(2024, 6, 25),
+            destination="New York, NY",
+            estimated_cost=Decimal("1200"),
+            expense_breakdown={ExpenseCategory.LODGING: Decimal("400")},
+        )
+        plan.selected_providers = {ExpenseCategory.LODGING: "Unknown Suites"}
+
+        validator = PolicyValidator.from_file()
+        results = validator.validate_plan(plan, reference_date=date(2024, 6, 1))
+
+        provider_results = [result for result in results if result.code == "PROV-001"]
+        assert len(provider_results) == 1
+        assert provider_results[0].severity == ValidationSeverity.WARNING
+        assert provider_results[0].blocking is False
