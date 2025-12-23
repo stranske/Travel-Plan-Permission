@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import csv
 import io
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Callable, Iterable
 from urllib.parse import urlencode, urljoin
 
 from .models import ExpenseReport
@@ -129,7 +129,9 @@ class ExportService:
                 receipt_cell.style = "Hyperlink"
         amount_column = 3
         currency_format = "$#,##0.00"
-        for cell in ws.iter_cols(min_col=amount_column, max_col=amount_column, min_row=2):
+        for cell in ws.iter_cols(
+            min_col=amount_column, max_col=amount_column, min_row=2
+        ):
             for amt_cell in cell:
                 amt_cell.number_format = currency_format
         ws.column_dimensions["A"].width = 12
