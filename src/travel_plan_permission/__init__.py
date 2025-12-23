@@ -14,14 +14,6 @@ from .models import (
     TripPlan,
     TripStatus,
 )
-from .prompt_flow import (
-    CANONICAL_TRIP_FIELDS,
-    QUESTION_FLOW,
-    Question,
-    build_output_bundle,
-    generate_questions,
-    required_field_gaps,
-)
 from .policy import (
     AdvanceBookingRule,
     CabinClassRule,
@@ -38,6 +30,14 @@ from .policy import (
     PolicyRule,
     Severity,
     ThirdPartyPaidRule,
+)
+from .prompt_flow import (
+    CANONICAL_TRIP_FIELDS,
+    QUESTION_FLOW,
+    Question,
+    build_output_bundle,
+    generate_questions,
+    required_field_gaps,
 )
 from .validation import (
     AdvanceBookingRule as ValidationAdvanceBookingRule,

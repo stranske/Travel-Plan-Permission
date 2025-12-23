@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Iterable, Sequence
 
 from .mapping import DEFAULT_TEMPLATE_VERSION
-
 
 CANONICAL_TRIP_FIELDS: tuple[str, ...] = (
     "traveler_name",
@@ -58,7 +57,9 @@ QUESTION_FLOW: tuple[Question, ...] = (
         "Where are you headed and what's the destination ZIP?",
         ("city_state", "destination_zip"),
     ),
-    Question("What are the departure and return dates?", ("depart_date", "return_date")),
+    Question(
+        "What are the departure and return dates?", ("depart_date", "return_date")
+    ),
     Question(
         "What's the business purpose and cost center?",
         ("business_purpose", "cost_center"),
@@ -80,7 +81,13 @@ QUESTION_FLOW: tuple[Question, ...] = (
     ),
     Question(
         "Where will you stay (name, address, nightly rate, nights)?",
-        ("hotel.name", "hotel.address", "hotel.city_state", "hotel.nightly_rate", "hotel.nights"),
+        (
+            "hotel.name",
+            "hotel.address",
+            "hotel.city_state",
+            "hotel.nightly_rate",
+            "hotel.nights",
+        ),
     ),
     Question(
         "Is this the conference hotel? Add price comparison notes if not.",
