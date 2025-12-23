@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from collections import Counter
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Annotated
@@ -140,6 +141,201 @@ class ApprovalEvent(BaseModel):
             raise ValueError(msg)
 
 
+class ExceptionType(str, Enum):
+    """Exception categories aligned to policy-lite advisory rules."""
+
+    ADVANCE_BOOKING = "advance_booking"
+    DRIVING_VS_FLYING = "driving_vs_flying"
+    HOTEL_COMPARISON = "hotel_comparison"
+    LOCAL_OVERNIGHT = "local_overnight"
+    MEAL_PER_DIEM = "meal_per_diem"
+
+    @classmethod
+    def from_policy_rule_id(cls, rule_id: str) -> ExceptionType:
+        """Return the matching exception type for a policy-lite rule id."""
+
+        try:
+            return cls(rule_id)
+        except ValueError as exc:
+            msg = f"No exception type defined for policy rule '{rule_id}'"
+            raise ValueError(msg) from exc
+
+
+class ExceptionApprovalLevel(str, Enum):
+    """Approval levels for exception routing."""
+
+    MANAGER = "manager"
+    DIRECTOR = "director"
+    BOARD = "board"
+
+
+class ExceptionStatus(str, Enum):
+    """Lifecycle status for an exception request."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    ESCALATED = "escalated"
+
+
+class ExceptionApprovalRecord(BaseModel):
+    """Audit entry for an exception decision."""
+
+    approver_id: str = Field(..., description="Identifier for the approver")
+    level: ExceptionApprovalLevel = Field(
+        ..., description="Approval level that handled the exception"
+    )
+    timestamp: datetime = Field(..., description="When the decision was recorded")
+    notes: str | None = Field(
+        default=None, description="Optional approver notes for the decision"
+    )
+
+
+def _approval_rank(level: ExceptionApprovalLevel) -> int:
+    return list(ExceptionApprovalLevel).index(level)
+
+
+def _next_level(level: ExceptionApprovalLevel) -> ExceptionApprovalLevel:
+    ordered_levels = list(ExceptionApprovalLevel)
+    index = ordered_levels.index(level)
+    return ordered_levels[min(index + 1, len(ordered_levels) - 1)]
+
+
+_BASE_EXCEPTION_LEVELS: dict[ExceptionType, ExceptionApprovalLevel] = {
+    ExceptionType.ADVANCE_BOOKING: ExceptionApprovalLevel.MANAGER,
+    ExceptionType.DRIVING_VS_FLYING: ExceptionApprovalLevel.MANAGER,
+    ExceptionType.HOTEL_COMPARISON: ExceptionApprovalLevel.MANAGER,
+    ExceptionType.LOCAL_OVERNIGHT: ExceptionApprovalLevel.DIRECTOR,
+    ExceptionType.MEAL_PER_DIEM: ExceptionApprovalLevel.MANAGER,
+}
+_DIRECTOR_THRESHOLD = Decimal("5000")
+_BOARD_THRESHOLD = Decimal("20000")
+_ESCALATION_WINDOW = timedelta(hours=48)
+
+
+def determine_exception_approval_level(
+    exception_type: ExceptionType, amount: Decimal | None
+) -> ExceptionApprovalLevel:
+    """Determine the approval level based on type and amount."""
+
+    level = _BASE_EXCEPTION_LEVELS[exception_type]
+
+    if amount is not None:
+        if amount >= _BOARD_THRESHOLD:
+            level = max(level, ExceptionApprovalLevel.BOARD, key=_approval_rank)
+        elif amount >= _DIRECTOR_THRESHOLD:
+            level = max(level, ExceptionApprovalLevel.DIRECTOR, key=_approval_rank)
+    return level
+
+
+class ExceptionRequest(BaseModel):
+    """Request to override an advisory policy-lite rule."""
+
+    type: ExceptionType = Field(..., description="Exception category requested")
+    justification: Annotated[
+        str, Field(min_length=50, description="Reasoning for the exception")
+    ] = Field(...)
+    supporting_docs: list[str] = Field(
+        default_factory=list,
+        description="Optional supporting documentation references",
+    )
+    requestor: str = Field(..., description="Identifier of the person requesting")
+    amount: Annotated[Decimal | None, Field(ge=0)] = Field(
+        default=None, description="Financial impact of the exception"
+    )
+    approval_level: ExceptionApprovalLevel | None = Field(
+        default=None,
+        description="Routing level for the request; defaults based on type and amount",
+    )
+    status: ExceptionStatus = Field(
+        default=ExceptionStatus.PENDING, description="Current status of the request"
+    )
+    approval: ExceptionApprovalRecord | None = Field(
+        default=None, description="Recorded approval details when completed"
+    )
+    requested_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the exception was submitted",
+    )
+    escalated_at: datetime | None = Field(
+        default=None, description="Timestamp of the most recent escalation"
+    )
+
+    def model_post_init(self, __context: object) -> None:
+        super().model_post_init(__context)
+        if self.approval_level is None:
+            self.approval_level = determine_exception_approval_level(
+                self.type, self.amount
+            )
+
+    def approve(
+        self,
+        *,
+        approver_id: str,
+        level: ExceptionApprovalLevel | None = None,
+        notes: str | None = None,
+        timestamp: datetime | None = None,
+    ) -> ExceptionApprovalRecord:
+        """Mark the request as approved and record the decision."""
+
+        decision_time = timestamp or datetime.now(UTC)
+        approval_level = level or self.approval_level or ExceptionApprovalLevel.MANAGER
+        self.approval = ExceptionApprovalRecord(
+            approver_id=approver_id,
+            level=approval_level,
+            timestamp=decision_time,
+            notes=notes,
+        )
+        self.status = ExceptionStatus.APPROVED
+        self.approval_level = approval_level
+        return self.approval
+
+    def reject(self) -> None:
+        """Mark the request as rejected."""
+
+        self.status = ExceptionStatus.REJECTED
+
+    def escalate_if_overdue(self, *, reference_time: datetime | None = None) -> bool:
+        """Escalate pending requests that exceed the SLA window."""
+
+        if self.status not in (ExceptionStatus.PENDING, ExceptionStatus.ESCALATED):
+            return False
+
+        now = reference_time or datetime.now(UTC)
+        anchor = self.escalated_at or self.requested_at
+        if now - anchor < _ESCALATION_WINDOW:
+            return False
+
+        self.status = ExceptionStatus.ESCALATED
+        self.escalated_at = now
+        self.approval_level = _next_level(
+            self.approval_level or ExceptionApprovalLevel.MANAGER
+        )
+        return True
+
+
+def build_exception_dashboard(
+    requests: list[ExceptionRequest],
+) -> dict[str, dict[str, int]]:
+    """Aggregate exception patterns for reporting surfaces."""
+
+    by_type: Counter[str] = Counter()
+    by_requestor: Counter[str] = Counter()
+    by_approver: Counter[str] = Counter()
+
+    for request in requests:
+        by_type[request.type.value] += 1
+        by_requestor[request.requestor] += 1
+        if request.approval is not None:
+            by_approver[request.approval.approver_id] += 1
+
+    return {
+        "by_type": dict(by_type),
+        "by_requestor": dict(by_requestor),
+        "by_approver": dict(by_approver),
+    }
+
+
 class TripPlan(BaseModel):
     """A trip plan request for approval."""
 
@@ -170,6 +366,10 @@ class TripPlan(BaseModel):
     approval_history: tuple[ApprovalEvent, ...] = Field(
         default_factory=tuple,
         description="Append-only immutable audit log of approvals and overrides",
+    )
+    exception_requests: list[ExceptionRequest] = Field(
+        default_factory=list,
+        description="Exception requests tied to advisory policy rules",
     )
 
     def duration_days(self) -> int:
@@ -246,6 +446,14 @@ class TripPlan(BaseModel):
             )
             snapshot_store.append(snapshot)
         return event
+
+    def add_exception_request(
+        self, exception_request: ExceptionRequest
+    ) -> ExceptionRequest:
+        """Attach an exception request to the trip plan."""
+
+        self.exception_requests.append(exception_request)
+        return exception_request
 
 
 from .snapshots import (  # noqa: E402
