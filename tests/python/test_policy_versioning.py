@@ -2,7 +2,7 @@ import sys
 
 sys.path.append("src")
 
-from travel_plan_permission.policy import PolicyContext, PolicyEngine
+from travel_plan_permission.policy import PolicyContext, PolicyEngine, PolicyResult
 from travel_plan_permission.policy_versioning import (
     PolicyChangeSimulationResult,
     PolicyMigrationPlan,
@@ -12,7 +12,7 @@ from travel_plan_permission.policy_versioning import (
 )
 
 
-def test_policy_version_hash_and_label():
+def test_policy_version_hash_and_label() -> None:
     version = PolicyVersion.from_config("1.2.3", {"rules": {"foo": 1}})
 
     assert version.label == "1.2.3"
@@ -23,7 +23,7 @@ def test_policy_version_hash_and_label():
     )
 
 
-def test_backward_compatibility_and_change_type():
+def test_backward_compatibility_and_change_type() -> None:
     base = PolicyVersion.from_config("1.0.0", {"rules": {"foo": 1}})
     minor = PolicyVersion.from_config("1.1.0", {"rules": {"foo": 2}})
     major = PolicyVersion.from_config("2.0.0", {"rules": {"foo": 2}})
@@ -36,7 +36,7 @@ def test_backward_compatibility_and_change_type():
     assert patch.change_type(base) in {"patch", "config-drift"}
 
 
-def test_migration_plan_steps_and_flags():
+def test_migration_plan_steps_and_flags() -> None:
     planner = PolicyMigrationPlanner()
     source = PolicyVersion.from_config("1.0.0", {"rules": {"foo": 1}})
     target = PolicyVersion.from_config("2.0.0", {"rules": {"foo": 2}})
@@ -50,17 +50,21 @@ def test_migration_plan_steps_and_flags():
 
 
 class _StaticEngine(PolicyEngine):
-    def __init__(self, results):
+    def __init__(self, results: list[PolicyResult]) -> None:
         self._results = results
 
-    def validate(self, context: PolicyContext):  # type: ignore[override]
+    def validate(self, context: PolicyContext) -> list[PolicyResult]:  # noqa: ARG002
         return self._results
 
 
-def test_simulation_replays_contexts():
+def test_simulation_replays_contexts() -> None:
     contexts = [PolicyContext(), PolicyContext()]
-    current_results = ["old"]
-    proposed_results = ["new"]
+    current_results: list[PolicyResult] = [
+        PolicyResult(rule_id="test", severity="advisory", passed=True, message="old")
+    ]
+    proposed_results: list[PolicyResult] = [
+        PolicyResult(rule_id="test", severity="advisory", passed=True, message="new")
+    ]
 
     simulations = simulate_policy_change(
         current_engine=_StaticEngine(current_results),
