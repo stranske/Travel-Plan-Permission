@@ -115,7 +115,9 @@ class ApprovalEngine:
             return report
         if any(decision.status == ApprovalStatus.FLAGGED for decision in decisions):
             report.approval_status = ApprovalStatus.FLAGGED
-        elif all(decision.status == ApprovalStatus.AUTO_APPROVED for decision in decisions):
+        elif all(
+            decision.status == ApprovalStatus.AUTO_APPROVED for decision in decisions
+        ):
             report.approval_status = ApprovalStatus.AUTO_APPROVED
         else:
             report.approval_status = ApprovalStatus.PENDING
