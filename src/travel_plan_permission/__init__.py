@@ -48,6 +48,7 @@ from .prompt_flow import (
     generate_questions,
     required_field_gaps,
 )
+from .providers import Provider, ProviderRegistry, ProviderType
 from .receipts import (
     ALLOWED_RECEIPT_TYPES,
     MAX_RECEIPT_SIZE_BYTES,
@@ -74,6 +75,9 @@ from .validation import (
     ValidationResult,
     ValidationRule,
     ValidationSeverity,
+)
+from .validation import (
+    ProviderApprovalRule as ValidationProviderApprovalRule,
 )
 
 __all__ = [
@@ -113,6 +117,9 @@ __all__ = [
     "PolicyResult",
     "PolicyRule",
     "PolicyValidator",
+    "Provider",
+    "ProviderRegistry",
+    "ProviderType",
     "ReceiptExtractionResult",
     "ReceiptProcessor",
     "Question",
@@ -131,6 +138,7 @@ __all__ = [
     "ValidationDelta",
     "ValidationSnapshot",
     "ValidationSnapshotStore",
+    "ValidationProviderApprovalRule",
     "ValidationResult",
     "ValidationRule",
     "ValidationSeverity",

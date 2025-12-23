@@ -26,3 +26,10 @@ rules:
     severity: warning
     blocking: false
     max_consecutive_days: 14
+
+  - type: provider_approval
+    name: approved_provider_warning
+    code: PROV-001
+    severity: warning
+    blocking: false
+    providers_path: config/providers.yaml
