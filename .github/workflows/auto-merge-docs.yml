@@ -1,0 +1,203 @@
+name: Auto-merge documentation PRs
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read
+  statuses: read
+
+jobs:
+  auto-merge-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate documentation-only PRs
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const now = Date.now();
+            const oneHourMs = 60 * 60 * 1000;
+            const auditTitle = "Auto-merge audit log";
+            const auditLabel = "auto-merge-audit";
+
+            async function ensureAuditLabel() {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: auditLabel });
+                return;
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+              }
+
+              await github.rest.issues.createLabel({
+                owner,
+                repo,
+                name: auditLabel,
+                color: "0E8A16",
+                description: "Records automated documentation merges"
+              });
+            }
+
+            async function ensureAuditIssue() {
+              await ensureAuditLabel();
+              const existing = await github.paginate(github.rest.issues.listForRepo, {
+                owner,
+                repo,
+                labels: auditLabel,
+                state: "open",
+                per_page: 50
+              });
+
+              const match = existing.find((issue) => issue.title === auditTitle);
+              if (match) {
+                return match.number;
+              }
+
+              const created = await github.rest.issues.create({
+                owner,
+                repo,
+                title: auditTitle,
+                labels: [auditLabel],
+                body: "This issue collects an audit trail of documentation auto-merges."
+              });
+
+              return created.data.number;
+            }
+
+            function isDocsFile(fileName) {
+              const lower = fileName.toLowerCase();
+              return lower.endsWith(".md") || fileName.startsWith("docs/");
+            }
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: "open",
+              per_page: 50
+            });
+
+            const auditIssueNumber = await ensureAuditIssue();
+            const mergedPrs = [];
+
+            for (const pr of pulls) {
+              if (pr.draft) {
+                continue;
+              }
+
+              const labels = pr.labels.map((label) => label.name);
+              if (labels.includes("no-auto-merge")) {
+                continue;
+              }
+
+              const updatedAgo = now - new Date(pr.updated_at).getTime();
+              if (updatedAgo < oneHourMs) {
+                continue;
+              }
+
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                owner,
+                repo,
+                pull_number: pr.number,
+                per_page: 100
+              });
+
+              if (!files.length) {
+                continue;
+              }
+
+              const docsOnly = files.every((file) => isDocsFile(file.filename));
+              if (!docsOnly) {
+                continue;
+              }
+
+              const changeCount = files.reduce((total, file) => total + (file.changes || 0), 0);
+              if (changeCount >= 50) {
+                continue;
+              }
+
+              const [combinedStatus, checks] = await Promise.all([
+                github.rest.repos.getCombinedStatusForRef({ owner, repo, ref: pr.head.sha }),
+                github.rest.checks.listForRef({ owner, repo, ref: pr.head.sha, per_page: 100 })
+              ]);
+
+              if (combinedStatus.data.state !== "success") {
+                continue;
+              }
+
+              const hasIncompleteCheck = checks.data.check_runs.some((run) => run.status !== "completed");
+              const hasFailedCheck = checks.data.check_runs.some((run) => {
+                const conclusion = run.conclusion || "";
+                return !["success", "neutral", "skipped"].includes(conclusion);
+              });
+
+              if (hasIncompleteCheck || hasFailedCheck) {
+                continue;
+              }
+
+              const pullDetails = await github.rest.pulls.get({ owner, repo, pull_number: pr.number });
+              const mergeableState = pullDetails.data.mergeable_state || "";
+              if (pullDetails.data.mergeable === false) {
+                continue;
+              }
+
+              if (["dirty", "blocked", "draft"].includes(mergeableState)) {
+                continue;
+              }
+
+              const mergeMessage = `Docs auto-merge: PR #${pr.number} (${pr.title})`;
+
+              try {
+                await github.rest.pulls.merge({
+                  owner,
+                  repo,
+                  pull_number: pr.number,
+                  merge_method: "squash",
+                  commit_title: mergeMessage
+                });
+              } catch (mergeError) {
+                core.warning(`Skipping merge for PR #${pr.number}: ${mergeError.message}`);
+                continue;
+              }
+
+              mergedPrs.push({
+                number: pr.number,
+                title: pr.title,
+                changeCount,
+                mergedAt: new Date().toISOString()
+              });
+
+              const confirmation = `Docs auto-merge workflow merged this PR on ${mergedPrs[mergedPrs.length - 1].mergedAt} after verifying docs-only scope (<50 lines), passing checks, and 1-hour delay.`;
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pr.number,
+                body: confirmation
+              });
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: auditIssueNumber,
+                body: `Merged #${pr.number} (${pr.title}) at ${mergedPrs[mergedPrs.length - 1].mergedAt} with ${changeCount} changed lines.`
+              });
+            }
+
+            if (!mergedPrs.length) {
+              core.info("No eligible documentation PRs found for auto-merge.");
+              return;
+            }
+
+            core.summary.addHeading("Docs auto-merge results");
+            mergedPrs.forEach((entry) => {
+              core.summary.addRaw(`#${entry.number}: merged at ${entry.mergedAt} (${entry.changeCount} changed lines)\n`);
+            });
+            await core.summary.write();
