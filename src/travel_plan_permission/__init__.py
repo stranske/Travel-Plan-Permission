@@ -39,6 +39,7 @@ from .prompt_flow import (
     generate_questions,
     required_field_gaps,
 )
+from .providers import Provider, ProviderRegistry, ProviderType
 from .receipts import (
     ALLOWED_RECEIPT_TYPES,
     MAX_RECEIPT_SIZE_BYTES,
@@ -52,6 +53,7 @@ from .validation import (
 from .validation import (
     BudgetLimitRule,
     DurationLimitRule,
+    ProviderApprovalRule as ValidationProviderApprovalRule,
     PolicyValidator,
     ValidationResult,
     ValidationRule,
@@ -90,6 +92,9 @@ __all__ = [
     "PolicyResult",
     "PolicyRule",
     "PolicyValidator",
+    "Provider",
+    "ProviderRegistry",
+    "ProviderType",
     "ReceiptExtractionResult",
     "ReceiptProcessor",
     "Question",
@@ -102,6 +107,7 @@ __all__ = [
     "TripPlan",
     "TripStatus",
     "ValidationAdvanceBookingRule",
+    "ValidationProviderApprovalRule",
     "ValidationResult",
     "ValidationRule",
     "ValidationSeverity",

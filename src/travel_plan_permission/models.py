@@ -121,6 +121,12 @@ class TripPlan(BaseModel):
         default_factory=dict,
         description="Optional planned spend by category",
     )
+    selected_providers: dict[ExpenseCategory, str] = Field(
+        default_factory=dict,
+        description=(
+            "Traveler-selected providers keyed by expense category; used for approved provider checks"
+        ),
+    )
     validation_results: list[ValidationResult] = Field(
         default_factory=list,
         description="Results from policy validation",

@@ -14,6 +14,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .models import ExpenseCategory
+from .providers import ProviderRegistry, ProviderType, provider_type_for_category
 
 if TYPE_CHECKING:
     from .models import TripPlan
@@ -203,10 +204,63 @@ class DurationLimitRule(ValidationRule):
         return []
 
 
+class ProviderApprovalRule(ValidationRule):
+    """Warn when travelers select providers outside the approved registry."""
+
+    type: Literal["provider_approval"] = Field(
+        default="provider_approval", description="Rule type"
+    )
+    providers_path: str | None = Field(
+        default=None,
+        description="Optional override path to providers.yaml; defaults to package config",
+    )
+    severity: ValidationSeverity = Field(
+        default=ValidationSeverity.WARNING,
+        description="Provider selection should emit warnings",
+    )
+    blocking: bool = Field(
+        default=False,
+        description="Warnings should not block submission for unapproved providers",
+    )
+
+    def evaluate(
+        self, plan: TripPlan, *, reference_date: date | None = None  # noqa: ARG002
+    ) -> list[ValidationResult]:
+        registry = ProviderRegistry.from_file(self.providers_path)
+        destination = plan.destination
+        results: list[ValidationResult] = []
+
+        for category, provider_name in plan.selected_providers.items():
+            provider_type = provider_type_for_category(
+                category.value if isinstance(category, ExpenseCategory) else str(category)
+            )
+            if provider_type is None:
+                continue
+            if registry.is_approved(
+                provider_name,
+                provider_type,
+                destination,
+                reference_date=reference_date,
+            ):
+                continue
+            readable_type = provider_type.value.replace("_", " ")
+            results.append(
+                self._result(
+                    message=(
+                        f"Provider '{provider_name}' is not in the approved {readable_type} list for "
+                        f"destination '{destination}'."
+                    )
+                )
+            )
+
+        return results
+
+
 _RULE_TYPES = {
     "advance_booking": AdvanceBookingRule,
     "budget_limit": BudgetLimitRule,
     "duration_limit": DurationLimitRule,
+    "provider_approval": ProviderApprovalRule,
 }
 
 
