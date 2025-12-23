@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from urllib.parse import urlencode, urljoin
@@ -46,11 +46,10 @@ class ExportService:
             return self.receipt_signer(receipt_url, expires_at)
         return self._default_signed_link(receipt_url, expires_at)
 
-    def _build_rows(
+    def _iter_rows(
         self, reports: list[ExpenseReport], now: datetime
-    ) -> list[ExportRow]:
+    ) -> Iterator[ExportRow]:
         expires_at = now + timedelta(days=7)
-        rows: list[ExportRow] = []
         for report in reports:
             for expense in report.expenses:
                 amount = expense.amount.quantize(Decimal("0.01"))
@@ -59,17 +58,14 @@ class ExportService:
                     if expense.receipt_url
                     else ""
                 )
-                rows.append(
-                    {
-                        "date": expense.expense_date.isoformat(),
-                        "vendor": expense.vendor or "",
-                        "amount": f"{amount:.2f}",
-                        "category": expense.category.value,
-                        "cost_center": report.cost_center or "",
-                        "receipt_link": receipt_link,
-                    }
-                )
-        return rows
+                yield {
+                    "date": expense.expense_date.isoformat(),
+                    "vendor": expense.vendor or "",
+                    "amount": f"{amount:.2f}",
+                    "category": expense.category.value,
+                    "cost_center": report.cost_center or "",
+                    "receipt_link": receipt_link,
+                }
 
     def to_csv(
         self,
@@ -82,7 +78,7 @@ class ExportService:
 
         current_time = now or datetime.now(UTC)
         materialized = self._validate_batch(reports)
-        rows = self._build_rows(materialized, current_time)
+        rows = self._iter_rows(materialized, current_time)
 
         output = io.StringIO(newline="")
         writer = csv.DictWriter(output, fieldnames=self.schema)
@@ -105,7 +101,7 @@ class ExportService:
 
         current_time = now or datetime.now(UTC)
         materialized = self._validate_batch(reports)
-        rows = self._build_rows(materialized, current_time)
+        rows = self._iter_rows(materialized, current_time)
 
         wb = Workbook()
         ws = wb.active
