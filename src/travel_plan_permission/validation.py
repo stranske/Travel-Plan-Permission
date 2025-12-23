@@ -153,7 +153,7 @@ class BudgetLimitRule(ValidationRule):
         }
 
     def evaluate(
-        self, plan: TripPlan, *, reference_date: date | None = None
+        self, plan: TripPlan, *, reference_date: date | None = None  # noqa: ARG002
     ) -> list[ValidationResult]:
         results: list[ValidationResult] = []
         if self.trip_limit is not None and plan.estimated_cost > self.trip_limit:
@@ -189,7 +189,7 @@ class DurationLimitRule(ValidationRule):
     )
 
     def evaluate(
-        self, plan: TripPlan, *, reference_date: date | None = None
+        self, plan: TripPlan, *, reference_date: date | None = None  # noqa: ARG002
     ) -> list[ValidationResult]:
         duration = plan.duration_days()
         if duration > self.max_consecutive_days:
@@ -227,7 +227,9 @@ def _load_rules(raw_rules: Iterable[dict[str, object]]) -> list[ValidationRule]:
         rule_cls = _RULE_TYPES.get(rule_type)
         if rule_cls is None:
             raise ValueError(f"Unsupported rule type: {rule_type}")
-        rules.append(rule_cls.model_validate(raw_rule))
+        # rule_cls is a concrete ValidationRule subclass with model_validate
+        rule_instance: ValidationRule = rule_cls.model_validate(raw_rule)  # type: ignore[attr-defined]
+        rules.append(rule_instance)
     return rules
 
 

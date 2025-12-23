@@ -223,7 +223,7 @@ class TestPolicyValidator:
             return_date=date(2025, 8, 5),
         )
 
-        results = plan.validate(validator=validator)
+        results = plan.run_validation(validator=validator)
 
         assert plan.validation_results == results
         assert results[0].is_blocking is True

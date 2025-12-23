@@ -128,7 +128,7 @@ class TripPlan(BaseModel):
         """Calculate the duration of the trip in days."""
         return (self.return_date - self.departure_date).days + 1
 
-    def validate(
+    def run_validation(
         self,
         validator: PolicyValidator | None = None,
         *,
