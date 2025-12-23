@@ -4,10 +4,10 @@ import pytest
 
 from travel_plan_permission.security import (
     API_ENDPOINT_PERMISSIONS,
-    AuditEventType,
-    AuditLog,
     DEFAULT_ROLES,
     DEFAULT_SSO_PLANS,
+    AuditEventType,
+    AuditLog,
     Permission,
     RoleChangeState,
     RoleName,
