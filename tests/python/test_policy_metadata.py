@@ -1,7 +1,7 @@
 from travel_plan_permission import PolicyEngine
 
 
-def test_describe_rules_reflects_configuration():
+def test_describe_rules_reflects_configuration() -> None:
     yaml_content = """
 rules:
   advance_booking:
