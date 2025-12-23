@@ -119,7 +119,7 @@ class TripPlan(BaseModel):
         default_factory=dict,
         description="Optional planned spend by category",
     )
-    validation_results: list["ValidationResult"] = Field(
+    validation_results: list[ValidationResult] = Field(
         default_factory=list,
         description="Results from policy validation",
     )
@@ -130,13 +130,15 @@ class TripPlan(BaseModel):
 
     def validate(
         self,
-        validator: "PolicyValidator | None" = None,
+        validator: PolicyValidator | None = None,
         *,
         reference_date: date | None = None,
-    ) -> list["ValidationResult"]:
+    ) -> list[ValidationResult]:
         """Validate the trip plan against policy rules."""
 
-        from .validation import PolicyValidator  # Local import to avoid circular dependency
+        from .validation import (
+            PolicyValidator,
+        )  # Local import to avoid circular dependency
 
         engine = validator or PolicyValidator.from_file()
         results = engine.validate_plan(self, reference_date=reference_date)

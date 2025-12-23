@@ -19,8 +19,8 @@ from .validation import (
     DurationLimitRule,
     PolicyValidator,
     ValidationResult,
-    ValidationSeverity,
     ValidationRule,
+    ValidationSeverity,
 )
 
 __all__ = [

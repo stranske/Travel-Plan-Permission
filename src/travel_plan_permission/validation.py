@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from typing import Iterable, Literal, TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -60,7 +61,9 @@ class ValidationRule(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    def evaluate(self, plan: TripPlan, *, reference_date: date | None = None) -> list[ValidationResult]:
+    def evaluate(
+        self, plan: TripPlan, *, reference_date: date | None = None
+    ) -> list[ValidationResult]:
         """Evaluate a plan and return any validation results."""
 
         raise NotImplementedError
@@ -94,14 +97,19 @@ class AdvanceBookingRule(ValidationRule):
 
     def _is_international(self, plan: TripPlan) -> bool:
         destination_lower = plan.destination.lower()
-        return any(keyword.lower() in destination_lower for keyword in self.international_destinations)
+        return any(
+            keyword.lower() in destination_lower
+            for keyword in self.international_destinations
+        )
 
     def _required_notice(self, plan: TripPlan) -> int | None:
         if self._is_international(plan):
             return self.min_days_international
         return self.min_days_domestic
 
-    def evaluate(self, plan: TripPlan, *, reference_date: date | None = None) -> list[ValidationResult]:
+    def evaluate(
+        self, plan: TripPlan, *, reference_date: date | None = None
+    ) -> list[ValidationResult]:
         today = reference_date or date.today()
         required_notice = self._required_notice(plan)
         if required_notice is None:
@@ -123,7 +131,9 @@ class AdvanceBookingRule(ValidationRule):
 class BudgetLimitRule(ValidationRule):
     """Validate trip cost against configured limits."""
 
-    type: Literal["budget_limit"] = Field(default="budget_limit", description="Rule type")
+    type: Literal["budget_limit"] = Field(
+        default="budget_limit", description="Rule type"
+    )
     trip_limit: Decimal | None = Field(
         default=None, ge=0, description="Maximum allowed estimated trip cost"
     )
@@ -138,9 +148,13 @@ class BudgetLimitRule(ValidationRule):
             return {}
         if not isinstance(value, dict):
             raise TypeError("category_limits must be a mapping")
-        return {ExpenseCategory(key): Decimal(str(limit)) for key, limit in value.items()}
+        return {
+            ExpenseCategory(key): Decimal(str(limit)) for key, limit in value.items()
+        }
 
-    def evaluate(self, plan: TripPlan, *, reference_date: date | None = None) -> list[ValidationResult]:
+    def evaluate(
+        self, plan: TripPlan, *, reference_date: date | None = None
+    ) -> list[ValidationResult]:
         results: list[ValidationResult] = []
         if self.trip_limit is not None and plan.estimated_cost > self.trip_limit:
             results.append(
@@ -167,10 +181,16 @@ class BudgetLimitRule(ValidationRule):
 class DurationLimitRule(ValidationRule):
     """Restrict maximum consecutive travel days."""
 
-    type: Literal["duration_limit"] = Field(default="duration_limit", description="Rule type")
-    max_consecutive_days: int = Field(..., gt=0, description="Maximum allowed trip duration in days")
+    type: Literal["duration_limit"] = Field(
+        default="duration_limit", description="Rule type"
+    )
+    max_consecutive_days: int = Field(
+        ..., gt=0, description="Maximum allowed trip duration in days"
+    )
 
-    def evaluate(self, plan: TripPlan, *, reference_date: date | None = None) -> list[ValidationResult]:
+    def evaluate(
+        self, plan: TripPlan, *, reference_date: date | None = None
+    ) -> list[ValidationResult]:
         duration = plan.duration_days()
         if duration > self.max_consecutive_days:
             return [
@@ -218,7 +238,7 @@ class PolicyValidator:
         self.rules = list(rules)
 
     @classmethod
-    def from_yaml(cls, content: str) -> "PolicyValidator":
+    def from_yaml(cls, content: str) -> PolicyValidator:
         data = yaml.safe_load(content) or {}
         raw_rules = data.get("rules")
         if not raw_rules:
@@ -226,24 +246,29 @@ class PolicyValidator:
         return cls(_load_rules(raw_rules))
 
     @classmethod
-    def from_file(cls, path: str | Path | None = None) -> "PolicyValidator":
+    def from_file(cls, path: str | Path | None = None) -> PolicyValidator:
         target_path = Path(path) if path is not None else _default_policy_path()
         if target_path is None:
             raise FileNotFoundError("No policy.yaml file found")
         return cls.from_yaml(target_path.read_text(encoding="utf-8"))
 
     @classmethod
-    def from_environment(cls, env_var: str = "POLICY_CONFIG") -> "PolicyValidator":
+    def from_environment(cls, env_var: str = "POLICY_CONFIG") -> PolicyValidator:
         content = os.getenv(env_var)
         if not content:
             raise ValueError(f"Environment variable '{env_var}' is not set or empty")
         return cls.from_yaml(content)
 
-    def validate_plan(self, plan: TripPlan, *, reference_date: date | None = None) -> list[ValidationResult]:
+    def validate_plan(
+        self, plan: TripPlan, *, reference_date: date | None = None
+    ) -> list[ValidationResult]:
         results: list[ValidationResult] = []
         for rule in self.rules:
             results.extend(rule.evaluate(plan, reference_date=reference_date))
         return results
 
     def can_submit(self, plan: TripPlan, *, reference_date: date | None = None) -> bool:
-        return not any(result.is_blocking for result in self.validate_plan(plan, reference_date=reference_date))
+        return not any(
+            result.is_blocking
+            for result in self.validate_plan(plan, reference_date=reference_date)
+        )

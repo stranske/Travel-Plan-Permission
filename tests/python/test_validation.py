@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-import pytest
-
 from travel_plan_permission.models import ExpenseCategory, TripPlan
 from travel_plan_permission.validation import (
     AdvanceBookingRule,
@@ -83,7 +81,9 @@ class TestAdvanceBookingRule:
 
         results = rule.evaluate(plan, reference_date=date(2025, 5, 10))
 
-        assert results and results[0].message.startswith("Trips must be booked at least 14")
+        assert results and results[0].message.startswith(
+            "Trips must be booked at least 14"
+        )
 
     def test_passes_when_notice_is_sufficient(self) -> None:
         rule = AdvanceBookingRule(
