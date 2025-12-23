@@ -1,11 +1,12 @@
 """Tests for core models."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
 
 from travel_plan_permission.models import (
+    ApprovalOutcome,
     ExpenseCategory,
     ExpenseItem,
     ExpenseReport,
@@ -60,6 +61,40 @@ class TestTripPlan:
         )
 
         assert plan.duration_days() == 1
+
+    def test_record_approval_history(self) -> None:
+        """Trip plan records immutable approval history."""
+        plan = TripPlan(
+            trip_id="TRIP-004",
+            traveler_name="Alice Manager",
+            destination="Austin, TX",
+            departure_date=date(2025, 4, 1),
+            return_date=date(2025, 4, 3),
+            purpose="Sales pitch",
+            estimated_cost=Decimal("900.00"),
+        )
+
+        event = plan.record_approval_decision(
+            approver_id="mgr-123",
+            level="manager",
+            outcome=ApprovalOutcome.APPROVED,
+            justification="Budget within limits",
+            timestamp=datetime(2025, 3, 1, tzinfo=UTC),
+        )
+
+        assert plan.status == TripStatus.APPROVED
+        assert event.previous_status == TripStatus.DRAFT
+        assert len(plan.approval_history) == 1
+        assert plan.approval_history[0].new_status == TripStatus.APPROVED
+
+        with pytest.raises(ValueError):
+            plan.record_approval_decision(
+                approver_id="board-1",
+                level="board",
+                outcome=ApprovalOutcome.OVERRIDDEN,
+            )
+
+        assert not hasattr(plan.approval_history, "append")
 
 
 class TestExpenseReport:
