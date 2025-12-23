@@ -1,0 +1,32 @@
+rules:
+  advance_booking:
+    days_required: 14
+    severity: advisory
+  fare_comparison:
+    max_over_lowest: 200
+    severity: blocking
+  cabin_class:
+    long_haul_hours: 5
+    allowed_classes:
+      - economy
+    severity: blocking
+  fare_evidence:
+    severity: blocking
+  driving_vs_flying:
+    severity: advisory
+  hotel_comparison:
+    minimum_alternatives: 2
+    severity: advisory
+  local_overnight:
+    min_distance_miles: 50
+    severity: advisory
+  meal_per_diem:
+    severity: advisory
+  non_reimbursable:
+    blocked_keywords:
+      - liquor
+      - alcohol
+      - personal
+    severity: blocking
+  third_party_paid:
+    severity: blocking
