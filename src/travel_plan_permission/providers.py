@@ -77,7 +77,9 @@ class Provider(BaseModel):
         if not self.destinations:
             return True
         destination_lower = destination.lower()
-        return any(keyword.lower() in destination_lower for keyword in self.destinations)
+        return any(
+            keyword.lower() in destination_lower for keyword in self.destinations
+        )
 
 
 class ProviderChange(BaseModel):
@@ -189,9 +191,7 @@ class ProviderRegistry(BaseModel):
         }
         return provider_name in approved_names
 
-    def active_providers(
-        self, *, reference_date: date | None = None
-    ) -> list[Provider]:
+    def active_providers(self, *, reference_date: date | None = None) -> list[Provider]:
         """Return all providers with an active contract for the given date."""
 
         return [

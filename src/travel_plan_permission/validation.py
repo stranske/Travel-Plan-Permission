@@ -14,7 +14,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .models import ExpenseCategory
-from .providers import ProviderRegistry, ProviderType, provider_type_for_category
+from .providers import ProviderRegistry, provider_type_for_category
 
 if TYPE_CHECKING:
     from .models import TripPlan
@@ -232,7 +232,9 @@ class ProviderApprovalRule(ValidationRule):
 
         for category, provider_name in plan.selected_providers.items():
             provider_type = provider_type_for_category(
-                category.value if isinstance(category, ExpenseCategory) else str(category)
+                category.value
+                if isinstance(category, ExpenseCategory)
+                else str(category)
             )
             if provider_type is None:
                 continue
