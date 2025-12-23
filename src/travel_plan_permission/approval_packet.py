@@ -10,11 +10,11 @@ from decimal import Decimal
 
 from jinja2 import BaseLoader, Environment, select_autoescape
 from pydantic import BaseModel, Field
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import inch
-from reportlab.platypus import (
+from reportlab.lib import colors  # type: ignore[import-untyped]
+from reportlab.lib.pagesizes import letter  # type: ignore[import-untyped]
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # type: ignore[import-untyped]
+from reportlab.lib.units import inch  # type: ignore[import-untyped]
+from reportlab.platypus import (  # type: ignore[import-untyped]
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
