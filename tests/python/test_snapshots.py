@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date
 from decimal import Decimal
 
 from travel_plan_permission.models import TripPlan
@@ -33,7 +33,9 @@ def _plan() -> TripPlan:
 
 
 def _validator(max_days: int = 10) -> PolicyValidator:
-    rule = DurationLimitRule(name="duration_limit", code="DUR-001", max_consecutive_days=max_days)
+    rule = DurationLimitRule(
+        name="duration_limit", code="DUR-001", max_consecutive_days=max_days
+    )
     return PolicyValidator([rule])
 
 

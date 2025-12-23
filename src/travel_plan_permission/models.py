@@ -194,8 +194,8 @@ class TripPlan(BaseModel):
         outcome: ApprovalOutcome,
         justification: str | None = None,
         timestamp: datetime | None = None,
-        snapshot_store: "ValidationSnapshotStore" | None = None,
-        validator: "PolicyValidator" | None = None,
+        snapshot_store: ValidationSnapshotStore | None = None,
+        validator: PolicyValidator | None = None,
     ) -> ApprovalEvent:
         """Append an immutable approval event and update trip status."""
 
@@ -239,12 +239,12 @@ class TripPlan(BaseModel):
         return event
 
 
-from .validation import PolicyValidator, ValidationResult  # noqa: E402
 from .snapshots import (  # noqa: E402
     ValidationSnapshotStore,
     policy_version_hash,
     snapshot_from_plan,
 )
+from .validation import PolicyValidator, ValidationResult  # noqa: E402
 
 TripPlan.model_rebuild()
 

@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Sequence
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -78,7 +79,7 @@ class ValidationSnapshot(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     @model_validator(mode="after")
-    def _set_hashes(self) -> "ValidationSnapshot":
+    def _set_hashes(self) -> ValidationSnapshot:
         payload = {
             "trip_id": self.trip_id,
             "timestamp": self.timestamp.isoformat(),
@@ -222,7 +223,7 @@ def compare_results(
 
 
 def snapshot_from_plan(
-    plan: "TripPlan",
+    plan: TripPlan,
     *,
     results: list[ValidationResult],
     policy_version: str,
