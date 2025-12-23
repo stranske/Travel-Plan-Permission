@@ -9,11 +9,11 @@ message that includes the relevant threshold or policy text.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import Iterable
 
 import yaml
 
@@ -104,7 +104,9 @@ class AdvanceBookingRule(PolicyRule):
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.booking_date is None or context.departure_date is None:
-            return self._result(True, "Advance booking check skipped due to missing dates")
+            return self._result(
+                True, "Advance booking check skipped due to missing dates"
+            )
 
         days_notice = (context.departure_date - context.booking_date).days
         if days_notice < self.days_required:
@@ -112,7 +114,10 @@ class AdvanceBookingRule(PolicyRule):
                 False,
                 f"Bookings should be made at least {self.days_required} days in advance; only {days_notice} days provided.",
             )
-        return self._result(True, f"Booked {days_notice} days in advance (minimum {self.days_required}).")
+        return self._result(
+            True,
+            f"Booked {days_notice} days in advance (minimum {self.days_required}).",
+        )
 
     def message(self) -> str:  # pragma: no cover - static template
         return f"Bookings must be made {self.days_required} days before departure."
@@ -127,7 +132,9 @@ class FareComparisonRule(PolicyRule):
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.selected_fare is None or context.lowest_fare is None:
-            return self._result(True, "Fare comparison skipped due to missing fare data")
+            return self._result(
+                True, "Fare comparison skipped due to missing fare data"
+            )
 
         overage = context.selected_fare - context.lowest_fare
         if overage > self.max_over_lowest:
@@ -138,7 +145,9 @@ class FareComparisonRule(PolicyRule):
                     " allowable threshold."
                 ),
             )
-        return self._result(True, f"Fare within {self.max_over_lowest} of lowest available.")
+        return self._result(
+            True, f"Fare within {self.max_over_lowest} of lowest available."
+        )
 
     def message(self) -> str:  # pragma: no cover - static template
         return f"Selected fare must be within {self.max_over_lowest} of the lowest available option."
@@ -147,14 +156,18 @@ class FareComparisonRule(PolicyRule):
 class CabinClassRule(PolicyRule):
     rule_id = "cabin_class"
 
-    def __init__(self, long_haul_hours: float, allowed_classes: Iterable[str], severity: str) -> None:
+    def __init__(
+        self, long_haul_hours: float, allowed_classes: Iterable[str], severity: str
+    ) -> None:
         super().__init__(severity)
         self.long_haul_hours = float(long_haul_hours)
         self.allowed_classes = {c.lower() for c in allowed_classes}
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.cabin_class is None or context.flight_duration_hours is None:
-            return self._result(True, "Cabin class check skipped due to missing flight details")
+            return self._result(
+                True, "Cabin class check skipped due to missing flight details"
+            )
 
         cabin = context.cabin_class.lower()
         duration = context.flight_duration_hours
@@ -166,7 +179,10 @@ class CabinClassRule(PolicyRule):
                     f" requested '{context.cabin_class}'."
                 ),
             )
-        return self._result(True, f"Cabin '{context.cabin_class}' acceptable for {duration} hour flight.")
+        return self._result(
+            True,
+            f"Cabin '{context.cabin_class}' acceptable for {duration} hour flight.",
+        )
 
     def message(self) -> str:  # pragma: no cover - static template
         return (
@@ -184,7 +200,9 @@ class FareEvidenceRule(PolicyRule):
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.fare_evidence_attached:
             return self._result(True, "Fare evidence attached")
-        return self._result(False, "Screenshot or fare evidence must be attached to the request.")
+        return self._result(
+            False, "Screenshot or fare evidence must be attached to the request."
+        )
 
     def message(self) -> str:  # pragma: no cover - static template
         return "Fare evidence (e.g., screenshot) is required."
@@ -198,7 +216,9 @@ class DrivingVsFlyingRule(PolicyRule):
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.driving_cost is None or context.flight_cost is None:
-            return self._result(True, "Driving vs flying comparison skipped due to missing estimates")
+            return self._result(
+                True, "Driving vs flying comparison skipped due to missing estimates"
+            )
 
         if context.driving_cost > context.flight_cost:
             return self._result(
@@ -228,7 +248,10 @@ class HotelComparisonRule(PolicyRule):
                 False,
                 f"Provide at least {self.minimum_alternatives} comparable hotel rates; {len(alternatives)} supplied.",
             )
-        return self._result(True, f"{len(alternatives)} comparable hotels provided (minimum {self.minimum_alternatives}).")
+        return self._result(
+            True,
+            f"{len(alternatives)} comparable hotels provided (minimum {self.minimum_alternatives}).",
+        )
 
     def message(self) -> str:  # pragma: no cover - static template
         return f"At least {self.minimum_alternatives} comparable hotel options are required."
@@ -245,16 +268,23 @@ class LocalOvernightRule(PolicyRule):
         if not context.overnight_stay:
             return self._result(True, "No overnight stay requested")
         if context.distance_from_office_miles is None:
-            return self._result(True, "Local overnight check skipped due to missing distance data")
+            return self._result(
+                True, "Local overnight check skipped due to missing distance data"
+            )
         if context.distance_from_office_miles < self.min_distance_miles:
             return self._result(
                 False,
                 f"Overnight stays within {self.min_distance_miles} miles require waiver; distance is {context.distance_from_office_miles} miles.",
             )
-        return self._result(True, f"Overnight stay is {context.distance_from_office_miles} miles from office (minimum {self.min_distance_miles}).")
+        return self._result(
+            True,
+            f"Overnight stay is {context.distance_from_office_miles} miles from office (minimum {self.min_distance_miles}).",
+        )
 
     def message(self) -> str:  # pragma: no cover - static template
-        return f"Overnight stays under {self.min_distance_miles} miles require a waiver."
+        return (
+            f"Overnight stays under {self.min_distance_miles} miles require a waiver."
+        )
 
 
 class MealPerDiemRule(PolicyRule):
@@ -314,13 +344,17 @@ class ThirdPartyPaidRule(PolicyRule):
                     False,
                     f"Third-party payment '{description}' must be itemized and excluded from reimbursement.",
                 )
-        return self._result(True, "Third-party payments are properly itemized or none provided.")
+        return self._result(
+            True, "Third-party payments are properly itemized or none provided."
+        )
 
     def message(self) -> str:  # pragma: no cover - static template
         return "Third-party paid expenses must be itemized and excluded."
 
 
-def _load_rule_config(config: dict[str, object], key: str, default: dict[str, object]) -> dict[str, object]:
+def _load_rule_config(
+    config: dict[str, object], key: str, default: dict[str, object]
+) -> dict[str, object]:
     rules_cfg = config.get("rules", {}) or {}
     rule_cfg = rules_cfg.get(key, {}) or {}
     merged = default.copy()
@@ -347,15 +381,23 @@ class PolicyEngine:
         config = yaml.safe_load(content) or {}
 
         advance_cfg = _load_rule_config(
-            config, "advance_booking", {"days_required": 14, "severity": Severity.ADVISORY}
+            config,
+            "advance_booking",
+            {"days_required": 14, "severity": Severity.ADVISORY},
         )
         fare_comparison_cfg = _load_rule_config(
-            config, "fare_comparison", {"max_over_lowest": Decimal("200"), "severity": Severity.BLOCKING}
+            config,
+            "fare_comparison",
+            {"max_over_lowest": Decimal("200"), "severity": Severity.BLOCKING},
         )
         cabin_class_cfg = _load_rule_config(
             config,
             "cabin_class",
-            {"long_haul_hours": 5, "allowed_classes": ["economy"], "severity": Severity.BLOCKING},
+            {
+                "long_haul_hours": 5,
+                "allowed_classes": ["economy"],
+                "severity": Severity.BLOCKING,
+            },
         )
         fare_evidence_cfg = _load_rule_config(
             config, "fare_evidence", {"severity": Severity.BLOCKING}
@@ -364,10 +406,14 @@ class PolicyEngine:
             config, "driving_vs_flying", {"severity": Severity.ADVISORY}
         )
         hotel_comparison_cfg = _load_rule_config(
-            config, "hotel_comparison", {"minimum_alternatives": 2, "severity": Severity.ADVISORY}
+            config,
+            "hotel_comparison",
+            {"minimum_alternatives": 2, "severity": Severity.ADVISORY},
         )
         local_overnight_cfg = _load_rule_config(
-            config, "local_overnight", {"min_distance_miles": 50, "severity": Severity.ADVISORY}
+            config,
+            "local_overnight",
+            {"min_distance_miles": 50, "severity": Severity.ADVISORY},
         )
         meal_per_diem_cfg = _load_rule_config(
             config, "meal_per_diem", {"severity": Severity.ADVISORY}
@@ -375,7 +421,10 @@ class PolicyEngine:
         non_reimbursable_cfg = _load_rule_config(
             config,
             "non_reimbursable",
-            {"blocked_keywords": ["liquor", "alcohol", "personal"], "severity": Severity.BLOCKING},
+            {
+                "blocked_keywords": ["liquor", "alcohol", "personal"],
+                "severity": Severity.BLOCKING,
+            },
         )
         third_party_paid_cfg = _load_rule_config(
             config, "third_party_paid", {"severity": Severity.BLOCKING}
@@ -383,7 +432,8 @@ class PolicyEngine:
 
         rules: list[PolicyRule] = [
             AdvanceBookingRule(
-                days_required=int(advance_cfg["days_required"]), severity=str(advance_cfg["severity"])
+                days_required=int(advance_cfg["days_required"]),
+                severity=str(advance_cfg["severity"]),
             ),
             FareComparisonRule(
                 max_over_lowest=Decimal(fare_comparison_cfg["max_over_lowest"]),
@@ -426,5 +476,8 @@ class PolicyEngine:
         return [rule.evaluate(context) for rule in self.rules]
 
     def blocking_results(self, context: PolicyContext) -> list[PolicyResult]:
-        return [result for result in self.validate(context) if result.severity == Severity.BLOCKING and not result.passed]
-
+        return [
+            result
+            for result in self.validate(context)
+            if result.severity == Severity.BLOCKING and not result.passed
+        ]
