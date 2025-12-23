@@ -52,7 +52,8 @@ class ExportService:
         expires_at = now + timedelta(days=7)
         for report in reports:
             for expense in report.expenses:
-                amount = expense.amount.quantize(Decimal("0.01"))
+                reimbursable_amount = expense.reimbursable_amount()
+                amount = reimbursable_amount.quantize(Decimal("0.01"))
                 receipt_link = (
                     self._signed_link(expense.receipt_url, expires_at)
                     if expense.receipt_url
