@@ -121,3 +121,42 @@ class TestReceiptExtraction:
         assert result.total == Decimal("12.50")
         assert result.date == date(2025, 1, 5)
         assert result.vendor == "Coffee Shop"
+
+    def test_extract_prefers_amount_due_over_subtotal(self) -> None:
+        """Total parsing should prioritize the amount due figure."""
+
+        text = "\n".join(
+            [
+                "Market Grocery",
+                "Subtotal $8.00",
+                "Tax 0.80",
+                "Amount Due: 8.80",
+                "12/30/2025",
+            ]
+        )
+
+        result = ReceiptProcessor.extract_from_text(text)
+
+        assert result.total == Decimal("8.80")
+        assert result.date == date(2025, 12, 30)
+        assert result.vendor == "Market Grocery"
+
+    def test_extract_falls_back_to_largest_amount(self) -> None:
+        """If keywords are missing, use the largest currency-looking value."""
+
+        text = "\n".join(
+            [
+                "Cafe Latte",
+                "Latte 3.50",
+                "Muffin 2.75",
+                "Tip 1.50",
+                "7.75",
+                "01/07/2025",
+            ]
+        )
+
+        result = ReceiptProcessor.extract_from_text(text)
+
+        assert result.total == Decimal("7.75")
+        assert result.date == date(2025, 1, 7)
+        assert result.vendor == "Cafe Latte"
