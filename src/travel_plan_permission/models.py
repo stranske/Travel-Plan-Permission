@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from pydantic import BaseModel, Field
 
@@ -115,10 +115,42 @@ class TripPlan(BaseModel):
         ..., description="Estimated total cost"
     )
     status: TripStatus = Field(default=TripStatus.DRAFT, description="Current status")
+    expense_breakdown: dict[ExpenseCategory, Decimal] = Field(
+        default_factory=dict,
+        description="Optional planned spend by category",
+    )
+    validation_results: list["ValidationResult"] = Field(
+        default_factory=list,
+        description="Results from policy validation",
+    )
 
     def duration_days(self) -> int:
         """Calculate the duration of the trip in days."""
         return (self.return_date - self.departure_date).days + 1
+
+    def validate(
+        self,
+        validator: "PolicyValidator | None" = None,
+        *,
+        reference_date: date | None = None,
+    ) -> list["ValidationResult"]:
+        """Validate the trip plan against policy rules."""
+
+        from .validation import PolicyValidator  # Local import to avoid circular dependency
+
+        engine = validator or PolicyValidator.from_file()
+        results = engine.validate_plan(self, reference_date=reference_date)
+        self.validation_results = results
+        return results
+
+
+from .validation import PolicyValidator, ValidationResult  # noqa: E402
+
+TripPlan.model_rebuild()
+
+if TYPE_CHECKING:
+    PolicyValidator = PolicyValidator
+    ValidationResult = ValidationResult
 
 
 class ExpenseItem(BaseModel):

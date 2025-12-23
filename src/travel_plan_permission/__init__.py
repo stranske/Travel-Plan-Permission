@@ -13,8 +13,18 @@ from .models import (
     TripPlan,
     TripStatus,
 )
+from .validation import (
+    AdvanceBookingRule,
+    BudgetLimitRule,
+    DurationLimitRule,
+    PolicyValidator,
+    ValidationResult,
+    ValidationSeverity,
+    ValidationRule,
+)
 
 __all__ = [
+    "AdvanceBookingRule",
     "ApprovalAction",
     "ApprovalDecision",
     "ApprovalEngine",
@@ -26,6 +36,12 @@ __all__ = [
     "ExportService",
     "TripPlan",
     "TripStatus",
+    "BudgetLimitRule",
+    "DurationLimitRule",
+    "PolicyValidator",
+    "ValidationResult",
+    "ValidationSeverity",
+    "ValidationRule",
     "__version__",
 ]
 __version__ = "0.1.0"
