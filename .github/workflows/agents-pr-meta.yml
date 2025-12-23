@@ -5,6 +5,13 @@
 # - Listens for comments on PRs
 # - Detects when Codex posts "round complete" markers
 # - Dispatches orchestrator to continue agent work
+#
+# Copy this file to: .github/workflows/agents-pr-meta.yml
+#
+# Required secrets:
+# - SERVICE_BOT_PAT: PAT for stranske-automation-bot
+# - ACTIONS_BOT_PAT: PAT for workflow dispatch
+# - AGENTS_AUTOMATION_PAT: Alternative PAT for agent automation (optional)
 name: Agents PR Meta
 
 on:
@@ -32,8 +39,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  # Use comment.id if available (unique per comment), fall back to run_id
-  group: agents-pr-meta-${{ github.event.comment.id || github.run_id }}
+  group: ${{ github.event_name == 'issue_comment' && format('agents-pr-meta-comment-{0}', github.event.comment.id) || format('agents-pr-meta-run-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:
@@ -55,8 +61,9 @@ jobs:
             const comment = context.payload.comment;
             core.setOutput('pr_number', pr.number);
             core.setOutput('comment_id', comment.id);
-            // Encode comment body as Base64 to preserve multiline content in GitHub outputs
-            // (outputs don't support embedded newlines natively)
+            // Encode comment body as Base64 to safely handle multiline and special characters.
+            // The reusable workflow at stranske/Workflows/.github/workflows/reusable-20-pr-meta.yml
+            // expects this value to be Base64-encoded and is responsible for decoding it.
             core.setOutput('comment_body', Buffer.from(comment.body || '').toString('base64'));
 
   # Call reusable PR meta workflow for comment events

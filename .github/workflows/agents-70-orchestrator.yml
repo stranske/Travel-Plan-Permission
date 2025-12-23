@@ -1,12 +1,17 @@
 # Thin caller for agent orchestration - delegates to Workflows repo reusable workflow
-# See docs/belt-automation-plan.md for the integration pattern
+# Runs scheduled keepalive sweeps to resume stalled agent PRs
 #
 # This orchestrator provides:
-# - Readiness probes for agent accounts
-# - Keepalive sweeps for stalled PRs
-# - Bootstrap checks for agent issues
+# - Keepalive sweeps for stalled PRs (Codex continues work)
 # - Watchdog monitoring
-name: Agents 70 Orchestrator
+# - Bootstrap checks for new agent issues
+#
+# Copy this file to: .github/workflows/agents-orchestrator.yml
+#
+# Required secrets:
+# - SERVICE_BOT_PAT: PAT for stranske-automation-bot
+# - ACTIONS_BOT_PAT: PAT for workflow dispatch (triggers connector)
+name: Agents Orchestrator
 
 on:
   schedule:
@@ -47,7 +52,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: agents-70-orchestrator
+  group: agents-orchestrator
   cancel-in-progress: false
 
 jobs:
