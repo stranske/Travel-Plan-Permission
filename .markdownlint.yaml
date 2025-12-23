@@ -1,0 +1,36 @@
+# Markdownlint configuration for Travel-Plan-Permission
+# See https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+# Disable line length rule - not practical for prose and documentation
+MD013: false
+
+# Disable first-line heading requirement - some files don't need it
+MD041: false
+
+# Disable duplicate heading check - same heading names in different sections are ok
+MD024:
+  siblings_only: true
+
+# Allow inline HTML for badges, etc.
+MD033: false
+
+# Disable trailing punctuation in headings - question marks are common
+MD026: false
+
+# Disable blanks around headings - existing docs don't follow this
+MD022: false
+
+# Disable blanks around lists - existing docs don't follow this
+MD032: false
+
+# Disable blanks around fences - existing docs don't follow this
+MD031: false
+
+# Disable fenced code language requirement - some examples are plain text
+MD040: false
+
+# Disable trailing spaces check - too strict for prose
+MD009: false
+
+# Disable emphasis as heading check
+MD036: false
