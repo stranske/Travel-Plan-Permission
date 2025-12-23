@@ -151,7 +151,7 @@ class ExceptionType(str, Enum):
     MEAL_PER_DIEM = "meal_per_diem"
 
     @classmethod
-    def from_policy_rule_id(cls, rule_id: str) -> "ExceptionType":
+    def from_policy_rule_id(cls, rule_id: str) -> ExceptionType:
         """Return the matching exception type for a policy-lite rule id."""
 
         try:
