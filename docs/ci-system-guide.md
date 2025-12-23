@@ -83,10 +83,16 @@ The Workflows repo includes a sophisticated agent automation system:
 | Job | Purpose | Runs On |
 |-----|---------|---------|
 | `actionlint` | Validates workflow YAML syntax | Every PR/push |
-| `docs-lint` | Markdown formatting + link validation | Every PR/push |
+| `docs-lint` | Markdown formatting | Every PR/push |
+| `link-check` | Validates documentation links | Every PR/push |
 | `schema-validate` | JSON Schema compilation + fixture validation | Every PR/push |
 | `python-ci` | Full Python CI (ruff, mypy, pytest, coverage) | Every PR/push |
 | `gate` | Aggregates all results for branch protection | Every PR/push |
+
+### Branch Protection
+
+Branch protection on `main` requires the `Gate / gate` status to succeed and enforces at
+least one approving review. Force pushes are blocked to preserve CI integrity.
 
 ### Adding New Local Jobs
 
