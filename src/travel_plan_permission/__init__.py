@@ -2,6 +2,7 @@
 
 from .approval import ApprovalEngine
 from .export import ExportService
+from .mapping import DEFAULT_TEMPLATE_VERSION, TemplateMapping, load_template_mapping
 from .models import (
     ApprovalAction,
     ApprovalDecision,
@@ -31,6 +32,14 @@ from .policy import (
     Severity,
     ThirdPartyPaidRule,
 )
+from .prompt_flow import (
+    CANONICAL_TRIP_FIELDS,
+    QUESTION_FLOW,
+    Question,
+    build_output_bundle,
+    generate_questions,
+    required_field_gaps,
+)
 from .validation import (
     AdvanceBookingRule as ValidationAdvanceBookingRule,
 )
@@ -59,7 +68,9 @@ __all__ = [
     "ApprovalRule",
     "ApprovalStatus",
     "BudgetLimitRule",
+    "CANONICAL_TRIP_FIELDS",
     "CabinClassRule",
+    "DEFAULT_TEMPLATE_VERSION",
     "DrivingVsFlyingRule",
     "DurationLimitRule",
     "ExpenseCategory",
@@ -71,6 +82,7 @@ __all__ = [
     "FareEvidenceRule",
     "HotelComparisonRule",
     "LocalOvernightRule",
+    "QUESTION_FLOW",
     "MealPerDiemRule",
     "NonReimbursableRule",
     "PolicyContext",
@@ -80,6 +92,11 @@ __all__ = [
     "PolicyValidator",
     "ReceiptExtractionResult",
     "ReceiptProcessor",
+    "Question",
+    "TemplateMapping",
+    "build_output_bundle",
+    "generate_questions",
+    "load_template_mapping",
     "Severity",
     "ThirdPartyPaidRule",
     "TripPlan",
@@ -88,6 +105,7 @@ __all__ = [
     "ValidationResult",
     "ValidationRule",
     "ValidationSeverity",
+    "required_field_gaps",
     "__version__",
 ]
 __version__ = "0.1.0"
