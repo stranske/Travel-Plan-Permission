@@ -120,7 +120,7 @@ class ReceiptProcessor:
 
         try:
             import pytesseract  # type: ignore[import-not-found]
-            from PIL import Image  # type: ignore[import-not-found]
+            from PIL import Image  # type: ignore[import-not-found,import-untyped,unused-ignore]
         except ImportError as exc:  # pragma: no cover - optional dependency
             raise ImportError(
                 "pytesseract and Pillow are required for image extraction; install them to enable OCR."
