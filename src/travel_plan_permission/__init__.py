@@ -48,6 +48,13 @@ from .prompt_flow import (
     generate_questions,
     required_field_gaps,
 )
+from .receipts import (
+    ALLOWED_RECEIPT_TYPES,
+    MAX_RECEIPT_SIZE_BYTES,
+    Receipt,
+    ReceiptExtractionResult,
+    ReceiptProcessor,
+)
 from .validation import (
     AdvanceBookingRule as ValidationAdvanceBookingRule,
 )
@@ -62,6 +69,8 @@ from .validation import (
 
 __all__ = [
     "AdvanceBookingRule",
+    "ALLOWED_RECEIPT_TYPES",
+    "MAX_RECEIPT_SIZE_BYTES",
     "ApprovalAction",
     "ApprovalDecision",
     "ApprovalEvent",
@@ -81,6 +90,7 @@ __all__ = [
     "ExpenseCategory",
     "ExpenseItem",
     "ExpenseReport",
+    "Receipt",
     "ExportService",
     "FareComparisonRule",
     "FareEvidenceRule",
@@ -94,6 +104,8 @@ __all__ = [
     "PolicyResult",
     "PolicyRule",
     "PolicyValidator",
+    "ReceiptExtractionResult",
+    "ReceiptProcessor",
     "Question",
     "TemplateMapping",
     "build_approval_packet",

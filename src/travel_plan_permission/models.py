@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Annotated
 
 from pydantic import BaseModel, Field
 
+from .receipts import Receipt
+
 
 class TripStatus(str, Enum):
     """Status of a trip plan."""
@@ -249,6 +251,33 @@ class ExpenseItem(BaseModel):
             "URL or path to the receipt attachment; will be converted to a signed link"
         ),
     )
+    receipt_references: list[Receipt] = Field(
+        default_factory=list,
+        description="Attached receipts with OCR and validation metadata",
+    )
+    third_party_paid_explanation: str | None = Field(
+        default=None,
+        description="Required when a third party covered any part of this expense",
+    )
+
+    def reimbursable_amount(self) -> Decimal:
+        """Return the reimbursable amount excluding third-party paid receipts."""
+
+        if self.is_third_party_paid:
+            return Decimal("0")
+        return self.amount
+
+    @property
+    def is_third_party_paid(self) -> bool:
+        """True when any attached receipt indicates third-party payment."""
+
+        return any(receipt.paid_by_third_party for receipt in self.receipt_references)
+
+    def model_post_init(self, __context: object) -> None:
+        super().model_post_init(__context)
+        if self.is_third_party_paid and not self.third_party_paid_explanation:
+            msg = "third_party_paid_explanation is required when receipts are paid by a third party"
+            raise ValueError(msg)
 
 
 class ExpenseReport(BaseModel):
@@ -273,8 +302,8 @@ class ExpenseReport(BaseModel):
     approved_date: date | None = Field(default=None, description="Date approved")
 
     def total_amount(self) -> Decimal:
-        """Calculate the total amount of all expenses."""
-        return sum((e.amount for e in self.expenses), Decimal("0"))
+        """Calculate the reimbursable total amount of all expenses."""
+        return sum((e.reimbursable_amount() for e in self.expenses), Decimal("0"))
 
     def expenses_by_category(self) -> dict[ExpenseCategory, Decimal]:
         """Group expenses by category and sum amounts."""
