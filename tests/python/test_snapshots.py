@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from travel_plan_permission.models import TripPlan
+from travel_plan_permission.models import ApprovalOutcome, TripPlan
 from travel_plan_permission.snapshots import (
     ValidationSnapshotStore,
     compare_results,
@@ -127,3 +127,29 @@ def test_policy_version_hash_is_stable() -> None:
     digest_1 = policy_version_hash(results)
     digest_2 = policy_version_hash(results)
     assert digest_1 == digest_2
+
+
+def test_flagged_decision_captures_snapshot_and_stays_small(tmp_path) -> None:
+    validator = _validator(max_days=5)
+    plan = _plan()
+    plan.run_validation(validator=validator)
+
+    store = ValidationSnapshotStore(base_path=tmp_path)
+    plan.record_approval_decision(
+        approver_id="approver-1",
+        level="manager",
+        outcome=ApprovalOutcome.FLAGGED,
+        justification="Needs manual review",
+        snapshot_store=store,
+        validator=validator,
+    )
+
+    stored = store._trip_path(plan.trip_id).glob("*.json")
+    stored_paths = list(stored)
+    assert len(stored_paths) == 1
+    stored_path = stored_paths[0]
+    assert stored_path.stat().st_size < 10_240
+
+    snapshots = store.load_trip_snapshots(plan.trip_id)
+    assert len(snapshots) == 1
+    assert snapshots[0].results == plan.validation_results

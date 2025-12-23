@@ -109,6 +109,7 @@ class ApprovalOutcome(str, Enum):
 
     APPROVED = "approved"
     REJECTED = "rejected"
+    FLAGGED = "flagged"
     OVERRIDDEN = "overridden"
 
 
@@ -215,6 +216,8 @@ class TripPlan(BaseModel):
             new_status = TripStatus.APPROVED
         elif outcome == ApprovalOutcome.REJECTED:
             new_status = TripStatus.REJECTED
+        elif outcome == ApprovalOutcome.FLAGGED:
+            new_status = TripStatus.SUBMITTED
 
         event = ApprovalEvent(
             approver_id=approver_id,
