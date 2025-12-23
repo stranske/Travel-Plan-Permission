@@ -116,3 +116,32 @@ def test_policy_engine_from_file_defaults():
     assert len(results) == 10
     assert all(result.passed for result in results)
     assert engine.blocking_results(context) == []
+
+
+def test_policy_messages_include_thresholds_from_config():
+    engine = PolicyEngine.from_yaml(
+        """
+rules:
+  advance_booking:
+    days_required: 21
+  fare_comparison:
+    max_over_lowest: 175
+"""
+    )
+
+    context = PolicyContext(
+        booking_date=date(2025, 1, 1),
+        departure_date=date(2025, 1, 10),
+        selected_fare=Decimal("500"),
+        lowest_fare=Decimal("300"),
+    )
+
+    results = {result.rule_id: result for result in engine.validate(context)}
+
+    advance = results["advance_booking"]
+    assert not advance.passed
+    assert "21" in advance.message
+
+    fare = results["fare_comparison"]
+    assert not fare.passed
+    assert "175" in fare.message
