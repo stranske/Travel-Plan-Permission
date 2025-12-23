@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Mapping, Sequence
 
 from jinja2 import BaseLoader, Environment, select_autoescape
 from pydantic import BaseModel, Field
@@ -222,7 +222,8 @@ def build_approval_packet(
 
     raw_costs = cost_breakdown or trip_plan.expense_breakdown
     costs = {
-        str(getattr(category, "value", category)): amount for category, amount in raw_costs.items()
+        str(getattr(category, "value", category)): amount
+        for category, amount in raw_costs.items()
     }
     if not costs and trip_plan.estimated_cost:
         costs["estimated_total"] = trip_plan.estimated_cost
