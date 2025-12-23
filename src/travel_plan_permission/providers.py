@@ -67,9 +67,7 @@ class Provider(BaseModel):
         check_date = reference_date or date.today()
         if check_date < self.valid_from:
             return False
-        if self.valid_to and check_date > self.valid_to:
-            return False
-        return True
+        return not (self.valid_to and check_date > self.valid_to)
 
     def matches_destination(self, destination: str) -> bool:
         """Return True when the provider applies to the requested destination."""
