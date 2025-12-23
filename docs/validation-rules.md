@@ -1,6 +1,89 @@
-# Validation rules (policy-lite)
+# Validation Rules
 
-These rules are configured via `config/policy.yaml` and loaded by `PolicyEngine.from_file()` or `PolicyEngine.from_yaml()`. Each rule produces a structured result with `rule_id`, `severity` (`blocking` or `advisory`), `passed`, and `message`. The descriptions below reflect the default configuration shipped with the repo.
+This document describes the two validation systems available for trip plans and expenses.
+
+---
+
+## Trip Plan Validation (PolicyValidator)
+
+The `PolicyValidator` validates `TripPlan` objects against configurable business rules before submission. Rules are configured via `config/validation.yaml` and loaded by `PolicyValidator.from_file()`.
+
+### Usage
+
+```python
+from travel_plan_permission.models import TripPlan
+from travel_plan_permission.validation import PolicyValidator
+
+# Validate using default rules from config/validation.yaml
+plan = TripPlan(...)
+results = plan.run_validation()
+
+# Or use a custom validator
+validator = PolicyValidator.from_file("custom_rules.yaml")
+results = plan.run_validation(validator=validator)
+
+# Check for blocking violations
+blocking_errors = [r for r in results if r.is_blocking]
+```
+
+### ValidationResult Structure
+
+Each validation result contains:
+- `code` - Stable identifier (e.g., "ADV-001")
+- `message` - Human-readable explanation
+- `severity` - One of: `error`, `warning`, `info`
+- `rule_name` - Name of the rule that produced the result
+- `blocking` - Whether the violation prevents submission
+- `is_blocking` - Property that returns `True` when `blocking=True` AND `severity=error`
+
+### Available Rules
+
+| Rule Type | Configuration Keys | Behavior |
+| --- | --- | --- |
+| `advance_booking` | `min_days_domestic`, `min_days_international`, `international_destinations` | Require advance notice for trip bookings. Domestic and international trips can have different thresholds. |
+| `budget_limit` | `trip_limit`, `category_limits` | Enforce per-trip and per-category spending limits. Category limits are keyed by `ExpenseCategory` values. |
+| `duration_limit` | `max_consecutive_days` | Restrict maximum consecutive travel days. |
+
+### Configuration Example (config/validation.yaml)
+
+```yaml
+rules:
+  - type: advance_booking
+    name: default_advance_booking
+    code: ADV-001
+    severity: error
+    blocking: true
+    min_days_domestic: 7
+    min_days_international: 14
+    international_destinations:
+      - international
+      - overseas
+
+  - type: budget_limit
+    name: default_budget_limit
+    code: BUD-001
+    severity: error
+    blocking: true
+    trip_limit: 5000
+    category_limits:
+      lodging: 2500
+      meals: 800
+
+  - type: duration_limit
+    name: default_duration_limit
+    code: DUR-001
+    severity: warning
+    blocking: false
+    max_consecutive_days: 14
+```
+
+---
+
+## Policy-Lite Rules (PolicyEngine)
+
+The `PolicyEngine` evaluates expense and travel policy compliance rules. These rules are configured via `config/policy.yaml` and loaded by `PolicyEngine.from_file()` or `PolicyEngine.from_yaml()`. Each rule produces a structured result with `rule_id`, `severity` (`blocking` or `advisory`), `passed`, and `message`.
+
+### Available Rules
 
 | Rule ID | Default severity | Configuration keys | Behavior |
 | --- | --- | --- | --- |
