@@ -24,7 +24,7 @@ jobs:
           mkdir -p /tmp/workflows-latest
           
           # Full workflow files
-          curl -sL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/workflows/agents-63-issue-intake.yml" \
+          curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/workflows/agents-63-issue-intake.yml" \
             -o /tmp/workflows-latest/agents-63-issue-intake.yml
           
           # Fix local reusable workflow references to point to remote Workflows repo
@@ -34,15 +34,15 @@ jobs:
             /tmp/workflows-latest/agents-63-issue-intake.yml
           
           # Template files
-          curl -sL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/agents-orchestrator.yml" \
+          curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/agents-70-orchestrator.yml" \
             -o /tmp/workflows-latest/agents-70-orchestrator.yml
-          curl -sL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/agents-pr-meta.yml" \
+          curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/agents-pr-meta.yml" \
             -o /tmp/workflows-latest/agents-pr-meta.yml
           
           # Fetch scripts required by agents-63-issue-intake.yml
           mkdir -p /tmp/workflows-latest/scripts
           for script in decode_raw_input.py parse_chatgpt_topics.py fallback_split.py; do
-            curl -sL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/scripts/$script" \
+            curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/scripts/$script" \
               -o "/tmp/workflows-latest/scripts/$script"
           done
           
