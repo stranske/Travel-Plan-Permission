@@ -6,6 +6,10 @@
 #
 annotated-types==0.7.0
     # via pydantic
+et-xmlfile==1.1.0
+    # via openpyxl
+openpyxl==3.1.5
+    # via travel-plan-permission (pyproject.toml)
 pydantic==2.10.4
     # via travel-plan-permission (pyproject.toml)
 pydantic-core==2.27.2

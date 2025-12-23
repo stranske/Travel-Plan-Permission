@@ -12,6 +12,7 @@ from .models import (
     TripPlan,
     TripStatus,
 )
+from .export import ExportService
 
 __all__ = [
     "ApprovalAction",
@@ -22,6 +23,7 @@ __all__ = [
     "ExpenseCategory",
     "ExpenseItem",
     "ExpenseReport",
+    "ExportService",
     "TripPlan",
     "TripStatus",
     "__version__",
