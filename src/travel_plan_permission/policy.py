@@ -104,6 +104,7 @@ class PolicyRule(ABC):
             "description": self.message(),
         }
 
+
 class AdvanceBookingRule(PolicyRule):
     rule_id = "advance_booking"
 
