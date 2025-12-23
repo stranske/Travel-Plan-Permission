@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import re
-from datetime import date as dt_date, datetime
+from collections.abc import Iterable
+from datetime import date as dt_date
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Iterable
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -20,7 +21,9 @@ class Receipt(BaseModel):
     total: Decimal = Field(..., ge=0, description="Total amount shown on the receipt")
     date: dt_date = Field(..., description="Transaction date on the receipt")
     vendor: str = Field(..., description="Merchant associated with the receipt")
-    file_reference: str = Field(..., description="Storage reference for the receipt file")
+    file_reference: str = Field(
+        ..., description="Storage reference for the receipt file"
+    )
     file_size_bytes: int = Field(
         ..., ge=0, description="Size of the uploaded receipt in bytes"
     )
@@ -39,7 +42,9 @@ class Receipt(BaseModel):
         normalized_ext = ".jpeg" if ext == ".jpg" else ext
         if normalized_ext not in ALLOWED_RECEIPT_TYPES:
             allowed = ", ".join(sorted(ALLOWED_RECEIPT_TYPES))
-            raise ValueError(f"Unsupported receipt type '{ext}'. Allowed types: {allowed}")
+            raise ValueError(
+                f"Unsupported receipt type '{ext}'. Allowed types: {allowed}"
+            )
         return value
 
     @field_validator("file_size_bytes")
@@ -105,7 +110,9 @@ class ReceiptProcessor:
         total = ReceiptProcessor._parse_total(text)
         parsed_date = ReceiptProcessor._parse_date(text)
         vendor = ReceiptProcessor._parse_vendor(text)
-        return ReceiptExtractionResult(text=text, total=total, date=parsed_date, vendor=vendor)
+        return ReceiptExtractionResult(
+            text=text, total=total, date=parsed_date, vendor=vendor
+        )
 
     @staticmethod
     def extract_from_image(image_path: str) -> ReceiptExtractionResult:

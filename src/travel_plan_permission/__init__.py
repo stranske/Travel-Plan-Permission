@@ -40,6 +40,12 @@ from .prompt_flow import (
     generate_questions,
     required_field_gaps,
 )
+from .receipts import (
+    ALLOWED_RECEIPT_TYPES,
+    MAX_RECEIPT_SIZE_BYTES,
+    ReceiptExtractionResult,
+    ReceiptProcessor,
+)
 from .validation import (
     AdvanceBookingRule as ValidationAdvanceBookingRule,
 )
@@ -50,12 +56,6 @@ from .validation import (
     ValidationResult,
     ValidationRule,
     ValidationSeverity,
-)
-from .receipts import (
-    ALLOWED_RECEIPT_TYPES,
-    MAX_RECEIPT_SIZE_BYTES,
-    ReceiptExtractionResult,
-    ReceiptProcessor,
 )
 
 __all__ = [
