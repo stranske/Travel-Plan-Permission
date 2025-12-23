@@ -10,7 +10,7 @@ import argparse
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 RAW_FILE = Path("raw_input.json")
 OUT_FILE = Path("input.txt")
@@ -18,7 +18,9 @@ OUT_FILE = Path("input.txt")
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Decode or normalize topic input")
-    parser.add_argument("--passthrough", action="store_true", help="Read plain text from --in file")
+    parser.add_argument(
+        "--passthrough", action="store_true", help="Read plain text from --in file"
+    )
     parser.add_argument("--in", dest="in_file", help="Input file for passthrough mode")
     parser.add_argument(
         "--source",
@@ -31,7 +33,9 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     args = _parse_args()
     text: str = ""
-    source_used = args.source_tag or ("passthrough" if args.passthrough else "raw_input")
+    source_used = args.source_tag or (
+        "passthrough" if args.passthrough else "raw_input"
+    )
     if args.passthrough:
         if not args.in_file:
             return
@@ -85,13 +89,13 @@ def main() -> None:
 
     # Heuristic: if the input lost original line breaks (appears mostly as one very long line)
     # reconstruct newlines before common enumeration patterns so the parser can split topics.
-    applied: List[str] = []
+    applied: list[str] = []
 
     def apply_enumerator_newlines(s: str) -> str:
         pattern = re.compile(
             r"(?<!\n)(?:(?<=\s)|^)(?P<enum>([0-9]{1,3}|[A-Za-z][0-9]*))[\)\.:\-]\s+"
         )
-        parts: List[str] = []
+        parts: list[str] = []
         last = 0
         for m in pattern.finditer(s):
             start = m.start()
@@ -117,7 +121,9 @@ def main() -> None:
         rebuilt = s
         for m in markers:
             # replace occurrences not already preceded by newline
-            rebuilt = re.sub(rf"(?<!\n){re.escape(m)}", "\n" + m.strip() + "\n", rebuilt)
+            rebuilt = re.sub(
+                rf"(?<!\n){re.escape(m)}", "\n" + m.strip() + "\n", rebuilt
+            )
         if rebuilt != s:
             applied.append("sections")
         return rebuilt
@@ -134,10 +140,10 @@ def main() -> None:
             applied.append("forced_split")
             text = forced
 
-    def extract_enumerators(s: str) -> Tuple[List[str], List[str]]:
+    def extract_enumerators(s: str) -> tuple[list[str], list[str]]:
         # Enumerators followed by punctuation ) . : - then space
         enum_pattern = re.compile(r"(^|\s)(([0-9]{1,3}|[A-Za-z][0-9]*))[\)\.:\-](?=\s)")
-        tokens: List[str] = []
+        tokens: list[str] = []
         for m in enum_pattern.finditer(s):
             token = m.group(2)
             tokens.append(token)
@@ -150,7 +156,7 @@ def main() -> None:
     raw_tokens, raw_distinct = extract_enumerators(original)
     reb_tokens, reb_distinct = extract_enumerators(text)
 
-    diagnostics: Dict[str, Any] = {
+    diagnostics: dict[str, Any] = {
         "raw_len": len(original),
         "raw_newlines": original.count("\n"),
         "rebuilt_len": len(text),
@@ -167,7 +173,9 @@ def main() -> None:
     if text.strip():
         OUT_FILE.write_text(text + "\n", encoding="utf-8")
     # Always write diagnostics when debug artifact collection might happen
-    Path("decode_debug.json").write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
+    Path("decode_debug.json").write_text(
+        json.dumps(diagnostics, indent=2), encoding="utf-8"
+    )
 
 
 if __name__ == "__main__":
