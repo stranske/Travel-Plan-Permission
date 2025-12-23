@@ -49,3 +49,23 @@ expense = ExpenseItem(
 decision = engine.evaluate_expense(expense)
 print(decision.status)  # ApprovalStatus.FLAGGED
 ```
+
+## Approval packets and notifications
+
+Approval packets package the trip summary, policy status, cost breakdown, and a PDF attachment for multi-level reviewers.
+
+- Manager email template includes trip summary, total cost, compliance status, and approve/reject/override links.
+- Board email template mirrors the manager copy but highlights the audit-ready approval history.
+- The PDF generator creates a single-page packet for routine trips and introduces additional pages when cost or history entries exceed the configured threshold (default: 15 rows).
+
+### Data model
+
+- `ApprovalPacket` bundles the rendered emails, PDF bytes, and immutable `approval_history`.
+- `ApprovalLinks` supply approve/reject/override URLs for both manager and board audiences.
+- `TripPlan.approval_history` is append-only. Each `ApprovalEvent` captures approver ID, level (manager/board), outcome, timestamp, prior status, and resulting status.
+
+### Override and auditability rules
+
+- `TripPlan.record_approval_decision` enforces justification text for override outcomes.
+- Approval history entries are frozen Pydantic models and stored as tuples to prevent mutation.
+- PDFs include the justification column to preserve override rationale for auditing.

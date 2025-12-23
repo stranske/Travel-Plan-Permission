@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Annotated
@@ -104,6 +104,41 @@ class ApprovalDecision(BaseModel):
     )
 
 
+class ApprovalOutcome(str, Enum):
+    """Outcome of an approval workflow decision."""
+
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    OVERRIDDEN = "overridden"
+
+
+class ApprovalEvent(BaseModel):
+    """Immutable audit record for a single approval or override decision."""
+
+    approver_id: str = Field(..., description="Identifier of the approver or role")
+    level: str = Field(..., description="Approval tier, e.g., manager or board")
+    outcome: ApprovalOutcome = Field(
+        ..., description="Result of the decision for the trip plan"
+    )
+    timestamp: datetime = Field(..., description="When the decision was recorded")
+    justification: str | None = Field(
+        default=None, description="Explanation required for overrides"
+    )
+    previous_status: TripStatus = Field(
+        ..., description="Trip status before the decision was applied"
+    )
+    new_status: TripStatus = Field(
+        ..., description="Trip status after the decision was applied"
+    )
+
+    model_config = {"frozen": True}
+
+    def model_post_init(self, __context: object) -> None:
+        if self.outcome == ApprovalOutcome.OVERRIDDEN and not self.justification:
+            msg = "Override decisions require justification text"
+            raise ValueError(msg)
+
+
 class TripPlan(BaseModel):
     """A trip plan request for approval."""
 
@@ -124,6 +159,10 @@ class TripPlan(BaseModel):
     validation_results: list[ValidationResult] = Field(
         default_factory=list,
         description="Results from policy validation",
+    )
+    approval_history: tuple[ApprovalEvent, ...] = Field(
+        default_factory=tuple,
+        description="Append-only immutable audit log of approvals and overrides",
     )
 
     def duration_days(self) -> int:
@@ -146,6 +185,42 @@ class TripPlan(BaseModel):
         results = engine.validate_plan(self, reference_date=reference_date)
         self.validation_results = results
         return results
+
+    def record_approval_decision(
+        self,
+        *,
+        approver_id: str,
+        level: str,
+        outcome: ApprovalOutcome,
+        justification: str | None = None,
+        timestamp: datetime | None = None,
+    ) -> ApprovalEvent:
+        """Append an immutable approval event and update trip status."""
+
+        decision_time = timestamp or datetime.now(UTC)
+        if outcome == ApprovalOutcome.OVERRIDDEN and not justification:
+            msg = "Override decisions require justification text"
+            raise ValueError(msg)
+
+        new_status = self.status
+        if outcome in (ApprovalOutcome.APPROVED, ApprovalOutcome.OVERRIDDEN):
+            new_status = TripStatus.APPROVED
+        elif outcome == ApprovalOutcome.REJECTED:
+            new_status = TripStatus.REJECTED
+
+        event = ApprovalEvent(
+            approver_id=approver_id,
+            level=level,
+            outcome=outcome,
+            timestamp=decision_time,
+            justification=justification,
+            previous_status=self.status,
+            new_status=new_status,
+        )
+
+        self.approval_history = (*self.approval_history, event)
+        self.status = new_status
+        return event
 
 
 from .validation import PolicyValidator, ValidationResult  # noqa: E402

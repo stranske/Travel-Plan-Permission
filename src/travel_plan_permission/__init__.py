@@ -1,11 +1,20 @@
 """Travel Plan Permission - Workflow automation for travel approval and reimbursement."""
 
 from .approval import ApprovalEngine
+from .approval_packet import (
+    ApprovalLinks,
+    ApprovalPacket,
+    EmailContent,
+    build_approval_packet,
+    generate_packet_pdf,
+)
 from .export import ExportService
 from .mapping import DEFAULT_TEMPLATE_VERSION, TemplateMapping, load_template_mapping
 from .models import (
     ApprovalAction,
     ApprovalDecision,
+    ApprovalEvent,
+    ApprovalOutcome,
     ApprovalRule,
     ApprovalStatus,
     ExpenseCategory,
@@ -64,9 +73,14 @@ __all__ = [
     "MAX_RECEIPT_SIZE_BYTES",
     "ApprovalAction",
     "ApprovalDecision",
+    "ApprovalEvent",
+    "ApprovalOutcome",
     "ApprovalEngine",
+    "ApprovalLinks",
+    "ApprovalPacket",
     "ApprovalRule",
     "ApprovalStatus",
+    "EmailContent",
     "BudgetLimitRule",
     "CANONICAL_TRIP_FIELDS",
     "CabinClassRule",
@@ -94,8 +108,10 @@ __all__ = [
     "ReceiptProcessor",
     "Question",
     "TemplateMapping",
+    "build_approval_packet",
     "build_output_bundle",
     "generate_questions",
+    "generate_packet_pdf",
     "load_template_mapping",
     "Severity",
     "ThirdPartyPaidRule",
