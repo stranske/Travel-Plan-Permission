@@ -11,7 +11,6 @@ from .models import (
     ExpenseCategory,
     ExpenseItem,
     ExpenseReport,
-    Receipt,
     TripPlan,
     TripStatus,
 )
@@ -43,6 +42,7 @@ from .prompt_flow import (
 from .receipts import (
     ALLOWED_RECEIPT_TYPES,
     MAX_RECEIPT_SIZE_BYTES,
+    Receipt,
     ReceiptExtractionResult,
     ReceiptProcessor,
 )
