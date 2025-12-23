@@ -25,6 +25,19 @@ SCRIPTS_TO_SYNC=(
     "fallback_split.py"
 )
 
+# JS scripts required by reusable-agents-issue-bridge.yml
+JS_SCRIPTS_TO_SYNC=(
+    "issue_pr_locator.js"
+    "issue_context_utils.js"
+    "issue_scope_parser.js"
+    "keepalive_instruction_template.js"
+)
+
+# Template files (not in .github/scripts)
+TEMPLATE_FILES_TO_SYNC=(
+    "keepalive-instruction.md"
+)
+
 # Files to sync from templates (thin callers)
 TEMPLATE_FILES=(
     "agents-orchestrator.yml:.github/workflows/agents-70-orchestrator.yml"
@@ -63,8 +76,8 @@ for mapping in "${TEMPLATE_FILES[@]}"; do
     fi
 done
 
-# Sync scripts required by agents-63-issue-intake.yml
-echo "Syncing scripts from $WORKFLOWS_REPO@$BRANCH..."
+# Sync Python scripts required by agents-63-issue-intake.yml
+echo "Syncing Python scripts from $WORKFLOWS_REPO@$BRANCH..."
 mkdir -p .github/scripts
 for script in "${SCRIPTS_TO_SYNC[@]}"; do
     echo "  Fetching .github/scripts/$script..."
@@ -74,6 +87,33 @@ for script in "${SCRIPTS_TO_SYNC[@]}"; do
     else
         curl -sfL "$url" -o ".github/scripts/$script"
         echo "    ✓ Updated .github/scripts/$script"
+    fi
+done
+
+# Sync JS scripts required by reusable-agents-issue-bridge.yml
+echo "Syncing JS scripts from $WORKFLOWS_REPO@$BRANCH..."
+for script in "${JS_SCRIPTS_TO_SYNC[@]}"; do
+    echo "  Fetching .github/scripts/$script..."
+    url="https://raw.githubusercontent.com/$WORKFLOWS_REPO/$BRANCH/.github/scripts/$script"
+    if $DRY_RUN; then
+        echo "    Would download: $url"
+    else
+        curl -sfL "$url" -o ".github/scripts/$script"
+        echo "    ✓ Updated .github/scripts/$script"
+    fi
+done
+
+# Sync template files
+echo "Syncing template files from $WORKFLOWS_REPO@$BRANCH..."
+mkdir -p .github/templates
+for template in "${TEMPLATE_FILES_TO_SYNC[@]}"; do
+    echo "  Fetching .github/templates/$template..."
+    url="https://raw.githubusercontent.com/$WORKFLOWS_REPO/$BRANCH/.github/templates/$template"
+    if $DRY_RUN; then
+        echo "    Would download: $url"
+    else
+        curl -sfL "$url" -o ".github/templates/$template"
+        echo "    ✓ Updated .github/templates/$template"
     fi
 done
 
