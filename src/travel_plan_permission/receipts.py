@@ -97,7 +97,8 @@ class ReceiptProcessor:
     """Minimal OCR-backed processing for receipts."""
 
     TOTAL_PATTERN = re.compile(
-        r"(?:total|amount due)[:\s\$]*([0-9]+(?:[.,][0-9]{2})?)", re.IGNORECASE
+        r"(?:total|total due|amount due|balance due|grand total)[^0-9]*([0-9]+(?:[.,][0-9]{2})?)",
+        re.IGNORECASE,
     )
     DATE_PATTERN = re.compile(
         r"(\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", re.IGNORECASE
@@ -131,14 +132,27 @@ class ReceiptProcessor:
 
     @staticmethod
     def _parse_total(text: str) -> Decimal | None:
-        match = ReceiptProcessor.TOTAL_PATTERN.search(text)
-        if not match:
-            return None
-        try:
-            value = match.group(1).replace(",", "")
-            return Decimal(value)
-        except (InvalidOperation, IndexError):
-            return None
+        keyword_totals: list[Decimal] = []
+        for match in ReceiptProcessor.TOTAL_PATTERN.finditer(text):
+            try:
+                keyword_totals.append(Decimal(match.group(1).replace(",", "")))
+            except (InvalidOperation, IndexError):
+                continue
+
+        if keyword_totals:
+            return max(keyword_totals)
+
+        amounts: list[Decimal] = []
+        for raw in re.findall(r"\d{1,3}(?:,\d{3})*(?:\.\d{2})", text):
+            try:
+                amounts.append(Decimal(raw.replace(",", "")))
+            except InvalidOperation:
+                continue
+
+        if amounts:
+            return max(amounts)
+
+        return None
 
     @staticmethod
     def _parse_date(text: str) -> dt_date | None:
