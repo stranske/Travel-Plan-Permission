@@ -2,14 +2,14 @@ import sys
 
 sys.path.append("src")
 
+from travel_plan_permission.policy import PolicyContext, PolicyEngine
 from travel_plan_permission.policy_versioning import (
     PolicyChangeSimulationResult,
-    PolicyMigrationPlanner,
     PolicyMigrationPlan,
+    PolicyMigrationPlanner,
     PolicyVersion,
     simulate_policy_change,
 )
-from travel_plan_permission.policy import PolicyContext, PolicyEngine
 
 
 def test_policy_version_hash_and_label():
@@ -17,7 +17,10 @@ def test_policy_version_hash_and_label():
 
     assert version.label == "1.2.3"
     # Hash should be stable for the same config
-    assert version.config_hash == PolicyVersion.from_config("1.2.3", {"rules": {"foo": 1}}).config_hash
+    assert (
+        version.config_hash
+        == PolicyVersion.from_config("1.2.3", {"rules": {"foo": 1}}).config_hash
+    )
 
 
 def test_backward_compatibility_and_change_type():

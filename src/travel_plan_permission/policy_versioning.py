@@ -12,9 +12,10 @@ The helpers in this module focus on policy-as-code lifecycle concerns:
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - import cycles avoided at runtime
     from .policy import PolicyContext, PolicyEngine, PolicyResult
@@ -56,7 +57,7 @@ class PolicyVersion:
     @classmethod
     def from_config(
         cls, version: str | None, rule_config: dict[str, Any]
-    ) -> "PolicyVersion":
+    ) -> PolicyVersion:
         major, minor, patch = _parse_version(version)
         return cls(
             major=major,
@@ -69,12 +70,12 @@ class PolicyVersion:
     def label(self) -> str:
         return f"{self.major}.{self.minor}.{self.patch}"
 
-    def is_backward_compatible_with(self, previous: "PolicyVersion") -> bool:
+    def is_backward_compatible_with(self, previous: PolicyVersion) -> bool:
         if self.major != previous.major:
             return False
         return self.minor >= previous.minor
 
-    def change_type(self, previous: "PolicyVersion") -> str:
+    def change_type(self, previous: PolicyVersion) -> str:
         if self.config_hash == previous.config_hash:
             return "no-op"
         if self.major != previous.major:
@@ -127,15 +128,15 @@ class PolicyMigrationPlanner:
 
 @dataclass
 class PolicyChangeSimulationResult:
-    context: "PolicyContext"
-    current_results: list["PolicyResult"]
-    proposed_results: list["PolicyResult"]
+    context: PolicyContext
+    current_results: list[PolicyResult]
+    proposed_results: list[PolicyResult]
 
 
 def simulate_policy_change(
-    current_engine: "PolicyEngine",
-    proposed_engine: "PolicyEngine",
-    historical_contexts: Iterable["PolicyContext"],
+    current_engine: PolicyEngine,
+    proposed_engine: PolicyEngine,
+    historical_contexts: Iterable[PolicyContext],
 ) -> list[PolicyChangeSimulationResult]:
     """Replay historical contexts to evaluate impact of a policy change."""
 
