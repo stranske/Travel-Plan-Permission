@@ -164,7 +164,11 @@ def build_output_bundle(
     ]
     summary_bytes = "\n".join(summary_lines).encode("utf-8")
 
-    bundle = {
+    attachments: dict[str, bytes] = {}
+    if brochure is not None:
+        attachments["conference_brochure.pdf"] = brochure
+
+    bundle: dict[str, object] = {
         "itinerary_excel": {
             "filename": "itinerary.xlsx",
             "content": itinerary_excel,
@@ -176,11 +180,9 @@ def build_output_bundle(
             "mime_type": "application/pdf",
         },
         "conversation_log_json": json.dumps(conversation, ensure_ascii=False),
-        "attachments": {},
+        "attachments": attachments,
     }
 
-    if brochure is not None:
-        bundle["attachments"]["conference_brochure.pdf"] = brochure
     return bundle
 
 

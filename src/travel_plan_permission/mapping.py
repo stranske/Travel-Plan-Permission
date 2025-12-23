@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -55,7 +56,7 @@ def load_template_mapping(
         raise FileNotFoundError("Unable to locate excel_mappings.yaml")
 
     data = yaml.safe_load(mapping_path.read_text(encoding="utf-8")) or {}
-    templates: dict[str, dict[str, object]] = data.get("templates") or {}
+    templates: dict[str, dict[str, Any]] = data.get("templates") or {}
 
     if version not in templates:
         available = ", ".join(sorted(templates)) or "none"
