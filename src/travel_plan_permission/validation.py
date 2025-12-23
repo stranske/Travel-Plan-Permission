@@ -212,7 +212,7 @@ _RULE_TYPES = {
 
 def _default_policy_path() -> Path | None:
     for parent in Path(__file__).resolve().parents:
-        candidate = parent / "config" / "policy.yaml"
+        candidate = parent / "config" / "validation.yaml"
         if candidate.exists():
             return candidate
     return None
@@ -251,7 +251,7 @@ class PolicyValidator:
     def from_file(cls, path: str | Path | None = None) -> PolicyValidator:
         target_path = Path(path) if path is not None else _default_policy_path()
         if target_path is None:
-            raise FileNotFoundError("No policy.yaml file found")
+            raise FileNotFoundError("No validation.yaml file found")
         return cls.from_yaml(target_path.read_text(encoding="utf-8"))
 
     @classmethod

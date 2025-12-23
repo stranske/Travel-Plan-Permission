@@ -1,28 +1,32 @@
 rules:
-  - type: advance_booking
-    name: default_advance_booking
-    code: ADV-001
-    severity: error
-    blocking: true
-    min_days_domestic: 7
-    min_days_international: 14
-    international_destinations:
-      - international
-      - overseas
-
-  - type: budget_limit
-    name: default_budget_limit
-    code: BUD-001
-    severity: error
-    blocking: true
-    trip_limit: 5000
-    category_limits:
-      lodging: 2500
-      meals: 800
-
-  - type: duration_limit
-    name: default_duration_limit
-    code: DUR-001
-    severity: warning
-    blocking: false
-    max_consecutive_days: 14
+  advance_booking:
+    days_required: 14
+    severity: advisory
+  fare_comparison:
+    max_over_lowest: 200
+    severity: blocking
+  cabin_class:
+    long_haul_hours: 5
+    allowed_classes:
+      - economy
+    severity: blocking
+  fare_evidence:
+    severity: blocking
+  driving_vs_flying:
+    severity: advisory
+  hotel_comparison:
+    minimum_alternatives: 2
+    severity: advisory
+  local_overnight:
+    min_distance_miles: 50
+    severity: advisory
+  meal_per_diem:
+    severity: advisory
+  non_reimbursable:
+    blocked_keywords:
+      - liquor
+      - alcohol
+      - personal
+    severity: blocking
+  third_party_paid:
+    severity: blocking
