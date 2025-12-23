@@ -40,6 +40,12 @@ from .policy import (
     Severity,
     ThirdPartyPaidRule,
 )
+from .policy_versioning import (
+    PolicyMigrationPlan,
+    PolicyMigrationPlanner,
+    PolicyVersion,
+    simulate_policy_change,
+)
 from .prompt_flow import (
     CANONICAL_TRIP_FIELDS,
     QUESTION_FLOW,
@@ -107,6 +113,10 @@ __all__ = [
     "PolicyEngine",
     "PolicyResult",
     "PolicyRule",
+    "PolicyVersion",
+    "PolicyMigrationPlan",
+    "PolicyMigrationPlanner",
+    "simulate_policy_change",
     "PolicyValidator",
     "Provider",
     "ProviderRegistry",
