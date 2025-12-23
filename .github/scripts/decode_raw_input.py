@@ -10,7 +10,6 @@ import argparse
 import json
 import re
 from pathlib import Path
-from typing import Any
 
 RAW_FILE = Path("raw_input.json")
 OUT_FILE = Path("input.txt")
