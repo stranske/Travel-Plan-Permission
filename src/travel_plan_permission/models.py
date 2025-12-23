@@ -126,10 +126,19 @@ class ExpenseItem(BaseModel):
 
     category: ExpenseCategory = Field(..., description="Category of the expense")
     description: str = Field(..., description="Description of the expense")
+    vendor: str | None = Field(
+        default=None, description="Vendor or merchant associated with the expense"
+    )
     amount: Annotated[Decimal, Field(ge=0)] = Field(..., description="Amount spent")
     expense_date: date = Field(..., description="Date of the expense")
     receipt_attached: bool = Field(
         default=False, description="Whether a receipt is attached"
+    )
+    receipt_url: str | None = Field(
+        default=None,
+        description=(
+            "URL or path to the receipt attachment; will be converted to a signed link"
+        ),
     )
 
 
@@ -139,6 +148,9 @@ class ExpenseReport(BaseModel):
     report_id: str = Field(..., description="Unique identifier for the report")
     trip_id: str = Field(..., description="Associated trip ID")
     traveler_name: str = Field(..., description="Name of the traveler")
+    cost_center: str | None = Field(
+        default=None, description="Cost center associated with the expense report"
+    )
     expenses: list[ExpenseItem] = Field(
         default_factory=list, description="List of expenses"
     )

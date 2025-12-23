@@ -1,6 +1,7 @@
 """Travel Plan Permission - Workflow automation for travel approval and reimbursement."""
 
 from .approval import ApprovalEngine
+from .export import ExportService
 from .models import (
     ApprovalAction,
     ApprovalDecision,
@@ -22,6 +23,7 @@ __all__ = [
     "ExpenseCategory",
     "ExpenseItem",
     "ExpenseReport",
+    "ExportService",
     "TripPlan",
     "TripStatus",
     "__version__",
