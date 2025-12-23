@@ -1,0 +1,28 @@
+rules:
+  - type: advance_booking
+    name: default_advance_booking
+    code: ADV-001
+    severity: error
+    blocking: true
+    min_days_domestic: 7
+    min_days_international: 14
+    international_destinations:
+      - international
+      - overseas
+
+  - type: budget_limit
+    name: default_budget_limit
+    code: BUD-001
+    severity: error
+    blocking: true
+    trip_limit: 5000
+    category_limits:
+      lodging: 2500
+      meals: 800
+
+  - type: duration_limit
+    name: default_duration_limit
+    code: DUR-001
+    severity: warning
+    blocking: false
+    max_consecutive_days: 14
