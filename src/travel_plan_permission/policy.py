@@ -95,6 +95,14 @@ class PolicyRule(ABC):
             message=message or self.message(),
         )
 
+    def metadata(self) -> dict[str, object]:
+        """Return static metadata about the rule for documentation surfaces."""
+
+        return {
+            "rule_id": self.rule_id,
+            "severity": self.severity,
+            "description": self.message(),
+        }
 
 class AdvanceBookingRule(PolicyRule):
     rule_id = "advance_booking"
@@ -482,3 +490,8 @@ class PolicyEngine:
             for result in self.validate(context)
             if result.severity == Severity.BLOCKING and not result.passed
         ]
+
+    def describe_rules(self) -> list[dict[str, object]]:
+        """Expose structured rule metadata for documentation and UIs."""
+
+        return [rule.metadata() for rule in self.rules]
