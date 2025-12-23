@@ -18,6 +18,13 @@ FULL_SYNC_FILES=(
     ".github/workflows/agents-63-issue-intake.yml"
 )
 
+# Scripts required by agents-63-issue-intake.yml (ChatGPT sync)
+SCRIPTS_TO_SYNC=(
+    "decode_raw_input.py"
+    "parse_chatgpt_topics.py"
+    "fallback_split.py"
+)
+
 # Files to sync from templates (thin callers)
 TEMPLATE_FILES=(
     "agents-orchestrator.yml:.github/workflows/agents-70-orchestrator.yml"
@@ -35,7 +42,7 @@ for file in "${FULL_SYNC_FILES[@]}"; do
     if $DRY_RUN; then
         echo "    Would download: $url"
     else
-        curl -sL "$url" -o "$file"        # Fix local reusable workflow references to point to remote Workflows repo
+        curl -sfL "$url" -o "$file"        # Fix local reusable workflow references to point to remote Workflows repo
         # The Workflows repo uses local refs (./.github/workflows/...) but consumer
         # repos need remote refs (stranske/Workflows/.github/workflows/...@main)
         sed -i 's|uses: \.\/\.github\/workflows\/\(.*\.yml\)|uses: stranske/Workflows/.github/workflows/\1@main|g' "$file"        echo "    ✓ Updated $file"
@@ -51,10 +58,24 @@ for mapping in "${TEMPLATE_FILES[@]}"; do
     if $DRY_RUN; then
         echo "    Would download: $url"
     else
-        curl -sL "$url" -o "$dst"
+        curl -sfL "$url" -o "$dst"
         echo "    ✓ Updated $dst"
     fi
 done
 
+# Sync scripts required by agents-63-issue-intake.yml
+echo "Syncing scripts from $WORKFLOWS_REPO@$BRANCH..."
+mkdir -p .github/scripts
+for script in "${SCRIPTS_TO_SYNC[@]}"; do
+    echo "  Fetching .github/scripts/$script..."
+    url="https://raw.githubusercontent.com/$WORKFLOWS_REPO/$BRANCH/.github/scripts/$script"
+    if $DRY_RUN; then
+        echo "    Would download: $url"
+    else
+        curl -sfL "$url" -o ".github/scripts/$script"
+        echo "    ✓ Updated .github/scripts/$script"
+    fi
+done
+
 echo ""
-echo "Sync complete. Review changes with: git diff .github/workflows/"
+echo "Sync complete. Review changes with: git diff .github/"

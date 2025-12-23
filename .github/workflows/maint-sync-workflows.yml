@@ -24,7 +24,7 @@ jobs:
           mkdir -p /tmp/workflows-latest
           
           # Full workflow files
-          curl -sL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/workflows/agents-63-issue-intake.yml" \
+          curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/workflows/agents-63-issue-intake.yml" \
             -o /tmp/workflows-latest/agents-63-issue-intake.yml
           
           # Fix local reusable workflow references to point to remote Workflows repo
@@ -34,16 +34,30 @@ jobs:
             /tmp/workflows-latest/agents-63-issue-intake.yml
           
           # Template files
-          curl -sL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/agents-orchestrator.yml" \
+          curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/agents-70-orchestrator.yml" \
             -o /tmp/workflows-latest/agents-70-orchestrator.yml
-          curl -sL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/agents-pr-meta.yml" \
+          curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/agents-pr-meta.yml" \
             -o /tmp/workflows-latest/agents-pr-meta.yml
           
-          # Check for differences
+          # Fetch scripts required by agents-63-issue-intake.yml
+          mkdir -p /tmp/workflows-latest/scripts
+          for script in decode_raw_input.py parse_chatgpt_topics.py fallback_split.py; do
+            curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/scripts/$script" \
+              -o "/tmp/workflows-latest/scripts/$script"
+          done
+          
+          # Check for differences in workflows
           CHANGES=""
           for file in agents-63-issue-intake.yml agents-70-orchestrator.yml agents-pr-meta.yml; do
             if ! diff -q ".github/workflows/$file" "/tmp/workflows-latest/$file" > /dev/null 2>&1; then
-              CHANGES="$CHANGES $file"
+              CHANGES="$CHANGES workflows/$file"
+            fi
+          done
+          
+          # Check for differences in scripts
+          for script in decode_raw_input.py parse_chatgpt_topics.py fallback_split.py; do
+            if ! diff -q ".github/scripts/$script" "/tmp/workflows-latest/scripts/$script" > /dev/null 2>&1; then
+              CHANGES="$CHANGES scripts/$script"
             fi
           done
           
@@ -60,6 +74,8 @@ jobs:
           cp /tmp/workflows-latest/agents-63-issue-intake.yml .github/workflows/
           cp /tmp/workflows-latest/agents-70-orchestrator.yml .github/workflows/
           cp /tmp/workflows-latest/agents-pr-meta.yml .github/workflows/
+          mkdir -p .github/scripts
+          cp /tmp/workflows-latest/scripts/*.py .github/scripts/
 
       - name: Create Pull Request
         if: steps.fetch.outputs.has_changes == 'true'
@@ -68,9 +84,9 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: sync/workflows-from-upstream
           delete-branch: true
-          title: "sync: Update workflows from stranske/Workflows"
+          title: "sync: Update workflows and scripts from stranske/Workflows"
           body: |
-            Automated weekly sync of workflow files from stranske/Workflows.
+            Automated weekly sync of workflow files and scripts from stranske/Workflows.
             
             **Changed files:**
             ${{ steps.fetch.outputs.changed_files }}
