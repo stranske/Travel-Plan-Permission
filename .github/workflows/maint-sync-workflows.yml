@@ -46,6 +46,17 @@ jobs:
               -o "/tmp/workflows-latest/scripts/$script"
           done
           
+          # Fetch JS scripts required by reusable-agents-issue-bridge.yml
+          for script in issue_pr_locator.js issue_context_utils.js issue_scope_parser.js keepalive_instruction_template.js; do
+            curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/scripts/$script" \
+              -o "/tmp/workflows-latest/scripts/$script"
+          done
+          
+          # Fetch template files
+          mkdir -p /tmp/workflows-latest/templates
+          curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/templates/keepalive-instruction.md" \
+            -o "/tmp/workflows-latest/templates/keepalive-instruction.md"
+          
           # Check for differences in workflows
           CHANGES=""
           for file in agents-63-issue-intake.yml agents-70-orchestrator.yml agents-pr-meta.yml; do
@@ -54,12 +65,24 @@ jobs:
             fi
           done
           
-          # Check for differences in scripts
+          # Check for differences in Python scripts
           for script in decode_raw_input.py parse_chatgpt_topics.py fallback_split.py; do
             if ! diff -q ".github/scripts/$script" "/tmp/workflows-latest/scripts/$script" > /dev/null 2>&1; then
               CHANGES="$CHANGES scripts/$script"
             fi
           done
+          
+          # Check for differences in JS scripts
+          for script in issue_pr_locator.js issue_context_utils.js issue_scope_parser.js keepalive_instruction_template.js; do
+            if ! diff -q ".github/scripts/$script" "/tmp/workflows-latest/scripts/$script" > /dev/null 2>&1; then
+              CHANGES="$CHANGES scripts/$script"
+            fi
+          done
+          
+          # Check for differences in templates
+          if ! diff -q ".github/templates/keepalive-instruction.md" "/tmp/workflows-latest/templates/keepalive-instruction.md" > /dev/null 2>&1; then
+            CHANGES="$CHANGES templates/keepalive-instruction.md"
+          fi
           
           if [ -n "$CHANGES" ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
@@ -76,6 +99,9 @@ jobs:
           cp /tmp/workflows-latest/agents-pr-meta.yml .github/workflows/
           mkdir -p .github/scripts
           cp /tmp/workflows-latest/scripts/*.py .github/scripts/
+          cp /tmp/workflows-latest/scripts/*.js .github/scripts/
+          mkdir -p .github/templates
+          cp /tmp/workflows-latest/templates/*.md .github/templates/
 
       - name: Create Pull Request
         if: steps.fetch.outputs.has_changes == 'true'
