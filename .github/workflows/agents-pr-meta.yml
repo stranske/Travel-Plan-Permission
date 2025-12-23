@@ -150,4 +150,3 @@ jobs:
       allowed_keepalive_logins: ${{ vars.ALLOWED_KEEPALIVE_LOGINS || 'stranske' }}
       allow_replay: true
     secrets: inherit
-    secrets: inherit
