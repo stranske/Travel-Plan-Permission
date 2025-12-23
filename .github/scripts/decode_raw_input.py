@@ -48,10 +48,7 @@ def main() -> None:
             return
         raw = RAW_FILE.read_text(encoding="utf-8")
         try:
-            if raw not in ("", "null"):
-                text = json.loads(raw)
-            else:
-                text = ""
+            text = json.loads(raw) if raw not in ("", "null") else ""
         except Exception:
             text = raw
     original = text or ""
