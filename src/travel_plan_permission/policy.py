@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -353,10 +354,10 @@ class ThirdPartyPaidRule(PolicyRule):
 
 
 def _load_rule_config(
-    config: dict[str, object], key: str, default: dict[str, object]
-) -> dict[str, object]:
-    rules_cfg = config.get("rules", {}) or {}
-    rule_cfg = rules_cfg.get(key, {}) or {}
+    config: dict[str, Any], key: str, default: dict[str, Any]
+) -> dict[str, Any]:
+    rules_cfg: dict[str, Any] = config.get("rules", {}) or {}
+    rule_cfg: dict[str, Any] = rules_cfg.get(key, {}) or {}
     merged = default.copy()
     merged.update(rule_cfg)
     return merged
