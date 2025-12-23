@@ -45,7 +45,7 @@ jobs:
         run: npm ci
 
       - name: Run markdownlint
-        run: npx markdownlint-cli2 "**/*.md" "!**/node_modules/**"
+        run: npx markdownlint-cli2 "**/*.md"
 
   link-check:
     name: Link check
