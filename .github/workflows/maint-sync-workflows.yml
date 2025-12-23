@@ -1,0 +1,76 @@
+# Periodically checks if workflow files are out of sync with stranske/Workflows
+# and creates a PR to update them if needed
+name: Sync Workflows Check
+
+on:
+  schedule:
+    # Run weekly on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Fetch latest from Workflows repo
+        id: fetch
+        run: |
+          mkdir -p /tmp/workflows-latest
+          
+          # Full workflow files
+          curl -sL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/workflows/agents-63-issue-intake.yml" \
+            -o /tmp/workflows-latest/agents-63-issue-intake.yml
+          
+          # Template files
+          curl -sL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/agents-orchestrator.yml" \
+            -o /tmp/workflows-latest/agents-70-orchestrator.yml
+          curl -sL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/agents-pr-meta.yml" \
+            -o /tmp/workflows-latest/agents-pr-meta.yml
+          
+          # Check for differences
+          CHANGES=""
+          for file in agents-63-issue-intake.yml agents-70-orchestrator.yml agents-pr-meta.yml; do
+            if ! diff -q ".github/workflows/$file" "/tmp/workflows-latest/$file" > /dev/null 2>&1; then
+              CHANGES="$CHANGES $file"
+            fi
+          done
+          
+          if [ -n "$CHANGES" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "changed_files=$CHANGES" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Apply updates
+        if: steps.fetch.outputs.has_changes == 'true'
+        run: |
+          cp /tmp/workflows-latest/agents-63-issue-intake.yml .github/workflows/
+          cp /tmp/workflows-latest/agents-70-orchestrator.yml .github/workflows/
+          cp /tmp/workflows-latest/agents-pr-meta.yml .github/workflows/
+
+      - name: Create Pull Request
+        if: steps.fetch.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: sync/workflows-from-upstream
+          delete-branch: true
+          title: "sync: Update workflows from stranske/Workflows"
+          body: |
+            Automated weekly sync of workflow files from stranske/Workflows.
+            
+            **Changed files:**
+            ${{ steps.fetch.outputs.changed_files }}
+            
+            Review the changes and merge when ready.
+          commit-message: "sync: Update workflows from stranske/Workflows"
+          labels: |
+            sync
+            automation

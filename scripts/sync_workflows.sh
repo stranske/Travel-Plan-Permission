@@ -1,0 +1,58 @@
+#!/bin/bash
+# Sync workflow files from stranske/Workflows repo
+# Usage: ./scripts/sync_workflows.sh [--dry-run]
+
+set -e
+
+WORKFLOWS_REPO="stranske/Workflows"
+BRANCH="main"
+DRY_RUN=false
+
+if [[ "$1" == "--dry-run" ]]; then
+    DRY_RUN=true
+    echo "DRY RUN MODE - no files will be modified"
+fi
+
+# Files to sync (full copy from Workflows repo)
+FULL_SYNC_FILES=(
+    ".github/workflows/agents-63-issue-intake.yml"
+)
+
+# Files to sync from templates (thin callers)
+TEMPLATE_FILES=(
+    "agents-orchestrator.yml:.github/workflows/agents-70-orchestrator.yml"
+    "agents-pr-meta.yml:.github/workflows/agents-pr-meta.yml"
+    "ci.yml:.github/workflows/ci.yml"
+    "autofix.yml:.github/workflows/autofix.yml"
+)
+
+echo "Syncing workflows from $WORKFLOWS_REPO@$BRANCH..."
+
+# Sync full workflow files
+for file in "${FULL_SYNC_FILES[@]}"; do
+    echo "  Fetching $file..."
+    url="https://raw.githubusercontent.com/$WORKFLOWS_REPO/$BRANCH/$file"
+    if $DRY_RUN; then
+        echo "    Would download: $url"
+    else
+        curl -sL "$url" -o "$file"
+        echo "    ✓ Updated $file"
+    fi
+done
+
+# Sync template files
+for mapping in "${TEMPLATE_FILES[@]}"; do
+    src="${mapping%%:*}"
+    dst="${mapping##*:}"
+    echo "  Fetching template $src → $dst..."
+    url="https://raw.githubusercontent.com/$WORKFLOWS_REPO/$BRANCH/templates/consumer-repo/.github/workflows/$src"
+    if $DRY_RUN; then
+        echo "    Would download: $url"
+    else
+        curl -sL "$url" -o "$dst"
+        echo "    ✓ Updated $dst"
+    fi
+done
+
+echo ""
+echo "Sync complete. Review changes with: git diff .github/workflows/"
