@@ -10,6 +10,7 @@ from .models import (
     ExpenseCategory,
     ExpenseItem,
     ExpenseReport,
+    Receipt,
     TripPlan,
     TripStatus,
 )
@@ -41,9 +42,17 @@ from .validation import (
     ValidationRule,
     ValidationSeverity,
 )
+from .receipts import (
+    ALLOWED_RECEIPT_TYPES,
+    MAX_RECEIPT_SIZE_BYTES,
+    ReceiptExtractionResult,
+    ReceiptProcessor,
+)
 
 __all__ = [
     "AdvanceBookingRule",
+    "ALLOWED_RECEIPT_TYPES",
+    "MAX_RECEIPT_SIZE_BYTES",
     "ApprovalAction",
     "ApprovalDecision",
     "ApprovalEngine",
@@ -56,6 +65,7 @@ __all__ = [
     "ExpenseCategory",
     "ExpenseItem",
     "ExpenseReport",
+    "Receipt",
     "ExportService",
     "FareComparisonRule",
     "FareEvidenceRule",
@@ -68,6 +78,8 @@ __all__ = [
     "PolicyResult",
     "PolicyRule",
     "PolicyValidator",
+    "ReceiptExtractionResult",
+    "ReceiptProcessor",
     "Severity",
     "ThirdPartyPaidRule",
     "TripPlan",
