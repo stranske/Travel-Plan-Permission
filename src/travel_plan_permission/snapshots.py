@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from .models import TripPlan
 
 
-def _hash_payload(payload: dict[str, object]) -> str:
+def _hash_payload(payload: Mapping[str, object]) -> str:
     """Return a stable SHA-256 digest for the provided payload."""
 
     serialized = json.dumps(
