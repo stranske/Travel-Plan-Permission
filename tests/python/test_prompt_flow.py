@@ -1,5 +1,4 @@
 from travel_plan_permission.prompt_flow import (
-    QUESTION_FLOW,
     build_output_bundle,
     generate_questions,
     required_field_gaps,

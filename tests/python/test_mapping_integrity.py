@@ -20,9 +20,9 @@ def test_mapping_covers_canonical_fields():
 def test_version_mismatch_requires_opt_in(tmp_path: Path):
     source = Path("config/excel_mappings.yaml").read_text(encoding="utf-8")
     data = yaml.safe_load(source)
-    data["templates"][DEFAULT_TEMPLATE_VERSION]["metadata"]["template_id"] = (
-        "ITIN-2025.2"
-    )
+    data["templates"][DEFAULT_TEMPLATE_VERSION]["metadata"][
+        "template_id"
+    ] = "ITIN-2025.2"
     target = tmp_path / "excel_mappings.yaml"
     target.write_text(yaml.safe_dump(data), encoding="utf-8")
 
