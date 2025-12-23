@@ -63,6 +63,15 @@ from .receipts import (
     ReceiptExtractionResult,
     ReceiptProcessor,
 )
+from .snapshots import (
+    ValidationComparison,
+    ValidationDelta,
+    ValidationSnapshot,
+    ValidationSnapshotStore,
+    compare_results,
+    policy_version_hash,
+    snapshot_from_plan,
+)
 from .validation import (
     AdvanceBookingRule as ValidationAdvanceBookingRule,
 )
@@ -139,11 +148,18 @@ __all__ = [
     "TripStatus",
     "determine_exception_approval_level",
     "ValidationAdvanceBookingRule",
+    "ValidationComparison",
+    "ValidationDelta",
+    "ValidationSnapshot",
+    "ValidationSnapshotStore",
     "ValidationProviderApprovalRule",
     "ValidationResult",
     "ValidationRule",
     "ValidationSeverity",
+    "compare_results",
     "required_field_gaps",
+    "policy_version_hash",
+    "snapshot_from_plan",
     "__version__",
 ]
 __version__ = "0.1.0"
