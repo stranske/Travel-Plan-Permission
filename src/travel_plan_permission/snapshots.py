@@ -172,9 +172,7 @@ class ValidationSnapshotStore:
         serialized = snapshot.model_dump(mode="json")
         payload = json.dumps(serialized, separators=(",", ":"), sort_keys=True)
         if len(payload.encode("utf-8")) > 10_240:
-            msg = (
-                "Snapshot exceeds 10KB; reduce payload size or adjust snapshot fields"
-            )
+            msg = "Snapshot exceeds 10KB; reduce payload size or adjust snapshot fields"
             raise ValueError(msg)
         # Immutable writes: refuse to overwrite an existing snapshot.
         with target.open("x", encoding="utf-8") as handle:
