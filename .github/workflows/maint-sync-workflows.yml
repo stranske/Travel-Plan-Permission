@@ -27,6 +27,12 @@ jobs:
           curl -sL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/workflows/agents-63-issue-intake.yml" \
             -o /tmp/workflows-latest/agents-63-issue-intake.yml
           
+          # Fix local reusable workflow references to point to remote Workflows repo
+          # The Workflows repo uses local refs (./.github/workflows/...) but consumer
+          # repos need remote refs (stranske/Workflows/.github/workflows/...@main)
+          sed -i 's|uses: \.\/\.github\/workflows\/\(.*\.yml\)|uses: stranske/Workflows/.github/workflows/\1@main|g' \
+            /tmp/workflows-latest/agents-63-issue-intake.yml
+          
           # Template files
           curl -sL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/agents-orchestrator.yml" \
             -o /tmp/workflows-latest/agents-70-orchestrator.yml

@@ -35,8 +35,10 @@ for file in "${FULL_SYNC_FILES[@]}"; do
     if $DRY_RUN; then
         echo "    Would download: $url"
     else
-        curl -sL "$url" -o "$file"
-        echo "    ✓ Updated $file"
+        curl -sL "$url" -o "$file"        # Fix local reusable workflow references to point to remote Workflows repo
+        # The Workflows repo uses local refs (./.github/workflows/...) but consumer
+        # repos need remote refs (stranske/Workflows/.github/workflows/...@main)
+        sed -i 's|uses: \.\/\.github\/workflows\/\(.*\.yml\)|uses: stranske/Workflows/.github/workflows/\1@main|g' "$file"        echo "    ✓ Updated $file"
     fi
 done
 
