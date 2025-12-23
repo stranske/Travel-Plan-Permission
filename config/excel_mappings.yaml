@@ -1,0 +1,87 @@
+templates:
+  - template_id: ITIN-2025.1
+    file_name: Travel_Itinerary_Form_2025.xlsx
+    sheet_name: Itinerary
+    version_reviewed: 2025-09-06
+    fields:
+      - canonical_field: traveler_name
+        cell: B4
+        note: Primary traveler full name
+      - canonical_field: business_purpose
+        cell: B5
+        note: Business purpose / event title
+      - canonical_field: cost_center
+        cell: D5
+        note: Chartfield or cost center string
+      - canonical_field: destination_zip
+        cell: F7
+        note: Destination ZIP code for per-diem
+      - canonical_field: city_state
+        cell: B7
+        note: City and state
+      - canonical_field: depart_date
+        cell: B9
+      - canonical_field: return_date
+        cell: D9
+      - canonical_field: event_registration_cost
+        cell: F11
+      - canonical_field: flight_pref_outbound.carrier_flight
+        cell: B12
+      - canonical_field: flight_pref_outbound.depart_time
+        cell: C12
+      - canonical_field: flight_pref_outbound.arrive_time
+        cell: D12
+      - canonical_field: flight_pref_outbound.roundtrip_cost
+        cell: F12
+      - canonical_field: flight_pref_return.carrier_flight
+        cell: B13
+      - canonical_field: flight_pref_return.depart_time
+        cell: C13
+      - canonical_field: flight_pref_return.arrive_time
+        cell: D13
+      - canonical_field: lowest_cost_roundtrip
+        cell: F13
+        note: Documented lowest available fare
+      - canonical_field: parking_estimate
+        cell: F15
+      - canonical_field: hotel.name
+        cell: B17
+      - canonical_field: hotel.address
+        cell: B18
+      - canonical_field: hotel.city_state
+        cell: E18
+      - canonical_field: hotel.nightly_rate
+        cell: F17
+      - canonical_field: hotel.nights
+        cell: G17
+      - canonical_field: hotel.price_compare_notes
+        cell: B20
+        note: Price comparison or exception notes
+      - canonical_field: comparable_hotels[0].name
+        cell: B22
+      - canonical_field: comparable_hotels[0].nightly_rate
+        cell: F22
+      - canonical_field: comparable_hotels[1].name
+        cell: B23
+      - canonical_field: comparable_hotels[1].nightly_rate
+        cell: F23
+      - canonical_field: notes
+        cell: B27
+    checkbox_fields:
+      - canonical_field: hotel.conference_hotel
+        cell: E17
+        checked_value: Yes
+        unchecked_value: No
+        note: Mark if hotel is conference hotel
+    dropdown_fields:
+      - canonical_field: ground_transport_pref
+        cell: B25
+        allowed_values:
+          - Rideshare/Taxi
+          - Rental Car
+          - Public Transit
+          - Personal Vehicle
+    calculated_fields:
+      - cell: F28
+        description: Meal per-diem total (formula-driven on template)
+        formula_driven: true
