@@ -16,7 +16,7 @@ from travel_plan_permission.security import (
 
 
 def test_roles_and_permissions_matrix() -> None:
-    security = SecurityModel()
+    security = SecurityModel()  # noqa: F841
 
     assert DEFAULT_ROLES[RoleName.TRAVELER].permissions == {
         Permission.VIEW,
