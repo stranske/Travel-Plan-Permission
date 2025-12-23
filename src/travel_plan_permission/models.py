@@ -319,9 +319,9 @@ def build_exception_dashboard(
 ) -> dict[str, dict[str, int]]:
     """Aggregate exception patterns for reporting surfaces."""
 
-    by_type = Counter()
-    by_requestor = Counter()
-    by_approver = Counter()
+    by_type: Counter[str] = Counter()
+    by_requestor: Counter[str] = Counter()
+    by_approver: Counter[str] = Counter()
 
     for request in requests:
         by_type[request.type.value] += 1
