@@ -193,6 +193,8 @@ Provide an early, practical tool that:
 This is valuable even before the full orchestration and UI are built and will later become a node in the pre-trip workflow.
 
 ### 5.2 Spreadsheet Writer Function (example)
+
+```python
 from pathlib import Path
 from openpyxl import load_workbook
 
@@ -216,9 +218,11 @@ def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
 
     wb.save(output_path)
     return output_path
+```
 
 ### 5.3 CLI or Script (example)
 
+```python
 import json
 import sys
 from pathlib import Path
@@ -239,6 +243,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
 
 Later, this function (fill_travel_spreadsheet) will be used as a node in the LangGraph pre-trip workflow after the trip proposal has been finalized and approved.
 
@@ -246,6 +251,7 @@ Later, this function (fill_travel_spreadsheet) will be used as a node in the Lan
 
 ### 6.1 Shared State Model (sketch)
 
+```python
 from typing import List, Dict, Optional, Literal
 from pydantic import BaseModel
 
@@ -276,6 +282,7 @@ class TripState(BaseModel):
     # Fields populated by LLM agents
     policy_explanation_for_user: Optional[str] = None
     suggested_changes: Optional[dict] = None
+```
 
 This state is persisted so workflows can span multiple sessions and support audit.
 
@@ -343,6 +350,7 @@ LLM agents are implemented as node functions in the orchestrator that:
 
 Example pattern for the Policy Explanation Agent:
 
+```python
 from langchain_openai import ChatOpenAI
 import json
 
@@ -379,6 +387,7 @@ def policy_explainer_agent(state: TripState) -> TripState:
     state.policy_explanation_for_user = data.get("explanation")
     state.suggested_changes = data.get("suggested_changes")
     return state
+```
 
 The agent “resides” in the same Python application that runs LangGraph. The only remote aspect is the call to the LLM endpoint.
 
