@@ -161,9 +161,10 @@ class Receipt(BaseModel):
 class ReconciliationResult(BaseModel):
     # Classification of expenses vs plan
     ...
-
+```
 ### 4.2 Core functions
 
+```python
 def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
     ...
 
@@ -175,6 +176,7 @@ def reconcile(plan: TripPlan, receipts: list[Receipt]) -> ReconciliationResult:
 
 def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
     ...
+```
 
 ## 5. Early Deliverable: Spreadsheet Auto-Fill
 
