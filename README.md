@@ -25,6 +25,20 @@ ajv validate -s schemas/trip_plan.min.schema.json -d tests/fixtures/sample_trip_
 ajv validate -s schemas/expense_report.min.schema.json -d tests/fixtures/sample_expense_report_minimal.json
 ```
 
+## CLI: Fill Travel Spreadsheet
+
+Generate a completed travel request spreadsheet from a TripPlan JSON file:
+
+```bash
+fill-spreadsheet path/to/plan.json path/to/output.xlsx
+```
+
+To see usage information, run:
+
+```bash
+fill-spreadsheet --help
+```
+
 ## Contributing
 
 - Lint Markdown files:
