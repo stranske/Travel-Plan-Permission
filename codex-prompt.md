@@ -101,7 +101,7 @@ You should assume you're running in `agent-standard` unless explicitly told othe
 
 ## Task Prompt
 
-## Keepalive Next Task
+# Keepalive Next Task
 
 Your objective is to satisfy the **Acceptance Criteria** by completing each **Task** within the defined **Scope**.
 
@@ -123,7 +123,7 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 0/14 tasks complete, 14 remaining
+**Progress:** 3/14 tasks complete, 11 remaining
 
 ### Scope
 - [ ] The Orchestration Plan (docs/ORCHESTRATION_PLAN.md) specifies that a stable API surface must be defined in a dedicated module (`policy_api.py`) before the LangGraph orchestration layer can integrate with this policy engine. This module will expose the core functions that orchestration nodes will call.
@@ -131,20 +131,20 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [ ] Create `src/travel_plan_permission/policy_api.py` module
+- [x] Create `src/travel_plan_permission/policy_api.py` module
 - [ ] Define `PolicyIssue` model with code, message, severity, and context fields
 - [ ] Define `PolicyCheckResult` model with status, issues list, and policy_version
 - [ ] Define `ReconciliationResult` model for expense reconciliation output
 - [ ] Implement `check_trip_plan(plan: TripPlan) -> PolicyCheckResult` wrapper that delegates to existing PolicyEngine
 - [ ] Implement `list_allowed_vendors(plan: TripPlan) -> list[str]` wrapper using ProviderRegistry
 - [ ] Implement `reconcile(plan: TripPlan, receipts: list[Receipt]) -> ReconciliationResult` wrapper
-- [ ] Export all public API symbols from `__init__.py`
+- [x] Export all public API symbols from `__init__.py`
 - [ ] Add type stubs or ensure mypy passes with strict mode
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [ ] `policy_api.py` exists and exports all specified models and functions
+- [x] `policy_api.py` exists and exports all specified models and functions
 - [ ] All functions have complete type annotations
 - [ ] `mypy --strict` passes on the new module
 - [ ] Functions delegate to existing implementation without duplicating logic

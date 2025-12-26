@@ -18,6 +18,18 @@ PolicyIssueSeverity = Literal["info", "warning", "error"]
 PolicyCheckStatus = Literal["pass", "fail"]
 ReconciliationStatus = Literal["under_budget", "on_budget", "over_budget"]
 
+__all__ = [
+    "PolicyIssueSeverity",
+    "PolicyCheckStatus",
+    "ReconciliationStatus",
+    "PolicyIssue",
+    "PolicyCheckResult",
+    "ReconciliationResult",
+    "check_trip_plan",
+    "list_allowed_vendors",
+    "reconcile",
+]
+
 
 class PolicyIssue(BaseModel):
     """Single policy rule violation or advisory."""
