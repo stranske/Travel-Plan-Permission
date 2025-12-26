@@ -144,7 +144,8 @@ def _plan_field_values(plan: TripPlan) -> dict[str, object]:
 
 def _resolve_field_value(data: object, field_name: str) -> object | None:
     if isinstance(data, dict) and field_name in data:
-        return data[field_name]
+        result: object = data[field_name]
+        return result
 
     current: object = data
     for segment in field_name.split("."):
@@ -181,7 +182,7 @@ def _format_currency_value(value: object) -> Decimal | None:
         return None
     if isinstance(value, Decimal):
         amount = value
-    elif isinstance(value, (int, float)):
+    elif isinstance(value, int | float):
         amount = Decimal(str(value))
     elif isinstance(value, str):
         try:
@@ -285,30 +286,30 @@ def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
             continue
         ws[cell] = value
 
-    for field_name, config in mapping.dropdowns.items():
+    for field_name, dropdown_config in mapping.dropdowns.items():
         value = _resolve_field_value(field_data, field_name)
         if value is None:
             continue
-        cell = config.get("cell")
-        if isinstance(cell, str):
-            ws[cell] = value
+        dropdown_cell = dropdown_config.get("cell")
+        if isinstance(dropdown_cell, str):
+            ws[dropdown_cell] = value
 
-    for field_name, config in mapping.checkboxes.items():
+    for field_name, checkbox_config in mapping.checkboxes.items():
         value = _resolve_field_value(field_data, field_name)
         if value is None:
             continue
-        cell = config.get("cell")
-        if not isinstance(cell, str):
+        checkbox_cell = checkbox_config.get("cell")
+        if not isinstance(checkbox_cell, str):
             continue
-        true_value = config.get("true_value", "X")
-        false_value = config.get("false_value", "")
-        ws[cell] = true_value if bool(value) else false_value
+        true_value = checkbox_config.get("true_value", "X")
+        false_value = checkbox_config.get("false_value", "")
+        ws[checkbox_cell] = true_value if bool(value) else false_value
 
-    for config in mapping.formulas.values():
-        cell = config.get("cell")
-        formula = config.get("formula")
-        if isinstance(cell, str) and isinstance(formula, str):
-            ws[cell] = formula
+    for formula_config in mapping.formulas.values():
+        formula_cell = formula_config.get("cell")
+        formula_value = formula_config.get("formula")
+        if isinstance(formula_cell, str) and isinstance(formula_value, str):
+            ws[formula_cell] = formula_value
 
     output_path = Path(output_path)
     wb.save(output_path)
