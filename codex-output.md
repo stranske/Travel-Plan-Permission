@@ -1,7 +1,7 @@
-Added a targeted test that monkeypatches the template mapping to confirm `fill_travel_spreadsheet` writes values based on `excel_mappings.yaml`-style cell definitions and still applies date/currency formatting. This directly exercises the mapping behavior without changing the production API in `tests/python/test_spreadsheet_fill.py`.
+Updated spreadsheet filling to format any date/datetime values (even outside the explicit date field list) while preserving currency handling, and reconciled the PR task/acceptance checkboxes to reflect the verified work. Changes are in `src/travel_plan_permission/policy_api.py` and `codex-prompt.md`.
 
 Tests run:
 - `pytest tests/python/test_spreadsheet_fill.py`
 
 Next steps:
-1. Run the full test suite if you want broader coverage before final review.
+1. Run the full test suite if you want broader validation.
