@@ -37,21 +37,18 @@ dev = [
 fill-spreadsheet = "travel_plan_permission.cli:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/travel_plan_permission"]
-include = [
-    "config/excel_mappings.yaml",
-    "templates/travel_request_template.xlsx",
-]
+[tool.setuptools]
+package-dir = { "" = "src" }
 
-[tool.hatch.build.targets.sdist]
-include = [
-    "config/excel_mappings.yaml",
-    "templates/travel_request_template.xlsx",
-]
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.data-files]
+"config" = ["config/excel_mappings.yaml"]
+"templates" = ["templates/travel_request_template.xlsx"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
