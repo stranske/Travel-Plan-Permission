@@ -33,12 +33,22 @@ dev = [
     "types-PyYAML>=6.0.12",
 ]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[project.scripts]
+fill-spreadsheet = "travel_plan_permission.cli:main"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/travel_plan_permission"]
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.data-files]
+"config" = ["config/excel_mappings.yaml"]
+"templates" = ["templates/travel_request_template.xlsx"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]

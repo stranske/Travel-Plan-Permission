@@ -123,11 +123,11 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 9/17 tasks complete, 8 remaining
+**Progress:** 13/14 tasks complete, 1 remaining
 
 ### ⚠️ IMPORTANT: Task Reconciliation Required
 
-The previous iteration changed **3 file(s)** but did not update task checkboxes.
+The previous iteration changed **2 file(s)** but did not update task checkboxes.
 
 **Before continuing, you MUST:**
 1. Review the recent commits to understand what was changed
@@ -138,31 +138,28 @@ The previous iteration changed **3 file(s)** but did not update task checkboxes.
 _Failure to update checkboxes means progress is not being tracked properly._
 
 ### Scope
-- [ ] The Orchestration Plan identifies spreadsheet auto-fill as an early deliverable (Phase 1) that provides immediate value. Users can generate completed travel request spreadsheets from structured TripPlan data before the full orchestration stack is built. This function will later become a node in the LangGraph pre-trip workflow.
+- [x] The Orchestration Plan specifies a CLI tool as part of the Phase 1 early deliverable. This allows users to generate completed travel request spreadsheets from the command line before the full UI/orchestration is available, providing immediate value.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [x] Add `fill_travel_spreadsheet` function to `policy_api.py`
-- [x] Load the Excel template from `templates/travel_request_template.xlsx` using openpyxl
-- [x] Map TripPlan fields to spreadsheet cells using existing `excel_mappings.yaml` configuration
-- [x] Handle date formatting for spreadsheet cells
-- [x] Handle currency/decimal formatting for cost fields
-- [x] Save the filled workbook to the specified output path
-- [x] Return the output path on success
-- [x] Add unit tests for the spreadsheet fill function
-- [x] Export function from `__init__.py`
+- [x] Create `src/travel_plan_permission/cli.py` module
+- [x] Implement argument parsing for input JSON path and output Excel path
+- [x] Load and validate JSON input against TripPlan model
+- [x] Call `fill_travel_spreadsheet` with parsed TripPlan
+- [x] Print success message with output file path
+- [x] Handle errors gracefully with user-friendly messages
+- [x] Add entry point in `pyproject.toml` for `fill-spreadsheet` command
+- [x] Add usage documentation to README or separate doc
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [x] Function accepts TripPlan and output_path parameters
-- [x] Function loads template from configured location
-- [x] All mapped TripPlan fields are written to correct cells
-- [x] Dates are formatted as YYYY-MM-DD in the spreadsheet
-- [x] Currency values are formatted with 2 decimal places
-- [x] Output file is valid Excel format readable by openpyxl
-- [x] Function returns the output path
-- [x] Unit tests verify field mapping correctness
+- [x] Command `fill-spreadsheet plan.json output.xlsx` works after pip install
+- [x] Invalid JSON produces clear error message
+- [x] Missing required TripPlan fields produce validation error
+- [x] Successful execution prints path to created spreadsheet
+- [x] Exit code 0 on success, non-zero on failure
+- [x] `--help` flag shows usage information
 
 ---
