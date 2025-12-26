@@ -51,7 +51,7 @@ You are Codex, an AI coding assistant operating within this repository's automat
 2. **Change size**
    - Prefer small, focused commits
    - If a task requires large changes, break it into logical steps
-   - Each commit should be independently reviewable
+   - Each commit should be self-contained and easy to review on its own
 
 3. **Testing**
    - Run existing tests before committing
