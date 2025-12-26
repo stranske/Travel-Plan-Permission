@@ -1,9 +1,14 @@
-Added an explicit `__all__` in `src/travel_plan_permission/policy_api.py` to make the stable API surface explicit, keeping the policy API exports tight and discoverable for orchestration.
+Refined the policy issue context to carry more structured details while keeping the stable API intact, so orchestration callers can rely on richer context without changing the surface.
 
-Tests run:
+Details:
+- Expanded `PolicyIssue.context` to accept `dict[str, object]` and now include the rule severity alongside `rule_id` in `src/travel_plan_permission/policy_api.py`.
+
+Tests:
 - `python -m mypy src/travel_plan_permission/policy_api.py`
-- `pytest tests/python/test_policy_api.py`
+- `python -m pytest tests/python/test_policy_api.py`
 
-I noticed `codex-prompt.md` is modified, and I didn’t change it. How would you like to handle that file before I commit?
-1) Leave it uncommitted and commit only the policy API change.
-2) Include `codex-prompt.md` in the commit (if it’s intended).
+Note: Unrelated local changes remain in `codex-prompt.md` and `.workflows-lib/` (not modified by me).
+
+Next steps (pick one):
+1. Run the full test suite if you want broader validation.
+2. I can continue with the next unchecked task if needed.
