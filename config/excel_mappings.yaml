@@ -2,7 +2,7 @@ templates:
   ITIN-2025.1:
     metadata:
       template_id: ITIN-2025.1
-      template_file: Travel_Itinerary_Form_2025.xlsx
+      template_file: travel_request_template.xlsx
       last_reviewed: "2025-09-06"
       reviewer: codex-bot
     cells:
