@@ -17,6 +17,7 @@ from .receipts import Receipt, summarize_receipts
 PolicyIssueSeverity = Literal["info", "warning", "error"]
 PolicyCheckStatus = Literal["pass", "fail"]
 ReconciliationStatus = Literal["under_budget", "on_budget", "over_budget"]
+PolicyIssueContextValue = str | int | float | bool | None
 
 __all__ = [
     "PolicyIssueSeverity",
@@ -39,7 +40,7 @@ class PolicyIssue(BaseModel):
     code: str = Field(..., description="Stable policy rule code")
     message: str = Field(..., description="Human-readable policy message")
     severity: PolicyIssueSeverity = Field(..., description="Severity of the issue")
-    context: dict[str, object] = Field(
+    context: dict[str, PolicyIssueContextValue] = Field(
         default_factory=dict, description="Additional rule context"
     )
 

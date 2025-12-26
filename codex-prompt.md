@@ -123,31 +123,43 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 3/14 tasks complete, 11 remaining
+**Progress:** 14/14 tasks complete, 0 remaining
+
+### ⚠️ IMPORTANT: Task Reconciliation Required
+
+The previous iteration changed **1 file(s)** but did not update task checkboxes.
+
+**Before continuing, you MUST:**
+1. Review the recent commits to understand what was changed
+2. Determine which task checkboxes should be marked complete
+3. Update the PR body to check off completed tasks
+4. Then continue with remaining tasks
+
+_Failure to update checkboxes means progress is not being tracked properly._
 
 ### Scope
-- [ ] The Orchestration Plan (docs/ORCHESTRATION_PLAN.md) specifies that a stable API surface must be defined in a dedicated module (`policy_api.py`) before the LangGraph orchestration layer can integrate with this policy engine. This module will expose the core functions that orchestration nodes will call.
+- [x] The Orchestration Plan (docs/ORCHESTRATION_PLAN.md) specifies that a stable API surface must be defined in a dedicated module (`policy_api.py`) before the LangGraph orchestration layer can integrate with this policy engine. This module will expose the core functions that orchestration nodes will call.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
 - [x] Create `src/travel_plan_permission/policy_api.py` module
-- [ ] Define `PolicyIssue` model with code, message, severity, and context fields
-- [ ] Define `PolicyCheckResult` model with status, issues list, and policy_version
-- [ ] Define `ReconciliationResult` model for expense reconciliation output
-- [ ] Implement `check_trip_plan(plan: TripPlan) -> PolicyCheckResult` wrapper that delegates to existing PolicyEngine
-- [ ] Implement `list_allowed_vendors(plan: TripPlan) -> list[str]` wrapper using ProviderRegistry
-- [ ] Implement `reconcile(plan: TripPlan, receipts: list[Receipt]) -> ReconciliationResult` wrapper
+- [x] Define `PolicyIssue` model with code, message, severity, and context fields
+- [x] Define `PolicyCheckResult` model with status, issues list, and policy_version
+- [x] Define `ReconciliationResult` model for expense reconciliation output
+- [x] Implement `check_trip_plan(plan: TripPlan) -> PolicyCheckResult` wrapper that delegates to existing PolicyEngine
+- [x] Implement `list_allowed_vendors(plan: TripPlan) -> list[str]` wrapper using ProviderRegistry
+- [x] Implement `reconcile(plan: TripPlan, receipts: list[Receipt]) -> ReconciliationResult` wrapper
 - [x] Export all public API symbols from `__init__.py`
-- [ ] Add type stubs or ensure mypy passes with strict mode
+- [x] Add type stubs or ensure mypy passes with strict mode
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
 - [x] `policy_api.py` exists and exports all specified models and functions
-- [ ] All functions have complete type annotations
-- [ ] `mypy --strict` passes on the new module
-- [ ] Functions delegate to existing implementation without duplicating logic
-- [ ] Module is importable via `from travel_plan_permission import check_trip_plan, list_allowed_vendors, reconcile`
+- [x] All functions have complete type annotations
+- [x] `mypy --strict` passes on the new module
+- [x] Functions delegate to existing implementation without duplicating logic
+- [x] Module is importable via `from travel_plan_permission import check_trip_plan, list_allowed_vendors, reconcile`
 
 ---
