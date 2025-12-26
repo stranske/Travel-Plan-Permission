@@ -49,9 +49,7 @@ class ReconciliationResult(BaseModel):
     report_id: str = Field(..., description="Generated expense report identifier")
     planned_total: Decimal = Field(..., description="Estimated trip total")
     actual_total: Decimal = Field(..., description="Actual reconciled spend")
-    variance: Decimal = Field(
-        ..., description="Actual minus planned spend variance"
-    )
+    variance: Decimal = Field(..., description="Actual minus planned spend variance")
     status: ReconciliationStatus = Field(
         ..., description="Budget reconciliation status"
     )
@@ -104,8 +102,7 @@ def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
     results = engine.validate(context)
     issues = [_issue_from_result(result) for result in results if not result.passed]
     has_blocking = any(
-        not result.passed and result.severity == Severity.BLOCKING
-        for result in results
+        not result.passed and result.severity == Severity.BLOCKING for result in results
     )
     status: PolicyCheckStatus = "fail" if has_blocking else "pass"
     return PolicyCheckResult(
@@ -148,9 +145,7 @@ def _expense_from_receipt(receipt: Receipt) -> ExpenseItem:
     )
 
 
-def _build_expense_report(
-    plan: TripPlan, receipts: Sequence[Receipt]
-) -> ExpenseReport:
+def _build_expense_report(plan: TripPlan, receipts: Sequence[Receipt]) -> ExpenseReport:
     expenses = [_expense_from_receipt(receipt) for receipt in receipts]
     return ExpenseReport(
         report_id=f"{plan.trip_id}-reconciliation",
