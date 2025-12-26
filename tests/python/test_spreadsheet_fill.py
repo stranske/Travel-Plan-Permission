@@ -3,11 +3,13 @@ from decimal import Decimal
 
 from openpyxl import load_workbook
 
+import travel_plan_permission.policy_api as policy_api
 from travel_plan_permission import (
     ExpenseCategory,
     TripPlan,
     fill_travel_spreadsheet,
 )
+from travel_plan_permission.mapping import TemplateMapping
 
 
 def _plan() -> TripPlan:
@@ -51,3 +53,32 @@ def test_fill_travel_spreadsheet_writes_mapped_fields(tmp_path) -> None:
     assert sheet["E9"].number_format == "$#,##0.00"
     assert sheet["F9"].value == 40.0
     assert sheet["F9"].number_format == "$#,##0.00"
+
+
+def test_fill_travel_spreadsheet_uses_mapping_cells(tmp_path, monkeypatch) -> None:
+    plan = _plan()
+    output_path = tmp_path / "filled-custom.xlsx"
+    mapping = TemplateMapping(
+        version="ITIN-2025.1",
+        cells={
+            "traveler_name": "Z99",
+            "depart_date": "Z100",
+            "event_registration_cost": "Z101",
+        },
+        dropdowns={},
+        checkboxes={},
+        formulas={},
+        metadata={},
+    )
+
+    monkeypatch.setattr(policy_api, "load_template_mapping", lambda: mapping)
+
+    fill_travel_spreadsheet(plan, output_path)
+
+    workbook = load_workbook(output_path)
+    sheet = workbook.active
+
+    assert sheet["Z99"].value == plan.traveler_name
+    assert sheet["Z100"].value == "2024-09-15"
+    assert sheet["Z101"].value == 200.0
+    assert sheet["Z101"].number_format == "$#,##0.00"
