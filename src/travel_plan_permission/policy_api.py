@@ -271,18 +271,18 @@ def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
         value = _resolve_field_value(field_data, field_name)
         if value is None:
             continue
-        if field_name in _DATE_FIELDS:
-            formatted = _format_date_value(value)
-            if formatted is None:
-                continue
-            ws[cell] = formatted
-            continue
         if field_name in _CURRENCY_FIELDS:
             amount = _format_currency_value(value)
             if amount is None:
                 continue
             ws[cell] = float(amount)
             ws[cell].number_format = _CURRENCY_FORMAT
+            continue
+        if field_name in _DATE_FIELDS or isinstance(value, date):
+            formatted = _format_date_value(value)
+            if formatted is None:
+                continue
+            ws[cell] = formatted
             continue
         ws[cell] = value
 
