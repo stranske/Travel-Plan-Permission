@@ -1,14 +1,11 @@
-Packaged the template and mapping files so `fill-spreadsheet` can find them after a `pip install`, which should satisfy the “CLI works after install” acceptance criteria. This is done via build includes so `config/excel_mappings.yaml` and `templates/travel_request_template.xlsx` end up in site-packages where the existing lookup already searches.
+Added a subprocess-based CLI help test to validate module invocation and updated the PR checklist to mark verified acceptance criteria.
 
-Changes:
-- Added hatch build includes for the mapping YAML and template XLSX in `pyproject.toml`.
-
-Files touched:
-- `pyproject.toml`
-
-Not run:
-- Tests not run (suggest `pytest tests/python/test_cli.py`).
+- New test covers running `python -m travel_plan_permission.cli --help` in `tests/python/test_cli.py`.
+- Checked off verified acceptance criteria in `codex-prompt.md`.
+- Tests run: `pytest tests/python/test_cli.py`.
+- `python -m pip install -e .` failed because build dependency `hatchling` could not be downloaded under restricted network access, so the “pip install then run `fill-spreadsheet`” criterion remains unverified.
+- Uncommitted change still present: `.workflows-lib` (pre-existing).
 
 Next steps:
-1) `pytest tests/python/test_cli.py`
-2) `pip install -e .` and then `fill-spreadsheet --help` / `fill-spreadsheet plan.json output.xlsx` to verify the install path behavior.
+1) Run `python -m pip install -e .` in an environment with access to `hatchling`.
+2) Run `fill-spreadsheet plan.json output.xlsx` to confirm the install-path behavior.
