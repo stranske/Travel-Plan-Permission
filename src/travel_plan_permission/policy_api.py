@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from openpyxl import load_workbook  # type: ignore[import-untyped]
+
+from .mapping import load_template_mapping
 from .models import ExpenseCategory, ExpenseItem, ExpenseReport, TripPlan
 from .policy import PolicyContext, PolicyEngine, PolicyResult, Severity
 from .policy_versioning import PolicyVersion
@@ -29,6 +35,7 @@ __all__ = [
     "TripPlan",
     "Receipt",
     "check_trip_plan",
+    "fill_travel_spreadsheet",
     "list_allowed_vendors",
     "reconcile",
 ]
@@ -75,6 +82,114 @@ class ReconciliationResult(BaseModel):
     expenses_by_category: dict[ExpenseCategory, Decimal] = Field(
         default_factory=dict, description="Actual spend grouped by category"
     )
+
+
+_TEMPLATE_FILENAME = "travel_request_template.xlsx"
+_CURRENCY_FIELDS = {
+    "event_registration_cost",
+    "flight_pref_outbound.roundtrip_cost",
+    "lowest_cost_roundtrip",
+    "parking_estimate",
+    "hotel.nightly_rate",
+    "comparable_hotels[0].nightly_rate",
+}
+_DATE_FIELDS = {"depart_date", "return_date"}
+_CURRENCY_FORMAT = "$#,##0.00"
+_ZIP_PATTERN = re.compile(r"^(?P<city_state>.*?)(?:\s+(?P<zip>\d{5})(?:-\d{4})?)?$")
+
+
+def _default_template_path() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "templates" / _TEMPLATE_FILENAME
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(f"Unable to locate templates/{_TEMPLATE_FILENAME}")
+
+
+def _split_destination(destination: str) -> tuple[str, str | None]:
+    match = _ZIP_PATTERN.match(destination.strip())
+    if not match:
+        return destination, None
+    city_state = (match.group("city_state") or "").strip()
+    zip_code = match.group("zip")
+    return (city_state or destination), zip_code
+
+
+def _plan_field_values(plan: TripPlan) -> dict[str, object]:
+    city_state, zip_code = _split_destination(plan.destination)
+    fields: dict[str, object] = dict(plan.model_dump())
+    fields.update(
+        {
+            "traveler_name": plan.traveler_name,
+            "business_purpose": plan.purpose,
+            "city_state": city_state,
+            "destination_zip": zip_code,
+            "depart_date": plan.departure_date,
+            "return_date": plan.return_date,
+            "event_registration_cost": plan.expense_breakdown.get(
+                ExpenseCategory.CONFERENCE_FEES
+            ),
+            "flight_pref_outbound.roundtrip_cost": plan.expense_breakdown.get(
+                ExpenseCategory.AIRFARE
+            ),
+            "lowest_cost_roundtrip": plan.expense_breakdown.get(ExpenseCategory.AIRFARE),
+            "parking_estimate": plan.expense_breakdown.get(
+                ExpenseCategory.GROUND_TRANSPORT
+            ),
+        }
+    )
+    return fields
+
+
+def _resolve_field_value(data: object, field_name: str) -> object | None:
+    if isinstance(data, dict) and field_name in data:
+        return data[field_name]
+
+    current: object = data
+    for segment in field_name.split("."):
+        match = re.match(r"^(?P<name>[^\[]+)(?:\[(?P<index>\d+)\])?$", segment)
+        if not match:
+            return None
+        name = match.group("name")
+        index_raw = match.group("index")
+        if not isinstance(current, dict) or name not in current:
+            return None
+        current = current[name]
+        if index_raw is not None:
+            if not isinstance(current, list):
+                return None
+            index = int(index_raw)
+            if index >= len(current):
+                return None
+            current = current[index]
+    return current
+
+
+def _format_date_value(value: object) -> str | None:
+    if isinstance(value, datetime):
+        value = value.date()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def _format_currency_value(value: object) -> Decimal | None:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        amount = value
+    elif isinstance(value, (int, float)):
+        amount = Decimal(str(value))
+    elif isinstance(value, str):
+        try:
+            amount = Decimal(value)
+        except Exception:
+            return None
+    else:
+        return None
+    return amount.quantize(Decimal("0.01"))
 
 
 def _policy_version(engine: PolicyEngine) -> str:
@@ -139,6 +254,64 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
         )
     }
     return sorted(providers, key=str.lower)
+
+
+def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
+    """Fill a travel request spreadsheet template using trip plan data."""
+
+    template_path = _default_template_path()
+    mapping = load_template_mapping()
+    wb = load_workbook(template_path)
+    ws = wb.active
+
+    field_data = _plan_field_values(plan)
+    for field_name, cell in mapping.cells.items():
+        value = _resolve_field_value(field_data, field_name)
+        if value is None:
+            continue
+        if field_name in _DATE_FIELDS:
+            formatted = _format_date_value(value)
+            if formatted is None:
+                continue
+            ws[cell] = formatted
+            continue
+        if field_name in _CURRENCY_FIELDS:
+            amount = _format_currency_value(value)
+            if amount is None:
+                continue
+            ws[cell] = float(amount)
+            ws[cell].number_format = _CURRENCY_FORMAT
+            continue
+        ws[cell] = value
+
+    for field_name, config in mapping.dropdowns.items():
+        value = _resolve_field_value(field_data, field_name)
+        if value is None:
+            continue
+        cell = config.get("cell")
+        if isinstance(cell, str):
+            ws[cell] = value
+
+    for field_name, config in mapping.checkboxes.items():
+        value = _resolve_field_value(field_data, field_name)
+        if value is None:
+            continue
+        cell = config.get("cell")
+        if not isinstance(cell, str):
+            continue
+        true_value = config.get("true_value", "X")
+        false_value = config.get("false_value", "")
+        ws[cell] = true_value if bool(value) else false_value
+
+    for config in mapping.formulas.values():
+        cell = config.get("cell")
+        formula = config.get("formula")
+        if isinstance(cell, str) and isinstance(formula, str):
+            ws[cell] = formula
+
+    output_path = Path(output_path)
+    wb.save(output_path)
+    return output_path
 
 
 def _expense_from_receipt(receipt: Receipt) -> ExpenseItem:
