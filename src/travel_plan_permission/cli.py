@@ -53,15 +53,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         plan = _load_trip_plan(args.input_json)
         output_path = fill_travel_spreadsheet(plan, args.output_xlsx)
+    except ValidationError as exc:
+        print("Error: TripPlan validation failed.", file=sys.stderr)
+        print(str(exc), file=sys.stderr)
+        return 1
     except FileNotFoundError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
-        return 1
-    except ValidationError as exc:
-        print("Error: TripPlan validation failed.", file=sys.stderr)
-        print(str(exc), file=sys.stderr)
         return 1
     except OSError as exc:
         print(f"Error: {exc}", file=sys.stderr)
