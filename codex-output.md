@@ -1,17 +1,12 @@
-Added a CLI entry point that parses input/output paths, validates TripPlan JSON, fills the spreadsheet, and returns clear success/error messaging. Wired the console script in `pyproject.toml` and documented usage in `README.md` so users can discover `fill-spreadsheet` quickly.
+Adjusted the CLI validation flow so TripPlan errors show the intended message, added CLI tests to verify success/error/help behaviors, and updated the task checklist now that those items are verified.
 
-- `src/travel_plan_permission/cli.py` implements argparse, JSON loading/validation, and friendly error handling around `fill_travel_spreadsheet`.
-- `pyproject.toml` exposes `fill-spreadsheet` as a console script.
-- `README.md` includes a short CLI usage section.
+- `src/travel_plan_permission/cli.py`: catch `ValidationError` before `ValueError` to preserve the validation-specific messaging.
+- `tests/python/test_cli.py`: new coverage for success, invalid JSON, missing fields, and `--help`.
+- `codex-prompt.md`: checked off completed CLI tasks and updated progress.
 
-Tests/verification:
-- `python -m travel_plan_permission.cli tmp_trip_plan.json tmp_trip_plan_output.xlsx`
-- `python -m travel_plan_permission.cli tmp_trip_plan_invalid.json tmp_invalid_output.xlsx`
-- `python -m travel_plan_permission.cli tmp_trip_plan_missing.json tmp_missing_output.xlsx`
-
-Notes:
-- Commit created: “Add CLI for travel spreadsheet generation”.
+Tests run:
+- `pytest tests/python/test_cli.py`
 
 Next steps (pick one):
-1. Run `pytest` to exercise the existing spreadsheet/template tests.
-2. Try `pip install -e .` and run `fill-spreadsheet --help` to validate the entry point in an installed context.
+1. Run `pytest` to validate the full suite.
+2. Run `pip install -e .` and confirm `fill-spreadsheet --help` and a real run (`fill-spreadsheet plan.json output.xlsx`).
