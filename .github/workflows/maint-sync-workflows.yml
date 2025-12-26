@@ -1,5 +1,8 @@
 # Periodically checks if workflow files are out of sync with stranske/Workflows
 # and creates a PR to update them if needed
+#
+# Note: Most scripts are now fetched via dual checkout in reusable workflows,
+# so this only syncs thin caller workflow files and version pins.
 name: Sync Workflows Check
 
 on:
@@ -23,66 +26,48 @@ jobs:
         run: |
           mkdir -p /tmp/workflows-latest
           
-          # Full workflow files
-          curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/workflows/agents-63-issue-intake.yml" \
-            -o /tmp/workflows-latest/agents-63-issue-intake.yml
+          # Thin caller templates (these delegate to reusable workflows)
+          SYNC_FILES=(
+            "agents-orchestrator.yml"
+            "agents-pr-meta.yml"
+            "autofix.yml"
+          )
           
-          # Fix local reusable workflow references to point to remote Workflows repo
-          # The Workflows repo uses local refs (./.github/workflows/...) but consumer
-          # repos need remote refs (stranske/Workflows/.github/workflows/...@main)
-          sed -i 's|uses: \.\/\.github\/workflows\/\(.*\.yml\)|uses: stranske/Workflows/.github/workflows/\1@main|g' \
-            /tmp/workflows-latest/agents-63-issue-intake.yml
-          
-          # Template files
-          curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/agents-70-orchestrator.yml" \
-            -o /tmp/workflows-latest/agents-70-orchestrator.yml
-          curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/agents-pr-meta.yml" \
-            -o /tmp/workflows-latest/agents-pr-meta.yml
-          
-          # Fetch scripts required by agents-63-issue-intake.yml
-          mkdir -p /tmp/workflows-latest/scripts
-          for script in decode_raw_input.py parse_chatgpt_topics.py fallback_split.py; do
-            curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/scripts/$script" \
-              -o "/tmp/workflows-latest/scripts/$script"
+          for file in "${SYNC_FILES[@]}"; do
+            curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/templates/consumer-repo/.github/workflows/${file}" \
+              -o "/tmp/workflows-latest/${file}"
           done
           
-          # Fetch JS scripts required by reusable-agents-issue-bridge.yml
-          for script in issue_pr_locator.js issue_context_utils.js issue_scope_parser.js keepalive_instruction_template.js; do
-            curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/scripts/$script" \
-              -o "/tmp/workflows-latest/scripts/$script"
-          done
-          
-          # Fetch template files
-          mkdir -p /tmp/workflows-latest/templates
-          curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/templates/keepalive-instruction.md" \
-            -o "/tmp/workflows-latest/templates/keepalive-instruction.md"
+          # Version pins
+          curl -sfL "https://raw.githubusercontent.com/stranske/Workflows/main/.github/workflows/autofix-versions.env" \
+            -o "/tmp/workflows-latest/autofix-versions.env"
           
           # Check for differences in workflows
           CHANGES=""
-          for file in agents-63-issue-intake.yml agents-70-orchestrator.yml agents-pr-meta.yml; do
-            if ! diff -q ".github/workflows/$file" "/tmp/workflows-latest/$file" > /dev/null 2>&1; then
-              CHANGES="$CHANGES workflows/$file"
+          for file in "${SYNC_FILES[@]}"; do
+            # Map template names to local names
+            local_file="$file"
+            if [ "$file" = "agents-orchestrator.yml" ]; then
+              local_file="agents-70-orchestrator.yml"
+            fi
+            
+            if [ -f ".github/workflows/$local_file" ]; then
+              # Compare ignoring first 10 lines (repo-specific headers)
+              if ! diff -q <(tail -n +10 "/tmp/workflows-latest/$file") <(tail -n +10 ".github/workflows/$local_file") > /dev/null 2>&1; then
+                CHANGES="$CHANGES workflows/$local_file"
+              fi
             fi
           done
           
-          # Check for differences in Python scripts
-          for script in decode_raw_input.py parse_chatgpt_topics.py fallback_split.py; do
-            if ! diff -q ".github/scripts/$script" "/tmp/workflows-latest/scripts/$script" > /dev/null 2>&1; then
-              CHANGES="$CHANGES scripts/$script"
+          # Check version pins (just key versions, not all)
+          for key in BLACK_VERSION RUFF_VERSION MYPY_VERSION PYTEST_VERSION; do
+            template_val=$(grep "^${key}=" "/tmp/workflows-latest/autofix-versions.env" | cut -d= -f2)
+            local_val=$(grep "^${key}=" ".github/workflows/autofix-versions.env" | cut -d= -f2 || echo "")
+            
+            if [ -n "$local_val" ] && [ "$template_val" != "$local_val" ]; then
+              CHANGES="$CHANGES versions/${key}"
             fi
           done
-          
-          # Check for differences in JS scripts
-          for script in issue_pr_locator.js issue_context_utils.js issue_scope_parser.js keepalive_instruction_template.js; do
-            if ! diff -q ".github/scripts/$script" "/tmp/workflows-latest/scripts/$script" > /dev/null 2>&1; then
-              CHANGES="$CHANGES scripts/$script"
-            fi
-          done
-          
-          # Check for differences in templates
-          if ! diff -q ".github/templates/keepalive-instruction.md" "/tmp/workflows-latest/templates/keepalive-instruction.md" > /dev/null 2>&1; then
-            CHANGES="$CHANGES templates/keepalive-instruction.md"
-          fi
           
           if [ -n "$CHANGES" ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
@@ -91,34 +76,14 @@ jobs:
             echo "has_changes=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Apply updates
-        if: steps.fetch.outputs.has_changes == 'true'
+      - name: Summary
         run: |
-          cp /tmp/workflows-latest/agents-63-issue-intake.yml .github/workflows/
-          cp /tmp/workflows-latest/agents-70-orchestrator.yml .github/workflows/
-          cp /tmp/workflows-latest/agents-pr-meta.yml .github/workflows/
-          mkdir -p .github/scripts
-          cp /tmp/workflows-latest/scripts/*.py .github/scripts/
-          cp /tmp/workflows-latest/scripts/*.js .github/scripts/
-          mkdir -p .github/templates
-          cp /tmp/workflows-latest/templates/*.md .github/templates/
-
-      - name: Create Pull Request
-        if: steps.fetch.outputs.has_changes == 'true'
-        uses: peter-evans/create-pull-request@v7
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: sync/workflows-from-upstream
-          delete-branch: true
-          title: "sync: Update workflows and scripts from stranske/Workflows"
-          body: |
-            Automated weekly sync of workflow files and scripts from stranske/Workflows.
-            
-            **Changed files:**
-            ${{ steps.fetch.outputs.changed_files }}
-            
-            Review the changes and merge when ready.
-          commit-message: "sync: Update workflows from stranske/Workflows"
-          labels: |
-            sync
-            automation
+          echo "## Workflow Sync Check" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.fetch.outputs.has_changes }}" = "true" ]; then
+            echo "⚠️ Changes detected:" >> "$GITHUB_STEP_SUMMARY"
+            echo "${{ steps.fetch.outputs.changed_files }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Run [Maint 68 Sync Consumer Repos](https://github.com/stranske/Workflows/actions/workflows/maint-68-sync-consumer-repos.yml) to update." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "✅ All workflows in sync with stranske/Workflows" >> "$GITHUB_STEP_SUMMARY"
+          fi
