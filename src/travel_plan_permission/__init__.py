@@ -52,6 +52,7 @@ from .policy_api import (
     PolicyIssue,
     ReconciliationResult,
     check_trip_plan,
+    fill_travel_spreadsheet,
     list_allowed_vendors,
     reconcile,
 )
@@ -177,6 +178,7 @@ __all__ = [
     "ProviderRegistry",
     "ProviderType",
     "check_trip_plan",
+    "fill_travel_spreadsheet",
     "list_allowed_vendors",
     "reconcile",
     "ReceiptExtractionResult",
