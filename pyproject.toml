@@ -42,6 +42,16 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/travel_plan_permission"]
+include = [
+    "config/excel_mappings.yaml",
+    "templates/travel_request_template.xlsx",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "config/excel_mappings.yaml",
+    "templates/travel_request_template.xlsx",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
