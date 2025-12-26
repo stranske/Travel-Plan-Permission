@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -88,3 +91,24 @@ def test_cli_help_shows_usage(capsys) -> None:
     assert excinfo.value.code == 0
     stdout = capsys.readouterr().out
     assert "Generate a completed travel request spreadsheet" in stdout
+
+
+def test_cli_module_help_shows_usage() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    extra_path = str(repo_root / "src")
+    if env.get("PYTHONPATH"):
+        env["PYTHONPATH"] = f"{extra_path}{os.pathsep}{env['PYTHONPATH']}"
+    else:
+        env["PYTHONPATH"] = extra_path
+
+    result = subprocess.run(
+        [sys.executable, "-m", "travel_plan_permission.cli", "--help"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "Generate a completed travel request spreadsheet" in result.stdout
