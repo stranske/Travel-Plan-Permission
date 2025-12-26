@@ -123,43 +123,34 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 14/14 tasks complete, 0 remaining
-
-### ⚠️ IMPORTANT: Task Reconciliation Required
-
-The previous iteration changed **1 file(s)** but did not update task checkboxes.
-
-**Before continuing, you MUST:**
-1. Review the recent commits to understand what was changed
-2. Determine which task checkboxes should be marked complete
-3. Update the PR body to check off completed tasks
-4. Then continue with remaining tasks
-
-_Failure to update checkboxes means progress is not being tracked properly._
+**Progress:** 0/17 tasks complete, 17 remaining
 
 ### Scope
-- [x] The Orchestration Plan (docs/ORCHESTRATION_PLAN.md) specifies that a stable API surface must be defined in a dedicated module (`policy_api.py`) before the LangGraph orchestration layer can integrate with this policy engine. This module will expose the core functions that orchestration nodes will call.
+- [ ] The Orchestration Plan identifies spreadsheet auto-fill as an early deliverable (Phase 1) that provides immediate value. Users can generate completed travel request spreadsheets from structured TripPlan data before the full orchestration stack is built. This function will later become a node in the LangGraph pre-trip workflow.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [x] Create `src/travel_plan_permission/policy_api.py` module
-- [x] Define `PolicyIssue` model with code, message, severity, and context fields
-- [x] Define `PolicyCheckResult` model with status, issues list, and policy_version
-- [x] Define `ReconciliationResult` model for expense reconciliation output
-- [x] Implement `check_trip_plan(plan: TripPlan) -> PolicyCheckResult` wrapper that delegates to existing PolicyEngine
-- [x] Implement `list_allowed_vendors(plan: TripPlan) -> list[str]` wrapper using ProviderRegistry
-- [x] Implement `reconcile(plan: TripPlan, receipts: list[Receipt]) -> ReconciliationResult` wrapper
-- [x] Export all public API symbols from `__init__.py`
-- [x] Add type stubs or ensure mypy passes with strict mode
+- [ ] Add `fill_travel_spreadsheet` function to `policy_api.py`
+- [ ] Load the Excel template from `templates/travel_request_template.xlsx` using openpyxl
+- [ ] Map TripPlan fields to spreadsheet cells using existing `excel_mappings.yaml` configuration
+- [ ] Handle date formatting for spreadsheet cells
+- [ ] Handle currency/decimal formatting for cost fields
+- [ ] Save the filled workbook to the specified output path
+- [ ] Return the output path on success
+- [ ] Add unit tests for the spreadsheet fill function
+- [ ] Export function from `__init__.py`
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [x] `policy_api.py` exists and exports all specified models and functions
-- [x] All functions have complete type annotations
-- [x] `mypy --strict` passes on the new module
-- [x] Functions delegate to existing implementation without duplicating logic
-- [x] Module is importable via `from travel_plan_permission import check_trip_plan, list_allowed_vendors, reconcile`
+- [ ] Function accepts TripPlan and output_path parameters
+- [ ] Function loads template from configured location
+- [ ] All mapped TripPlan fields are written to correct cells
+- [ ] Dates are formatted as YYYY-MM-DD in the spreadsheet
+- [ ] Currency values are formatted with 2 decimal places
+- [ ] Output file is valid Excel format readable by openpyxl
+- [ ] Function returns the output path
+- [ ] Unit tests verify field mapping correctness
 
 ---
