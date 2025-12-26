@@ -101,7 +101,7 @@ You should assume you're running in `agent-standard` unless explicitly told othe
 
 ## Task Prompt
 
-# Keepalive Next Task
+## Keepalive Next Task
 
 Your objective is to satisfy the **Acceptance Criteria** by completing each **Task** within the defined **Scope**.
 
