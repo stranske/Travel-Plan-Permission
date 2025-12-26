@@ -25,6 +25,8 @@ __all__ = [
     "PolicyIssue",
     "PolicyCheckResult",
     "ReconciliationResult",
+    "TripPlan",
+    "Receipt",
     "check_trip_plan",
     "list_allowed_vendors",
     "reconcile",
