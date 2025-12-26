@@ -123,6 +123,7 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
+**Progress:** 10/10 tasks complete, 0 remaining
 **Progress:** 13/14 tasks complete, 1 remaining
 
 ### ⚠️ IMPORTANT: Task Reconciliation Required
@@ -138,28 +139,25 @@ The previous iteration changed **2 file(s)** but did not update task checkboxes.
 _Failure to update checkboxes means progress is not being tracked properly._
 
 ### Scope
+- [x] The spreadsheet auto-fill feature requires the organizational travel request spreadsheet template to be stored in the repository. This template is the target for the `fill_travel_spreadsheet` function and must exist before that function can work.
 - [x] The Orchestration Plan specifies a CLI tool as part of the Phase 1 early deliverable. This allows users to generate completed travel request spreadsheets from the command line before the full UI/orchestration is available, providing immediate value.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [x] Create `src/travel_plan_permission/cli.py` module
-- [x] Implement argument parsing for input JSON path and output Excel path
-- [x] Load and validate JSON input against TripPlan model
-- [x] Call `fill_travel_spreadsheet` with parsed TripPlan
-- [x] Print success message with output file path
-- [x] Handle errors gracefully with user-friendly messages
-- [x] Add entry point in `pyproject.toml` for `fill-spreadsheet` command
-- [x] Add usage documentation to README or separate doc
+- [x] Create `templates/` directory in repository root
+- [x] Add placeholder or actual `travel_request_template.xlsx` file
+- [x] Verify `config/excel_mappings.yaml` cell references match template structure
+- [x] Update any hardcoded paths in code to use the templates directory
+- [x] Add templates directory to version control (not gitignored)
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [x] Command `fill-spreadsheet plan.json output.xlsx` works after pip install
-- [x] Invalid JSON produces clear error message
-- [x] Missing required TripPlan fields produce validation error
-- [x] Successful execution prints path to created spreadsheet
-- [x] Exit code 0 on success, non-zero on failure
-- [x] `--help` flag shows usage information
+- [x] `templates/travel_request_template.xlsx` exists and is valid Excel file
+- [x] Template contains cells referenced in `excel_mappings.yaml`
+- [x] Cell references (e.g., B2, B3, C6) match actual template layout
+- [x] `openpyxl.load_workbook()` successfully loads the template
+- [x] Template file is tracked in git
 
 ---
