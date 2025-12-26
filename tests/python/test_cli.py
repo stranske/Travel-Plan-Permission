@@ -70,6 +70,17 @@ def test_cli_validation_error_returns_error(tmp_path, capsys) -> None:
     assert "TripPlan validation failed" in stderr
 
 
+def test_cli_missing_input_file_returns_error(tmp_path, capsys) -> None:
+    input_path = tmp_path / "missing.json"
+    output_path = tmp_path / "output.xlsx"
+
+    exit_code = main([str(input_path), str(output_path)])
+
+    assert exit_code == 1
+    stderr = capsys.readouterr().err
+    assert "Input file not found" in stderr
+
+
 def test_cli_help_shows_usage(capsys) -> None:
     with pytest.raises(SystemExit) as excinfo:
         main(["--help"])

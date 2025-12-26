@@ -1,12 +1,11 @@
-Adjusted the CLI validation flow so TripPlan errors show the intended message, added CLI tests to verify success/error/help behaviors, and updated the task checklist now that those items are verified.
+Added a CLI error-handling test for missing input files and explicitly called out `fill-spreadsheet` as the Phase 1 early deliverable in the orchestration plan to align scope with the acceptance criteria. The new test covers the user-friendly error path that the CLI already implements, while the doc update makes the Phase 1 CLI deliverable unmistakable in `docs/ORCHESTRATION_PLAN.md`.
 
-- `src/travel_plan_permission/cli.py`: catch `ValidationError` before `ValueError` to preserve the validation-specific messaging.
-- `tests/python/test_cli.py`: new coverage for success, invalid JSON, missing fields, and `--help`.
-- `codex-prompt.md`: checked off completed CLI tasks and updated progress.
+- Updated documentation in `docs/ORCHESTRATION_PLAN.md` to explicitly name the `fill-spreadsheet` CLI as the Phase 1 early deliverable.
+- Added a missing-input-file CLI test in `tests/python/test_cli.py` to validate non-zero exit and a clear error message.
 
-Tests run:
+Tests:
 - `pytest tests/python/test_cli.py`
 
-Next steps (pick one):
-1. Run `pytest` to validate the full suite.
-2. Run `pip install -e .` and confirm `fill-spreadsheet --help` and a real run (`fill-spreadsheet plan.json output.xlsx`).
+Next steps (optional):
+1. Run the full test suite with `pytest`.
+2. Try an end-to-end CLI run via `fill-spreadsheet plan.json output.xlsx` in a local install if you want to validate the console script wiring.

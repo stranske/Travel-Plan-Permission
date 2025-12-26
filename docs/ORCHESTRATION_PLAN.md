@@ -413,6 +413,7 @@ Similar patterns will be used for:
   - Reads a JSON representation of TripPlan.
   - Fills the spreadsheet template.
   - Outputs a completed Excel file.
+- Publish the fill-spreadsheet CLI command as the Phase 1 early deliverable so users can generate spreadsheets before the full UI exists.
 - Document how users can:
   - Create a plan.json manually or via a small helper.
   - Run the command to generate the spreadsheet.
