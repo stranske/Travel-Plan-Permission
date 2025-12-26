@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-import re
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 from openpyxl import load_workbook  # type: ignore[import-untyped]
+from pydantic import BaseModel, Field
 
 from .mapping import load_template_mapping
 from .models import ExpenseCategory, ExpenseItem, ExpenseReport, TripPlan
@@ -132,7 +131,9 @@ def _plan_field_values(plan: TripPlan) -> dict[str, object]:
             "flight_pref_outbound.roundtrip_cost": plan.expense_breakdown.get(
                 ExpenseCategory.AIRFARE
             ),
-            "lowest_cost_roundtrip": plan.expense_breakdown.get(ExpenseCategory.AIRFARE),
+            "lowest_cost_roundtrip": plan.expense_breakdown.get(
+                ExpenseCategory.AIRFARE
+            ),
             "parking_estimate": plan.expense_breakdown.get(
                 ExpenseCategory.GROUND_TRANSPORT
             ),
