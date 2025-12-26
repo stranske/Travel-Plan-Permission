@@ -1,14 +1,7 @@
-Refined the policy issue context to carry more structured details while keeping the stable API intact, so orchestration callers can rely on richer context without changing the surface.
+Exposed core domain types in the stable policy API so orchestration code can import `TripPlan` and `Receipt` directly from the module without reaching into internal packages. This keeps the public surface in one place and aligns with the plan for a dedicated policy API module in `src/travel_plan_permission/policy_api.py`.
 
-Details:
-- Expanded `PolicyIssue.context` to accept `dict[str, object]` and now include the rule severity alongside `rule_id` in `src/travel_plan_permission/policy_api.py`.
+Tests: `pytest tests/python/test_policy_api.py`
 
-Tests:
-- `python -m mypy src/travel_plan_permission/policy_api.py`
-- `python -m pytest tests/python/test_policy_api.py`
-
-Note: Unrelated local changes remain in `codex-prompt.md` and `.workflows-lib/` (not modified by me).
-
-Next steps (pick one):
-1. Run the full test suite if you want broader validation.
-2. I can continue with the next unchecked task if needed.
+Next steps:
+1. Run `mypy --strict src/travel_plan_permission/policy_api.py` if you want an explicit type check alongside the test run.
+2. Run the full test suite if you need broader validation.
