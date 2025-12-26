@@ -37,7 +37,7 @@ class PolicyIssue(BaseModel):
     code: str = Field(..., description="Stable policy rule code")
     message: str = Field(..., description="Human-readable policy message")
     severity: PolicyIssueSeverity = Field(..., description="Severity of the issue")
-    context: dict[str, str] = Field(
+    context: dict[str, object] = Field(
         default_factory=dict, description="Additional rule context"
     )
 
@@ -102,7 +102,7 @@ def _issue_from_result(result: PolicyResult) -> PolicyIssue:
         code=result.rule_id,
         message=result.message,
         severity=_issue_severity(result),
-        context={"rule_id": result.rule_id},
+        context={"rule_id": result.rule_id, "severity": result.severity},
     )
 
 
