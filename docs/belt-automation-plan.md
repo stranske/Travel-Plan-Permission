@@ -289,7 +289,7 @@ If the Workflows repo makes breaking changes:
 
 ## References
 
-- [Workflows repo USAGE.md](https://github.com/stranske/Workflows/blob/main/USAGE.md)
+- [Workflows repo USAGE.md](https://github.com/stranske/Workflows/blob/main/docs/USAGE.md)
 - [ci_reuse.md](https://github.com/stranske/Workflows/blob/main/docs/ci_reuse.md)
 - [Agent automation overview](https://github.com/stranske/Workflows/blob/main/docs/agent-automation.md)
 - [WORKFLOWS.md](https://github.com/stranske/Workflows/blob/main/docs/ci/WORKFLOWS.md)
