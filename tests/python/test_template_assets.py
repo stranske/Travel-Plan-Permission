@@ -19,4 +19,11 @@ def test_template_asset_loads_and_matches_mapping() -> None:
 
     for cell_ref in mapping.cells.values():
         coordinate_from_string(cell_ref)
-        assert sheet[cell_ref] is not None
+        assert sheet[cell_ref].value not in (None, "")
+
+    for formula_config in mapping.formulas.values():
+        cell_ref = formula_config.get("cell")
+        formula = formula_config.get("formula")
+        assert isinstance(cell_ref, str)
+        assert isinstance(formula, str)
+        assert sheet[cell_ref].value == formula
