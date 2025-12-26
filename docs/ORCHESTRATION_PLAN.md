@@ -9,7 +9,7 @@ This document describes how the Travel-Plan-Permission policy engine will integr
 The system has two main goals:
 
 1. **Long-term**: Provide a full pre-trip and post-trip experience, including planning, policy checking, approvals, and reconciliation.
-2. **Short-term (early deliverable)**: Provide an automated way to fill the organization’s existing travel request spreadsheet template from a finalized trip plan so users can benefit before the full stack is deployed.
+1. **Short-term (early deliverable)**: Provide an automated way to fill the organization’s existing travel request spreadsheet template from a finalized trip plan so users can benefit before the full stack is deployed.
 
 The orchestration layer will use **LangGraph** to coordinate deterministic policy logic (this repo), LLM agents, and user/supervisor interactions.
 
@@ -184,11 +184,11 @@ def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
 
 Provide an early, practical tool that:
 
-  - Takes a finalized TripPlan as input.
+- Takes a finalized TripPlan as input.
 
-  - Fills the existing organizational travel request spreadsheet template stored in this repo.
+- Fills the existing organizational travel request spreadsheet template stored in this repo.
 
-  - Outputs a completed Excel file that users can submit through existing processes.
+- Outputs a completed Excel file that users can submit through existing processes.
 
 This is valuable even before the full orchestration and UI are built and will later become a node in the pre-trip workflow.
 
@@ -289,64 +289,64 @@ This state is persisted so workflows can span multiple sessions and support audi
 ### 6.2 Pre-Trip Workflow (Graph)
 
 1. Initial Plan Capture
-  - User describes trip.
-  - Plan Normalization Agent converts free text into a TripPlan.
-  - Saved into TripState.normalized_trip_plan.
-2. Pre-check Policy
-  - Node calls check_trip_plan(TripPlan).
-  - Stores policy_status, policy_issues, policy_version.
-3. Policy Explanation & Adjustment Loop
-  - Policy Explanation Agent reads policy results and generates an explanation plus suggested changes.
-  - User adjusts plan based on suggestions.
-  - Loop until plan passes policy or user stops.
-4. Vendor Search
-  - Node uses list_allowed_vendors(plan) plus travel APIs to fetch options.
-  - Stores vendor search results in vendor_results.
-5. Option Summarization & Selection
-  - Option Summarization Agent turns raw options into a manageable set of choices.
-  - User selects preferred options.
-  - Selections stored in selected_options.
-6. Final Policy Check
-  - Re-run check_trip_plan on final selected options.
-  - Final safety check before generating artifacts.
-7. Spreadsheet Generation (Early and Final Integration)
-  - Node calls fill_travel_spreadsheet with the finalized TripPlan.
-  - Outputs a completed Excel file.
-  - This step is both:
-    - An early deliverable (CLI), and
-    - An integrated node in the full workflow.
-8. Supervisor Approval
-  - Supervisor views the plan and attached spreadsheet.
-  - Approves or rejects.
-  - Decision recorded in approval_status and approval_history.
+- User describes trip.
+- Plan Normalization Agent converts free text into a TripPlan.
+- Saved into TripState.normalized_trip_plan.
+1. Pre-check Policy
+- Node calls check_trip_plan(TripPlan).
+- Stores policy_status, policy_issues, policy_version.
+1. Policy Explanation & Adjustment Loop
+- Policy Explanation Agent reads policy results and generates an explanation plus suggested changes.
+- User adjusts plan based on suggestions.
+- Loop until plan passes policy or user stops.
+1. Vendor Search
+- Node uses list_allowed_vendors(plan) plus travel APIs to fetch options.
+- Stores vendor search results in vendor_results.
+1. Option Summarization & Selection
+- Option Summarization Agent turns raw options into a manageable set of choices.
+- User selects preferred options.
+- Selections stored in selected_options.
+1. Final Policy Check
+- Re-run check_trip_plan on final selected options.
+- Final safety check before generating artifacts.
+1. Spreadsheet Generation (Early and Final Integration)
+- Node calls fill_travel_spreadsheet with the finalized TripPlan.
+- Outputs a completed Excel file.
+- This step is both:
+  - An early deliverable (CLI), and
+  - An integrated node in the full workflow.
+1. Supervisor Approval
+- Supervisor views the plan and attached spreadsheet.
+- Approves or rejects.
+- Decision recorded in approval_status and approval_history.
 
 ### 6.3 Post-Trip Workflow (Graph)
 
 1. Receipt Ingestion
-  - User uploads or forwards receipts.
-  - Stored in TripState.receipts.
-2. Receipt Extraction
-  - Node uses OCR/LLM to convert receipts into structured Receipt objects.
-3. Reconciliation
-  - Node calls reconcile(plan, receipts) from the policy engine.
-  - Stores reconciliation_result.
-4. Reconciliation Explanation
-  - Reconciliation Explanation Agent generates a human-readable summary of:
-    - Matches
-    - Variances
-    - Potential issues
-5. Supervisor Expense Approval
-  - Supervisor reviews reconciliation summary and decides.
-  - Decision and rationale recorded in state.
+- User uploads or forwards receipts.
+- Stored in TripState.receipts.
+1. Receipt Extraction
+- Node uses OCR/LLM to convert receipts into structured Receipt objects.
+1. Reconciliation
+- Node calls reconcile(plan, receipts) from the policy engine.
+- Stores reconciliation_result.
+1. Reconciliation Explanation
+- Reconciliation Explanation Agent generates a human-readable summary of:
+  - Matches
+  - Variances
+  - Potential issues
+1. Supervisor Expense Approval
+- Supervisor reviews reconciliation summary and decides.
+- Decision and rationale recorded in state.
 
 ## 7. LLM Agent Implementation Model
 
 LLM agents are implemented as node functions in the orchestrator that:
 1. Read the relevant subset of TripState.
-2. Construct a prompt (and tools if needed).
-3. Call the LLM via the OpenAI API.
-4. Parse the result into structured output.
-5. Update TripState and return it to LangGraph.
+1. Construct a prompt (and tools if needed).
+1. Call the LLM via the OpenAI API.
+1. Parse the result into structured output.
+1. Update TripState and return it to LangGraph.
 
 Example pattern for the Policy Explanation Agent:
 
@@ -392,63 +392,63 @@ def policy_explainer_agent(state: TripState) -> TripState:
 The agent “resides” in the same Python application that runs LangGraph. The only remote aspect is the call to the LLM endpoint.
 
 Similar patterns will be used for:
-  - Plan Normalization Agent
-  - Option Summarization Agent
-  - Reconciliation Explanation Agent
+- Plan Normalization Agent
+- Option Summarization Agent
+- Reconciliation Explanation Agent
 
 ## 8. Implementation Phases
 
 ### Phase 0: Policy Engine Stabilization
-  - Define TripPlan, PolicyIssue, PolicyCheckResult, Receipt, and ReconciliationResult in policy_api.py.
-  - Implement:
-    - check_trip_plan
-    - list_allowed_vendors
-    - reconcile
-  - Add tests for key policy scenarios.
-  - Make the repo installable as a Python package.
+- Define TripPlan, PolicyIssue, PolicyCheckResult, Receipt, and ReconciliationResult in policy_api.py.
+- Implement:
+  - check_trip_plan
+  - list_allowed_vendors
+  - reconcile
+- Add tests for key policy scenarios.
+- Make the repo installable as a Python package.
 
 ### Phase 1: Spreadsheet Auto-Fill (Early Deliverable)
-  - Implement fill_travel_spreadsheet(plan: TripPlan, output_path: Path).
-  - Create a CLI tool that:
-    - Reads a JSON representation of TripPlan.
-    - Fills the spreadsheet template.
-    - Outputs a completed Excel file.
-  - Document how users can:
-    - Create a plan.json manually or via a small helper.
-    - Run the command to generate the spreadsheet.
+- Implement fill_travel_spreadsheet(plan: TripPlan, output_path: Path).
+- Create a CLI tool that:
+  - Reads a JSON representation of TripPlan.
+  - Fills the spreadsheet template.
+  - Outputs a completed Excel file.
+- Document how users can:
+  - Create a plan.json manually or via a small helper.
+  - Run the command to generate the spreadsheet.
 
 ### Phase 2: Orchestration Skeleton
-  - Create a separate orchestrator module/project.
-  - Define TripState.
-  - Implement minimal LangGraph workflow:
-    - precheck_policy_node
-    - vendor_search_node (stub or prototype)
-    - final_policy_check_node
-  - Add a CLI that:
-    - Creates a sample TripPlan
-    - Wraps it in TripState
-    - Runs the graph and prints the result.
+- Create a separate orchestrator module/project.
+- Define TripState.
+- Implement minimal LangGraph workflow:
+  - precheck_policy_node
+  - vendor_search_node (stub or prototype)
+  - final_policy_check_node
+- Add a CLI that:
+  - Creates a sample TripPlan
+  - Wraps it in TripState
+  - Runs the graph and prints the result.
 
 ### Phase 3: Pre-Trip Workflow with Agents
-  - Implement Plan Normalization Agent.
-  - Implement Policy Explanation Agent and plan adjustment loop.
-  - Implement Option Summarization Agent.
-  - Integrate vendor search with approved travel providers.
-  - Integrate the spreadsheet generation node into the workflow.
+- Implement Plan Normalization Agent.
+- Implement Policy Explanation Agent and plan adjustment loop.
+- Implement Option Summarization Agent.
+- Integrate vendor search with approved travel providers.
+- Integrate the spreadsheet generation node into the workflow.
 
 ### Phase 4: Supervisor Approval
-  - Add supervisor approval logic to the pre-trip graph.
-  - Provide a minimal UI or API for supervisors to review and approve.
-  - Persist approval decisions and policy version for audit.
+- Add supervisor approval logic to the pre-trip graph.
+- Provide a minimal UI or API for supervisors to review and approve.
+- Persist approval decisions and policy version for audit.
 
 ### Phase 5: Post-Trip Reconciliation
-  - Implement receipt ingestion and extraction.
-  - Implement reconcile integration in the post-trip graph.
-  - Implement Reconciliation Explanation Agent.
-  - Add supervisor approval for expenses.
+- Implement receipt ingestion and extraction.
+- Implement reconcile integration in the post-trip graph.
+- Implement Reconciliation Explanation Agent.
+- Add supervisor approval for expenses.
 
 ### Phase 6: Hardening and Service Evolution
-  - Improve logging, metrics, and error handling.
-  - Consider exposing the policy engine as an internal service if needed.
-  - Tighten identity and access control around user and supervisor actions.
-  - Extend policy logic as required by stakeholders.
+- Improve logging, metrics, and error handling.
+- Consider exposing the policy engine as an internal service if needed.
+- Tighten identity and access control around user and supervisor actions.
+- Extend policy logic as required by stakeholders.
