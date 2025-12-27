@@ -178,6 +178,9 @@ def test_reconcile_summarizes_receipts(
     result = reconcile(trip_plan, over_budget_receipts)
 
     assert result.status == "over_budget"
+    assert result.planned_total == Decimal("1000.00")
+    assert result.actual_total == Decimal("1200.00")
+    assert result.variance == Decimal("200.00")
     assert result.receipt_count == 2
     assert result.receipts_by_type == {".pdf": 1, ".png": 1}
     assert result.expenses_by_category == {ExpenseCategory.OTHER: Decimal("1200.00")}
@@ -197,6 +200,9 @@ def test_reconcile_handles_empty_receipts(trip_plan: TripPlan) -> None:
     result = reconcile(trip_plan, [])
 
     assert result.status == "under_budget"
+    assert result.planned_total == Decimal("1000.00")
+    assert result.actual_total == Decimal("0.00")
+    assert result.variance == Decimal("-1000.00")
     assert result.receipt_count == 0
     assert result.receipts_by_type == {}
 

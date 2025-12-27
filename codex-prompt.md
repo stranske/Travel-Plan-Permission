@@ -123,32 +123,44 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 4/16 tasks complete, 12 remaining
+**Progress:** 16/16 tasks complete, 0 remaining
+
+### ⚠️ IMPORTANT: Task Reconciliation Required
+
+The previous iteration changed **2 file(s)** but did not update task checkboxes.
+
+**Before continuing, you MUST:**
+1. Review the recent commits to understand what was changed
+2. Determine which task checkboxes should be marked complete
+3. Update the PR body to check off completed tasks
+4. Then continue with remaining tasks
+
+_Failure to update checkboxes means progress is not being tracked properly._
 
 ### Scope
-- [ ] The Orchestration Plan (Phase 0) requires tests for key policy scenarios to ensure the API surface is reliable before orchestration integration. Comprehensive tests validate that the policy engine behaves correctly and provides confidence for LangGraph node implementations.
+- [x] The Orchestration Plan (Phase 0) requires tests for key policy scenarios to ensure the API surface is reliable before orchestration integration. Comprehensive tests validate that the policy engine behaves correctly and provides confidence for LangGraph node implementations.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
 - [x] Create `tests/python/test_policy_api.py` test module
-- [ ] Write tests for `check_trip_plan` with passing trip plans
-- [ ] Write tests for `check_trip_plan` with policy violations
-- [ ] Write tests for `list_allowed_vendors` with various destinations
-- [ ] Write tests for `list_allowed_vendors` with date filtering
-- [ ] Write tests for `reconcile` with matching receipts
-- [ ] Write tests for `reconcile` with expense variances
-- [ ] Add fixtures for common TripPlan and Receipt test data
-- [ ] Ensure tests cover edge cases (empty inputs, missing fields)
-- [ ] Verify policy_version is included in results
+- [x] Write tests for `check_trip_plan` with passing trip plans
+- [x] Write tests for `check_trip_plan` with policy violations
+- [x] Write tests for `list_allowed_vendors` with various destinations
+- [x] Write tests for `list_allowed_vendors` with date filtering
+- [x] Write tests for `reconcile` with matching receipts
+- [x] Write tests for `reconcile` with expense variances
+- [x] Add fixtures for common TripPlan and Receipt test data
+- [x] Ensure tests cover edge cases (empty inputs, missing fields)
+- [x] Verify policy_version is included in results
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
 - [x] Test file exists at `tests/python/test_policy_api.py`
-- [ ] All three API functions have test coverage
-- [ ] Tests cover both success and failure scenarios
-- [ ] Tests verify return types match API contract
+- [x] All three API functions have test coverage
+- [x] Tests cover both success and failure scenarios
+- [x] Tests verify return types match API contract
 - [x] `pytest tests/python/test_policy_api.py` passes
 - [x] Coverage for policy_api.py is >= 80%
 
