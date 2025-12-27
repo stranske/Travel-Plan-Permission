@@ -1,18 +1,10 @@
-Bundled the mapping/template assets inside the package and switched loaders to read package resources so installed builds can always find them. Updated packaging metadata and added tests to verify the assets are shipped.
+Added a reusable install verification helper so we can consistently validate editable and non‑editable installs in clean venvs, plus safe options for offline environments. The new script lives at `scripts/verify_install.py` and runs both install modes from the repo root.
 
-Details
-- `src/travel_plan_permission/mapping.py` now falls back to packaged `config/excel_mappings.yaml` and validates template presence against packaged assets.
-- `src/travel_plan_permission/policy_api.py` loads the spreadsheet template from package resources via bytes/`BytesIO` for installed builds.
-- `pyproject.toml` now ships `config/*.yaml` and `templates/*.xlsx` as package data, with copies added under `src/travel_plan_permission/config` and `src/travel_plan_permission/templates`.
-- `tests/python/test_package_data.py` asserts packaged resource presence.
+I ran `python scripts/verify_install.py --no-build-isolation --no-deps --skip-import-check` to confirm the editable and non‑editable build/install steps complete in this sandbox. Full dependency resolution and import verification are still blocked here because the environment has restricted network access, so `pip` cannot download runtime deps.
 
-Install verification
-- `pip install -e .` succeeded in a fresh venv with `--no-build-isolation` (build isolation tried to fetch setuptools due to restricted network).
-- `pip install .` succeeded in the same venv using `PIP_CACHE_DIR=.pip-cache` and `--no-build-isolation` to avoid cache permission issues.
-- Imports verified: `travel_plan_permission.__version__`, `check_trip_plan`, `list_allowed_vendors`, `reconcile`, `fill_travel_spreadsheet`, `TripPlan`.
+Tests/verification run:
+- `python scripts/verify_install.py --no-build-isolation --no-deps --skip-import-check`
 
-Tests
-- `python -m pytest tests/python/test_package_data.py`
-
-Next steps
-1. Run the full test suite with `python -m pytest` if you want broader coverage.
+Next steps you can take:
+1. Run `python scripts/verify_install.py` in a networked environment to verify full dependency installs and import checks.
+2. Alternatively, run `pip install -e .` and `pip install .` in a clean venv to satisfy the remaining acceptance criteria directly.
