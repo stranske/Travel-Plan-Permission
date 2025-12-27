@@ -24,6 +24,7 @@ def install_and_verify(
     repo_root: Path,
     editable: bool,
     no_build_isolation: bool,
+    no_cache: bool,
     no_deps: bool,
     system_site_packages: bool,
     skip_import_check: bool,
@@ -33,9 +34,11 @@ def install_and_verify(
         EnvBuilder(with_pip=True, system_site_packages=system_site_packages).create(venv_dir)
         python = venv_python(venv_dir)
 
-        install_cmd = [str(python), "-m", "pip", "install", "--no-cache-dir"]
+        install_cmd = [str(python), "-m", "pip", "install"]
         if no_build_isolation:
             install_cmd.append("--no-build-isolation")
+        if no_cache:
+            install_cmd.append("--no-cache-dir")
         if no_deps:
             install_cmd.append("--no-deps")
         if editable:
@@ -76,6 +79,11 @@ def parse_args() -> argparse.Namespace:
         help="Pass --no-build-isolation to pip (useful in offline environments).",
     )
     parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Pass --no-cache-dir to pip to avoid using cached wheels.",
+    )
+    parser.add_argument(
         "--no-deps",
         action="store_true",
         help="Pass --no-deps to pip to skip dependency installation.",
@@ -102,6 +110,7 @@ def main() -> int:
         repo_root=repo_root,
         editable=True,
         no_build_isolation=args.no_build_isolation,
+        no_cache=args.no_cache,
         no_deps=args.no_deps,
         system_site_packages=args.system_site_packages,
         skip_import_check=args.skip_import_check,
@@ -111,6 +120,7 @@ def main() -> int:
         repo_root=repo_root,
         editable=False,
         no_build_isolation=args.no_build_isolation,
+        no_cache=args.no_cache,
         no_deps=args.no_deps,
         system_site_packages=args.system_site_packages,
         skip_import_check=args.skip_import_check,
