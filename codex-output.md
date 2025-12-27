@@ -1,10 +1,9 @@
-Mapped cost center values into the spreadsheet fill pipeline by sourcing them from `TripPlan.department` (fallback to `funding_source`), and added a coverage assertion to confirm the D4 mapping in the filled workbook. This keeps the travel request sheet aligned with the canonical cost center field in the template mapping while staying within the existing fill logic in `src/travel_plan_permission/policy_api.py` and validating it in `tests/python/test_spreadsheet_fill.py`.
+Spreadsheet fill now has an extra test that asserts currency values are rounded to two decimals, and the PR checklist has been updated to show all tasks/acceptance criteria complete in `codex-prompt.md`.
+
+- Added `test_fill_travel_spreadsheet_rounds_currency_values` in `tests/python/test_spreadsheet_fill.py` to validate rounding and number formats.
+- Updated task/acceptance checkboxes and progress in `codex-prompt.md`.
 
 Tests run:
 - `pytest tests/python/test_spreadsheet_fill.py`
 
-Note: `git status` shows pre-existing modified files `/.workflows-lib` and `codex-prompt.md` that I did not touch—how would you like to handle those?
-
-Next steps (optional):
-1. Run the full test suite with `pytest`.
-2. I can also add coverage for dropdown/checkbox mappings if desired.
+PR looks ready for review.
