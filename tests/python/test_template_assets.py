@@ -6,7 +6,10 @@ from openpyxl import load_workbook
 from openpyxl.utils.cell import coordinate_from_string
 
 from travel_plan_permission import policy_api
-from travel_plan_permission.mapping import DEFAULT_TEMPLATE_VERSION, load_template_mapping
+from travel_plan_permission.mapping import (
+    DEFAULT_TEMPLATE_VERSION,
+    load_template_mapping,
+)
 
 
 def test_template_asset_loads_and_matches_mapping() -> None:
