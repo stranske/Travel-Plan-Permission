@@ -123,36 +123,24 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 4/4 tasks complete, 0 remaining
-
-### ⚠️ IMPORTANT: Task Reconciliation Required
-
-The previous iteration changed **1 file(s)** but did not update task checkboxes.
-
-**Before continuing, you MUST:**
-1. Review the recent commits to understand what was changed
-2. Determine which task checkboxes should be marked complete
-3. Update the PR body to check off completed tasks
-4. Then continue with remaining tasks
-
-_Failure to update checkboxes means progress is not being tracked properly._
+**Progress:** 2/4 tasks complete, 2 remaining
 
 ### Scope
 - [ ] <!-- Updated scope for this follow-up -->
-- [x] Address unmet acceptance criteria from PR #121.
+- [ ] Address unmet acceptance criteria from PR #121.
 - [ ] Original scope:
-- [x] The spreadsheet auto-fill feature requires the organizational travel request spreadsheet template to be stored in the repository. This template is the target for the `fill_travel_spreadsheet` function and must exist before that function can work.
+- [ ] The spreadsheet auto-fill feature requires the organizational travel request spreadsheet template to be stored in the repository. This template is the target for the `fill_travel_spreadsheet` function and must exist before that function can work.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [x] Ensure `fill_travel_spreadsheet` does not modify the template asset when generating output.
+- [ ] <!-- New tasks to address unmet acceptance criteria -->
 - [x] Satisfy: `openpyxl.load_workbook()` successfully loads the template
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [x] The template file remains unchanged after generating a filled spreadsheet.
+- [ ] <!-- Criteria verified as unmet by verifier -->
 - [x] `openpyxl.load_workbook()` successfully loads the template
 
 ---
