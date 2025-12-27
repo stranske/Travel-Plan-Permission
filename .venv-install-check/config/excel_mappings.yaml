@@ -1,0 +1,53 @@
+templates:
+  ITIN-2025.1:
+    metadata:
+      template_id: ITIN-2025.1
+      template_file: travel_request_template.xlsx
+      last_reviewed: "2025-09-06"
+      reviewer: codex-bot
+    cells:
+      traveler_name: B3
+      business_purpose: B4
+      cost_center: D4
+      destination_zip: F5
+      city_state: B5
+      depart_date: B6
+      return_date: D6
+      event_registration_cost: F6
+      flight_pref_outbound.carrier_flight: B8
+      flight_pref_outbound.depart_time: C8
+      flight_pref_outbound.arrive_time: D8
+      flight_pref_outbound.roundtrip_cost: E8
+      flight_pref_return.carrier_flight: B9
+      flight_pref_return.depart_time: C9
+      flight_pref_return.arrive_time: D9
+      lowest_cost_roundtrip: E9
+      parking_estimate: F9
+      hotel.name: B11
+      hotel.address: B12
+      hotel.city_state: D12
+      hotel.nightly_rate: E12
+      hotel.nights: F12
+      hotel.conference_hotel: G12
+      hotel.price_compare_notes: B13
+      comparable_hotels[0].name: B14
+      comparable_hotels[0].nightly_rate: C14
+      ground_transport_pref: B15
+      notes: B16
+    dropdowns:
+      ground_transport_pref:
+        cell: B15
+        options:
+          - rideshare/taxi
+          - rental car
+          - public transit
+          - personal vehicle
+    checkboxes:
+      hotel.conference_hotel:
+        cell: G12
+        true_value: "X"
+        false_value: ""
+    formulas:
+      per_diem_total:
+        cell: H20
+        formula: "=SUM(H15:H19)"
