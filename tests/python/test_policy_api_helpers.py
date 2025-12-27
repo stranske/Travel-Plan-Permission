@@ -10,9 +10,10 @@ import pytest
 from openpyxl import Workbook, load_workbook
 
 import travel_plan_permission.policy_api as policy_api
-from travel_plan_permission import ExpenseCategory, TripPlan
+from travel_plan_permission import ExpenseCategory, Receipt, TripPlan
 from travel_plan_permission.mapping import TemplateMapping
-from travel_plan_permission.policy import PolicyResult, Severity
+from travel_plan_permission.policy import PolicyEngine, PolicyResult, Severity
+from travel_plan_permission.policy_versioning import PolicyVersion
 
 
 def _blank_template_bytes(initial_cells: dict[str, object] | None = None) -> bytes:
@@ -210,3 +211,114 @@ def test_fill_travel_spreadsheet_skips_invalid_currency_and_date(
     assert sheet["B2"].value == "keep"
     assert sheet["C2"].value == "keep"
     workbook.close()
+
+
+def test_plan_field_values_includes_cost_center_and_destination(
+    base_plan: TripPlan,
+) -> None:
+    plan = base_plan.model_copy(
+        update={
+            "department": None,
+            "funding_source": "OPS-42",
+            "destination": "Denver, CO 80202",
+            "expense_breakdown": {
+                ExpenseCategory.CONFERENCE_FEES: Decimal("50"),
+                ExpenseCategory.AIRFARE: Decimal("275.50"),
+                ExpenseCategory.GROUND_TRANSPORT: Decimal("18.75"),
+            },
+        }
+    )
+
+    fields = policy_api._plan_field_values(plan)
+
+    assert fields["traveler_name"] == plan.traveler_name
+    assert fields["business_purpose"] == plan.purpose
+    assert fields["cost_center"] == "OPS-42"
+    assert fields["city_state"] == "Denver, CO"
+    assert fields["destination_zip"] == "80202"
+    assert fields["depart_date"] == plan.departure_date
+    assert fields["return_date"] == plan.return_date
+    assert fields["event_registration_cost"] == Decimal("50")
+    assert fields["flight_pref_outbound.roundtrip_cost"] == Decimal("275.50")
+    assert fields["lowest_cost_roundtrip"] == Decimal("275.50")
+    assert fields["parking_estimate"] == Decimal("18.75")
+
+
+def test_context_from_plan_maps_costs(base_plan: TripPlan) -> None:
+    plan = base_plan.model_copy(
+        update={
+            "expense_breakdown": {
+                ExpenseCategory.GROUND_TRANSPORT: Decimal("25"),
+                ExpenseCategory.AIRFARE: Decimal("120"),
+            }
+        }
+    )
+
+    context = policy_api._context_from_plan(plan)
+
+    assert context.departure_date == plan.departure_date
+    assert context.return_date == plan.return_date
+    assert context.driving_cost == Decimal("25")
+    assert context.flight_cost == Decimal("120")
+
+
+def test_policy_version_hash_matches_engine_rules() -> None:
+    engine = PolicyEngine([])
+
+    version_hash = policy_api._policy_version(engine)
+
+    expected = PolicyVersion.from_config(None, {"rules": []}).config_hash
+    assert version_hash == expected
+
+
+def test_issue_from_result_formats_context() -> None:
+    result = PolicyResult(
+        rule_id="blocking_rule",
+        severity=Severity.BLOCKING,
+        passed=False,
+        message="Stop",
+    )
+
+    issue = policy_api._issue_from_result(result)
+
+    assert issue.code == "blocking_rule"
+    assert issue.message == "Stop"
+    assert issue.severity == "error"
+    assert issue.context == {"rule_id": "blocking_rule", "severity": "blocking"}
+
+
+def test_expense_from_receipt_tracks_third_party_payment() -> None:
+    receipt = Receipt(
+        total=Decimal("45.50"),
+        date=date(2024, 10, 2),
+        vendor="Cafe Luna",
+        file_reference="receipt-005.pdf",
+        file_size_bytes=100,
+        paid_by_third_party=True,
+    )
+
+    expense = policy_api._expense_from_receipt(receipt)
+
+    assert expense.vendor == "Cafe Luna"
+    assert expense.receipt_attached is True
+    assert expense.receipt_url == "receipt-005.pdf"
+    assert expense.third_party_paid_explanation is not None
+    assert expense.receipt_references == [receipt]
+
+
+def test_build_expense_report_aggregates_receipts(base_plan: TripPlan) -> None:
+    receipts = [
+        Receipt(
+            total=Decimal("75.00"),
+            date=date(2024, 10, 3),
+            vendor="Hotel Luna",
+            file_reference="receipt-006.png",
+            file_size_bytes=1000,
+        )
+    ]
+
+    report = policy_api._build_expense_report(base_plan, receipts)
+
+    assert report.report_id == f"{base_plan.trip_id}-reconciliation"
+    assert report.trip_id == base_plan.trip_id
+    assert report.expenses[0].description == "Receipt from Hotel Luna"
