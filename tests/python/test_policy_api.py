@@ -132,6 +132,52 @@ def test_check_trip_plan_passes_with_only_advisories(
     assert result.issues[0].severity == "warning"
 
 
+def test_check_trip_plan_ignores_passing_rules(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class PassingRule(PolicyRule):
+        rule_id = "passing_rule"
+
+        def __init__(self) -> None:
+            super().__init__(Severity.BLOCKING)
+
+        def evaluate(self, _context: PolicyContext) -> PolicyResult:
+            return PolicyResult(
+                rule_id=self.rule_id,
+                severity=self.severity,
+                passed=True,
+                message="All good.",
+            )
+
+        def message(self) -> str:
+            return "All good."
+
+    class AdvisoryRule(PolicyRule):
+        rule_id = "advisory_rule"
+
+        def __init__(self) -> None:
+            super().__init__(Severity.ADVISORY)
+
+        def evaluate(self, _context: PolicyContext) -> PolicyResult:
+            return PolicyResult(
+                rule_id=self.rule_id,
+                severity=self.severity,
+                passed=False,
+                message="Advisory issue.",
+            )
+
+        def message(self) -> str:
+            return "Advisory issue."
+
+    engine = PolicyEngine([PassingRule(), AdvisoryRule()])
+    monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
+
+    result = check_trip_plan(trip_plan)
+
+    assert result.status == "pass"
+    assert [issue.code for issue in result.issues] == ["advisory_rule"]
+
+
 def test_check_trip_plan_fails_with_blocking_and_advisory_rules(
     trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
 ) -> None:

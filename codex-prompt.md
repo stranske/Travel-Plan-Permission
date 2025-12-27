@@ -127,7 +127,7 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 
 ### ⚠️ IMPORTANT: Task Reconciliation Required
 
-The previous iteration changed **2 file(s)** but did not update task checkboxes.
+The previous iteration changed **1 file(s)** but did not update task checkboxes.
 
 **Before continuing, you MUST:**
 1. Review the recent commits to understand what was changed
@@ -149,13 +149,13 @@ _Failure to update checkboxes means progress is not being tracked properly._
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [x] Add policy API tests for pass/fail behavior with mixed rule severities.
+- [x] Add a policy API test that confirms passing rules are ignored in issue output.
 - [x] Verify the policy API tests pass locally.
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [x] Policy API tests cover pass/fail outcomes for blocking/advisory combinations.
+- [x] Policy API tests cover mixed pass/fail rule results.
 - [x] Coverage for policy_api.py is >= 80%
 
 ---
