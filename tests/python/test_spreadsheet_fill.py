@@ -31,10 +31,12 @@ def _plan() -> TripPlan:
 
 def test_travel_spreadsheet_template_loads() -> None:
     template_path = policy_api._default_template_path()
+    assert template_path.is_file()
 
     workbook = load_workbook(template_path)
 
     assert workbook.sheetnames
+    workbook.close()
 
 
 def test_fill_travel_spreadsheet_writes_mapped_fields(tmp_path) -> None:
