@@ -1,11 +1,9 @@
-Added a guard so `load_template_mapping` fails fast when the mapping references a missing spreadsheet template, and added a regression test to enforce the template-asset requirement tied to the mapping.
-
-Details:
-- `src/travel_plan_permission/mapping.py` now verifies the `metadata.template_file` exists under `templates/` and raises a clear `FileNotFoundError` if not found.
-- `tests/python/test_template_assets.py` adds a focused test that rewrites the mapping to reference a missing template and asserts the error.
+Added a TripPlan JSON round‑trip test so the new orchestration fields are proven to serialize/deserialize correctly, and updated the PR checklist to reflect the verified scope and acceptance items. The new test in `tests/python/test_models.py` exercises `model_dump_json`/`model_validate_json` for optional fields; the checklist updates live in `codex-prompt.md`.
 
 Tests run:
-- `pytest -q tests/python/test_template_assets.py tests/python/test_mapping_integrity.py`
+- `pytest`
+- `pytest tests/python/test_models.py`
+- `mypy --strict src/ tests/python/` (fails with existing strict‑typing errors in multiple test files, e.g., missing return annotations and dict variance issues in tests)
 
-Next steps (optional):
-1) Run the full suite: `pytest -q`
+Next steps:
+1) Decide whether to fix the existing mypy strict errors in tests or to adjust the expected mypy invocation for this repo, then rerun `mypy --strict src/ tests/python/`.

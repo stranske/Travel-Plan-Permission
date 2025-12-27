@@ -123,24 +123,44 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 2/4 tasks complete, 2 remaining
+**Progress:** 14/15 tasks complete, 1 remaining
+
+### ⚠️ IMPORTANT: Task Reconciliation Required
+
+The previous iteration changed **1 file(s)** but did not update task checkboxes.
+
+**Before continuing, you MUST:**
+1. Review the recent commits to understand what was changed
+2. Determine which task checkboxes should be marked complete
+3. Update the PR body to check off completed tasks
+4. Then continue with remaining tasks
+
+_Failure to update checkboxes means progress is not being tracked properly._
 
 ### Scope
-- [ ] <!-- Updated scope for this follow-up -->
-- [ ] Address unmet acceptance criteria from PR #121.
-- [ ] Original scope:
-- [ ] The spreadsheet auto-fill feature requires the organizational travel request spreadsheet template to be stored in the repository. This template is the target for the `fill_travel_spreadsheet` function and must exist before that function can work.
+- [x] The Orchestration Plan (Section 4.1) defines a TripPlan model with specific fields required for the orchestration API. The existing TripPlan model in `models.py` may need additional fields to match the API contract, ensuring compatibility with the LangGraph orchestration layer.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [ ] <!-- New tasks to address unmet acceptance criteria -->
-- [x] Satisfy: `openpyxl.load_workbook()` successfully loads the template
+- [x] Compare existing TripPlan model with orchestration API specification
+- [x] Add `traveler_role` field if missing
+- [x] Add `origin_city` and `destination_city` fields if not present
+- [x] Add `transportation_mode` field with Literal type for allowed values
+- [x] Add `expected_costs` dict field for cost breakdown by category
+- [x] Add `funding_source` field for budget tracking
+- [x] Ensure all new fields have sensible defaults or are Optional
+- [x] Update model validators if needed
+- [x] Add/update tests for new fields
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [ ] <!-- Criteria verified as unmet by verifier -->
-- [x] `openpyxl.load_workbook()` successfully loads the template
+- [x] TripPlan model includes all fields from orchestration API spec
+- [x] New fields are Optional or have defaults (backward compatible)
+- [x] Existing tests continue to pass
+- [x] New fields have proper type annotations
+- [x] Model can be serialized to/from JSON
+- [ ] `mypy --strict` passes
 
 ---
