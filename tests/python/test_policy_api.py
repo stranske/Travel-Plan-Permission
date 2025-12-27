@@ -4,8 +4,8 @@ from decimal import Decimal
 from travel_plan_permission import (
     ExpenseCategory,
     PolicyCheckResult,
-    ReconciliationResult,
     Receipt,
+    ReconciliationResult,
     TripPlan,
     check_trip_plan,
     list_allowed_vendors,
@@ -132,9 +132,7 @@ def test_policy_api_documentation_examples_match_models() -> None:
         "expenses_by_category": {"other": 325.25},
     }
 
-    reconciliation_result = ReconciliationResult.model_validate(
-        reconciliation_payload
-    )
+    reconciliation_result = ReconciliationResult.model_validate(reconciliation_payload)
     assert reconciliation_result.receipt_count == 2
     assert reconciliation_result.status == "under_budget"
     assert ExpenseCategory.OTHER in reconciliation_result.expenses_by_category
