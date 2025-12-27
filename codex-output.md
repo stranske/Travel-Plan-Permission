@@ -1,11 +1,8 @@
-Added a guard so `load_template_mapping` fails fast when the mapping references a missing spreadsheet template, and added a regression test to enforce the template-asset requirement tied to the mapping.
-
-Details:
-- `src/travel_plan_permission/mapping.py` now verifies the `metadata.template_file` exists under `templates/` and raises a clear `FileNotFoundError` if not found.
-- `tests/python/test_template_assets.py` adds a focused test that rewrites the mapping to reference a missing template and asserts the error.
+Added the orchestration-required TripPlan fields as backward-compatible optionals/defaults, and covered them with a new model test to verify JSON serialization in `src/travel_plan_permission/models.py` and `tests/python/test_models.py`. This keeps existing usage intact while exposing the new API contract fields for downstream orchestration.
 
 Tests run:
-- `pytest -q tests/python/test_template_assets.py tests/python/test_mapping_integrity.py`
+- `pytest tests/python/test_models.py`
 
-Next steps (optional):
-1) Run the full suite: `pytest -q`
+Next steps:
+1. Run `mypy --strict` to confirm type-checking across the full project.
+2. Run the full test suite if you want broader coverage beyond the model tests.
