@@ -1,15 +1,16 @@
-Added an explicit check that the required public symbols are present in the package `__all__`, so the root API export contract is now enforced by tests in `tests/python/test_public_api.py`.
+Added a dependency-declaration guard test and declared OCR-related optional deps so the import surface is fully represented in `pyproject.toml`, plus updated the task checklist to reflect the completed dependency task.
 
 Details:
-- `tests/python/test_public_api.py` now asserts `__all__` includes `__version__`, `TripPlan`, `check_trip_plan`, `list_allowed_vendors`, `reconcile`, and `fill_travel_spreadsheet`.
+- New dependency audit test in `tests/python/test_dependency_declarations.py` to ensure third‑party imports are declared (including optional extras).
+- Added optional `ocr` extras with `pillow` and `pytesseract` in `pyproject.toml`.
+- Updated task progress/checklist in `codex-prompt.md`.
 
-Verification:
-- `python -m pytest tests/python/test_public_api.py`
-- `pip install -e .` in a clean venv failed due to restricted network access when resolving build deps.
-- `pip install -e . --no-deps --no-build-isolation` succeeded in a `--system-site-packages` venv.
-- `pip install . --no-deps --no-build-isolation` succeeded after setting `PIP_CACHE_DIR=/tmp/pip-cache`.
-- Imports verified in the venv: `check_trip_plan`, `list_allowed_vendors`, `reconcile`, `fill_travel_spreadsheet`, `TripPlan`, and `travel_plan_permission.__version__`.
+Tests:
+- `python -m pytest tests/python/test_public_api.py tests/python/test_dependency_declarations.py`
 
-Next steps (pick one):
-1) Re-run `pip install -e .` and `pip install .` in a clean venv with network access to fully verify dependency installation.
-2) If you want me to, I can add a CI-friendly install smoke test once network access is available.
+Blocked:
+- `pip install -e .` in a clean venv failed because build deps could not be fetched without network access.
+
+Next steps:
+1) Re-run `pip install -e .` (and then `pip install .`) in a clean venv with network access to satisfy install tasks.
+2) After install succeeds, verify imports from `travel_plan_permission` to close the remaining checklist items.
