@@ -68,6 +68,26 @@ def test_fill_travel_spreadsheet_writes_mapped_fields(tmp_path) -> None:
     workbook.close()
 
 
+def test_fill_travel_spreadsheet_rounds_currency_values(tmp_path) -> None:
+    plan = _plan().model_copy(
+        update={
+            "expense_breakdown": {
+                ExpenseCategory.AIRFARE: Decimal("450.567"),
+            }
+        }
+    )
+    output_path = tmp_path / "filled-rounded.xlsx"
+
+    fill_travel_spreadsheet(plan, output_path)
+
+    workbook = load_workbook(output_path)
+    sheet = workbook.active
+
+    assert sheet["E8"].value == 450.57
+    assert sheet["E8"].number_format == "$#,##0.00"
+    workbook.close()
+
+
 def test_fill_travel_spreadsheet_does_not_modify_template(tmp_path) -> None:
     template_path = policy_api._default_template_path()
     template_bytes = template_path.read_bytes()
