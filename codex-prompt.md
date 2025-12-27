@@ -125,20 +125,8 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 
 **Progress:** 14/15 tasks complete, 1 remaining
 
-### ⚠️ IMPORTANT: Task Reconciliation Required
-
-The previous iteration changed **1 file(s)** but did not update task checkboxes.
-
-**Before continuing, you MUST:**
-1. Review the recent commits to understand what was changed
-2. Determine which task checkboxes should be marked complete
-3. Update the PR body to check off completed tasks
-4. Then continue with remaining tasks
-
-_Failure to update checkboxes means progress is not being tracked properly._
-
 ### Scope
-- [x] The Orchestration Plan (Section 4.1) defines a TripPlan model with specific fields required for the orchestration API. The existing TripPlan model in `models.py` may need additional fields to match the API contract, ensuring compatibility with the LangGraph orchestration layer.
+- [ ] The Orchestration Plan (Section 4.1) defines a TripPlan model with specific fields required for the orchestration API. The existing TripPlan model in `models.py` may need additional fields to match the API contract, ensuring compatibility with the LangGraph orchestration layer.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
