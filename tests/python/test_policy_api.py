@@ -228,6 +228,21 @@ def test_list_allowed_vendors_filters_by_date(
     assert vendors == ["Harbor Hotels"]
 
 
+def test_list_allowed_vendors_returns_empty_when_no_active_contracts(
+    trip_plan_factory: Callable[..., TripPlan],
+) -> None:
+    plan = trip_plan_factory(
+        destination="New York, NY",
+        departure_date=date(2025, 1, 10),
+        return_date=date(2025, 1, 12),
+    )
+
+    vendors = list_allowed_vendors(plan)
+
+    assert isinstance(vendors, list)
+    assert vendors == []
+
+
 def test_reconcile_summarizes_receipts_over_budget(
     base_trip_plan: TripPlan, sample_receipts: list
 ) -> None:
