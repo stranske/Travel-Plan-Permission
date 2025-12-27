@@ -1,10 +1,12 @@
-Expanded policy API coverage with focused helper tests that exercise resource/template fallbacks, value formatting, nested field resolution, and spreadsheet dropdown/checkbox/formula behavior; this brings policy_api.py coverage above the 80% target. Changes live in `tests/python/test_policy_api_helpers.py`.
+Added targeted helper tests to exercise `policy_api` internals (field mapping, context building, policy version hashing, issue formatting, receipt/expense report handling) to push `policy_api.py` coverage above the 80% threshold. Changes are in `tests/python/test_policy_api_helpers.py`.
+
+- `tests/python/test_policy_api_helpers.py` adds helper-focused assertions for mapping, context, policy version hash, issue conversion, and receipt/expense report behavior.
+- Coverage for `src/travel_plan_permission/policy_api.py` now reports 91% (per the run below).
 
 Tests run:
-- `pytest --cov=travel_plan_permission.policy_api --cov-report=term-missing tests/python/test_policy_api.py tests/python/test_spreadsheet_fill.py tests/python/test_template_assets.py tests/python/test_policy_api_helpers.py`
+- `pytest tests/python/test_policy_api_helpers.py tests/python/test_policy_api.py --cov=travel_plan_permission.policy_api --cov-report=term-missing`
 
-Notes:
-- Working tree still has pre-existing changes in `codex-prompt.md` that I did not touch.
+Note: I couldn’t find an `AGENTS.md` in the repo despite the instruction; I proceeded with the existing repo guidance.
 
-If you want to go further:
-1) Run the full test suite with `pytest` to validate everything beyond policy_api coverage.
+If you want, I can:
+1) Run the full test suite with coverage.
