@@ -123,11 +123,11 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 1/4 tasks complete, 3 remaining
+**Progress:** 2/2 tasks complete, 0 remaining
 
 ### ⚠️ IMPORTANT: Task Reconciliation Required
 
-The previous iteration changed **1 file(s)** but did not update task checkboxes.
+The previous iteration changed **2 file(s)** but did not update task checkboxes.
 
 **Before continuing, you MUST:**
 1. Review the recent commits to understand what was changed
@@ -149,13 +149,13 @@ _Failure to update checkboxes means progress is not being tracked properly._
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [ ] <!-- Incomplete tasks from original issue -->
-- [ ] <!-- New tasks to address unmet acceptance criteria -->
+- [x] Add policy API tests for pass/fail behavior with mixed rule severities.
+- [x] Verify the policy API tests pass locally.
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [ ] <!-- Criteria verified as unmet by verifier -->
+- [x] Policy API tests cover pass/fail outcomes for blocking/advisory combinations.
 - [x] Coverage for policy_api.py is >= 80%
 
 ---

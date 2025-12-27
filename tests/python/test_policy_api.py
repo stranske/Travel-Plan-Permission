@@ -132,6 +132,84 @@ def test_check_trip_plan_passes_with_only_advisories(
     assert result.issues[0].severity == "warning"
 
 
+def test_check_trip_plan_fails_with_blocking_and_advisory_rules(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class BlockingRule(PolicyRule):
+        rule_id = "blocking_rule"
+
+        def __init__(self) -> None:
+            super().__init__(Severity.BLOCKING)
+
+        def evaluate(self, _context: PolicyContext) -> PolicyResult:
+            return PolicyResult(
+                rule_id=self.rule_id,
+                severity=self.severity,
+                passed=False,
+                message="Blocking issue.",
+            )
+
+        def message(self) -> str:
+            return "Blocking issue."
+
+    class AdvisoryRule(PolicyRule):
+        rule_id = "advisory_rule"
+
+        def __init__(self) -> None:
+            super().__init__(Severity.ADVISORY)
+
+        def evaluate(self, _context: PolicyContext) -> PolicyResult:
+            return PolicyResult(
+                rule_id=self.rule_id,
+                severity=self.severity,
+                passed=False,
+                message="Advisory issue.",
+            )
+
+        def message(self) -> str:
+            return "Advisory issue."
+
+    engine = PolicyEngine([BlockingRule(), AdvisoryRule()])
+    monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
+
+    result = check_trip_plan(trip_plan)
+
+    assert result.status == "fail"
+    assert {issue.code for issue in result.issues} == {"blocking_rule", "advisory_rule"}
+    severities = {issue.code: issue.severity for issue in result.issues}
+    assert severities["blocking_rule"] == "error"
+    assert severities["advisory_rule"] == "warning"
+
+
+def test_check_trip_plan_passes_when_all_rules_pass(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class PassingRule(PolicyRule):
+        rule_id = "passing_rule"
+
+        def __init__(self) -> None:
+            super().__init__(Severity.BLOCKING)
+
+        def evaluate(self, _context: PolicyContext) -> PolicyResult:
+            return PolicyResult(
+                rule_id=self.rule_id,
+                severity=self.severity,
+                passed=True,
+                message="All good.",
+            )
+
+        def message(self) -> str:
+            return "All good."
+
+    engine = PolicyEngine([PassingRule()])
+    monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
+
+    result = check_trip_plan(trip_plan)
+
+    assert result.status == "pass"
+    assert result.issues == []
+
+
 def test_check_trip_plan_skips_cost_comparison_when_estimates_missing(
     trip_plan: TripPlan,
 ) -> None:
