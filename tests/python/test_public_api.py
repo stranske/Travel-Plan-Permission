@@ -17,6 +17,15 @@ def test_public_api_imports() -> None:
         reconcile,
     )
 
+    required_exports = {
+        "TripPlan",
+        "check_trip_plan",
+        "fill_travel_spreadsheet",
+        "list_allowed_vendors",
+        "reconcile",
+        "__version__",
+    }
+    assert required_exports.issubset(set(travel_plan_permission.__all__))
     assert travel_plan_permission.__version__
     assert TripPlan is not None
     assert check_trip_plan is not None

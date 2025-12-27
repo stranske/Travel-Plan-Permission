@@ -123,7 +123,19 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 0/14 tasks complete, 14 remaining
+**Progress:** 9/15 tasks complete, 6 remaining
+
+### ⚠️ IMPORTANT: Task Reconciliation Required
+
+The previous iteration changed **3 file(s)** but did not update task checkboxes.
+
+**Before continuing, you MUST:**
+1. Review the recent commits to understand what was changed
+2. Determine which task checkboxes should be marked complete
+3. Update the PR body to check off completed tasks
+4. Then continue with remaining tasks
+
+_Failure to update checkboxes means progress is not being tracked properly._
 
 ### Scope
 - [ ] The Orchestration Plan requires the policy engine to be installable as a Python package so the LangGraph orchestration service can import it directly. The `pyproject.toml` already exists but we need to verify the package installs correctly and exports all required symbols.
@@ -132,22 +144,22 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
 - [ ] Verify `pip install -e .` works in a clean virtual environment
-- [ ] Verify `from travel_plan_permission import check_trip_plan` works
-- [ ] Verify `from travel_plan_permission import list_allowed_vendors` works
-- [ ] Verify `from travel_plan_permission import reconcile` works
-- [ ] Verify `from travel_plan_permission import fill_travel_spreadsheet` works
-- [ ] Verify `from travel_plan_permission import TripPlan` works
-- [ ] Fix any missing exports in `__init__.py`
-- [ ] Ensure all dependencies are declared in `pyproject.toml`
+- [x] Verify `from travel_plan_permission import check_trip_plan` works
+- [x] Verify `from travel_plan_permission import list_allowed_vendors` works
+- [x] Verify `from travel_plan_permission import reconcile` works
+- [x] Verify `from travel_plan_permission import fill_travel_spreadsheet` works
+- [x] Verify `from travel_plan_permission import TripPlan` works
+- [x] Fix any missing exports in `__init__.py`
+- [x] Ensure all dependencies are declared in `pyproject.toml`
 - [ ] Test installation with `pip install .` (non-editable mode)
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
 - [ ] `pip install -e .` succeeds without errors
-- [ ] All public API symbols are importable from package root
+- [x] All public API symbols are importable from package root
 - [ ] No missing dependency errors at import time
-- [ ] Package version is accessible via `travel_plan_permission.__version__`
+- [x] Package version is accessible via `travel_plan_permission.__version__`
 - [ ] `pip install .` works for non-editable install
 
 ---
