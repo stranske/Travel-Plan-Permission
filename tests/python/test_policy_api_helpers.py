@@ -66,6 +66,41 @@ def test_default_template_path_reports_package_resource_only(
     assert template_path.read_bytes() == template_bytes
 
 
+def test_default_template_path_uses_cached_resource(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    template_name = "cached-template.xlsx"
+    cached_path = tmp_path / template_name
+    cached_path.write_bytes(b"cached")
+
+    class FakeResource:
+        def joinpath(self, *_parts: str) -> FakeResource:
+            return self
+
+        def is_file(self) -> bool:
+            return True
+
+        def read_bytes(self) -> bytes:
+            raise AssertionError("Expected cached path to be used.")
+
+    original_cache = dict(policy_api._RESOURCE_TEMPLATE_CACHE)
+    policy_api._RESOURCE_TEMPLATE_CACHE.clear()
+    policy_api._RESOURCE_TEMPLATE_CACHE[template_name] = cached_path
+
+    def fake_exists(path: Path) -> bool:
+        return path == cached_path
+
+    monkeypatch.setattr(Path, "exists", fake_exists)
+    monkeypatch.setattr(policy_api.resources, "files", lambda _name: FakeResource())
+
+    try:
+        template_path = policy_api._default_template_path(template_name)
+        assert template_path == cached_path
+    finally:
+        policy_api._RESOURCE_TEMPLATE_CACHE.clear()
+        policy_api._RESOURCE_TEMPLATE_CACHE.update(original_cache)
+
+
 def test_default_template_bytes_reads_package_resource(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

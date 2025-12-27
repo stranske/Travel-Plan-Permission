@@ -34,7 +34,9 @@ def _build_metadata(project: dict) -> str:
 
     authors = project.get("authors", [])
     if authors:
-        author_names = ", ".join(author.get("name", "") for author in authors if author.get("name"))
+        author_names = ", ".join(
+            author.get("name", "") for author in authors if author.get("name")
+        )
         if author_names:
             lines.append(f"Author: {author_names}")
 
@@ -63,7 +65,7 @@ def _build_metadata(project: dict) -> str:
     for extra, requirements in optional_deps.items():
         lines.append(f"Provides-Extra: {extra}")
         for requirement in requirements:
-            lines.append(f"Requires-Dist: {requirement}; extra == \"{extra}\"")
+            lines.append(f'Requires-Dist: {requirement}; extra == "{extra}"')
 
     readme_path = project.get("readme")
     readme_content = ""
@@ -100,7 +102,9 @@ def _write_dist_info(dist_info_path: pathlib.Path, project: dict) -> None:
         lines = ["[console_scripts]"]
         for name, target in scripts.items():
             lines.append(f"{name} = {target}")
-        (dist_info_path / "entry_points.txt").write_text("\n".join(lines), encoding="utf-8")
+        (dist_info_path / "entry_points.txt").write_text(
+            "\n".join(lines), encoding="utf-8"
+        )
 
 
 def _record_files(root: pathlib.Path, dist_info_path: pathlib.Path) -> None:
@@ -164,7 +168,9 @@ def _build_wheel(wheel_directory: str, editable: bool) -> str:
 
         wheel_name = f"{dist_name}-{version}-py3-none-any.whl"
         wheel_path = pathlib.Path(wheel_directory) / wheel_name
-        with zipfile.ZipFile(wheel_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        with zipfile.ZipFile(
+            wheel_path, "w", compression=zipfile.ZIP_DEFLATED
+        ) as archive:
             for file_path in root.rglob("*"):
                 if file_path.is_dir():
                     continue
@@ -173,11 +179,15 @@ def _build_wheel(wheel_directory: str, editable: bool) -> str:
     return wheel_name
 
 
-def build_wheel(wheel_directory: str, _config_settings=None, _metadata_directory=None) -> str:
+def build_wheel(
+    wheel_directory: str, _config_settings=None, _metadata_directory=None
+) -> str:
     return _build_wheel(wheel_directory, editable=False)
 
 
-def build_editable(wheel_directory: str, _config_settings=None, _metadata_directory=None) -> str:
+def build_editable(
+    wheel_directory: str, _config_settings=None, _metadata_directory=None
+) -> str:
     return _build_wheel(wheel_directory, editable=True)
 
 
@@ -212,7 +222,10 @@ def build_sdist(sdist_directory: str, _config_settings=None) -> str:
             for path in backend_root.rglob("*"):
                 if path.is_dir() or "__pycache__" in path.parts:
                     continue
-                tar.add(path, arcname=f"{root_dir}/tools/build_backend/{path.relative_to(backend_root)}")
+                tar.add(
+                    path,
+                    arcname=f"{root_dir}/tools/build_backend/{path.relative_to(backend_root)}",
+                )
         src_root = project_root / "src"
         for path in src_root.rglob("*"):
             tar.add(path, arcname=f"{root_dir}/src/{path.relative_to(src_root)}")
@@ -220,7 +233,9 @@ def build_sdist(sdist_directory: str, _config_settings=None) -> str:
     return sdist_name
 
 
-def prepare_metadata_for_build_wheel(metadata_directory: str, _config_settings=None) -> str:
+def prepare_metadata_for_build_wheel(
+    metadata_directory: str, _config_settings=None
+) -> str:
     project = _load_project_config()
     dist_name = _normalize_name(project["name"])
     version = project["version"]
@@ -229,5 +244,7 @@ def prepare_metadata_for_build_wheel(metadata_directory: str, _config_settings=N
     return dist_info.name
 
 
-def prepare_metadata_for_build_editable(metadata_directory: str, _config_settings=None) -> str:
+def prepare_metadata_for_build_editable(
+    metadata_directory: str, _config_settings=None
+) -> str:
     return prepare_metadata_for_build_wheel(metadata_directory, _config_settings)
