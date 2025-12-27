@@ -1,8 +1,8 @@
 """Travel Plan Permission - Workflow automation for travel approval and reimbursement."""
 
+import tomllib
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-import tomllib
 
 from .approval import ApprovalEngine
 from .approval_packet import (
@@ -135,6 +135,7 @@ def _resolve_version() -> str:
                 if isinstance(project_version, str) and project_version:
                     return project_version
         return "0.1.0"
+
 
 __all__ = [
     "AdvanceBookingRule",
