@@ -5,6 +5,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+import travel_plan_permission as tpp
 from travel_plan_permission import (
     TripPlan,
     __version__,
@@ -17,6 +18,16 @@ from travel_plan_permission import (
 
 def test_public_api_exports() -> None:
     """Core API symbols should be importable from the package root."""
+    required_exports = {
+        "__version__",
+        "TripPlan",
+        "check_trip_plan",
+        "fill_travel_spreadsheet",
+        "list_allowed_vendors",
+        "reconcile",
+    }
+
+    assert required_exports.issubset(set(tpp.__all__))
     assert callable(check_trip_plan)
     assert callable(list_allowed_vendors)
     assert callable(reconcile)
