@@ -1,8 +1,8 @@
+import shutil
+import subprocess
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-import shutil
-import subprocess
 
 import pytest
 
