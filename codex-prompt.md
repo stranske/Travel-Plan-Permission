@@ -123,45 +123,26 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 16/16 tasks complete, 0 remaining
-
-### ⚠️ IMPORTANT: Task Reconciliation Required
-
-The previous iteration changed **2 file(s)** but did not update task checkboxes.
-
-**Before continuing, you MUST:**
-1. Review the recent commits to understand what was changed
-2. Determine which task checkboxes should be marked complete
-3. Update the PR body to check off completed tasks
-4. Then continue with remaining tasks
-
-_Failure to update checkboxes means progress is not being tracked properly._
+**Progress:** 0/6 tasks complete, 6 remaining
 
 ### Scope
-- [x] The Orchestration Plan (Phase 0) requires tests for key policy scenarios to ensure the API surface is reliable before orchestration integration. Comprehensive tests validate that the policy engine behaves correctly and provides confidence for LangGraph node implementations.
+- [ ] <!-- Updated scope for this follow-up -->
+- [ ] Address unmet acceptance criteria from PR #132.
+- [ ] Original scope:
+- [ ] The Orchestration Plan requires the policy engine to be installable as a Python package so the LangGraph orchestration service can import it directly. The `pyproject.toml` already exists but we need to verify the package installs correctly and exports all required symbols.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [x] Create `tests/python/test_policy_api.py` test module
-- [x] Write tests for `check_trip_plan` with passing trip plans
-- [x] Write tests for `check_trip_plan` with policy violations
-- [x] Write tests for `list_allowed_vendors` with various destinations
-- [x] Write tests for `list_allowed_vendors` with date filtering
-- [x] Write tests for `reconcile` with matching receipts
-- [x] Write tests for `reconcile` with expense variances
-- [x] Add fixtures for common TripPlan and Receipt test data
-- [x] Ensure tests cover edge cases (empty inputs, missing fields)
-- [x] Verify policy_version is included in results
+- [ ] <!-- New tasks to address unmet acceptance criteria -->
+- [ ] Satisfy: `pip install -e .` succeeds without errors
+- [ ] Satisfy: `pip install .` works for non-editable install
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [x] Test file exists at `tests/python/test_policy_api.py`
-- [x] All three API functions have test coverage
-- [x] Tests cover both success and failure scenarios
-- [x] Tests verify return types match API contract
-- [x] `pytest tests/python/test_policy_api.py` passes
-- [x] Coverage for policy_api.py is >= 80%
+- [ ] <!-- Criteria verified as unmet by verifier -->
+- [ ] `pip install -e .` succeeds without errors
+- [ ] `pip install .` works for non-editable install
 
 ---
