@@ -243,6 +243,17 @@ def test_list_allowed_vendors_returns_empty_when_no_active_contracts(
     assert vendors == []
 
 
+def test_list_allowed_vendors_handles_empty_destination(
+    trip_plan_factory: Callable[..., TripPlan],
+) -> None:
+    plan = trip_plan_factory(destination="")
+
+    vendors = list_allowed_vendors(plan)
+
+    assert isinstance(vendors, list)
+    assert vendors == ["Citywide Rides"]
+
+
 def test_reconcile_summarizes_receipts_over_budget(
     base_trip_plan: TripPlan, sample_receipts: list
 ) -> None:
