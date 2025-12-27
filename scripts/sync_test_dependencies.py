@@ -87,6 +87,7 @@ STDLIB_MODULES = {
     "textwrap",
     "threading",
     "time",
+    "tomllib",
     "traceback",
     "types",
     "typing",
