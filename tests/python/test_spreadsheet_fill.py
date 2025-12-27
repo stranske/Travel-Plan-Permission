@@ -106,3 +106,30 @@ def test_fill_travel_spreadsheet_uses_mapping_cells(tmp_path, monkeypatch) -> No
     assert sheet["Z101"].value == 200.0
     assert sheet["Z101"].number_format == "$#,##0.00"
     workbook.close()
+
+
+def test_fill_travel_spreadsheet_uses_template_metadata(tmp_path, monkeypatch) -> None:
+    plan = _plan()
+    output_path = tmp_path / "filled-template.xlsx"
+    template_path = policy_api._default_template_path()
+    observed: dict[str, object] = {}
+
+    def fake_default_template_path(template_file: str | None = None):
+        observed["template_file"] = template_file
+        return template_path
+
+    mapping = TemplateMapping(
+        version="ITIN-2025.1",
+        cells={"traveler_name": "B3"},
+        dropdowns={},
+        checkboxes={},
+        formulas={},
+        metadata={"template_file": "custom_template.xlsx"},
+    )
+
+    monkeypatch.setattr(policy_api, "load_template_mapping", lambda: mapping)
+    monkeypatch.setattr(policy_api, "_default_template_path", fake_default_template_path)
+
+    fill_travel_spreadsheet(plan, output_path)
+
+    assert observed["template_file"] == "custom_template.xlsx"

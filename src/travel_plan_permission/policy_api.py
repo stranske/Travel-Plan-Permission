@@ -97,12 +97,13 @@ _CURRENCY_FORMAT = "$#,##0.00"
 _ZIP_PATTERN = re.compile(r"^(?P<city_state>.*?)(?:\s+(?P<zip>\d{5})(?:-\d{4})?)?$")
 
 
-def _default_template_path() -> Path:
+def _default_template_path(template_file: str | None = None) -> Path:
+    template_name = template_file or _TEMPLATE_FILENAME
     for parent in Path(__file__).resolve().parents:
-        candidate = parent / "templates" / _TEMPLATE_FILENAME
+        candidate = parent / "templates" / template_name
         if candidate.exists():
             return candidate
-    raise FileNotFoundError(f"Unable to locate templates/{_TEMPLATE_FILENAME}")
+    raise FileNotFoundError(f"Unable to locate templates/{template_name}")
 
 
 def _split_destination(destination: str) -> tuple[str, str | None]:
@@ -261,8 +262,11 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
 def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
     """Fill a travel request spreadsheet template using trip plan data."""
 
-    template_path = _default_template_path()
     mapping = load_template_mapping()
+    template_file = mapping.metadata.get("template_file")
+    template_path = _default_template_path(
+        template_file if isinstance(template_file, str) else None
+    )
     wb = load_workbook(template_path)
     ws = wb.active
 
