@@ -345,12 +345,8 @@ class TripPlan(BaseModel):
         default=None, description="Traveler role or title"
     )
     destination: str = Field(..., description="Trip destination")
-    origin_city: str | None = Field(
-        default=None, description="City of departure"
-    )
-    destination_city: str | None = Field(
-        default=None, description="City of arrival"
-    )
+    origin_city: str | None = Field(default=None, description="City of departure")
+    destination_city: str | None = Field(default=None, description="City of arrival")
     departure_date: date = Field(..., description="Date of departure")
     return_date: date = Field(..., description="Date of return")
     purpose: str = Field(..., description="Business purpose of the trip")
