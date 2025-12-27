@@ -1,16 +1,10 @@
-Added explicit PEP 517 requirement/metadata helpers in the custom build backend so pip can query editable/wheel/sdist requirements cleanly, and checked off the install tasks after verifying both install modes. Updated the PR task checkboxes in `codex-prompt.md` to reflect the verified installs.
+Expanded the public API export test to cover the policy API models required by the orchestration plan, and updated the PR checklist/progress to reflect the verified work in `codex-prompt.md`.
 
-Details and context:
-- `tools/build_backend/tp_build_backend.py` now exposes `get_requires_for_build_*` and `prepare_metadata_for_build_editable`, improving compatibility with pip’s PEP 517 hooks.
-- `codex-prompt.md` has the completed task and acceptance checkboxes updated, along with progress.
+Details:
+- Added assertions for `PolicyIssue`, `PolicyCheckResult`, `ReconciliationResult`, and `Receipt` exports in `tests/python/test_public_api.py`.
+- Checked off the new acceptance criteria and task in `codex-prompt.md`.
 
-Tests run:
-- `. .venv/bin/activate && PIP_CACHE_DIR=... python -m pip install -e . --no-deps`
-- `. .venv/bin/activate && PIP_CACHE_DIR=... python -m pip install . --no-deps`
+Tests:
+- `pytest tests/python/test_public_api.py`
 
-Notes:
-- Network is restricted here, so dependency resolution couldn’t run; installs were verified with `--no-deps` and a writable `PIP_CACHE_DIR`.
-
-Next steps you may want:
-1. Run `python -m pip install -e .` in a networked environment to confirm dependency resolution.
-2. Run `python -m pip install .` in a networked environment to confirm non-editable install with dependencies.
+PR tasks are now complete and ready for review.
