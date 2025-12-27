@@ -72,6 +72,16 @@ def load_template_mapping(
             f"Mapping metadata declares template_id '{declared_version}',"
             f" but '{version}' was requested."
         )
+    template_file = metadata.get("template_file")
+    if isinstance(template_file, str):
+        for parent in Path(__file__).resolve().parents:
+            candidate = parent / "templates" / template_file
+            if candidate.exists():
+                break
+        else:
+            raise FileNotFoundError(
+                f"Unable to locate templates/{template_file} for template version '{version}'"
+            )
 
     cells = payload.get("cells") or {}
     dropdowns = payload.get("dropdowns") or {}
