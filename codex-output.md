@@ -1,9 +1,15 @@
-Spreadsheet fill now has an extra test that asserts currency values are rounded to two decimals, and the PR checklist has been updated to show all tasks/acceptance criteria complete in `codex-prompt.md`.
+Added a focused public API import test and declared OCR extras so the package surface is exercised and optional OCR deps are explicitly documented. This keeps the install footprint unchanged while making the root imports and `__version__` assertions explicit.
 
-- Added `test_fill_travel_spreadsheet_rounds_currency_values` in `tests/python/test_spreadsheet_fill.py` to validate rounding and number formats.
-- Updated task/acceptance checkboxes and progress in `codex-prompt.md`.
+- Public API test added in `tests/python/test_public_api.py`
+- Optional OCR dependencies declared in `pyproject.toml`
 
 Tests run:
-- `pytest tests/python/test_spreadsheet_fill.py`
+- `python -m pytest tests/python/test_public_api.py`
 
-PR looks ready for review.
+Install verification:
+- `pip install -e .` failed in a clean venv because build isolation tried to fetch `setuptools>=61` and network access is restricted.
+- `pip install .` failed for the same reason.
+
+Next steps:
+1) Re-run `pip install -e .` and `pip install .` in a network-enabled environment (or with a local wheel cache) to satisfy the remaining verification tasks.  
+2) If you want lockfiles updated for the new optional extras, regenerate with `pip-compile` and commit the results.
