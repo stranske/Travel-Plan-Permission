@@ -6,14 +6,12 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
 from openpyxl import Workbook, load_workbook
 
 import travel_plan_permission.policy_api as policy_api
 from travel_plan_permission import (
     ExpenseCategory,
     PolicyCheckResult,
-    Receipt,
     ReconciliationResult,
     TripPlan,
     check_trip_plan,
