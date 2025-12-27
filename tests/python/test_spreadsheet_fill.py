@@ -29,6 +29,14 @@ def _plan() -> TripPlan:
     )
 
 
+def test_travel_spreadsheet_template_loads() -> None:
+    template_path = policy_api._default_template_path()
+
+    workbook = load_workbook(template_path)
+
+    assert workbook.sheetnames
+
+
 def test_fill_travel_spreadsheet_writes_mapped_fields(tmp_path) -> None:
     plan = _plan()
     output_path = tmp_path / "filled.xlsx"
