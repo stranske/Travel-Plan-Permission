@@ -15,7 +15,9 @@ MODULE_TO_DEPENDENCY = {
 
 
 def _iter_package_files() -> list[Path]:
-    package_root = Path(__file__).resolve().parents[2] / "src" / "travel_plan_permission"
+    package_root = (
+        Path(__file__).resolve().parents[2] / "src" / "travel_plan_permission"
+    )
     return list(package_root.rglob("*.py"))
 
 
