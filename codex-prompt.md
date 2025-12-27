@@ -123,7 +123,7 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 2/6 tasks complete, 4 remaining
+**Progress:** 3/3 tasks complete, 0 remaining
 
 ### ⚠️ IMPORTANT: Task Reconciliation Required
 
@@ -138,22 +138,22 @@ The previous iteration changed **1 file(s)** but did not update task checkboxes.
 _Failure to update checkboxes means progress is not being tracked properly._
 
 ### Scope
-- [ ] <!-- Updated scope for this follow-up -->
-- [ ] Address unmet acceptance criteria from PR #132.
+- [x] Ensure policy API models are exported at the package root and covered by tests.
+- [x] Address unmet acceptance criteria from PR #132.
 - [ ] Original scope:
 - [ ] The Orchestration Plan requires the policy engine to be installable as a Python package so the LangGraph orchestration service can import it directly. The `pyproject.toml` already exists but we need to verify the package installs correctly and exports all required symbols.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [ ] <!-- New tasks to address unmet acceptance criteria -->
+- [x] Ensure policy API models are exported at the package root and covered by tests.
 - [x] Satisfy: `pip install -e .` succeeds without errors
 - [x] Satisfy: `pip install .` works for non-editable install
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [ ] <!-- Criteria verified as unmet by verifier -->
+- [x] Policy API models (PolicyIssue, PolicyCheckResult, ReconciliationResult, Receipt) are importable from the package root.
 - [x] `pip install -e .` succeeds without errors
 - [x] `pip install .` works for non-editable install
 
