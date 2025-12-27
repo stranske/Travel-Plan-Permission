@@ -33,7 +33,7 @@ class _AlwaysPassRule(PolicyRule):
     def __init__(self) -> None:
         super().__init__(Severity.BLOCKING)
 
-    def evaluate(self, context) -> PolicyResult:
+    def evaluate(self, _context) -> PolicyResult:
         return self._result(True, "Always passes for test coverage")
 
     def message(self) -> str:  # pragma: no cover - test-only rule
@@ -165,7 +165,7 @@ def test_check_trip_plan_passes_with_compliant_engine(
 ) -> None:
     engine = PolicyEngine([_AlwaysPassRule()])
     monkeypatch.setattr(
-        policy_api.PolicyEngine, "from_file", lambda *args, **kwargs: engine
+        policy_api.PolicyEngine, "from_file", lambda *_args, **_kwargs: engine
     )
 
     result = check_trip_plan(base_trip_plan)
