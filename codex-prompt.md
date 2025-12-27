@@ -123,37 +123,25 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 3/3 tasks complete, 0 remaining
-
-### ⚠️ IMPORTANT: Task Reconciliation Required
-
-The previous iteration changed **1 file(s)** but did not update task checkboxes.
-
-**Before continuing, you MUST:**
-1. Review the recent commits to understand what was changed
-2. Determine which task checkboxes should be marked complete
-3. Update the PR body to check off completed tasks
-4. Then continue with remaining tasks
-
-_Failure to update checkboxes means progress is not being tracked properly._
+**Progress:** 4/6 tasks complete, 2 remaining
 
 ### Scope
-- [x] Ensure policy API models are exported at the package root and covered by tests.
-- [x] Address unmet acceptance criteria from PR #132.
+- [ ] <!-- Updated scope for this follow-up -->
+- [ ] Address unmet acceptance criteria from PR #132.
 - [ ] Original scope:
 - [ ] The Orchestration Plan requires the policy engine to be installable as a Python package so the LangGraph orchestration service can import it directly. The `pyproject.toml` already exists but we need to verify the package installs correctly and exports all required symbols.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [x] Ensure policy API models are exported at the package root and covered by tests.
+- [x] Export policy API status/severity type aliases from the package root.
 - [x] Satisfy: `pip install -e .` succeeds without errors
 - [x] Satisfy: `pip install .` works for non-editable install
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [x] Policy API models (PolicyIssue, PolicyCheckResult, ReconciliationResult, Receipt) are importable from the package root.
+- [x] Policy API status/severity type aliases are available from the package root.
 - [x] `pip install -e .` succeeds without errors
 - [x] `pip install .` works for non-editable install
 
