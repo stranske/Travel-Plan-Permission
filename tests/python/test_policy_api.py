@@ -9,6 +9,7 @@ import pytest
 from travel_plan_permission import (
     ExpenseCategory,
     PolicyCheckResult,
+    PolicyEngine,
     Receipt,
     ReconciliationResult,
     TripPlan,
@@ -18,11 +19,12 @@ from travel_plan_permission import (
 )
 
 
-def _plan(*, destination: str = "New York, NY") -> TripPlan:
+@pytest.fixture()
+def trip_plan() -> TripPlan:
     return TripPlan(
         trip_id="TRIP-API-001",
         traveler_name="Alex Rivera",
-        destination=destination,
+        destination="New York, NY",
         departure_date=date(2024, 9, 15),
         return_date=date(2024, 9, 20),
         purpose="Client workshop",
@@ -30,33 +32,9 @@ def _plan(*, destination: str = "New York, NY") -> TripPlan:
     )
 
 
-def test_check_trip_plan_reports_policy_issues() -> None:
-    plan = _plan()
-
-    result = check_trip_plan(plan)
-
-    assert result.policy_version
-    assert result.status == "fail"
-    assert any(issue.code == "fare_evidence" for issue in result.issues)
-    for issue in result.issues:
-        assert issue.context["rule_id"] == issue.code
-
-
-def test_list_allowed_vendors_returns_registry_matches() -> None:
-    plan = _plan(destination="New York, NY")
-
-    vendors = list_allowed_vendors(plan)
-
-    assert vendors == [
-        "Blue Skies Airlines",
-        "Citywide Rides",
-        "Downtown Suites",
-    ]
-
-
-def test_reconcile_summarizes_receipts() -> None:
-    plan = _plan()
-    receipts = [
+@pytest.fixture()
+def over_budget_receipts() -> list[Receipt]:
+    return [
         Receipt(
             total=Decimal("500.00"),
             date=date(2024, 9, 16),
@@ -73,12 +51,160 @@ def test_reconcile_summarizes_receipts() -> None:
         ),
     ]
 
-    result = reconcile(plan, receipts)
+
+@pytest.fixture()
+def matching_receipts() -> list[Receipt]:
+    return [
+        Receipt(
+            total=Decimal("250.00"),
+            date=date(2024, 9, 16),
+            vendor="Metro Cab",
+            file_reference="receipt-003.pdf",
+            file_size_bytes=512,
+        ),
+        Receipt(
+            total=Decimal("750.00"),
+            date=date(2024, 9, 18),
+            vendor="Hotel Central",
+            file_reference="receipt-004.png",
+            file_size_bytes=1024,
+        ),
+    ]
+
+
+def test_check_trip_plan_reports_policy_issues(trip_plan: TripPlan) -> None:
+    result = check_trip_plan(trip_plan)
+
+    assert isinstance(result, PolicyCheckResult)
+    assert result.policy_version
+    assert result.status == "fail"
+    assert any(issue.code == "fare_evidence" for issue in result.issues)
+    for issue in result.issues:
+        assert issue.context["rule_id"] == issue.code
+
+
+def test_check_trip_plan_reports_pass_when_no_rules(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        PolicyEngine, "from_file", lambda *_args, **_kwargs: PolicyEngine([])
+    )
+
+    result = check_trip_plan(trip_plan)
+
+    assert result.status == "pass"
+    assert result.issues == []
+    assert result.policy_version
+
+
+def test_check_trip_plan_skips_cost_comparison_when_estimates_missing(
+    trip_plan: TripPlan,
+) -> None:
+    plan = trip_plan.model_copy(update={"expense_breakdown": {}})
+
+    result = check_trip_plan(plan)
+
+    issue_codes = {issue.code for issue in result.issues}
+    assert "driving_vs_flying" not in issue_codes
+    assert "fare_evidence" in issue_codes
+
+
+def test_list_allowed_vendors_returns_registry_matches(
+    trip_plan: TripPlan,
+) -> None:
+    vendors = list_allowed_vendors(trip_plan)
+
+    assert isinstance(vendors, list)
+    assert vendors == [
+        "Blue Skies Airlines",
+        "Citywide Rides",
+        "Downtown Suites",
+    ]
+
+
+def test_list_allowed_vendors_filters_by_destination_and_date(
+    trip_plan: TripPlan,
+) -> None:
+    plan = trip_plan.model_copy(
+        update={"destination": "New York, NY", "departure_date": date(2024, 11, 2)}
+    )
+
+    vendors = list_allowed_vendors(plan)
+
+    assert vendors == [
+        "Blue Skies Airlines",
+        "Downtown Suites",
+    ]
+
+
+def test_list_allowed_vendors_matches_other_destinations(
+    trip_plan: TripPlan,
+) -> None:
+    plan = trip_plan.model_copy(update={"destination": "San Francisco, CA"})
+
+    vendors = list_allowed_vendors(plan)
+
+    assert vendors == [
+        "Blue Skies Airlines",
+        "Citywide Rides",
+    ]
+
+
+def test_list_allowed_vendors_handles_empty_destination(
+    trip_plan: TripPlan,
+) -> None:
+    plan = trip_plan.model_copy(update={"destination": ""})
+
+    vendors = list_allowed_vendors(plan)
+
+    assert vendors == ["Citywide Rides"]
+
+
+def test_list_allowed_vendors_handles_no_active_providers(
+    trip_plan: TripPlan,
+) -> None:
+    plan = trip_plan.model_copy(
+        update={"departure_date": date(2025, 1, 10), "return_date": date(2025, 1, 12)}
+    )
+
+    vendors = list_allowed_vendors(plan)
+
+    assert vendors == []
+
+
+def test_reconcile_summarizes_receipts(
+    trip_plan: TripPlan, over_budget_receipts: list[Receipt]
+) -> None:
+    result = reconcile(trip_plan, over_budget_receipts)
 
     assert result.status == "over_budget"
+    assert result.planned_total == Decimal("1000.00")
+    assert result.actual_total == Decimal("1200.00")
+    assert result.variance == Decimal("200.00")
     assert result.receipt_count == 2
     assert result.receipts_by_type == {".pdf": 1, ".png": 1}
     assert result.expenses_by_category == {ExpenseCategory.OTHER: Decimal("1200.00")}
+
+
+def test_reconcile_matches_estimated_cost(
+    trip_plan: TripPlan, matching_receipts: list[Receipt]
+) -> None:
+    result = reconcile(trip_plan, matching_receipts)
+
+    assert isinstance(result, ReconciliationResult)
+    assert result.status == "on_budget"
+    assert result.variance == Decimal("0.00")
+
+
+def test_reconcile_handles_empty_receipts(trip_plan: TripPlan) -> None:
+    result = reconcile(trip_plan, [])
+
+    assert result.status == "under_budget"
+    assert result.planned_total == Decimal("1000.00")
+    assert result.actual_total == Decimal("0.00")
+    assert result.variance == Decimal("-1000.00")
+    assert result.receipt_count == 0
+    assert result.receipts_by_type == {}
 
 
 def test_policy_api_documentation_examples_match_models() -> None:
