@@ -15,7 +15,7 @@ SRC_PATH = ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from travel_plan_permission import ExpenseCategory, Receipt, TripPlan
+from travel_plan_permission import ExpenseCategory, Receipt, TripPlan  # noqa: E402
 
 
 @pytest.fixture()
