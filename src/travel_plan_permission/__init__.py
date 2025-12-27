@@ -1,5 +1,9 @@
 """Travel Plan Permission - Workflow automation for travel approval and reimbursement."""
 
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
+import tomllib
+
 from .approval import ApprovalEngine
 from .approval_packet import (
     ApprovalLinks,
@@ -117,6 +121,21 @@ from .validation import (
     ProviderApprovalRule as ValidationProviderApprovalRule,
 )
 
+
+def _resolve_version() -> str:
+    try:
+        return version("travel-plan-permission")
+    except PackageNotFoundError:
+        for parent in Path(__file__).resolve().parents:
+            candidate = parent / "pyproject.toml"
+            if candidate.exists():
+                data = tomllib.loads(candidate.read_text(encoding="utf-8"))
+                project = data.get("project", {})
+                project_version = project.get("version")
+                if isinstance(project_version, str) and project_version:
+                    return project_version
+        return "0.1.0"
+
 __all__ = [
     "AdvanceBookingRule",
     "ALLOWED_RECEIPT_TYPES",
@@ -216,4 +235,4 @@ __all__ = [
     "snapshot_from_plan",
     "__version__",
 ]
-__version__ = "0.1.0"
+__version__ = _resolve_version()
