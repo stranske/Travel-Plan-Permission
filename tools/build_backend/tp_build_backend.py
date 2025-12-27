@@ -195,6 +195,12 @@ def build_sdist(sdist_directory: str, _config_settings=None) -> str:
             candidate = project_root / rel_path
             if candidate.exists():
                 tar.add(candidate, arcname=f"{root_dir}/{rel_path}")
+        backend_root = project_root / "tools" / "build_backend"
+        if backend_root.exists():
+            for path in backend_root.rglob("*"):
+                if path.is_dir() or "__pycache__" in path.parts:
+                    continue
+                tar.add(path, arcname=f"{root_dir}/tools/build_backend/{path.relative_to(backend_root)}")
         src_root = project_root / "src"
         for path in src_root.rglob("*"):
             tar.add(path, arcname=f"{root_dir}/src/{path.relative_to(src_root)}")
