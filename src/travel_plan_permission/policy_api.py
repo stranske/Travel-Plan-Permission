@@ -99,6 +99,29 @@ _CURRENCY_FORMAT = "$#,##0.00"
 _ZIP_PATTERN = re.compile(r"^(?P<city_state>.*?)(?:\s+(?P<zip>\d{5})(?:-\d{4})?)?$")
 
 
+def _default_template_path(template_file: str | None = None) -> Path:
+    """Return path to the default template file."""
+    template_name = template_file or _TEMPLATE_FILENAME
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "templates" / template_name
+        if candidate.exists():
+            return candidate
+    try:
+        resource = resources.files("travel_plan_permission").joinpath(
+            "templates", template_name
+        )
+    except ModuleNotFoundError:
+        resource = None
+    if resource is not None and resource.is_file():
+        # For package resources, we need to return a concrete path
+        # In Python 3.9+, we can use as_file context manager if needed
+        # For now, fall back to reading bytes since resources may be in a zip
+        raise FileNotFoundError(
+            f"Template {template_name} found in package resources but path access not supported. Use _default_template_bytes() instead."
+        )
+    raise FileNotFoundError(f"Unable to locate templates/{template_name}")
+
+
 def _default_template_bytes(template_file: str | None = None) -> bytes:
     template_name = template_file or _TEMPLATE_FILENAME
     for parent in Path(__file__).resolve().parents:
