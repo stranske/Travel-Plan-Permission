@@ -6,6 +6,8 @@ import re
 from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
+from importlib import resources
+from io import BytesIO
 from pathlib import Path
 from typing import Literal
 
@@ -97,12 +99,20 @@ _CURRENCY_FORMAT = "$#,##0.00"
 _ZIP_PATTERN = re.compile(r"^(?P<city_state>.*?)(?:\s+(?P<zip>\d{5})(?:-\d{4})?)?$")
 
 
-def _default_template_path(template_file: str | None = None) -> Path:
+def _default_template_bytes(template_file: str | None = None) -> bytes:
     template_name = template_file or _TEMPLATE_FILENAME
     for parent in Path(__file__).resolve().parents:
         candidate = parent / "templates" / template_name
         if candidate.exists():
-            return candidate
+            return candidate.read_bytes()
+    try:
+        resource = resources.files("travel_plan_permission").joinpath(
+            "templates", template_name
+        )
+    except ModuleNotFoundError:
+        resource = None
+    if resource is not None and resource.is_file():
+        return resource.read_bytes()
     raise FileNotFoundError(f"Unable to locate templates/{template_name}")
 
 
@@ -265,10 +275,10 @@ def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
 
     mapping = load_template_mapping()
     template_file = mapping.metadata.get("template_file")
-    template_path = _default_template_path(
+    template_bytes = _default_template_bytes(
         template_file if isinstance(template_file, str) else None
     )
-    wb = load_workbook(template_path)
+    wb = load_workbook(BytesIO(template_bytes))
     ws = wb.active
 
     field_data = _plan_field_values(plan)

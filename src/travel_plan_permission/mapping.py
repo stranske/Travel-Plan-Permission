@@ -4,12 +4,33 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 DEFAULT_TEMPLATE_VERSION = "ITIN-2025.1"
+
+
+def _package_mapping_resource() -> resources.abc.Traversable | None:
+    try:
+        resource = resources.files("travel_plan_permission").joinpath(
+            "config", "excel_mappings.yaml"
+        )
+    except ModuleNotFoundError:
+        return None
+    return resource if resource.is_file() else None
+
+
+def _package_template_resource(template_file: str) -> resources.abc.Traversable | None:
+    try:
+        resource = resources.files("travel_plan_permission").joinpath(
+            "templates", template_file
+        )
+    except ModuleNotFoundError:
+        return None
+    return resource if resource.is_file() else None
 
 
 def _default_mapping_path() -> Path | None:
@@ -53,9 +74,14 @@ def load_template_mapping(
 
     mapping_path = Path(path) if path is not None else _default_mapping_path()
     if mapping_path is None or not mapping_path.exists():
-        raise FileNotFoundError("Unable to locate excel_mappings.yaml")
+        resource = _package_mapping_resource()
+        if resource is None:
+            raise FileNotFoundError("Unable to locate excel_mappings.yaml")
+        mapping_text = resource.read_text(encoding="utf-8")
+    else:
+        mapping_text = mapping_path.read_text(encoding="utf-8")
 
-    data = yaml.safe_load(mapping_path.read_text(encoding="utf-8")) or {}
+    data = yaml.safe_load(mapping_text) or {}
     templates: dict[str, dict[str, Any]] = data.get("templates") or {}
 
     if version not in templates:
@@ -79,9 +105,10 @@ def load_template_mapping(
             if candidate.exists():
                 break
         else:
-            raise FileNotFoundError(
-                f"Unable to locate templates/{template_file} for template version '{version}'"
-            )
+            if _package_template_resource(template_file) is None:
+                raise FileNotFoundError(
+                    f"Unable to locate templates/{template_file} for template version '{version}'"
+                )
 
     cells = payload.get("cells") or {}
     dropdowns = payload.get("dropdowns") or {}
