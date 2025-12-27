@@ -10,8 +10,11 @@ from travel_plan_permission import (
     ExpenseCategory,
     PolicyCheckResult,
     PolicyEngine,
+    PolicyResult,
+    PolicyVersion,
     Receipt,
     ReconciliationResult,
+    Severity,
     TripPlan,
     check_trip_plan,
     list_allowed_vendors,
@@ -95,6 +98,54 @@ def test_check_trip_plan_reports_pass_when_no_rules(
     assert result.status == "pass"
     assert result.issues == []
     assert result.policy_version
+
+
+def test_check_trip_plan_reports_pass_with_advisory_only_results(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class StubEngine:
+        def __init__(self, results: list[PolicyResult], rules: list[dict[str, object]]):
+            self._results = results
+            self._rules = rules
+
+        def validate(self, _context) -> list[PolicyResult]:
+            return self._results
+
+        def describe_rules(self) -> list[dict[str, object]]:
+            return self._rules
+
+    rules = [
+        {
+            "rule_id": "advance_booking",
+            "severity": "advisory",
+            "description": "Advance booking guideline",
+        }
+    ]
+    results = [
+        PolicyResult(
+            rule_id="advance_booking",
+            severity=Severity.ADVISORY,
+            passed=False,
+            message="Advance booking guidance",
+        ),
+        PolicyResult(
+            rule_id="fare_evidence",
+            severity=Severity.BLOCKING,
+            passed=True,
+            message="Fare evidence attached",
+        ),
+    ]
+    engine = StubEngine(results, rules)
+    monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
+
+    result = check_trip_plan(trip_plan)
+
+    assert result.status == "pass"
+    assert [issue.code for issue in result.issues] == ["advance_booking"]
+    assert result.issues[0].severity == "warning"
+    assert result.issues[0].context["severity"] == "advisory"
+    expected_version = PolicyVersion.from_config(None, {"rules": rules}).config_hash
+    assert result.policy_version == expected_version
 
 
 def test_check_trip_plan_skips_cost_comparison_when_estimates_missing(

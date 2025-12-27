@@ -10,3 +10,19 @@ Note: I couldn’t find an `AGENTS.md` in the repo despite the instruction; I pr
 
 If you want, I can:
 1) Run the full test suite with coverage.
+
+PR Tasks and Acceptance Criteria
+Scope
+- [ ] Updated scope for this follow-up.
+- [ ] Address unmet acceptance criteria from PR #133.
+- [ ] Original scope:
+- [ ] The Orchestration Plan (Phase 0) requires tests for key policy scenarios to ensure the API surface is reliable before orchestration integration. Comprehensive tests validate that the policy engine behaves correctly and provides confidence for LangGraph node implementations.
+
+Tasks
+- [x] Add policy API coverage for advisory-only outcomes in check_trip_plan.
+- [x] Satisfy: Coverage for policy_api.py is >= 80%
+
+Acceptance Criteria
+- [ ] Criteria verified as unmet by verifier.
+- [x] Coverage for policy_api.py is >= 80%
+- [x] Key policy scenario tests cover advisory-only outcomes.
