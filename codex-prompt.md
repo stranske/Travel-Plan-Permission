@@ -123,7 +123,7 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 0/4 tasks complete, 4 remaining
+**Progress:** 1/4 tasks complete, 3 remaining
 
 ### Scope
 - [ ] <!-- Updated scope for this follow-up -->
@@ -144,6 +144,6 @@ Complete these in order. Mark checkbox done ONLY after implementation is verifie
 The PR is complete when ALL of these are satisfied:
 
 - [ ] <!-- Criteria verified as unmet by verifier -->
-- [ ] Coverage for policy_api.py is >= 80%
+- [x] Coverage for policy_api.py is >= 80%
 
 ---
