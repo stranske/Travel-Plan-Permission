@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 from datetime import date
@@ -147,11 +148,73 @@ def test_policy_api_markdown_lint() -> None:
     root = Path(__file__).resolve().parents[2]
     local_bin = root / "node_modules" / ".bin" / "markdownlint-cli2"
     lint_bin = local_bin if local_bin.exists() else shutil.which("markdownlint-cli2")
-    if not lint_bin:
-        pytest.skip("markdownlint-cli2 is not installed")
+    if lint_bin:
+        subprocess.run(
+            [str(lint_bin), "docs/policy-api.md"],
+            check=True,
+            cwd=root,
+        )
+        return
 
-    subprocess.run(
-        [str(lint_bin), "docs/policy-api.md"],
-        check=True,
-        cwd=root,
-    )
+    errors = _basic_markdown_lint(root / "docs/policy-api.md")
+    assert not errors, "Basic markdown lint errors:\n" + "\n".join(errors)
+
+
+def _basic_markdown_lint(path: Path) -> list[str]:
+    text = path.read_text()
+    errors: list[str] = []
+    if not text.endswith("\n"):
+        errors.append("MD047: File should end with a newline.")
+
+    in_fence = False
+    fence_marker = ""
+    last_heading = 0
+    h1_count = 0
+
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if stripped.startswith(("```", "~~~")):
+            marker = stripped[:3]
+            if not in_fence:
+                in_fence = True
+                fence_marker = marker
+            elif marker == fence_marker:
+                in_fence = False
+                fence_marker = ""
+            continue
+
+        if in_fence:
+            continue
+
+        if "\t" in line:
+            errors.append(f"MD010: Hard tab found at line {line_number}.")
+
+        if line.lstrip().startswith("#") and not line.startswith("#"):
+            errors.append(
+                f"MD023: Heading should start at column 1 (line {line_number})."
+            )
+
+        if line.startswith("#"):
+            match = re.match(r"^(#{1,6})\s+\S", line)
+            if not match:
+                errors.append(
+                    f"MD018: No space after heading marker (line {line_number})."
+                )
+                continue
+
+            level = len(match.group(1))
+            if level == 1:
+                h1_count += 1
+            if last_heading and level > last_heading + 1:
+                errors.append(
+                    f"MD001: Heading level jumps at line {line_number}."
+                )
+            last_heading = level
+
+    if h1_count > 1:
+        errors.append("MD025: Multiple top-level headings found.")
+
+    if in_fence:
+        errors.append("MD046: Unclosed fenced code block.")
+
+    return errors
