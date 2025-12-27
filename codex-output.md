@@ -1,7 +1,10 @@
-Expanded the policy API tests with fixtures and scenario coverage so the API surface is exercised for pass/fail, vendor filtering, and reconciliation edge cases in `tests/python/test_policy_api.py`. Added focused assertions for return types, policy version presence, date-based vendor filtering, and empty-input handling to meet the acceptance criteria.  
+Added edge-case coverage around missing cost estimates and empty vendor availability, and expanded vendor destination cases to align with the provider registry behavior. Updates are in `tests/python/test_policy_api.py`.
 
 Tests run:
-- `pytest tests/python/test_policy_api.py` (markdownlint test skipped because `markdownlint-cli2` is not installed)
+- `pytest tests/python/test_policy_api.py` (markdownlint check skipped because `markdownlint-cli2` not installed)
 
-Suggested next steps:
-1) Run `pytest` (or `pytest --cov=travel_plan_permission/policy_api.py`) if you want to confirm overall suite and coverage in this environment.
+Notes:
+- Existing unrelated modification remains in `codex-prompt.md` (untouched).
+
+Next steps:
+1) If you want, I can mark the relevant task checkboxes as complete and/or run the full test suite.

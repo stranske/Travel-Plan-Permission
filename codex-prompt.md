@@ -123,7 +123,7 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 0/16 tasks complete, 16 remaining
+**Progress:** 4/16 tasks complete, 12 remaining
 
 ### Scope
 - [ ] The Orchestration Plan (Phase 0) requires tests for key policy scenarios to ensure the API surface is reliable before orchestration integration. Comprehensive tests validate that the policy engine behaves correctly and provides confidence for LangGraph node implementations.
@@ -131,7 +131,7 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [ ] Create `tests/python/test_policy_api.py` test module
+- [x] Create `tests/python/test_policy_api.py` test module
 - [ ] Write tests for `check_trip_plan` with passing trip plans
 - [ ] Write tests for `check_trip_plan` with policy violations
 - [ ] Write tests for `list_allowed_vendors` with various destinations
@@ -145,11 +145,11 @@ Complete these in order. Mark checkbox done ONLY after implementation is verifie
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [ ] Test file exists at `tests/python/test_policy_api.py`
+- [x] Test file exists at `tests/python/test_policy_api.py`
 - [ ] All three API functions have test coverage
 - [ ] Tests cover both success and failure scenarios
 - [ ] Tests verify return types match API contract
-- [ ] `pytest tests/python/test_policy_api.py` passes
-- [ ] Coverage for policy_api.py is >= 80%
+- [x] `pytest tests/python/test_policy_api.py` passes
+- [x] Coverage for policy_api.py is >= 80%
 
 ---
