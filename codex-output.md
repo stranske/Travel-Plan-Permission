@@ -1,9 +1,9 @@
-Added a TripPlan JSON round‑trip test so the new orchestration fields are proven to serialize/deserialize correctly, and updated the PR checklist to reflect the verified scope and acceptance items. The new test in `tests/python/test_models.py` exercises `model_dump_json`/`model_validate_json` for optional fields; the checklist updates live in `codex-prompt.md`.
+Added the policy API documentation with model examples, function signatures, and usage patterns, and linked it from the README to make it easy for orchestration developers to find and follow. The new doc in `docs/policy-api.md` focuses on the exact `TripPlan`, `PolicyCheckResult`, and `ReconciliationResult` shapes used by `src/travel_plan_permission/policy_api.py`, and includes error handling and edge cases. The README link lives in `README.md`.
 
-Tests run:
-- `pytest`
-- `pytest tests/python/test_models.py`
-- `mypy --strict src/ tests/python/` (fails with existing strict‑typing errors in multiple test files, e.g., missing return annotations and dict variance issues in tests)
+- Created `docs/policy-api.md` with function docs, JSON examples, and Python usage snippets.
+- Linked the new doc from `README.md`.
 
-Next steps:
-1) Decide whether to fix the existing mypy strict errors in tests or to adjust the expected mypy invocation for this repo, then rerun `mypy --strict src/ tests/python/`.
+Tests and linting
+- `npx markdownlint-cli2 "**/*.md" "!**/node_modules/**"` failed (no network access to fetch `markdownlint-cli2`).
+
+If you want, I can rerun markdownlint once dependencies are available offline.
