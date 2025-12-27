@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
-import re
 
-from openpyxl import Workbook, load_workbook
 import pytest
+from openpyxl import Workbook, load_workbook
 
 import travel_plan_permission.policy_api as policy_api
 from travel_plan_permission import ExpenseCategory, TripPlan
@@ -42,9 +42,11 @@ def base_plan() -> TripPlan:
     )
 
 
-def test_default_template_path_reports_package_resource_only(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_template_path_reports_package_resource_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class FakeResource:
-        def joinpath(self, *_parts: str) -> "FakeResource":
+        def joinpath(self, *_parts: str) -> FakeResource:
             return self
 
         def is_file(self) -> bool:
@@ -57,11 +59,13 @@ def test_default_template_path_reports_package_resource_only(monkeypatch: pytest
         policy_api._default_template_path("missing-template.xlsx")
 
 
-def test_default_template_bytes_reads_package_resource(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_template_bytes_reads_package_resource(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     template_bytes = b"template-bytes"
 
     class FakeResource:
-        def joinpath(self, *_parts: str) -> "FakeResource":
+        def joinpath(self, *_parts: str) -> FakeResource:
             return self
 
         def is_file(self) -> bool:
@@ -76,7 +80,9 @@ def test_default_template_bytes_reads_package_resource(monkeypatch: pytest.Monke
     assert policy_api._default_template_bytes("missing-template.xlsx") == template_bytes
 
 
-def test_default_template_bytes_missing_package_module(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_template_bytes_missing_package_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(Path, "exists", lambda _self: False)
 
     def _raise_module_error(_name: str):
