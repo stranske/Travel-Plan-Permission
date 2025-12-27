@@ -1,11 +1,14 @@
 import shutil
 import subprocess
-from datetime import date
+from collections.abc import Callable
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
+import travel_plan_permission.policy_api as policy_api
+from openpyxl import Workbook, load_workbook
 from travel_plan_permission import (
     ExpenseCategory,
     PolicyCheckResult,
@@ -16,37 +19,182 @@ from travel_plan_permission import (
     list_allowed_vendors,
     reconcile,
 )
+from travel_plan_permission.mapping import TemplateMapping
+from travel_plan_permission.policy import PolicyEngine, PolicyResult, PolicyRule, Severity
 
 
-def _plan(*, destination: str = "New York, NY") -> TripPlan:
-    return TripPlan(
-        trip_id="TRIP-API-001",
-        traveler_name="Alex Rivera",
-        destination=destination,
-        departure_date=date(2024, 9, 15),
-        return_date=date(2024, 9, 20),
-        purpose="Client workshop",
-        estimated_cost=Decimal("1000.00"),
+class _AlwaysPassRule(PolicyRule):
+    rule_id = "always_pass"
+
+    def __init__(self) -> None:
+        super().__init__(Severity.BLOCKING)
+
+    def evaluate(self, context) -> PolicyResult:
+        return self._result(True, "Always passes for test coverage")
+
+    def message(self) -> str:  # pragma: no cover - test-only rule
+        return "Always passes for test coverage"
+
+
+def test_default_template_path_points_to_existing_file() -> None:
+    template_path = policy_api._default_template_path()
+
+    assert template_path.is_file()
+
+
+def test_split_destination_parses_zip_code() -> None:
+    city_state, zip_code = policy_api._split_destination("Austin, TX 78701")
+
+    assert city_state == "Austin, TX"
+    assert zip_code == "78701"
+
+
+def test_plan_field_values_include_derived_fields(
+    trip_plan_factory: Callable[..., TripPlan],
+) -> None:
+    plan = trip_plan_factory(destination="Austin, TX 78701")
+
+    fields = policy_api._plan_field_values(plan)
+
+    assert fields["traveler_name"] == plan.traveler_name
+    assert fields["business_purpose"] == plan.purpose
+    assert fields["city_state"] == "Austin, TX"
+    assert fields["destination_zip"] == "78701"
+
+
+def test_resolve_field_value_handles_nested_paths() -> None:
+    data = {
+        "hotel": {"nightly_rate": Decimal("199.99")},
+        "comparable_hotels": [{"nightly_rate": Decimal("189.00")}],
+    }
+
+    assert (
+        policy_api._resolve_field_value(data, "hotel.nightly_rate")
+        == Decimal("199.99")
+    )
+    assert (
+        policy_api._resolve_field_value(
+            data, "comparable_hotels[0].nightly_rate"
+        )
+        == Decimal("189.00")
+    )
+    assert policy_api._resolve_field_value(data, "comparable_hotels[1].nightly_rate") is None
+
+
+def test_format_helpers_handle_expected_types() -> None:
+    assert policy_api._format_date_value(date(2024, 9, 15)) == "2024-09-15"
+    assert (
+        policy_api._format_date_value(datetime(2024, 9, 15, 8, 0))
+        == "2024-09-15"
+    )
+    assert policy_api._format_date_value("2024-09-15") == "2024-09-15"
+    assert policy_api._format_date_value(123) is None
+
+    assert policy_api._format_currency_value(Decimal("10.125")) == Decimal("10.12")
+    assert policy_api._format_currency_value(12) == Decimal("12.00")
+    assert policy_api._format_currency_value(12.345) == Decimal("12.34")
+    assert policy_api._format_currency_value("9.5") == Decimal("9.50")
+    assert policy_api._format_currency_value("not-a-number") is None
+    assert policy_api._format_currency_value(None) is None
+
+
+def test_fill_travel_spreadsheet_populates_mapped_fields(
+    tmp_path, trip_plan_factory: Callable[..., TripPlan], monkeypatch
+) -> None:
+    template_path = tmp_path / "template.xlsx"
+    workbook = Workbook()
+    workbook.save(template_path)
+
+    plan = trip_plan_factory(
+        transportation_mode="air",
+        expected_costs={},
+        expense_breakdown={ExpenseCategory.CONFERENCE_FEES: Decimal("250.00")},
+    )
+    mapping = TemplateMapping(
+        version="TEST-1",
+        cells={
+            "traveler_name": "A1",
+            "depart_date": "A2",
+            "event_registration_cost": "A3",
+        },
+        dropdowns={"transportation_mode": {"cell": "B1"}},
+        checkboxes={
+            "expected_costs": {
+                "cell": "B2",
+                "true_value": "YES",
+                "false_value": "NO",
+            }
+        },
+        formulas={"total": {"cell": "C1", "formula": "=A3*1"}},
+        metadata={},
     )
 
+    monkeypatch.setattr(policy_api, "load_template_mapping", lambda: mapping)
+    monkeypatch.setattr(policy_api, "_default_template_path", lambda *_: template_path)
 
-def test_check_trip_plan_reports_policy_issues() -> None:
-    plan = _plan()
+    output_path = tmp_path / "filled.xlsx"
+    policy_api.fill_travel_spreadsheet(plan, output_path)
 
-    result = check_trip_plan(plan)
+    filled = load_workbook(output_path)
+    sheet = filled.active
 
+    assert sheet["A1"].value == plan.traveler_name
+    assert sheet["A2"].value == "2024-09-15"
+    assert sheet["A3"].value == 250.0
+    assert sheet["A3"].number_format == "$#,##0.00"
+    assert sheet["B1"].value == "air"
+    assert sheet["B2"].value == "NO"
+    assert sheet["C1"].value == "=A3*1"
+    filled.close()
+
+
+def test_check_trip_plan_reports_policy_issues(base_trip_plan: TripPlan) -> None:
+    result = check_trip_plan(base_trip_plan)
+
+    assert isinstance(result, PolicyCheckResult)
     assert result.policy_version
     assert result.status == "fail"
     assert any(issue.code == "fare_evidence" for issue in result.issues)
+    assert any(issue.code == "hotel_comparison" for issue in result.issues)
     for issue in result.issues:
         assert issue.context["rule_id"] == issue.code
 
 
-def test_list_allowed_vendors_returns_registry_matches() -> None:
-    plan = _plan(destination="New York, NY")
+def test_check_trip_plan_passes_with_compliant_engine(
+    monkeypatch, base_trip_plan: TripPlan
+) -> None:
+    engine = PolicyEngine([_AlwaysPassRule()])
+    monkeypatch.setattr(
+        policy_api.PolicyEngine, "from_file", lambda *args, **kwargs: engine
+    )
 
-    vendors = list_allowed_vendors(plan)
+    result = check_trip_plan(base_trip_plan)
 
+    assert isinstance(result, PolicyCheckResult)
+    assert result.policy_version
+    assert result.status == "pass"
+    assert result.issues == []
+
+
+def test_check_trip_plan_handles_missing_fields(
+    trip_plan_factory: Callable[..., TripPlan],
+) -> None:
+    plan = trip_plan_factory(expense_breakdown={})
+
+    result = check_trip_plan(plan)
+
+    assert isinstance(result, PolicyCheckResult)
+    assert result.status == "fail"
+    assert any(issue.code == "fare_evidence" for issue in result.issues)
+
+
+def test_list_allowed_vendors_returns_registry_matches(
+    base_trip_plan: TripPlan,
+) -> None:
+    vendors = list_allowed_vendors(base_trip_plan)
+
+    assert isinstance(vendors, list)
+    assert all(isinstance(vendor, str) for vendor in vendors)
     assert vendors == [
         "Blue Skies Airlines",
         "Citywide Rides",
@@ -54,31 +202,70 @@ def test_list_allowed_vendors_returns_registry_matches() -> None:
     ]
 
 
-def test_reconcile_summarizes_receipts() -> None:
-    plan = _plan()
-    receipts = [
-        Receipt(
-            total=Decimal("500.00"),
-            date=date(2024, 9, 16),
-            vendor="Metro Cab",
-            file_reference="receipt-001.pdf",
-            file_size_bytes=1024,
-        ),
-        Receipt(
-            total=Decimal("700.00"),
-            date=date(2024, 9, 17),
-            vendor="Hotel Central",
-            file_reference="receipt-002.png",
-            file_size_bytes=2048,
-        ),
-    ]
+def test_list_allowed_vendors_filters_destination(
+    trip_plan_factory: Callable[..., TripPlan],
+) -> None:
+    plan = trip_plan_factory(destination="Denver, CO")
 
-    result = reconcile(plan, receipts)
+    vendors = list_allowed_vendors(plan)
 
+    assert isinstance(vendors, list)
+    assert vendors == ["Citywide Rides"]
+
+
+def test_list_allowed_vendors_filters_by_date(
+    trip_plan_factory: Callable[..., TripPlan],
+) -> None:
+    plan = trip_plan_factory(
+        destination="Seattle, WA",
+        departure_date=date(2023, 6, 10),
+        return_date=date(2023, 6, 12),
+    )
+
+    vendors = list_allowed_vendors(plan)
+
+    assert isinstance(vendors, list)
+    assert vendors == ["Harbor Hotels"]
+
+
+def test_reconcile_summarizes_receipts_over_budget(
+    base_trip_plan: TripPlan, sample_receipts: list
+) -> None:
+    result = reconcile(base_trip_plan, sample_receipts)
+
+    assert isinstance(result, ReconciliationResult)
     assert result.status == "over_budget"
     assert result.receipt_count == 2
     assert result.receipts_by_type == {".pdf": 1, ".png": 1}
     assert result.expenses_by_category == {ExpenseCategory.OTHER: Decimal("1200.00")}
+
+
+def test_reconcile_on_budget_with_matching_receipts(
+    trip_plan_factory: Callable[..., TripPlan], sample_receipts: list
+) -> None:
+    plan = trip_plan_factory(estimated_cost=Decimal("1200.00"))
+
+    result = reconcile(plan, sample_receipts)
+
+    assert isinstance(result, ReconciliationResult)
+    assert result.status == "on_budget"
+    assert result.variance == Decimal("0")
+    assert result.actual_total == Decimal("1200.00")
+    assert result.planned_total == Decimal("1200.00")
+
+
+def test_reconcile_under_budget_with_no_receipts(
+    trip_plan_factory: Callable[..., TripPlan],
+) -> None:
+    plan = trip_plan_factory(estimated_cost=Decimal("800.00"))
+
+    result = reconcile(plan, [])
+
+    assert isinstance(result, ReconciliationResult)
+    assert result.status == "under_budget"
+    assert result.receipt_count == 0
+    assert result.receipts_by_type == {}
+    assert result.expenses_by_category == {}
 
 
 def test_policy_api_documentation_examples_match_models() -> None:
