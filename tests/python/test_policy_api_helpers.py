@@ -46,6 +46,8 @@ def base_plan() -> TripPlan:
 def test_default_template_path_reports_package_resource_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    template_bytes = b"template-bytes"
+
     class FakeResource:
         def joinpath(self, *_parts: str) -> FakeResource:
             return self
@@ -53,11 +55,15 @@ def test_default_template_path_reports_package_resource_only(
         def is_file(self) -> bool:
             return True
 
+        def read_bytes(self) -> bytes:
+            return template_bytes
+
     monkeypatch.setattr(Path, "exists", lambda _self: False)
     monkeypatch.setattr(policy_api.resources, "files", lambda _name: FakeResource())
 
-    with pytest.raises(FileNotFoundError, match="path access not supported"):
-        policy_api._default_template_path("missing-template.xlsx")
+    template_path = policy_api._default_template_path("missing-template.xlsx")
+    assert template_path.name == "missing-template.xlsx"
+    assert template_path.read_bytes() == template_bytes
 
 
 def test_default_template_bytes_reads_package_resource(
