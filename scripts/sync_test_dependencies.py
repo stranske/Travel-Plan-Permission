@@ -36,6 +36,8 @@ try:
 except ImportError as exc:
     TOMLKIT_ERROR = exc
     tomlkit = None  # type: ignore[assignment]
+else:
+    TOMLKIT_ERROR = None
 
 # Standard library modules that don't need to be installed
 STDLIB_MODULES = {
