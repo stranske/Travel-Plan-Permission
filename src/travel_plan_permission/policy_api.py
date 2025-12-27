@@ -122,6 +122,7 @@ def _plan_field_values(plan: TripPlan) -> dict[str, object]:
         {
             "traveler_name": plan.traveler_name,
             "business_purpose": plan.purpose,
+            "cost_center": plan.department or plan.funding_source,
             "city_state": city_state,
             "destination_zip": zip_code,
             "depart_date": plan.departure_date,

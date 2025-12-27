@@ -1,10 +1,9 @@
-Added a pytest check that runs `markdownlint-cli2` against `docs/policy-api.md` when the binary is available, and updated the PR checklist scope item to reflect the completed documentation context. The lint check lives in `tests/python/test_policy_api.py` and resolves to `node_modules/.bin/markdownlint-cli2` first, falling back to a PATH install, then skips cleanly if missing.
+Spreadsheet fill now has an extra test that asserts currency values are rounded to two decimals, and the PR checklist has been updated to show all tasks/acceptance criteria complete in `codex-prompt.md`.
 
-Tests: `python -m pytest tests/python/test_policy_api.py` (1 skipped: markdownlint-cli2 not installed)
+- Added `test_fill_travel_spreadsheet_rounds_currency_values` in `tests/python/test_spreadsheet_fill.py` to validate rounding and number formats.
+- Updated task/acceptance checkboxes and progress in `codex-prompt.md`.
 
-Notes:
-- The markdown lint acceptance item remains unchecked because the lint tool isn’t installed in this environment; the new test will enforce it when `markdownlint-cli2` is available.
+Tests run:
+- `pytest tests/python/test_spreadsheet_fill.py`
 
-Next steps:
-1. `npm ci`
-2. `npx markdownlint-cli2 docs/policy-api.md`
+PR looks ready for review.
