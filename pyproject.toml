@@ -32,6 +32,10 @@ dev = [
     "mypy>=1.13.0",
     "types-PyYAML>=6.0.12",
 ]
+ocr = [
+    "Pillow>=10.0.0",
+    "pytesseract>=0.3.10",
+]
 
 [project.scripts]
 fill-spreadsheet = "travel_plan_permission.cli:main"
@@ -46,9 +50,8 @@ package-dir = { "" = "src" }
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.data-files]
-"config" = ["config/excel_mappings.yaml"]
-"templates" = ["templates/travel_request_template.xlsx"]
+[tool.setuptools.package-data]
+travel_plan_permission = ["config/*.yaml", "templates/*.xlsx"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]

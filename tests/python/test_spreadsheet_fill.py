@@ -134,11 +134,12 @@ def test_fill_travel_spreadsheet_uses_template_metadata(tmp_path, monkeypatch) -
     plan = _plan()
     output_path = tmp_path / "filled-template.xlsx"
     template_path = policy_api._default_template_path()
+    template_bytes = template_path.read_bytes()
     observed: dict[str, object] = {}
 
-    def fake_default_template_path(template_file: str | None = None):
+    def fake_default_template_bytes(template_file: str | None = None):
         observed["template_file"] = template_file
-        return template_path
+        return template_bytes
 
     mapping = TemplateMapping(
         version="ITIN-2025.1",
@@ -151,7 +152,7 @@ def test_fill_travel_spreadsheet_uses_template_metadata(tmp_path, monkeypatch) -
 
     monkeypatch.setattr(policy_api, "load_template_mapping", lambda: mapping)
     monkeypatch.setattr(
-        policy_api, "_default_template_path", fake_default_template_path
+        policy_api, "_default_template_bytes", fake_default_template_bytes
     )
 
     fill_travel_spreadsheet(plan, output_path)
