@@ -123,7 +123,19 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 0/16 tasks complete, 16 remaining
+**Progress:** 15/16 tasks complete, 1 remaining
+
+### ⚠️ IMPORTANT: Task Reconciliation Required
+
+The previous iteration changed **5 file(s)** but did not update task checkboxes.
+
+**Before continuing, you MUST:**
+1. Review the recent commits to understand what was changed
+2. Determine which task checkboxes should be marked complete
+3. Update the PR body to check off completed tasks
+4. Then continue with remaining tasks
+
+_Failure to update checkboxes means progress is not being tracked properly._
 
 ### Scope
 - [ ] The policy engine will be consumed by an external LangGraph orchestration layer. Clear documentation helps orchestration developers understand how to call the API functions, what inputs they require, and what outputs to expect.
@@ -131,25 +143,25 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [ ] Create `docs/policy-api.md` documentation file
-- [ ] Document `check_trip_plan` function with signature, parameters, and return type
-- [ ] Document `list_allowed_vendors` function with examples
-- [ ] Document `reconcile` function with input/output examples
-- [ ] Document `fill_travel_spreadsheet` function usage
-- [ ] Include example TripPlan JSON structure
-- [ ] Include example PolicyCheckResult JSON structure
-- [ ] Add code snippets showing typical usage patterns
-- [ ] Document error handling and edge cases
-- [ ] Link to this doc from README.md
+- [x] Create `docs/policy-api.md` documentation file
+- [x] Document `check_trip_plan` function with signature, parameters, and return type
+- [x] Document `list_allowed_vendors` function with examples
+- [x] Document `reconcile` function with input/output examples
+- [x] Document `fill_travel_spreadsheet` function usage
+- [x] Include example TripPlan JSON structure
+- [x] Include example PolicyCheckResult JSON structure
+- [x] Add code snippets showing typical usage patterns
+- [x] Document error handling and edge cases
+- [x] Link to this doc from README.md
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [ ] `docs/policy-api.md` exists with complete function documentation
-- [ ] Each function has signature, description, and example
-- [ ] JSON examples are valid and match actual model schemas
-- [ ] Code snippets are syntactically correct Python
-- [ ] README.md links to the new documentation
+- [x] `docs/policy-api.md` exists with complete function documentation
+- [x] Each function has signature, description, and example
+- [x] JSON examples are valid and match actual model schemas
+- [x] Code snippets are syntactically correct Python
+- [x] README.md links to the new documentation
 - [ ] Documentation passes markdown lint
 
 ---
