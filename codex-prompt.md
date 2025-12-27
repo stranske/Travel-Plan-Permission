@@ -123,7 +123,7 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 0/15 tasks complete, 15 remaining
+**Progress:** 9/15 tasks complete, 6 remaining
 
 ### Scope
 - [ ] The Orchestration Plan (Section 4.1) defines a TripPlan model with specific fields required for the orchestration API. The existing TripPlan model in `models.py` may need additional fields to match the API contract, ensuring compatibility with the LangGraph orchestration layer.
@@ -131,15 +131,15 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [ ] Compare existing TripPlan model with orchestration API specification
-- [ ] Add `traveler_role` field if missing
-- [ ] Add `origin_city` and `destination_city` fields if not present
-- [ ] Add `transportation_mode` field with Literal type for allowed values
-- [ ] Add `expected_costs` dict field for cost breakdown by category
-- [ ] Add `funding_source` field for budget tracking
-- [ ] Ensure all new fields have sensible defaults or are Optional
-- [ ] Update model validators if needed
-- [ ] Add/update tests for new fields
+- [x] Compare existing TripPlan model with orchestration API specification
+- [x] Add `traveler_role` field if missing
+- [x] Add `origin_city` and `destination_city` fields if not present
+- [x] Add `transportation_mode` field with Literal type for allowed values
+- [x] Add `expected_costs` dict field for cost breakdown by category
+- [x] Add `funding_source` field for budget tracking
+- [x] Ensure all new fields have sensible defaults or are Optional
+- [x] Update model validators if needed
+- [x] Add/update tests for new fields
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:

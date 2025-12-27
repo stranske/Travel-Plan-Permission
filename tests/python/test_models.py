@@ -54,6 +54,7 @@ class TestTripPlan:
             trip_id="TRIP-002B",
             traveler_name="Jane Smith",
             traveler_role="Engineer",
+            department="Platform Engineering",
             destination="Chicago, IL",
             origin_city="Seattle, WA",
             destination_city="Chicago, IL",
@@ -68,6 +69,7 @@ class TestTripPlan:
 
         payload = plan.model_dump()
         assert payload["traveler_role"] == "Engineer"
+        assert payload["department"] == "Platform Engineering"
         assert payload["origin_city"] == "Seattle, WA"
         assert payload["destination_city"] == "Chicago, IL"
         assert payload["transportation_mode"] == "air"

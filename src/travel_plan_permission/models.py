@@ -344,6 +344,9 @@ class TripPlan(BaseModel):
     traveler_role: str | None = Field(
         default=None, description="Traveler role or title"
     )
+    department: str | None = Field(
+        default=None, description="Department or cost center"
+    )
     destination: str = Field(..., description="Trip destination")
     origin_city: str | None = Field(default=None, description="City of departure")
     destination_city: str | None = Field(default=None, description="City of arrival")
