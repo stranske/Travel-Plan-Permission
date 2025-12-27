@@ -16,6 +16,7 @@ def _plan() -> TripPlan:
     return TripPlan(
         trip_id="TRIP-XL-001",
         traveler_name="Jordan Lee",
+        department="FIN-OPS",
         destination="Austin, TX 78701",
         departure_date=date(2024, 9, 15),
         return_date=date(2024, 9, 20),
@@ -51,6 +52,7 @@ def test_fill_travel_spreadsheet_writes_mapped_fields(tmp_path) -> None:
 
     assert sheet["B3"].value == plan.traveler_name
     assert sheet["B4"].value == plan.purpose
+    assert sheet["D4"].value == plan.department
     assert sheet["B5"].value == "Austin, TX"
     assert sheet["F5"].value == "78701"
     assert sheet["B6"].value == "2024-09-15"
