@@ -1,10 +1,15 @@
-Added a pytest check that runs `markdownlint-cli2` against `docs/policy-api.md` when the binary is available, and updated the PR checklist scope item to reflect the completed documentation context. The lint check lives in `tests/python/test_policy_api.py` and resolves to `node_modules/.bin/markdownlint-cli2` first, falling back to a PATH install, then skips cleanly if missing.
+Added an explicit check that the required public symbols are present in the package `__all__`, so the root API export contract is now enforced by tests in `tests/python/test_public_api.py`.
 
-Tests: `python -m pytest tests/python/test_policy_api.py` (1 skipped: markdownlint-cli2 not installed)
+Details:
+- `tests/python/test_public_api.py` now asserts `__all__` includes `__version__`, `TripPlan`, `check_trip_plan`, `list_allowed_vendors`, `reconcile`, and `fill_travel_spreadsheet`.
 
-Notes:
-- The markdown lint acceptance item remains unchecked because the lint tool isn’t installed in this environment; the new test will enforce it when `markdownlint-cli2` is available.
+Verification:
+- `python -m pytest tests/python/test_public_api.py`
+- `pip install -e .` in a clean venv failed due to restricted network access when resolving build deps.
+- `pip install -e . --no-deps --no-build-isolation` succeeded in a `--system-site-packages` venv.
+- `pip install . --no-deps --no-build-isolation` succeeded after setting `PIP_CACHE_DIR=/tmp/pip-cache`.
+- Imports verified in the venv: `check_trip_plan`, `list_allowed_vendors`, `reconcile`, `fill_travel_spreadsheet`, `TripPlan`, and `travel_plan_permission.__version__`.
 
-Next steps:
-1. `npm ci`
-2. `npx markdownlint-cli2 docs/policy-api.md`
+Next steps (pick one):
+1) Re-run `pip install -e .` and `pip install .` in a clean venv with network access to fully verify dependency installation.
+2) If you want me to, I can add a CI-friendly install smoke test once network access is available.

@@ -123,45 +123,31 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 15/16 tasks complete, 1 remaining
-
-### ⚠️ IMPORTANT: Task Reconciliation Required
-
-The previous iteration changed **3 file(s)** but did not update task checkboxes.
-
-**Before continuing, you MUST:**
-1. Review the recent commits to understand what was changed
-2. Determine which task checkboxes should be marked complete
-3. Update the PR body to check off completed tasks
-4. Then continue with remaining tasks
-
-_Failure to update checkboxes means progress is not being tracked properly._
+**Progress:** 0/14 tasks complete, 14 remaining
 
 ### Scope
-- [x] The policy engine will be consumed by an external LangGraph orchestration layer. Clear documentation helps orchestration developers understand how to call the API functions, what inputs they require, and what outputs to expect.
+- [ ] The Orchestration Plan requires the policy engine to be installable as a Python package so the LangGraph orchestration service can import it directly. The `pyproject.toml` already exists but we need to verify the package installs correctly and exports all required symbols.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [x] Create `docs/policy-api.md` documentation file
-- [x] Document `check_trip_plan` function with signature, parameters, and return type
-- [x] Document `list_allowed_vendors` function with examples
-- [x] Document `reconcile` function with input/output examples
-- [x] Document `fill_travel_spreadsheet` function usage
-- [x] Include example TripPlan JSON structure
-- [x] Include example PolicyCheckResult JSON structure
-- [x] Add code snippets showing typical usage patterns
-- [x] Document error handling and edge cases
-- [x] Link to this doc from README.md
+- [ ] Verify `pip install -e .` works in a clean virtual environment
+- [ ] Verify `from travel_plan_permission import check_trip_plan` works
+- [ ] Verify `from travel_plan_permission import list_allowed_vendors` works
+- [ ] Verify `from travel_plan_permission import reconcile` works
+- [ ] Verify `from travel_plan_permission import fill_travel_spreadsheet` works
+- [ ] Verify `from travel_plan_permission import TripPlan` works
+- [ ] Fix any missing exports in `__init__.py`
+- [ ] Ensure all dependencies are declared in `pyproject.toml`
+- [ ] Test installation with `pip install .` (non-editable mode)
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [x] `docs/policy-api.md` exists with complete function documentation
-- [x] Each function has signature, description, and example
-- [x] JSON examples are valid and match actual model schemas
-- [x] Code snippets are syntactically correct Python
-- [x] README.md links to the new documentation
-- [ ] Documentation passes markdown lint
+- [ ] `pip install -e .` succeeds without errors
+- [ ] All public API symbols are importable from package root
+- [ ] No missing dependency errors at import time
+- [ ] Package version is accessible via `travel_plan_permission.__version__`
+- [ ] `pip install .` works for non-editable install
 
 ---
