@@ -122,9 +122,7 @@ def test_check_trip_plan_passes_with_only_advisories(
             return "Advisory issue."
 
     engine = PolicyEngine([AdvisoryRule()])
-    monkeypatch.setattr(
-        PolicyEngine, "from_file", lambda *_args, **_kwargs: engine
-    )
+    monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
 
     result = check_trip_plan(trip_plan)
 
