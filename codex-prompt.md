@@ -123,38 +123,33 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 17/17 tasks complete, 0 remaining
-
-### ✅ Task Reconciliation Complete
-
-Recent commits have been reviewed and task checkboxes updated to reflect current progress.
+**Progress:** 0/16 tasks complete, 16 remaining
 
 ### Scope
-- [x] The Orchestration Plan identifies spreadsheet auto-fill as an early deliverable (Phase 1) that provides immediate value. Users can generate completed travel request spreadsheets from structured TripPlan data before the full orchestration stack is built. This function will later become a node in the LangGraph pre-trip workflow.
+- [ ] The Orchestration Plan (Phase 0) requires tests for key policy scenarios to ensure the API surface is reliable before orchestration integration. Comprehensive tests validate that the policy engine behaves correctly and provides confidence for LangGraph node implementations.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [x] Add `fill_travel_spreadsheet` function to `policy_api.py`
-- [x] Load the Excel template from `templates/travel_request_template.xlsx` using openpyxl
-- [x] Map TripPlan fields to spreadsheet cells using existing `excel_mappings.yaml` configuration
-- [x] Handle date formatting for spreadsheet cells
-- [x] Handle currency/decimal formatting for cost fields
-- [x] Save the filled workbook to the specified output path
-- [x] Return the output path on success
-- [x] Add unit tests for the spreadsheet fill function
-- [x] Export function from `__init__.py`
+- [ ] Create `tests/python/test_policy_api.py` test module
+- [ ] Write tests for `check_trip_plan` with passing trip plans
+- [ ] Write tests for `check_trip_plan` with policy violations
+- [ ] Write tests for `list_allowed_vendors` with various destinations
+- [ ] Write tests for `list_allowed_vendors` with date filtering
+- [ ] Write tests for `reconcile` with matching receipts
+- [ ] Write tests for `reconcile` with expense variances
+- [ ] Add fixtures for common TripPlan and Receipt test data
+- [ ] Ensure tests cover edge cases (empty inputs, missing fields)
+- [ ] Verify policy_version is included in results
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [x] Function accepts TripPlan and output_path parameters
-- [x] Function loads template from configured location
-- [x] All mapped TripPlan fields are written to correct cells
-- [x] Dates are formatted as YYYY-MM-DD in the spreadsheet
-- [x] Currency values are formatted with 2 decimal places
-- [x] Output file is valid Excel format readable by openpyxl
-- [x] Function returns the output path
-- [x] Unit tests verify field mapping correctness
+- [ ] Test file exists at `tests/python/test_policy_api.py`
+- [ ] All three API functions have test coverage
+- [ ] Tests cover both success and failure scenarios
+- [ ] Tests verify return types match API contract
+- [ ] `pytest tests/python/test_policy_api.py` passes
+- [ ] Coverage for policy_api.py is >= 80%
 
 ---

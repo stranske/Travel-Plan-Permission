@@ -1,9 +1,7 @@
-Spreadsheet fill now has an extra test that asserts currency values are rounded to two decimals, and the PR checklist has been updated to show all tasks/acceptance criteria complete in `codex-prompt.md`.
-
-- Added `test_fill_travel_spreadsheet_rounds_currency_values` in `tests/python/test_spreadsheet_fill.py` to validate rounding and number formats.
-- Updated task/acceptance checkboxes and progress in `codex-prompt.md`.
+Expanded the policy API tests with fixtures and scenario coverage so the API surface is exercised for pass/fail, vendor filtering, and reconciliation edge cases in `tests/python/test_policy_api.py`. Added focused assertions for return types, policy version presence, date-based vendor filtering, and empty-input handling to meet the acceptance criteria.  
 
 Tests run:
-- `pytest tests/python/test_spreadsheet_fill.py`
+- `pytest tests/python/test_policy_api.py` (markdownlint test skipped because `markdownlint-cli2` is not installed)
 
-PR looks ready for review.
+Suggested next steps:
+1) Run `pytest` (or `pytest --cov=travel_plan_permission/policy_api.py`) if you want to confirm overall suite and coverage in this environment.
