@@ -123,24 +123,38 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 0/4 tasks complete, 4 remaining
+**Progress:** 4/6 tasks complete, 2 remaining
+
+### ⚠️ IMPORTANT: Task Reconciliation Required
+
+The previous iteration changed **1 file(s)** but did not update task checkboxes.
+
+**Before continuing, you MUST:**
+1. Review the recent commits to understand what was changed
+2. Determine which task checkboxes should be marked complete
+3. Update the PR body to check off completed tasks
+4. Then continue with remaining tasks
+
+_Failure to update checkboxes means progress is not being tracked properly._
 
 ### Scope
-- [ ] <!-- Updated scope for this follow-up -->
-- [ ] Address unmet acceptance criteria from PR #133.
+- [x] Updated scope for this follow-up: export policy API status/issue types at the package root for orchestration imports.
+- [ ] Address unmet acceptance criteria from PR #132.
 - [ ] Original scope:
-- [ ] The Orchestration Plan (Phase 0) requires tests for key policy scenarios to ensure the API surface is reliable before orchestration integration. Comprehensive tests validate that the policy engine behaves correctly and provides confidence for LangGraph node implementations.
+- [ ] The Orchestration Plan requires the policy engine to be installable as a Python package so the LangGraph orchestration service can import it directly. The `pyproject.toml` already exists but we need to verify the package installs correctly and exports all required symbols.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [ ] <!-- New tasks to address unmet acceptance criteria -->
-- [ ] Satisfy: Coverage for policy_api.py is >= 80%
+- [x] Ensure template assets can be resolved when only package resources are available.
+- [x] Satisfy: `pip install -e .` succeeds without errors
+- [x] Satisfy: `pip install .` works for non-editable install
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [ ] <!-- Criteria verified as unmet by verifier -->
-- [ ] Coverage for policy_api.py is >= 80%
+- [x] Policy API template path resolution succeeds when templates are available only via package resources.
+- [x] `pip install -e .` succeeds without errors
+- [x] `pip install .` works for non-editable install
 
 ---

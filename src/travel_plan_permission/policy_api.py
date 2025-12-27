@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import tempfile
 from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
@@ -97,6 +98,7 @@ _CURRENCY_FIELDS = {
 _DATE_FIELDS = {"depart_date", "return_date"}
 _CURRENCY_FORMAT = "$#,##0.00"
 _ZIP_PATTERN = re.compile(r"^(?P<city_state>.*?)(?:\s+(?P<zip>\d{5})(?:-\d{4})?)?$")
+_RESOURCE_TEMPLATE_CACHE: dict[str, Path] = {}
 
 
 def _default_template_path(template_file: str | None = None) -> Path:
@@ -113,12 +115,14 @@ def _default_template_path(template_file: str | None = None) -> Path:
     except ModuleNotFoundError:
         resource = None
     if resource is not None and resource.is_file():
-        # For package resources, we need to return a concrete path
-        # In Python 3.9+, we can use as_file context manager if needed
-        # For now, fall back to reading bytes since resources may be in a zip
-        raise FileNotFoundError(
-            f"Template {template_name} found in package resources but path access not supported. Use _default_template_bytes() instead."
-        )
+        cached_path = _RESOURCE_TEMPLATE_CACHE.get(template_name)
+        if cached_path is not None and cached_path.exists():
+            return cached_path
+        temp_dir = tempfile.mkdtemp(prefix="travel_plan_template_")
+        temp_path = Path(temp_dir) / template_name
+        temp_path.write_bytes(resource.read_bytes())
+        _RESOURCE_TEMPLATE_CACHE[template_name] = temp_path
+        return temp_path
     raise FileNotFoundError(f"Unable to locate templates/{template_name}")
 
 

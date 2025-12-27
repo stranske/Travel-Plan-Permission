@@ -10,6 +10,13 @@ def test_public_api_imports() -> None:
     travel_plan_permission = importlib.import_module("travel_plan_permission")
 
     from travel_plan_permission import (
+        PolicyCheckResult,
+        PolicyCheckStatus,
+        PolicyIssue,
+        PolicyIssueSeverity,
+        Receipt,
+        ReconciliationResult,
+        ReconciliationStatus,
         TripPlan,
         check_trip_plan,
         fill_travel_spreadsheet,
@@ -18,6 +25,13 @@ def test_public_api_imports() -> None:
     )
 
     required_exports = {
+        "PolicyCheckResult",
+        "PolicyCheckStatus",
+        "PolicyIssue",
+        "PolicyIssueSeverity",
+        "Receipt",
+        "ReconciliationResult",
+        "ReconciliationStatus",
         "TripPlan",
         "check_trip_plan",
         "fill_travel_spreadsheet",
@@ -32,3 +46,10 @@ def test_public_api_imports() -> None:
     assert list_allowed_vendors is not None
     assert reconcile is not None
     assert fill_travel_spreadsheet is not None
+    assert PolicyCheckResult is not None
+    assert PolicyCheckStatus is not None
+    assert PolicyIssue is not None
+    assert PolicyIssueSeverity is not None
+    assert ReconciliationResult is not None
+    assert ReconciliationStatus is not None
+    assert Receipt is not None
