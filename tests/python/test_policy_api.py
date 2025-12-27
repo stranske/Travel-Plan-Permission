@@ -97,6 +97,18 @@ def test_check_trip_plan_reports_pass_when_no_rules(
     assert result.policy_version
 
 
+def test_check_trip_plan_skips_cost_comparison_when_estimates_missing(
+    trip_plan: TripPlan,
+) -> None:
+    plan = trip_plan.model_copy(update={"expense_breakdown": {}})
+
+    result = check_trip_plan(plan)
+
+    issue_codes = {issue.code for issue in result.issues}
+    assert "driving_vs_flying" not in issue_codes
+    assert "fare_evidence" in issue_codes
+
+
 def test_list_allowed_vendors_returns_registry_matches(
     trip_plan: TripPlan,
 ) -> None:
@@ -125,6 +137,19 @@ def test_list_allowed_vendors_filters_by_destination_and_date(
     ]
 
 
+def test_list_allowed_vendors_matches_other_destinations(
+    trip_plan: TripPlan,
+) -> None:
+    plan = trip_plan.model_copy(update={"destination": "San Francisco, CA"})
+
+    vendors = list_allowed_vendors(plan)
+
+    assert vendors == [
+        "Blue Skies Airlines",
+        "Citywide Rides",
+    ]
+
+
 def test_list_allowed_vendors_handles_empty_destination(
     trip_plan: TripPlan,
 ) -> None:
@@ -133,6 +158,18 @@ def test_list_allowed_vendors_handles_empty_destination(
     vendors = list_allowed_vendors(plan)
 
     assert vendors == ["Citywide Rides"]
+
+
+def test_list_allowed_vendors_handles_no_active_providers(
+    trip_plan: TripPlan,
+) -> None:
+    plan = trip_plan.model_copy(
+        update={"departure_date": date(2025, 1, 10), "return_date": date(2025, 1, 12)}
+    )
+
+    vendors = list_allowed_vendors(plan)
+
+    assert vendors == []
 
 
 def test_reconcile_summarizes_receipts(
