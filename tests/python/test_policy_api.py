@@ -1,5 +1,10 @@
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
+import shutil
+import subprocess
+
+import pytest
 
 from travel_plan_permission import (
     ExpenseCategory,
@@ -136,3 +141,17 @@ def test_policy_api_documentation_examples_match_models() -> None:
     assert reconciliation_result.receipt_count == 2
     assert reconciliation_result.status == "under_budget"
     assert ExpenseCategory.OTHER in reconciliation_result.expenses_by_category
+
+
+def test_policy_api_markdown_lint() -> None:
+    root = Path(__file__).resolve().parents[2]
+    local_bin = root / "node_modules" / ".bin" / "markdownlint-cli2"
+    lint_bin = local_bin if local_bin.exists() else shutil.which("markdownlint-cli2")
+    if not lint_bin:
+        pytest.skip("markdownlint-cli2 is not installed")
+
+    subprocess.run(
+        [str(lint_bin), "docs/policy-api.md"],
+        check=True,
+        cwd=root,
+    )
