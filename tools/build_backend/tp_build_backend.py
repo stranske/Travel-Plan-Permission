@@ -173,15 +173,15 @@ def _build_wheel(wheel_directory: str, editable: bool) -> str:
     return wheel_name
 
 
-def build_wheel(wheel_directory: str, config_settings=None, metadata_directory=None) -> str:
+def build_wheel(wheel_directory: str, _config_settings=None, _metadata_directory=None) -> str:
     return _build_wheel(wheel_directory, editable=False)
 
 
-def build_editable(wheel_directory: str, config_settings=None, metadata_directory=None) -> str:
+def build_editable(wheel_directory: str, _config_settings=None, _metadata_directory=None) -> str:
     return _build_wheel(wheel_directory, editable=True)
 
 
-def build_sdist(sdist_directory: str, config_settings=None) -> str:
+def build_sdist(sdist_directory: str, _config_settings=None) -> str:
     project = _load_project_config()
     dist_name = _normalize_name(project["name"])
     version = project["version"]
@@ -202,7 +202,7 @@ def build_sdist(sdist_directory: str, config_settings=None) -> str:
     return sdist_name
 
 
-def prepare_metadata_for_build_wheel(metadata_directory: str, config_settings=None) -> str:
+def prepare_metadata_for_build_wheel(metadata_directory: str, _config_settings=None) -> str:
     project = _load_project_config()
     dist_name = _normalize_name(project["name"])
     version = project["version"]
