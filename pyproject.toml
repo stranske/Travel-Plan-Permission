@@ -32,6 +32,10 @@ dev = [
     "mypy>=1.13.0",
     "types-PyYAML>=6.0.12",
 ]
+ocr = [
+    "Pillow>=10.0.0",
+    "pytesseract>=0.3.10",
+]
 
 [project.scripts]
 fill-spreadsheet = "travel_plan_permission.cli:main"
