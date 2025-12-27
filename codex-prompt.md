@@ -123,41 +123,24 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 10/10 tasks complete, 0 remaining
-**Progress:** 13/14 tasks complete, 1 remaining
-
-### ⚠️ IMPORTANT: Task Reconciliation Required
-
-The previous iteration changed **2 file(s)** but did not update task checkboxes.
-
-**Before continuing, you MUST:**
-1. Review the recent commits to understand what was changed
-2. Determine which task checkboxes should be marked complete
-3. Update the PR body to check off completed tasks
-4. Then continue with remaining tasks
-
-_Failure to update checkboxes means progress is not being tracked properly._
+**Progress:** 0/4 tasks complete, 4 remaining
 
 ### Scope
-- [x] The spreadsheet auto-fill feature requires the organizational travel request spreadsheet template to be stored in the repository. This template is the target for the `fill_travel_spreadsheet` function and must exist before that function can work.
-- [x] The Orchestration Plan specifies a CLI tool as part of the Phase 1 early deliverable. This allows users to generate completed travel request spreadsheets from the command line before the full UI/orchestration is available, providing immediate value.
+- [ ] <!-- Updated scope for this follow-up -->
+- [ ] Address unmet acceptance criteria from PR #121.
+- [ ] Original scope:
+- [ ] The spreadsheet auto-fill feature requires the organizational travel request spreadsheet template to be stored in the repository. This template is the target for the `fill_travel_spreadsheet` function and must exist before that function can work.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [x] Create `templates/` directory in repository root
-- [x] Add placeholder or actual `travel_request_template.xlsx` file
-- [x] Verify `config/excel_mappings.yaml` cell references match template structure
-- [x] Update any hardcoded paths in code to use the templates directory
-- [x] Add templates directory to version control (not gitignored)
+- [ ] <!-- New tasks to address unmet acceptance criteria -->
+- [ ] Satisfy: `openpyxl.load_workbook()` successfully loads the template
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [x] `templates/travel_request_template.xlsx` exists and is valid Excel file
-- [x] Template contains cells referenced in `excel_mappings.yaml`
-- [x] Cell references (e.g., B2, B3, C6) match actual template layout
-- [x] `openpyxl.load_workbook()` successfully loads the template
-- [x] Template file is tracked in git
+- [ ] <!-- Criteria verified as unmet by verifier -->
+- [ ] `openpyxl.load_workbook()` successfully loads the template
 
 ---
