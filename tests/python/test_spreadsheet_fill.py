@@ -63,6 +63,19 @@ def test_fill_travel_spreadsheet_writes_mapped_fields(tmp_path) -> None:
     assert sheet["E9"].number_format == "$#,##0.00"
     assert sheet["F9"].value == 40.0
     assert sheet["F9"].number_format == "$#,##0.00"
+    workbook.close()
+
+
+def test_fill_travel_spreadsheet_does_not_modify_template(tmp_path) -> None:
+    template_path = policy_api._default_template_path()
+    template_bytes = template_path.read_bytes()
+    plan = _plan()
+    output_path = tmp_path / "filled.xlsx"
+
+    fill_travel_spreadsheet(plan, output_path)
+
+    assert output_path.is_file()
+    assert template_path.read_bytes() == template_bytes
 
 
 def test_fill_travel_spreadsheet_uses_mapping_cells(tmp_path, monkeypatch) -> None:
@@ -92,3 +105,4 @@ def test_fill_travel_spreadsheet_uses_mapping_cells(tmp_path, monkeypatch) -> No
     assert sheet["Z100"].value == "2024-09-15"
     assert sheet["Z101"].value == 200.0
     assert sheet["Z101"].number_format == "$#,##0.00"
+    workbook.close()
