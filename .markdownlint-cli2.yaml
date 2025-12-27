@@ -1,6 +1,9 @@
 # markdownlint-cli2 configuration
 # https://github.com/DavidAnson/markdownlint-cli2
 
+# Use repo-wide markdownlint rule config.
+config: ".markdownlint.yaml"
+
 # Ignore patterns (node_modules should be excluded)
 ignores:
   - "**/node_modules/**"

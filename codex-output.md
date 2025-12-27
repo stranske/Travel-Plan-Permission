@@ -1,9 +1,10 @@
-Added a TripPlan JSON round‑trip test so the new orchestration fields are proven to serialize/deserialize correctly, and updated the PR checklist to reflect the verified scope and acceptance items. The new test in `tests/python/test_models.py` exercises `model_dump_json`/`model_validate_json` for optional fields; the checklist updates live in `codex-prompt.md`.
+Added a pytest check that runs `markdownlint-cli2` against `docs/policy-api.md` when the binary is available, and updated the PR checklist scope item to reflect the completed documentation context. The lint check lives in `tests/python/test_policy_api.py` and resolves to `node_modules/.bin/markdownlint-cli2` first, falling back to a PATH install, then skips cleanly if missing.
 
-Tests run:
-- `pytest`
-- `pytest tests/python/test_models.py`
-- `mypy --strict src/ tests/python/` (fails with existing strict‑typing errors in multiple test files, e.g., missing return annotations and dict variance issues in tests)
+Tests: `python -m pytest tests/python/test_policy_api.py` (1 skipped: markdownlint-cli2 not installed)
+
+Notes:
+- The markdown lint acceptance item remains unchecked because the lint tool isn’t installed in this environment; the new test will enforce it when `markdownlint-cli2` is available.
 
 Next steps:
-1) Decide whether to fix the existing mypy strict errors in tests or to adjust the expected mypy invocation for this repo, then rerun `mypy --strict src/ tests/python/`.
+1. `npm ci`
+2. `npx markdownlint-cli2 docs/policy-api.md`

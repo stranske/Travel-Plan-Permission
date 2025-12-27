@@ -123,11 +123,11 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 ---
 ## PR Tasks and Acceptance Criteria
 
-**Progress:** 14/15 tasks complete, 1 remaining
+**Progress:** 15/16 tasks complete, 1 remaining
 
 ### ⚠️ IMPORTANT: Task Reconciliation Required
 
-The previous iteration changed **1 file(s)** but did not update task checkboxes.
+The previous iteration changed **3 file(s)** but did not update task checkboxes.
 
 **Before continuing, you MUST:**
 1. Review the recent commits to understand what was changed
@@ -138,29 +138,30 @@ The previous iteration changed **1 file(s)** but did not update task checkboxes.
 _Failure to update checkboxes means progress is not being tracked properly._
 
 ### Scope
-- [x] The Orchestration Plan (Section 4.1) defines a TripPlan model with specific fields required for the orchestration API. The existing TripPlan model in `models.py` may need additional fields to match the API contract, ensuring compatibility with the LangGraph orchestration layer.
+- [x] The policy engine will be consumed by an external LangGraph orchestration layer. Clear documentation helps orchestration developers understand how to call the API functions, what inputs they require, and what outputs to expect.
 
 ### Tasks
 Complete these in order. Mark checkbox done ONLY after implementation is verified:
 
-- [x] Compare existing TripPlan model with orchestration API specification
-- [x] Add `traveler_role` field if missing
-- [x] Add `origin_city` and `destination_city` fields if not present
-- [x] Add `transportation_mode` field with Literal type for allowed values
-- [x] Add `expected_costs` dict field for cost breakdown by category
-- [x] Add `funding_source` field for budget tracking
-- [x] Ensure all new fields have sensible defaults or are Optional
-- [x] Update model validators if needed
-- [x] Add/update tests for new fields
+- [x] Create `docs/policy-api.md` documentation file
+- [x] Document `check_trip_plan` function with signature, parameters, and return type
+- [x] Document `list_allowed_vendors` function with examples
+- [x] Document `reconcile` function with input/output examples
+- [x] Document `fill_travel_spreadsheet` function usage
+- [x] Include example TripPlan JSON structure
+- [x] Include example PolicyCheckResult JSON structure
+- [x] Add code snippets showing typical usage patterns
+- [x] Document error handling and edge cases
+- [x] Link to this doc from README.md
 
 ### Acceptance Criteria
 The PR is complete when ALL of these are satisfied:
 
-- [x] TripPlan model includes all fields from orchestration API spec
-- [x] New fields are Optional or have defaults (backward compatible)
-- [x] Existing tests continue to pass
-- [x] New fields have proper type annotations
-- [x] Model can be serialized to/from JSON
-- [ ] `mypy --strict` passes
+- [x] `docs/policy-api.md` exists with complete function documentation
+- [x] Each function has signature, description, and example
+- [x] JSON examples are valid and match actual model schemas
+- [x] Code snippets are syntactically correct Python
+- [x] README.md links to the new documentation
+- [ ] Documentation passes markdown lint
 
 ---

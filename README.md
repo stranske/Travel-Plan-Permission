@@ -39,6 +39,10 @@ To see usage information, run:
 fill-spreadsheet --help
 ```
 
+## Documentation
+
+- [Policy API](docs/policy-api.md)
+
 ## Contributing
 
 - Lint Markdown files:
