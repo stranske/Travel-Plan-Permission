@@ -7,8 +7,9 @@ from pathlib import Path
 
 import pytest
 
-import travel_plan_permission.policy_api as policy_api
 from openpyxl import Workbook, load_workbook
+
+import travel_plan_permission.policy_api as policy_api
 from travel_plan_permission import (
     ExpenseCategory,
     PolicyCheckResult,
@@ -20,7 +21,12 @@ from travel_plan_permission import (
     reconcile,
 )
 from travel_plan_permission.mapping import TemplateMapping
-from travel_plan_permission.policy import PolicyEngine, PolicyResult, PolicyRule, Severity
+from travel_plan_permission.policy import (
+    PolicyEngine,
+    PolicyResult,
+    PolicyRule,
+    Severity,
+)
 
 
 class _AlwaysPassRule(PolicyRule):
@@ -68,25 +74,21 @@ def test_resolve_field_value_handles_nested_paths() -> None:
         "comparable_hotels": [{"nightly_rate": Decimal("189.00")}],
     }
 
-    assert (
-        policy_api._resolve_field_value(data, "hotel.nightly_rate")
-        == Decimal("199.99")
+    assert policy_api._resolve_field_value(data, "hotel.nightly_rate") == Decimal(
+        "199.99"
     )
+    assert policy_api._resolve_field_value(
+        data, "comparable_hotels[0].nightly_rate"
+    ) == Decimal("189.00")
     assert (
-        policy_api._resolve_field_value(
-            data, "comparable_hotels[0].nightly_rate"
-        )
-        == Decimal("189.00")
+        policy_api._resolve_field_value(data, "comparable_hotels[1].nightly_rate")
+        is None
     )
-    assert policy_api._resolve_field_value(data, "comparable_hotels[1].nightly_rate") is None
 
 
 def test_format_helpers_handle_expected_types() -> None:
     assert policy_api._format_date_value(date(2024, 9, 15)) == "2024-09-15"
-    assert (
-        policy_api._format_date_value(datetime(2024, 9, 15, 8, 0))
-        == "2024-09-15"
-    )
+    assert policy_api._format_date_value(datetime(2024, 9, 15, 8, 0)) == "2024-09-15"
     assert policy_api._format_date_value("2024-09-15") == "2024-09-15"
     assert policy_api._format_date_value(123) is None
 
