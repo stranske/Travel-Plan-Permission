@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 from decimal import Decimal
 
 from travel_plan_permission.models import ApprovalOutcome, TripPlan
@@ -39,7 +40,7 @@ def _validator(max_days: int = 10) -> PolicyValidator:
     return PolicyValidator([rule])
 
 
-def test_snapshot_chain_and_recheck(tmp_path) -> None:
+def test_snapshot_chain_and_recheck(tmp_path: Path) -> None:
     validator = _validator(max_days=10)
     plan = _plan()
     results = plan.run_validation(validator=validator)
@@ -129,7 +130,7 @@ def test_policy_version_hash_is_stable() -> None:
     assert digest_1 == digest_2
 
 
-def test_flagged_decision_captures_snapshot_and_stays_small(tmp_path) -> None:
+def test_flagged_decision_captures_snapshot_and_stays_small(tmp_path: Path) -> None:
     validator = _validator(max_days=5)
     plan = _plan()
     plan.run_validation(validator=validator)

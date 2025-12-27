@@ -2,8 +2,10 @@ from pathlib import Path
 
 import pytest
 import yaml
-from openpyxl import load_workbook
-from openpyxl.utils.cell import coordinate_from_string
+from openpyxl import load_workbook  # type: ignore[import-untyped]
+from openpyxl.utils.cell import (  # type: ignore[import-untyped]
+    coordinate_from_string,
+)
 
 from travel_plan_permission import policy_api
 from travel_plan_permission.mapping import (
@@ -29,11 +31,11 @@ def test_template_asset_loads_and_matches_mapping() -> None:
         assert sheet[cell_ref].value not in (None, "")
 
     for formula_config in mapping.formulas.values():
-        cell_ref = formula_config.get("cell")
+        formula_cell_ref = formula_config.get("cell")
         formula = formula_config.get("formula")
-        assert isinstance(cell_ref, str)
+        assert isinstance(formula_cell_ref, str)
         assert isinstance(formula, str)
-        assert sheet[cell_ref].value == formula
+        assert sheet[formula_cell_ref].value == formula
 
 
 def test_template_mapping_requires_template_asset(tmp_path: Path) -> None:

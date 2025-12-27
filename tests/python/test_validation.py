@@ -113,7 +113,10 @@ class TestBudgetLimitRule:
             name="budget_rule",
             code="BUD-001",
             trip_limit=Decimal("1500"),
-            category_limits={"lodging": Decimal("500"), "meals": Decimal("200")},
+            category_limits={
+                ExpenseCategory.LODGING: Decimal("500"),
+                ExpenseCategory.MEALS: Decimal("200"),
+            },
         )
         plan = _build_plan(
             departure=date(2025, 4, 1),
@@ -138,7 +141,7 @@ class TestBudgetLimitRule:
             name="budget_ok",
             code="BUD-OK",
             trip_limit=Decimal("2000"),
-            category_limits={"lodging": Decimal("800")},
+            category_limits={ExpenseCategory.LODGING: Decimal("800")},
         )
         plan = _build_plan(
             departure=date(2025, 4, 10),

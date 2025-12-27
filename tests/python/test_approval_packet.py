@@ -11,6 +11,7 @@ from travel_plan_permission.approval_packet import (
 from travel_plan_permission.models import (
     ApprovalEvent,
     ApprovalOutcome,
+    ExpenseCategory,
     TripPlan,
     TripStatus,
 )
@@ -25,7 +26,10 @@ def _sample_trip_plan() -> TripPlan:
         return_date=date(2025, 5, 5),
         purpose="Board review meeting",
         estimated_cost=Decimal("1250.50"),
-        expense_breakdown={"airfare": Decimal("800.00"), "lodging": Decimal("450.50")},
+        expense_breakdown={
+            ExpenseCategory.AIRFARE: Decimal("800.00"),
+            ExpenseCategory.LODGING: Decimal("450.50"),
+        },
     )
 
 
@@ -69,18 +73,21 @@ def test_pdf_page_counts_scale_with_complexity() -> None:
     trip = _sample_trip_plan()
     history_single = [_event(1)]
     history_complex = [_event(i) for i in range(25)]
+    cost_breakdown = {
+        category.value: amount for category, amount in trip.expense_breakdown.items()
+    }
 
     simple_pdf = generate_packet_pdf(
         trip_plan=trip,
         compliance_status="Compliant",
-        cost_breakdown=trip.expense_breakdown,
+        cost_breakdown=cost_breakdown,
         approval_history=history_single,
         entries_per_page=20,
     )
     complex_pdf = generate_packet_pdf(
         trip_plan=trip,
         compliance_status="Needs board review",
-        cost_breakdown=trip.expense_breakdown,
+        cost_breakdown=cost_breakdown,
         approval_history=history_complex,
         entries_per_page=10,
     )

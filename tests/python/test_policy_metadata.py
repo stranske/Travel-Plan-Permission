@@ -1,3 +1,5 @@
+from typing import cast
+
 from travel_plan_permission import PolicyEngine
 
 
@@ -20,7 +22,10 @@ rules:
       - gift
 """
     engine = PolicyEngine.from_yaml(yaml_content)
-    metadata = {item["rule_id"]: item for item in engine.describe_rules()}
+    metadata = {
+        cast(str, item["rule_id"]): cast(dict[str, str], item)
+        for item in engine.describe_rules()
+    }
 
     assert metadata["advance_booking"]["severity"] == "blocking"
     assert "21 days" in metadata["advance_booking"]["description"]

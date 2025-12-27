@@ -1,7 +1,9 @@
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
-from openpyxl import load_workbook
+import pytest
+from openpyxl import load_workbook  # type: ignore[import-untyped]
 
 import travel_plan_permission.policy_api as policy_api
 from travel_plan_permission import (
@@ -39,7 +41,7 @@ def test_travel_spreadsheet_template_loads() -> None:
     workbook.close()
 
 
-def test_fill_travel_spreadsheet_writes_mapped_fields(tmp_path) -> None:
+def test_fill_travel_spreadsheet_writes_mapped_fields(tmp_path: Path) -> None:
     plan = _plan()
     output_path = tmp_path / "filled.xlsx"
 
@@ -66,7 +68,7 @@ def test_fill_travel_spreadsheet_writes_mapped_fields(tmp_path) -> None:
     workbook.close()
 
 
-def test_fill_travel_spreadsheet_does_not_modify_template(tmp_path) -> None:
+def test_fill_travel_spreadsheet_does_not_modify_template(tmp_path: Path) -> None:
     template_path = policy_api._default_template_path()
     template_bytes = template_path.read_bytes()
     plan = _plan()
@@ -78,7 +80,9 @@ def test_fill_travel_spreadsheet_does_not_modify_template(tmp_path) -> None:
     assert template_path.read_bytes() == template_bytes
 
 
-def test_fill_travel_spreadsheet_uses_mapping_cells(tmp_path, monkeypatch) -> None:
+def test_fill_travel_spreadsheet_uses_mapping_cells(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     plan = _plan()
     output_path = tmp_path / "filled-custom.xlsx"
     mapping = TemplateMapping(
@@ -108,13 +112,15 @@ def test_fill_travel_spreadsheet_uses_mapping_cells(tmp_path, monkeypatch) -> No
     workbook.close()
 
 
-def test_fill_travel_spreadsheet_uses_template_metadata(tmp_path, monkeypatch) -> None:
+def test_fill_travel_spreadsheet_uses_template_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     plan = _plan()
     output_path = tmp_path / "filled-template.xlsx"
     template_path = policy_api._default_template_path()
     observed: dict[str, object] = {}
 
-    def fake_default_template_path(template_file: str | None = None):
+    def fake_default_template_path(template_file: str | None = None) -> Path:
         observed["template_file"] = template_file
         return template_path
 

@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from travel_plan_permission.prompt_flow import (
     build_output_bundle,
     generate_questions,
@@ -5,8 +7,11 @@ from travel_plan_permission.prompt_flow import (
 )
 
 
-def test_generate_questions_limits_to_ten_and_skips_answered():
-    answers = {"traveler_name": "Ada Lovelace", "city_state": "Boston, MA"}
+def test_generate_questions_limits_to_ten_and_skips_answered() -> None:
+    answers: dict[str, object] = {
+        "traveler_name": "Ada Lovelace",
+        "city_state": "Boston, MA",
+    }
     questions = generate_questions(answers, max_questions=10)
 
     assert len(questions) <= 10
@@ -15,8 +20,8 @@ def test_generate_questions_limits_to_ten_and_skips_answered():
     assert all("Who is traveling" not in prompt for prompt in prompts)
 
 
-def test_required_field_gaps_identifies_missing_fields():
-    answers = {
+def test_required_field_gaps_identifies_missing_fields() -> None:
+    answers: dict[str, object] = {
         "traveler_name": "Ada Lovelace",
         "depart_date": "2025-10-01",
         "return_date": "2025-10-04",
@@ -28,16 +33,24 @@ def test_required_field_gaps_identifies_missing_fields():
     assert len(missing) > 0
 
 
-def test_output_bundle_includes_brochure_reference():
-    answers = {"traveler_name": "Ada Lovelace", "city_state": "Boston, MA"}
+def test_output_bundle_includes_brochure_reference() -> None:
+    answers: dict[str, object] = {
+        "traveler_name": "Ada Lovelace",
+        "city_state": "Boston, MA",
+    }
     itinerary = b"excel-bytes"
-    conversation_log = [{"type": "question", "text": "Where to?"}]
+    conversation_log: list[dict[str, object]] = [
+        {"type": "question", "text": "Where to?"}
+    ]
 
-    bundle = build_output_bundle(
-        itinerary_excel=itinerary,
-        answers=answers,
-        conversation_log=conversation_log,
-        brochure=b"brochure-bytes",
+    bundle = cast(
+        dict[str, Any],
+        build_output_bundle(
+            itinerary_excel=itinerary,
+            answers=answers,
+            conversation_log=conversation_log,
+            brochure=b"brochure-bytes",
+        ),
     )
 
     assert bundle["itinerary_excel"]["content"] == itinerary

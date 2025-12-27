@@ -9,7 +9,7 @@ from travel_plan_permission.mapping import (
 from travel_plan_permission.prompt_flow import CANONICAL_TRIP_FIELDS
 
 
-def test_mapping_covers_canonical_fields():
+def test_mapping_covers_canonical_fields() -> None:
     mapping = load_template_mapping()
 
     missing = mapping.missing_fields(CANONICAL_TRIP_FIELDS)
@@ -17,7 +17,7 @@ def test_mapping_covers_canonical_fields():
     assert mapping.metadata.get("template_id") == DEFAULT_TEMPLATE_VERSION
 
 
-def test_version_mismatch_requires_opt_in(tmp_path: Path):
+def test_version_mismatch_requires_opt_in(tmp_path: Path) -> None:
     source = Path("config/excel_mappings.yaml").read_text(encoding="utf-8")
     data = yaml.safe_load(source)
     data["templates"][DEFAULT_TEMPLATE_VERSION]["metadata"][

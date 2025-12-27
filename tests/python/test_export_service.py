@@ -9,7 +9,7 @@ from time import perf_counter
 from urllib.parse import parse_qs, urlparse
 
 import pytest
-from openpyxl import load_workbook
+from openpyxl import load_workbook  # type: ignore[import-untyped]
 
 from travel_plan_permission import ExportService
 from travel_plan_permission.models import (

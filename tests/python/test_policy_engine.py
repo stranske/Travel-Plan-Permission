@@ -10,7 +10,7 @@ from travel_plan_permission import (
 )
 
 
-def test_policy_engine_evaluates_all_rules():
+def test_policy_engine_evaluates_all_rules() -> None:
     yaml_content = """
 rules:
   advance_booking:
@@ -83,7 +83,7 @@ rules:
     assert all(result.severity == Severity.BLOCKING for result in blocking)
 
 
-def test_policy_engine_from_file_defaults():
+def test_policy_engine_from_file_defaults() -> None:
     engine = PolicyEngine.from_file()
     context = PolicyContext(
         booking_date=date(2025, 1, 1),
@@ -118,7 +118,7 @@ def test_policy_engine_from_file_defaults():
     assert engine.blocking_results(context) == []
 
 
-def test_policy_messages_include_thresholds_from_config():
+def test_policy_messages_include_thresholds_from_config() -> None:
     engine = PolicyEngine.from_yaml(
         """
 rules:
