@@ -48,6 +48,32 @@ class TestTripPlan:
 
         assert plan.duration_days() == 3
 
+    def test_trip_plan_optional_fields(self) -> None:
+        """Trip plan accepts optional orchestration fields."""
+        plan = TripPlan(
+            trip_id="TRIP-002B",
+            traveler_name="Jane Smith",
+            traveler_role="Engineer",
+            destination="Chicago, IL",
+            origin_city="Seattle, WA",
+            destination_city="Chicago, IL",
+            departure_date=date(2025, 2, 1),
+            return_date=date(2025, 2, 3),
+            purpose="Conference",
+            transportation_mode="air",
+            expected_costs={"airfare": Decimal("300.00")},
+            funding_source="R&D budget",
+            estimated_cost=Decimal("2000.00"),
+        )
+
+        payload = plan.model_dump()
+        assert payload["traveler_role"] == "Engineer"
+        assert payload["origin_city"] == "Seattle, WA"
+        assert payload["destination_city"] == "Chicago, IL"
+        assert payload["transportation_mode"] == "air"
+        assert payload["expected_costs"]["airfare"] == Decimal("300.00")
+        assert payload["funding_source"] == "R&D budget"
+
     def test_trip_single_day(self) -> None:
         """Test single-day trip duration."""
         plan = TripPlan(

@@ -6,7 +6,7 @@ from collections import Counter
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -341,10 +341,29 @@ class TripPlan(BaseModel):
 
     trip_id: str = Field(..., description="Unique identifier for the trip")
     traveler_name: str = Field(..., description="Name of the traveler")
+    traveler_role: str | None = Field(
+        default=None, description="Traveler role or title"
+    )
     destination: str = Field(..., description="Trip destination")
+    origin_city: str | None = Field(
+        default=None, description="City of departure"
+    )
+    destination_city: str | None = Field(
+        default=None, description="City of arrival"
+    )
     departure_date: date = Field(..., description="Date of departure")
     return_date: date = Field(..., description="Date of return")
     purpose: str = Field(..., description="Business purpose of the trip")
+    transportation_mode: Literal["air", "train", "car", "mixed"] | None = Field(
+        default=None, description="Primary transportation mode"
+    )
+    expected_costs: dict[str, Decimal] = Field(
+        default_factory=dict,
+        description="Optional expected costs by category",
+    )
+    funding_source: str | None = Field(
+        default=None, description="Funding source for the trip"
+    )
     estimated_cost: Annotated[Decimal, Field(ge=0)] = Field(
         ..., description="Estimated total cost"
     )
