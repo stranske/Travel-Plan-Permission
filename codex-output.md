@@ -1,12 +1,9 @@
-Added the missing `department` field to the TripPlan model to align with the orchestration spec, and verified it round‑trips through model serialization via the existing optional‑fields test. Updated the task checklist to reflect the completed spec comparison and field checks in `codex-prompt.md`.
-
-- Added optional `department` to TripPlan in `src/travel_plan_permission/models.py`.
-- Extended the optional‑fields test to cover `department` in `tests/python/test_models.py`.
-- Marked the relevant tasks complete in `codex-prompt.md`.
+Added a TripPlan JSON round‑trip test so the new orchestration fields are proven to serialize/deserialize correctly, and updated the PR checklist to reflect the verified scope and acceptance items. The new test in `tests/python/test_models.py` exercises `model_dump_json`/`model_validate_json` for optional fields; the checklist updates live in `codex-prompt.md`.
 
 Tests run:
+- `pytest`
 - `pytest tests/python/test_models.py`
+- `mypy --strict src/ tests/python/` (fails with existing strict‑typing errors in multiple test files, e.g., missing return annotations and dict variance issues in tests)
 
 Next steps:
-1) Run the full test suite: `pytest`
-2) Run typing checks: `mypy --strict`
+1) Decide whether to fix the existing mypy strict errors in tests or to adjust the expected mypy invocation for this repo, then rerun `mypy --strict src/ tests/python/`.
