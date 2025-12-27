@@ -1,19 +1,12 @@
-Implemented a local PEP 517 build backend so editable and non-editable installs no longer depend on downloading build tools, and wired it into `pyproject.toml`. Added a legacy `setup.cfg`/`setup.py` mirror so source distributions stay usable in tooling that expects setuptools metadata.
+Added the build backend to the sdist payload so source installs have access to `tools/build_backend`, which prevents failures when building from a source distribution. This change is in `tools/build_backend/tp_build_backend.py` to include the backend files (excluding `__pycache__`) when creating the tarball.
 
-Details:
-- Custom backend lives in `tools/build_backend/tp_build_backend.py` and builds wheels/editables directly from `pyproject.toml` metadata and `src/` contents.
-- `pyproject.toml` now points `build-system` to that backend via `backend-path`, avoiding network calls for build deps.
-- Legacy metadata added in `setup.cfg` and `setup.py` for compatibility and sdist completeness.
+Tests and checks run:
+- `python -m pytest`
+- `. .venv/bin/activate && python -m pip install -e . --no-deps`
+- `. .venv/bin/activate && PIP_CACHE_DIR=.pip_cache python -m pip install . --no-deps`
 
-Verification (network restricted here, so installs were run with `--no-deps`):
-- `pip install -e . --no-deps` in a local venv succeeded.
-- `pip install . --no-deps` in a local venv succeeded after setting `PIP_CACHE_DIR` to a writable directory.
-
-Files touched:
-- `pyproject.toml`
-- `tools/build_backend/tp_build_backend.py`
-- `setup.cfg`
-- `setup.py`
+Notes:
+- Network is restricted here, so the install checks were run with `--no-deps`.
 
 Next steps:
-1) If you want to re-verify with dependency resolution, run `pip install -e .` and `pip install .` in an environment with network access.
+1) Re-run `pip install -e .` and `pip install .` in an environment with dependency access to fully validate the acceptance criteria.
