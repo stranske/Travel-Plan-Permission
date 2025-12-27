@@ -1,7 +1,10 @@
-Implemented package-resource template path extraction with a cached temp file fallback so `policy_api._default_template_path` works even when templates only exist as package resources, and updated the helper test plus PR checklist accordingly in `src/travel_plan_permission/policy_api.py`, `tests/python/test_policy_api_helpers.py`, and `codex-prompt.md`.
+Added tests to cover advisory-only policy checks and the cached-template branch in the policy API helper path, raising branch coverage for `policy_api.py` and exercising key policy scenarios in `tests/python/test_policy_api.py` and `tests/python/test_policy_api_helpers.py`.
 
-Tests:
-- `pytest tests/python/test_policy_api_helpers.py::test_default_template_path_reports_package_resource_only`
+Tests run:
+- `pytest tests/python/test_policy_api.py tests/python/test_policy_api_helpers.py`
 
-Next steps:
-1. Run the full suite with `pytest` if you want broader validation.
+Notes:
+- I noticed `codex-prompt.md` is modified but I didn’t touch it. How would you like to handle that file?
+
+Next steps (optional):
+1. Run coverage to confirm the 80% target, e.g. `pytest --cov=travel_plan_permission.policy_api`.
