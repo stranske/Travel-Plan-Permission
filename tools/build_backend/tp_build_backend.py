@@ -181,6 +181,18 @@ def build_editable(wheel_directory: str, _config_settings=None, _metadata_direct
     return _build_wheel(wheel_directory, editable=True)
 
 
+def get_requires_for_build_wheel(_config_settings=None) -> list[str]:
+    return []
+
+
+def get_requires_for_build_editable(_config_settings=None) -> list[str]:
+    return []
+
+
+def get_requires_for_build_sdist(_config_settings=None) -> list[str]:
+    return []
+
+
 def build_sdist(sdist_directory: str, _config_settings=None) -> str:
     project = _load_project_config()
     dist_name = _normalize_name(project["name"])
@@ -215,3 +227,7 @@ def prepare_metadata_for_build_wheel(metadata_directory: str, _config_settings=N
     dist_info = pathlib.Path(metadata_directory) / f"{dist_name}-{version}.dist-info"
     _write_dist_info(dist_info, project)
     return dist_info.name
+
+
+def prepare_metadata_for_build_editable(metadata_directory: str, _config_settings=None) -> str:
+    return prepare_metadata_for_build_wheel(metadata_directory, _config_settings)
