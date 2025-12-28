@@ -1,4 +1,4 @@
-# Keepalive Next Task
+## Keepalive Next Task
 
 Your objective is to satisfy the **Acceptance Criteria** by completing each **Task** within the defined **Scope**.
 
@@ -12,6 +12,6 @@ Your objective is to satisfy the **Acceptance Criteria** by completing each **Ta
 - Keep edits scoped to the current task rather than reshaping the entire PR.
 - Use repository instructions, conventions, and tests to validate work.
 - Prefer small, reviewable commits; leave clear notes when follow-up is required.
-- Do NOT work on unrelated improvements until all PR tasks are complete; once all PR tasks are complete, stop making further changes and report that the PR is ready for review.
+- Do NOT work on unrelated improvements until all PR tasks are complete.
 
 **The Tasks and Acceptance Criteria are provided in the appendix below.** Work through them in order.

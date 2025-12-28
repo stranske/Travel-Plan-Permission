@@ -35,16 +35,13 @@ def main() -> int:
         segment = text[block_start:block_end].strip()
         title_line = (segment.splitlines() or [f"Topic {idx+1}"])[0][:120]
         norm = re.sub(r"\s+", " ", title_line.lower())
-        enumerator_text = text[start_token : m.end(0)].strip()
-        enumerator_parts = enumerator_text.split()
-        enumerator = enumerator_parts[0] if enumerator_parts else m.group(2)
         topics.append(
             {
                 "title": title_line,
                 "labels": [],
                 "sections": {},
                 "extras": segment,
-                "enumerator": enumerator,
+                "enumerator": text[start_token : m.end(0)].strip().split()[0],
                 "continuity_break": False,
                 "guid": str(uuid.uuid5(uuid.NAMESPACE_DNS, norm)),
                 "fallback": True,

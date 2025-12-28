@@ -1,17 +1,28 @@
 # Summary
 
-One sentence.
+Brief description of the changes.
+
+## Type of Change
+
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Documentation
+- [ ] Refactoring
+- [ ] CI/Workflow changes
 
 ## Checklist
 
-- [ ] Does NOT touch protected paths (schemas, policy, mapping,
-  workflow docs, CI)
-- [ ] If schema changed: examples updated and CI is green
-- [ ] If policy-lite changed: rule IDs/messages updated
-- [ ] If mapping changed: cell refs updated in docs
+- [ ] Tests pass locally (if applicable)
+- [ ] Documentation updated (if applicable)
+- [ ] Changes follow project coding style
 
 ## Labels
 
-Add `stage:*`, `type:*`, and size (`XS/S/M/L`).
+Add appropriate labels:
+- Size: `XS`, `S`, `M`, `L`, `XL`
+- Type: `bug`, `feature`, `docs`, `refactor`
+- If code fixes needed: add `autofix` label after PR is created
 
-Add `stage:*`, `type:*`, and size (`XS/S/M/L`).
+## Related Issues
+
+Closes #<!-- issue number -->
