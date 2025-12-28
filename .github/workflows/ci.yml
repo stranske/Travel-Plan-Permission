@@ -1,62 +1,35 @@
-# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-# -----------------------------------------------------------------------------
-# CI Workflow — Travel-Plan-Permission
-# -----------------------------------------------------------------------------
-# Thin caller to stranske/Workflows reusable Python CI.
-# This is the consumer pattern that other repos should follow.
-# -----------------------------------------------------------------------------
-# Workflows repo SHA: d6c17892b17f2c6f2bd2440cb7b7a6eef08d7ea7 (2025-12-22)
-# -----------------------------------------------------------------------------
-
+# Thin caller for Python CI - delegates to Workflows repo reusable workflow
+# No local scripts required - all logic is centralized in stranske/Workflows
+#
+# This workflow runs:
+# - Lint (Ruff)
+# - Format check (Black)
+# - Type checking (mypy)
+# - Tests (pytest) on Python 3.11 and 3.12
+#
+# Copy this file to: .github/workflows/ci.yml
+# Also copy: autofix-versions.env to .github/workflows/autofix-versions.env
 name: CI
 
 on:
-  pull_request:
-    branches: [main]
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
 jobs:
-  python-ci:
+  python:
     name: Python CI
     uses: stranske/Workflows/.github/workflows/reusable-10-ci-python.yml@main
     with:
       python-versions: '["3.11", "3.12"]'
-      coverage-min: "80"
-      format_check: false  # Using ruff for formatting
-      working-directory: "."
+      typecheck: true
+      coverage: true
+      coverage-min: '80'
     secrets: inherit
-
-  docs-lint:
-    name: Docs lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run markdownlint
-        run: npx markdownlint-cli2 "**/*.md"
-
-  link-check:
-    name: Link check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Check links
-        uses: lycheeverse/lychee-action@v2.7.0
-        with:
-          args: --verbose --no-progress "docs/**/*.md"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
