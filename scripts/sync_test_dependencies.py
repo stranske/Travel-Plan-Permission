@@ -30,7 +30,7 @@ TESTS_DIR = REPO_ROOT / "tests"
 DEV_EXTRA = "dev"
 
 # Try to import tomlkit for editing (optional)
-TOMLKIT_ERROR: ImportError | None
+TOMLKIT_ERROR: ImportError | None = None
 try:
     import tomlkit
 except ImportError as exc:
@@ -76,6 +76,7 @@ STDLIB_MODULES = {
     "shutil",
     "signal",
     "socket",
+    "sqlite3",
     "stat",
     "string",
     "struct",
@@ -110,11 +111,55 @@ TEST_FRAMEWORK_MODULES = {
 }
 
 # Project modules (installed via `pip install -e .`)
-PROJECT_MODULES = {
-    "travel_plan_permission",
-    "src",
-    "tests",
-}
+# Dynamically discovered; see _discover_project_modules()
+PROJECT_MODULES: set[str] = set()
+
+
+def _discover_project_modules() -> set[str]:
+    """Discover local project modules from pyproject.toml and directory structure."""
+    modules: set[str] = {"tests", "src"}  # Always exclude these
+
+    # Read pyproject.toml for project name and setuptools config
+    if PYPROJECT_FILE.exists():
+        data = tomllib.loads(PYPROJECT_FILE.read_text(encoding="utf-8"))
+
+        # Add the project name itself
+        project = data.get("project", {})
+        if name := project.get("name"):
+            modules.add(_normalize_module_name(name))
+
+        # Add packages from tool.setuptools.packages.find.include
+        setuptools = data.get("tool", {}).get("setuptools", {})
+        packages_find = setuptools.get("packages", {})
+        if isinstance(packages_find, dict):
+            find_config = packages_find.get("find", {})
+            for pattern in find_config.get("include", []):
+                # Strip glob patterns like "adapters*" -> "adapters"
+                base = pattern.rstrip("*").rstrip(".")
+                if base:
+                    modules.add(_normalize_module_name(base))
+
+        # Add packages from tool.setuptools.packages (list form)
+        packages = setuptools.get("packages")
+        if isinstance(packages, list):
+            for pkg in packages:
+                base = pkg.split(".")[0]
+                modules.add(_normalize_module_name(base))
+
+    # Add any top-level directories that are Python packages
+    for item in REPO_ROOT.iterdir():
+        if item.is_dir() and not item.name.startswith((".", "_")):
+            # Check if it's a Python package (has __init__.py or .py files)
+            if (item / "__init__.py").exists() or any(item.glob("*.py")):
+                modules.add(_normalize_module_name(item.name))
+
+    # Add any top-level .py files as modules (e.g., embeddings.py -> embeddings)
+    for py_file in REPO_ROOT.glob("*.py"):
+        if not py_file.name.startswith((".", "_", "setup", "conftest")):
+            module_name = py_file.stem  # filename without .py
+            modules.add(_normalize_module_name(module_name))
+
+    return modules
 
 # Module name to package name mappings
 MODULE_TO_PACKAGE = {
@@ -223,7 +268,9 @@ def find_missing_dependencies() -> set[str]:
     declared, _ = get_declared_dependencies()
     all_imports = get_all_test_imports()
 
-    potential = all_imports - STDLIB_MODULES - TEST_FRAMEWORK_MODULES - PROJECT_MODULES
+    # Dynamically discover local project modules
+    project_modules = _discover_project_modules()
+    potential = all_imports - STDLIB_MODULES - TEST_FRAMEWORK_MODULES - project_modules
 
     missing: set[str] = set()
     for import_name in potential:
