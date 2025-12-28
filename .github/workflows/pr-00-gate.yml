@@ -1,8 +1,29 @@
 # -----------------------------------------------------------------------------
-# Gate Workflow — Travel-Plan-Permission
+# Gate Workflow — Consumer Repository Template
 # -----------------------------------------------------------------------------
 # Orchestrates CI enforcement for pull requests. The `summary` job aggregates
 # results and publishes the commit status that keepalive automation relies on.
+#
+# USAGE:
+#   - Standard Python projects: Use this template as-is
+#   - Custom projects: Use as a STARTING POINT, customize the test job(s)
+#
+# IMPORTANT: The `summary` job and `Gate / gate` commit status are REQUIRED
+# for keepalive automation to detect CI results. Do not remove or rename them.
+#
+# SYNC BEHAVIOR:
+#   - This file is NOT auto-synced to repos with custom Gate workflows
+#   - Repos in CUSTOM_GATE_REPOS list in maint-68-sync-consumer-repos.yml
+#     maintain their own Gate and should update manually if needed
+#
+# Copy this file to: .github/workflows/pr-00-gate.yml
+#
+# Required secrets: None (uses GITHUB_TOKEN)
+# Optional secrets: Passed via `secrets: inherit` to reusable workflow
+#
+# Examples of custom Gates based on this template:
+#   - stranske/trip-planner (Flask + requirements.txt)
+#   - stranske/Manager-Database (FastAPI + docker-compose)
 # -----------------------------------------------------------------------------
 
 name: Gate
@@ -23,47 +44,14 @@ jobs:
     with:
       python-versions: '["3.11", "3.12"]'
       coverage-min: "80"
-      format_check: false
+      format_check: false  # Using ruff for formatting
       working-directory: "."
       artifact-prefix: "gate-"
     secrets: inherit
 
-  docs-lint:
-    name: Docs lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run markdownlint
-        run: npx markdownlint-cli2 "**/*.md"
-
-  link-check:
-    name: Link check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Check links
-        uses: lycheeverse/lychee-action@v2.7.0
-        with:
-          args: --verbose --no-progress "docs/**/*.md"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   summary:
-    name: summary
-    needs: [python-ci, docs-lint, link-check]
+    name: gate-summary
+    needs: [python-ci]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
@@ -85,54 +73,35 @@ jobs:
         id: summarize
         env:
           PYTHON_RESULT: ${{ needs.python-ci.result || 'skipped' }}
-          DOCS_LINT_RESULT: ${{ needs.docs-lint.result || 'skipped' }}
-          LINK_CHECK_RESULT: ${{ needs.link-check.result || 'skipped' }}
         run: |
           set -euo pipefail
 
           python_result="${PYTHON_RESULT:-skipped}"
-          docs_lint_result="${DOCS_LINT_RESULT:-skipped}"
-          link_check_result="${LINK_CHECK_RESULT:-skipped}"
           state="success"
           description="All checks passed"
 
-          failed_jobs=()
-          pending_jobs=()
-
-          summarize_job() {
-            local job_name="$1"
-            local result="$2"
-            case "$result" in
-              success)
-                ;;
-              failure)
-                failed_jobs+=("$job_name")
-                ;;
-              cancelled)
-                failed_jobs+=("${job_name} (cancelled)")
-                ;;
-              skipped)
-                ;;
-              *)
-                pending_jobs+=("$job_name")
-                ;;
-            esac
-          }
-
-          summarize_job "Python CI" "$python_result"
-          summarize_job "Docs lint" "$docs_lint_result"
-          summarize_job "Link check" "$link_check_result"
-
-          if ((${#failed_jobs[@]} > 0)); then
-            state="failure"
-            description="Failed: ${failed_jobs[*]}"
-          elif ((${#pending_jobs[@]} > 0)); then
-            state="pending"
-            description="Pending: ${pending_jobs[*]}"
-          else
-            state="success"
-            description="Python CI, docs lint, link check passed"
-          fi
+          case "$python_result" in
+            success)
+              state="success"
+              description="Python CI passed"
+              ;;
+            failure)
+              state="failure"
+              description="Python CI failed"
+              ;;
+            cancelled)
+              state="error"
+              description="Python CI was cancelled"
+              ;;
+            skipped)
+              state="success"
+              description="Python CI skipped (no relevant changes)"
+              ;;
+            *)
+              state="pending"
+              description="Python CI status unknown"
+              ;;
+          esac
 
           echo "state=${state}" >> "$GITHUB_OUTPUT"
           echo "description=${description}" >> "$GITHUB_OUTPUT"

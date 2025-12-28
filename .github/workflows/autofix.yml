@@ -4,6 +4,11 @@
 # Triggers:
 # - PR opened/synchronized/reopened
 # - PR labeled with 'autofix' or 'autofix:clean'
+#
+# Copy this file to: .github/workflows/autofix.yml
+#
+# Required secrets:
+# - SERVICE_BOT_PAT: PAT for pushing autofix commits (optional, uses GITHUB_TOKEN if not set)
 name: Autofix
 
 on:
@@ -73,7 +78,7 @@ jobs:
               }
             }
 
-            // Explicit null check: pr.head.repo can be null if fork is deleted
+            // Explicitly check for null repo (deleted fork case)
             const sameRepo = pr.head.repo !== null && pr.head.repo.full_name === pr.base.repo?.full_name;
             const labels = (pr.labels || []).map(l => l.name);
 

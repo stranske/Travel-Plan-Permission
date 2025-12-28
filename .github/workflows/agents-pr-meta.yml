@@ -9,7 +9,7 @@
 # Copy this file to: .github/workflows/agents-pr-meta.yml
 #
 # Required secrets:
-# - SERVICE_BOT_PAT: PAT for stranske-automation-bot
+# - SERVICE_BOT_PAT: PAT for service bot account
 # - ACTIONS_BOT_PAT: PAT for workflow dispatch
 # - AGENTS_AUTOMATION_PAT: Alternative PAT for agent automation (optional)
 name: Agents PR Meta
@@ -77,12 +77,13 @@ jobs:
     if: github.event_name == 'issue_comment' && github.event.issue.pull_request
     uses: stranske/Workflows/.github/workflows/reusable-20-pr-meta.yml@main
     with:
-      pr_number: ${{ fromJSON(needs.resolve_pr.outputs.pr_number) }}
+      pr_number: ${{ needs.resolve_pr.outputs.pr_number }}
       comment_id: ${{ needs.resolve_pr.outputs.comment_id }}
       comment_body: ${{ needs.resolve_pr.outputs.comment_body }}
       event_name: 'issue_comment'
       event_action: ${{ github.event.action }}
-      allowed_keepalive_logins: ${{ vars.ALLOWED_KEEPALIVE_LOGINS || 'stranske' }}
+      # Only pass if explicitly set - omitting lets reusable workflow use its default
+      allowed_keepalive_logins: ${{ vars.ALLOWED_KEEPALIVE_LOGINS }}
     secrets: inherit
 
   # Call reusable PR meta workflow for PR events
@@ -95,58 +96,37 @@ jobs:
       event_action: ${{ github.event.action }}
     secrets: inherit
 
-  # Resolve PR from Gate workflow_run event
-  resolve_gate_pr:
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+  # Resolve PR context for workflow_run events (Gate completion)
+  resolve_pr_from_workflow_run:
+    if: github.event_name == 'workflow_run'
     runs-on: ubuntu-latest
     outputs:
       pr_number: ${{ steps.resolve.outputs.pr_number }}
-      should_process: ${{ steps.resolve.outputs.should_process }}
+      should_run: ${{ steps.resolve.outputs.should_run }}
     steps:
-      - name: Resolve PR from Gate run
+      - name: Resolve PR from workflow_run
         id: resolve
-        uses: actions/github-script@v8
+        uses: actions/github-script@v7
         with:
           script: |
             const run = context.payload.workflow_run;
-            const prs = run.pull_requests || [];
-            
-            if (prs.length === 0) {
-              core.info('No PRs associated with Gate run');
-              core.setOutput('should_process', 'false');
+            const prs = run && Array.isArray(run.pull_requests) ? run.pull_requests : [];
+            if (!prs.length) {
+              core.info('No pull_request associated with workflow_run; skipping PR meta handling.');
+              core.setOutput('should_run', 'false');
               return;
             }
-            
-            // Use the first PR (Gate typically runs on a single PR)
-            const prNumber = prs[0].number;
-            core.info(`Gate completed for PR #${prNumber}`);
-            
-            // Check if PR has keepalive label
-            const { data: pr } = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: prNumber
-            });
-            
-            const hasKeepalive = pr.labels.some(l => l.name === 'agents:keepalive');
-            if (!hasKeepalive) {
-              core.info(`PR #${prNumber} does not have agents:keepalive label`);
-              core.setOutput('should_process', 'false');
-              return;
-            }
-            
-            core.setOutput('pr_number', prNumber);
-            core.setOutput('should_process', 'true');
+            core.setOutput('pr_number', prs[0].number);
+            core.setOutput('should_run', 'true');
 
-  # Re-evaluate keepalive when Gate completes successfully
-  pr_meta_gate:
-    needs: resolve_gate_pr
-    if: github.event_name == 'workflow_run' && needs.resolve_gate_pr.outputs.should_process == 'true'
+  # Call reusable PR meta workflow for workflow_run events
+  pr_meta_workflow_run:
+    needs: resolve_pr_from_workflow_run
+    if: github.event_name == 'workflow_run' && needs.resolve_pr_from_workflow_run.outputs.should_run == 'true'
     uses: stranske/Workflows/.github/workflows/reusable-20-pr-meta.yml@main
     with:
-      pr_number: ${{ fromJSON(needs.resolve_gate_pr.outputs.pr_number) }}
+      pr_number: ${{ fromJSON(needs.resolve_pr_from_workflow_run.outputs.pr_number) }}
       event_name: 'workflow_run'
-      event_action: 'completed'
-      allowed_keepalive_logins: ${{ vars.ALLOWED_KEEPALIVE_LOGINS || 'stranske' }}
+      event_action: ${{ github.event.workflow_run.conclusion }}
       allow_replay: true
     secrets: inherit

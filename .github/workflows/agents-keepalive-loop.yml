@@ -219,7 +219,8 @@ jobs:
               payload,
             });
 
-            // Map flat result properties to outputs (same pattern as Workflows repo)
+            // Map flat result properties to outputs (evaluateKeepaliveLoop returns
+            // properties directly on result object, not nested in result.outputs)
             const output = {
               pr_number: String(result.prNumber || ''),
               pr_ref: String(result.prRef || ''),
