@@ -161,6 +161,7 @@ def _discover_project_modules() -> set[str]:
 
     return modules
 
+
 # Module name to package name mappings
 MODULE_TO_PACKAGE = {
     "yaml": "PyYAML",
