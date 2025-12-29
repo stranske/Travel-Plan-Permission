@@ -2,6 +2,34 @@
 
 This file defines reusable skills and patterns for Copilot to use when working in this repository.
 
+## Skill: Recognize When to Create a New Skill (Meta-Skill)
+
+**Trigger**: When you notice ANY of these patterns:
+- Same type of error occurring 3+ times in a session
+- Repeating the same debugging steps multiple times
+- User expressing frustration about repeated failures
+- Discovering a non-obvious fix that took multiple attempts
+- Finding that a "simple" task required unexpected steps
+
+**Action**:
+1. STOP and acknowledge the pattern
+2. Document the learning immediately:
+   - What was the repeated failure?
+   - What was the root cause?
+   - What is the correct approach?
+3. Add a new skill to this file or `copilot-instructions.md`
+4. Commit the skill update as part of the fix
+
+**Examples of patterns that should become skills**:
+- "I tried excluding files from mypy but it didn't work" → Document that `exclude` doesn't prevent import-based checking
+- "I pushed directly to main and it was rejected" → Document branch protection workflow
+- "CI kept failing and I didn't know why" → Document how to read CI logs properly
+- "I forgot to use the PAT again" → Document PAT requirements upfront
+
+**Key insight**: If you're doing something for the third time, it should be a skill.
+
+---
+
 ## Skill: Safe GitHub Push
 
 **Trigger**: When pushing changes to any repository
