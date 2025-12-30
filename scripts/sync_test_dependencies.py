@@ -329,7 +329,9 @@ def add_dependencies_to_pyproject(missing: set[str], fix: bool = False) -> bool:
         dev_group.multiline(True)
         optional[DEV_EXTRA] = dev_group
 
-    existing_normalised = {_normalise_package_name(str(item).split("[")[0]) for item in dev_group}
+    existing_normalised = {
+        _normalise_package_name(str(item).split("[")[0]) for item in dev_group
+    }
 
     added = False
     for package in sorted(missing):
@@ -348,7 +350,9 @@ def add_dependencies_to_pyproject(missing: set[str], fix: bool = False) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Sync test dependencies to pyproject.toml")
+    parser = argparse.ArgumentParser(
+        description="Sync test dependencies to pyproject.toml"
+    )
     parser.add_argument(
         "--fix",
         action="store_true",
