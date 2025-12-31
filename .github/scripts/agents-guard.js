@@ -502,7 +502,7 @@ function evaluateGuard({
 
     commentBody = [
       marker,
-      '**Health 45 Agents Guard** stopped this pull request.',
+  '**Health 45 Agents Guard** stopped this pull request.',
       '',
       '**What we found**',
       ...failureReasons.map((reason) => `- ${reason}`),
@@ -531,7 +531,7 @@ function evaluateGuard({
     warnings,
     hasAllowLabel,
     hasCodeownerApproval,
-    authorIsCodeowner,
+  authorIsCodeowner,
     needsLabel,
     needsApproval,
     modifiedProtectedPaths: [...modifiedProtectedPaths],
