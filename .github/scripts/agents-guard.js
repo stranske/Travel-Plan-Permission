@@ -531,7 +531,7 @@ function evaluateGuard({
     warnings,
     hasAllowLabel,
     hasCodeownerApproval,
-  authorIsCodeowner,
+    authorIsCodeowner,
     needsLabel,
     needsApproval,
     modifiedProtectedPaths: [...modifiedProtectedPaths],
