@@ -28,13 +28,28 @@ updates:
     # external repos (stranske/Workflows). Monitor releases manually or
     # use Renovate for more advanced ref tracking.
 
-  # Python dependencies (enable when Python code is added)
+  # Python dependencies
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "type:ops"
+    # Ignore dev tools - these are synced from stranske/Workflows via maint-52
+    # Updates flow: Workflows (Dependabot) -> autofix-versions.env -> consumer repos
+    ignore:
+      - dependency-name: "ruff"
+      - dependency-name: "black"
+      - dependency-name: "mypy"
+      - dependency-name: "pytest"
+      - dependency-name: "pytest-cov"
+      - dependency-name: "pytest-xdist"
+      - dependency-name: "isort"
+      - dependency-name: "docformatter"
+      - dependency-name: "coverage"
+      - dependency-name: "hypothesis"
