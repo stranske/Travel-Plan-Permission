@@ -20,27 +20,40 @@ from pathlib import Path
 
 def get_mypy_python_version() -> str | None:
     """Extract python_version from pyproject.toml's [tool.mypy] section."""
-    pyproject = Path("pyproject.toml")
-    if not pyproject.exists():
+    pyproject_path = Path("pyproject.toml")
+    if not pyproject_path.exists():
         return None
 
-    content = pyproject.read_text(encoding="utf-8")
+    try:
+        # Try tomlkit first (more accurate TOML parsing)
+        import tomlkit
 
-    # Simple parsing - look for python_version in [tool.mypy] section
-    in_mypy_section = False
-    for line in content.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("[tool.mypy]"):
-            in_mypy_section = True
-            continue
-        if in_mypy_section:
-            if stripped.startswith("["):
-                # New section started
-                break
-            if stripped.startswith("python_version") and "=" in stripped:
-                # Extract version value
-                value = stripped.split("=", 1)[1].strip().strip('"').strip("'")
-                return value
+        content = pyproject_path.read_text()
+        data = tomlkit.parse(content)
+        tool = data.get("tool")
+        if not isinstance(tool, dict):
+            tool = {}
+        mypy = tool.get("mypy")
+        if not isinstance(mypy, dict):
+            mypy = {}
+        version = mypy.get("python_version")
+        return str(version) if version is not None else None
+    except ImportError:
+        pass
+
+    # Fallback: simple regex-based extraction
+    import re
+
+    content = pyproject_path.read_text()
+    # Match python_version in [tool.mypy] section
+    match = re.search(
+        r'\[tool\.mypy\].*?python_version\s*=\s*["\']?(\d+\.\d+)["\']?',
+        content,
+        re.DOTALL,
+    )
+    if match:
+        return match.group(1)
+
     return None
 
 
@@ -54,7 +67,11 @@ def main() -> int:
 
     # Determine which version to output
     # If mypy has a configured version, use it; otherwise use matrix version
-    output_version = mypy_version or (matrix_version or "3.11")
+    if mypy_version:  # noqa: SIM108
+        output_version = mypy_version
+    else:
+        # Default to the primary Python version (first in typical matrices)
+        output_version = matrix_version or "3.11"
 
     # Write to GITHUB_OUTPUT
     github_output = os.environ.get("GITHUB_OUTPUT")
@@ -69,5 +86,5 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - CLI entry point
     sys.exit(main())
