@@ -46,9 +46,7 @@ class ExportService:
             return self.receipt_signer(receipt_url, expires_at)
         return self._default_signed_link(receipt_url, expires_at)
 
-    def _iter_rows(
-        self, reports: list[ExpenseReport], now: datetime
-    ) -> Iterator[ExportRow]:
+    def _iter_rows(self, reports: list[ExpenseReport], now: datetime) -> Iterator[ExportRow]:
         expires_at = now + timedelta(days=7)
         for report in reports:
             for expense in report.expenses:
@@ -126,9 +124,7 @@ class ExportService:
                 receipt_cell.style = "Hyperlink"
         amount_column = 3
         currency_format = "$#,##0.00"
-        for cell in ws.iter_cols(
-            min_col=amount_column, max_col=amount_column, min_row=2
-        ):
+        for cell in ws.iter_cols(min_col=amount_column, max_col=amount_column, min_row=2):
             for amt_cell in cell:
                 amt_cell.number_format = currency_format
         ws.column_dimensions["A"].width = 12

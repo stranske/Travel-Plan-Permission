@@ -59,9 +59,7 @@ class ApprovalRule(BaseModel):
     category: ExpenseCategory | None = Field(
         default=None, description="Optional category this rule applies to"
     )
-    approver: str = Field(
-        ..., description="Approver or role responsible for the decision"
-    )
+    approver: str = Field(..., description="Approver or role responsible for the decision")
     action: ApprovalAction = Field(
         default=ApprovalAction.AUTO_APPROVE,
         description="Action to take when the rule matches",
@@ -77,15 +75,9 @@ class ApprovalRule(BaseModel):
     def evaluate(self, expense: ExpenseItem) -> ApprovalStatus | None:
         """Evaluate the expense against the rule and return a status when triggered."""
 
-        if (
-            self.action == ApprovalAction.AUTO_APPROVE
-            and expense.amount <= self.threshold
-        ):
+        if self.action == ApprovalAction.AUTO_APPROVE and expense.amount <= self.threshold:
             return ApprovalStatus.AUTO_APPROVED
-        if (
-            self.action == ApprovalAction.REQUIRE_APPROVAL
-            and expense.amount >= self.threshold
-        ):
+        if self.action == ApprovalAction.REQUIRE_APPROVAL and expense.amount >= self.threshold:
             return ApprovalStatus.FLAGGED
         return None
 
@@ -95,14 +87,10 @@ class ApprovalDecision(BaseModel):
 
     expense: ExpenseItem = Field(..., description="Expense evaluated")
     status: ApprovalStatus = Field(..., description="Outcome of the evaluation")
-    rule_name: str = Field(
-        ..., description="Name of the rule that triggered the decision"
-    )
+    rule_name: str = Field(..., description="Name of the rule that triggered the decision")
     approver: str = Field(..., description="Approver or role responsible")
     timestamp: datetime = Field(..., description="Time when the decision was made")
-    reason: str | None = Field(
-        default=None, description="Optional explanation for the decision"
-    )
+    reason: str | None = Field(default=None, description="Optional explanation for the decision")
 
 
 class ApprovalOutcome(str, Enum):
@@ -119,9 +107,7 @@ class ApprovalEvent(BaseModel):
 
     approver_id: str = Field(..., description="Identifier of the approver or role")
     level: str = Field(..., description="Approval tier, e.g., manager or board")
-    outcome: ApprovalOutcome = Field(
-        ..., description="Result of the decision for the trip plan"
-    )
+    outcome: ApprovalOutcome = Field(..., description="Result of the decision for the trip plan")
     timestamp: datetime = Field(..., description="When the decision was recorded")
     justification: str | None = Field(
         default=None, description="Explanation required for overrides"
@@ -129,9 +115,7 @@ class ApprovalEvent(BaseModel):
     previous_status: TripStatus = Field(
         ..., description="Trip status before the decision was applied"
     )
-    new_status: TripStatus = Field(
-        ..., description="Trip status after the decision was applied"
-    )
+    new_status: TripStatus = Field(..., description="Trip status after the decision was applied")
 
     model_config = {"frozen": True}
 
@@ -186,9 +170,7 @@ class ExceptionApprovalRecord(BaseModel):
         ..., description="Approval level that handled the exception"
     )
     timestamp: datetime = Field(..., description="When the decision was recorded")
-    notes: str | None = Field(
-        default=None, description="Optional approver notes for the decision"
-    )
+    notes: str | None = Field(default=None, description="Optional approver notes for the decision")
 
 
 def _approval_rank(level: ExceptionApprovalLevel) -> int:
@@ -264,9 +246,7 @@ class ExceptionRequest(BaseModel):
     def model_post_init(self, __context: object) -> None:
         super().model_post_init(__context)
         if self.approval_level is None:
-            self.approval_level = determine_exception_approval_level(
-                self.type, self.amount
-            )
+            self.approval_level = determine_exception_approval_level(self.type, self.amount)
 
     def approve(
         self,
@@ -308,9 +288,7 @@ class ExceptionRequest(BaseModel):
 
         self.status = ExceptionStatus.ESCALATED
         self.escalated_at = now
-        self.approval_level = _next_level(
-            self.approval_level or ExceptionApprovalLevel.MANAGER
-        )
+        self.approval_level = _next_level(self.approval_level or ExceptionApprovalLevel.MANAGER)
         return True
 
 
@@ -341,12 +319,8 @@ class TripPlan(BaseModel):
 
     trip_id: str = Field(..., description="Unique identifier for the trip")
     traveler_name: str = Field(..., description="Name of the traveler")
-    traveler_role: str | None = Field(
-        default=None, description="Traveler role or title"
-    )
-    department: str | None = Field(
-        default=None, description="Department or cost center"
-    )
+    traveler_role: str | None = Field(default=None, description="Traveler role or title")
+    department: str | None = Field(default=None, description="Department or cost center")
     destination: str = Field(..., description="Trip destination")
     origin_city: str | None = Field(default=None, description="City of departure")
     destination_city: str | None = Field(default=None, description="City of arrival")
@@ -360,12 +334,8 @@ class TripPlan(BaseModel):
         default_factory=dict,
         description="Optional expected costs by category",
     )
-    funding_source: str | None = Field(
-        default=None, description="Funding source for the trip"
-    )
-    estimated_cost: Annotated[Decimal, Field(ge=0)] = Field(
-        ..., description="Estimated total cost"
-    )
+    funding_source: str | None = Field(default=None, description="Funding source for the trip")
+    estimated_cost: Annotated[Decimal, Field(ge=0)] = Field(..., description="Estimated total cost")
     status: TripStatus = Field(default=TripStatus.DRAFT, description="Current status")
     expense_breakdown: dict[ExpenseCategory, Decimal] = Field(
         default_factory=dict,
@@ -465,9 +435,7 @@ class TripPlan(BaseModel):
             snapshot_store.append(snapshot)
         return event
 
-    def add_exception_request(
-        self, exception_request: ExceptionRequest
-    ) -> ExceptionRequest:
+    def add_exception_request(self, exception_request: ExceptionRequest) -> ExceptionRequest:
         """Attach an exception request to the trip plan."""
 
         self.exception_requests.append(exception_request)
@@ -498,14 +466,10 @@ class ExpenseItem(BaseModel):
     )
     amount: Annotated[Decimal, Field(ge=0)] = Field(..., description="Amount spent")
     expense_date: date = Field(..., description="Date of the expense")
-    receipt_attached: bool = Field(
-        default=False, description="Whether a receipt is attached"
-    )
+    receipt_attached: bool = Field(default=False, description="Whether a receipt is attached")
     receipt_url: str | None = Field(
         default=None,
-        description=(
-            "URL or path to the receipt attachment; will be converted to a signed link"
-        ),
+        description=("URL or path to the receipt attachment; will be converted to a signed link"),
     )
     receipt_references: list[Receipt] = Field(
         default_factory=list,
@@ -545,9 +509,7 @@ class ExpenseReport(BaseModel):
     cost_center: str | None = Field(
         default=None, description="Cost center associated with the expense report"
     )
-    expenses: list[ExpenseItem] = Field(
-        default_factory=list, description="List of expenses"
-    )
+    expenses: list[ExpenseItem] = Field(default_factory=list, description="List of expenses")
     approval_status: ApprovalStatus = Field(
         default=ApprovalStatus.PENDING, description="Status after approval evaluation"
     )
@@ -565,7 +527,5 @@ class ExpenseReport(BaseModel):
         """Group expenses by category and sum amounts."""
         totals: dict[ExpenseCategory, Decimal] = {}
         for expense in self.expenses:
-            totals[expense.category] = (
-                totals.get(expense.category, Decimal("0")) + expense.amount
-            )
+            totals[expense.category] = totals.get(expense.category, Decimal("0")) + expense.amount
         return totals

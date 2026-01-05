@@ -12,10 +12,6 @@ This document describes all labels that trigger automated workflows or affect CI
 | `agent:codex-invite` | Issue labeled | Invites Codex agent to participate |
 | `agent:needs-attention` | Auto-applied | Indicates agent needs human intervention |
 | `status:ready` | Issue labeled | Marks issue as ready for agent processing |
-| `agents:format` | Issue labeled | Direct issue formatting |
-| `agents:formatted` | Auto-applied | Indicates issue has been formatted |
-| `agents:optimize` | Issue labeled | Analyzes issue and posts suggestions |
-| `agents:apply-suggestions` | Issue labeled | Applies optimization suggestions |
 
 ---
 
@@ -140,90 +136,6 @@ This document describes all labels that trigger automated workflows or affect CI
 
 ---
 
-## Issue Formatting Labels (LangChain Enhancement)
-
-These labels control the LangChain-powered issue formatting pipeline introduced in #484.
-
-### `agents:format`
-
-**Applies to:** Issues
-
-**Trigger:** When applied to an issue
-
-**Effect:**
-1. Automatically formats the raw issue body into the AGENT_ISSUE_TEMPLATE structure
-2. Uses LLM (GitHub Models API) with fallback to regex-based formatting
-3. Adds proper sections: Why, Scope, Non-Goals, Tasks, Acceptance Criteria, Implementation Notes
-4. Converts task items to checkboxes
-5. Replaces the issue body with formatted version
-6. Removes `agents:format` label and adds `agents:formatted`
-
-**Use Case:** Quick, one-step formatting without review. Best for issues that are already well-structured but need template compliance.
-
-**Workflow:** `agents-issue-optimizer.yml`
-
----
-
-### `agents:formatted`
-
-**Applies to:** Issues
-
-**Trigger:** Automatically applied after formatting completes
-
-**Effect:**
-1. Indicates the issue has been formatted to AGENT_ISSUE_TEMPLATE
-2. Signals the issue is ready for agent processing
-3. Prevents re-formatting (workflows skip issues with this label)
-
-**Note:** This is a result label, not a trigger label. Do not apply manually.
-
-**Workflow:** Applied by `agents-issue-optimizer.yml`
-
----
-
-### `agents:optimize`
-
-**Applies to:** Issues
-
-**Trigger:** When applied to an issue
-
-**Effect:**
-1. Analyzes the issue for agent compatibility and formatting quality
-2. Posts a comment with suggestions including:
-   - Tasks that are too broad (should be split)
-   - Tasks the agent cannot complete (with reasons)
-   - Subjective acceptance criteria (with objective alternatives)
-   - Missing sections or formatting issues
-3. Includes embedded JSON with structured suggestions
-4. Prompts user to add `agents:apply-suggestions` to apply changes
-
-**Use Case:** Two-step formatting with human review. Best for issues needing significant restructuring.
-
-**Workflow:** `agents-issue-optimizer.yml`
-
----
-
-### `agents:apply-suggestions`
-
-**Applies to:** Issues
-
-**Trigger:** When applied to an issue that has received optimization suggestions
-
-**Prerequisites:**
-- Issue must have a comment with optimization suggestions (from `agents:optimize`)
-- The suggestions comment must contain valid JSON in `<!-- suggestions-json: -->` marker
-
-**Effect:**
-1. Extracts approved suggestions from the analysis comment
-2. Applies all suggestions to reformat the issue body
-3. Moves blocked tasks to "## Deferred Tasks (Requires Human)" section
-4. Removes both `agents:optimize` and `agents:apply-suggestions` labels
-5. Adds `agents:formatted` label
-
-**Workflow:** `agents-issue-optimizer.yml`
-
----
-
 ## CI/Build Labels
 
 ### `skip-ci` (if configured)
@@ -244,10 +156,6 @@ These labels control the LangChain-powered issue formatting pipeline introduced 
 | `agent:codex` | `agent:codex-invite` | Sends agent invitation |
 | `agent:codex` | `status:ready` | Agent begins processing |
 | `agent:needs-attention` | (removed) | Agent resumes processing |
-| (none) | `agents:format` | Direct formatting |
-| (none) | `agents:optimize` | Analyzes and posts suggestions |
-| `agents:optimize` | `agents:apply-suggestions` | Applies suggestions, adds `agents:formatted` |
-| `agents:formatted` | `agent:codex` | Issue ready for agent processing |
 
 ---
 

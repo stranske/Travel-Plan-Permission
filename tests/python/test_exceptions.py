@@ -29,9 +29,7 @@ def test_exception_types_cover_advisory_rules() -> None:
         rule.rule_id for rule in engine.rules if str(rule.severity) == Severity.ADVISORY
     }
 
-    mapped = {
-        ExceptionType.from_policy_rule_id(rule_id).value for rule_id in advisory_rules
-    }
+    mapped = {ExceptionType.from_policy_rule_id(rule_id).value for rule_id in advisory_rules}
 
     assert mapped == advisory_rules
 
@@ -82,9 +80,7 @@ def test_exception_escalates_after_48_hours() -> None:
         requested_at=submitted,
     )
 
-    escalated = request.escalate_if_overdue(
-        reference_time=submitted + timedelta(hours=49)
-    )
+    escalated = request.escalate_if_overdue(reference_time=submitted + timedelta(hours=49))
 
     assert escalated is True
     assert request.status == ExceptionStatus.ESCALATED
