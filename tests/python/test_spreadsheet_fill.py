@@ -151,9 +151,7 @@ def test_fill_travel_spreadsheet_uses_template_metadata(tmp_path, monkeypatch) -
     )
 
     monkeypatch.setattr(policy_api, "load_template_mapping", lambda: mapping)
-    monkeypatch.setattr(
-        policy_api, "_default_template_bytes", fake_default_template_bytes
-    )
+    monkeypatch.setattr(policy_api, "_default_template_bytes", fake_default_template_bytes)
 
     fill_travel_spreadsheet(plan, output_path)
 

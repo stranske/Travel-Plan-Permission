@@ -16,14 +16,10 @@ from .policy_api import fill_travel_spreadsheet
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="fill-spreadsheet",
-        description=(
-            "Generate a completed travel request spreadsheet from a TripPlan JSON file."
-        ),
+        description=("Generate a completed travel request spreadsheet from a TripPlan JSON file."),
     )
     parser.add_argument("input_json", type=Path, help="Path to TripPlan JSON input.")
-    parser.add_argument(
-        "output_xlsx", type=Path, help="Path to write the completed spreadsheet."
-    )
+    parser.add_argument("output_xlsx", type=Path, help="Path to write the completed spreadsheet.")
     return parser
 
 

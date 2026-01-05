@@ -18,8 +18,7 @@ def test_policy_version_hash_and_label() -> None:
     assert version.label == "1.2.3"
     # Hash should be stable for the same config
     assert (
-        version.config_hash
-        == PolicyVersion.from_config("1.2.3", {"rules": {"foo": 1}}).config_hash
+        version.config_hash == PolicyVersion.from_config("1.2.3", {"rules": {"foo": 1}}).config_hash
     )
 
 
