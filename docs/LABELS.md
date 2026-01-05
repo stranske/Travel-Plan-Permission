@@ -12,7 +12,7 @@ This document describes all labels that trigger automated workflows or affect CI
 | `agent:codex-invite` | Issue labeled | Invites Codex agent to participate |
 | `agent:needs-attention` | Auto-applied | Indicates agent needs human intervention |
 | `status:ready` | Issue labeled | Marks issue as ready for agent processing |
-| `agents:format` | Issue labeled | Direct issue formatting (⚠️ #545) |
+| `agents:format` | Issue labeled | Direct issue formatting |
 | `agents:formatted` | Auto-applied | Indicates issue has been formatted |
 | `agents:optimize` | Issue labeled | Analyzes issue and posts suggestions |
 | `agents:apply-suggestions` | Issue labeled | Applies optimization suggestions |
@@ -160,7 +160,7 @@ These labels control the LangChain-powered issue formatting pipeline introduced 
 
 **Use Case:** Quick, one-step formatting without review. Best for issues that are already well-structured but need template compliance.
 
-**Workflow:** `agents-issue-optimizer.yml` (⚠️ Not yet implemented - see #545)
+**Workflow:** `agents-issue-optimizer.yml`
 
 ---
 
@@ -244,7 +244,7 @@ These labels control the LangChain-powered issue formatting pipeline introduced 
 | `agent:codex` | `agent:codex-invite` | Sends agent invitation |
 | `agent:codex` | `status:ready` | Agent begins processing |
 | `agent:needs-attention` | (removed) | Agent resumes processing |
-| (none) | `agents:format` | Direct formatting (⚠️ #545) |
+| (none) | `agents:format` | Direct formatting |
 | (none) | `agents:optimize` | Analyzes and posts suggestions |
 | `agents:optimize` | `agents:apply-suggestions` | Applies suggestions, adds `agents:formatted` |
 | `agents:formatted` | `agent:codex` | Issue ready for agent processing |
