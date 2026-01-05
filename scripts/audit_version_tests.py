@@ -23,7 +23,6 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
 
 # Patterns that indicate hardcoded version issues
 PATTERNS = {
@@ -40,7 +39,7 @@ PATTERNS = {
         "fix": "Use dynamic version extraction from pyproject.toml",
     },
     "expected_version_dict": {
-        "regex": r'expected.*=\s*\{[^}]*:\s*\(\s*\d+\s*,\s*\d+\s*\)',
+        "regex": r"expected.*=\s*\{[^}]*:\s*\(\s*\d+\s*,\s*\d+\s*\)",
         "severity": "HIGH",
         "message": "Dictionary of expected version tuples",
         "fix": "Extract expected ranges from pyproject.toml at runtime",
@@ -79,7 +78,7 @@ class Finding:
     fix: str
 
 
-def scan_file(file_path: Path) -> List[Finding]:
+def scan_file(file_path: Path) -> list[Finding]:
     """Scan a single file for hardcoded version patterns."""
     findings = []
 
@@ -108,7 +107,7 @@ def scan_file(file_path: Path) -> List[Finding]:
     return findings
 
 
-def scan_directory(root_path: Path) -> List[Finding]:
+def scan_directory(root_path: Path) -> list[Finding]:
     """Scan all test files in a directory."""
     all_findings = []
 
@@ -132,7 +131,7 @@ def scan_directory(root_path: Path) -> List[Finding]:
     return all_findings
 
 
-def print_findings(findings: List[Finding], repo_path: Path) -> None:
+def print_findings(findings: list[Finding], repo_path: Path) -> None:
     """Print findings in a formatted report."""
     if not findings:
         print("✅ No hardcoded version patterns found!")
@@ -166,20 +165,22 @@ def print_findings(findings: List[Finding], repo_path: Path) -> None:
             print(f"   Fix: {finding.fix}")
 
     print(f"\n{'='*80}")
-    print(f"Summary: {len(by_severity['HIGH'])} HIGH, "
-          f"{len(by_severity['MEDIUM'])} MEDIUM, "
-          f"{len(by_severity['LOW'])} LOW")
+    print(
+        f"Summary: {len(by_severity['HIGH'])} HIGH, "
+        f"{len(by_severity['MEDIUM'])} MEDIUM, "
+        f"{len(by_severity['LOW'])} LOW"
+    )
     print(f"{'='*80}\n")
 
 
-def generate_fix_suggestions(findings: List[Finding], repo_path: Path) -> None:
+def generate_fix_suggestions(findings: list[Finding], repo_path: Path) -> None:
     """Generate detailed fix suggestions."""
     if not findings:
         return
 
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("Fix Suggestions")
-    print("="*80 + "\n")
+    print("=" * 80 + "\n")
 
     # Group by file
     by_file = {}
@@ -216,9 +217,9 @@ def generate_fix_suggestions(findings: List[Finding], repo_path: Path) -> None:
         print("     if hasattr(obj, 'feature'):  # Direct feature detection")
         print("         # Test the feature")
 
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("Next Steps:")
-    print("="*80)
+    print("=" * 80)
     print("1. Review the test_dependency_version_patterns.py reference file")
     print("2. Copy version_utils.py helper to your repo")
     print("3. Refactor tests following the patterns above")
