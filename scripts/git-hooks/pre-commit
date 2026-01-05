@@ -1,0 +1,64 @@
+#!/bin/bash
+# Pre-commit hook to regenerate lock files when pyproject.toml changes
+#
+# Installation:
+#   cp scripts/git-hooks/pre-commit .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+#
+# Or use pre-commit framework:
+#   Add this to .pre-commit-config.yaml
+
+set -e
+
+# Check if pyproject.toml is being committed
+if git diff --cached --name-only | grep -q "pyproject.toml"; then
+    echo "📦 pyproject.toml changed, checking lock file sync..."
+    
+    # Check if uv is available
+    if ! command -v uv &> /dev/null; then
+        echo "⚠️  uv not found - skipping lock file regeneration"
+        echo "   Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh"
+        exit 0
+    fi
+    
+    # Generate fresh lock file to temp location
+    echo "Compiling dependencies..."
+    uv pip compile pyproject.toml --output-file requirements.check 2>&1 || {
+        echo "❌ Failed to compile dependencies"
+        echo "   Check pyproject.toml for errors"
+        exit 1
+    }
+    
+    # Compare with existing lock file
+    if [ -f "requirements.lock" ] && diff -q requirements.lock requirements.check > /dev/null 2>&1; then
+        echo "✅ Lock file already in sync"
+        rm requirements.check
+        exit 0
+    fi
+    
+    # Lock file is out of sync - regenerate
+    echo "⚠️  Lock file out of sync with pyproject.toml"
+    echo "   Regenerating lock files..."
+    
+    # Regenerate requirements.lock
+    mv requirements.check requirements.lock
+    
+    # Regenerate uv.lock if it exists
+    if [ -f "uv.lock" ]; then
+        uv lock
+    fi
+    
+    # Stage the updated lock files
+    git add requirements.lock
+    [ -f "uv.lock" ] && git add uv.lock
+    
+    echo "✅ Lock files regenerated and staged"
+    echo ""
+    echo "   The following files have been updated:"
+    echo "   - requirements.lock"
+    [ -f "uv.lock" ] && echo "   - uv.lock"
+    echo ""
+    echo "   Review the changes before committing."
+fi
+
+exit 0
