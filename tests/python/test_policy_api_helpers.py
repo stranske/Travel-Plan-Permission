@@ -189,9 +189,7 @@ def test_fill_travel_spreadsheet_sets_dropdown_checkbox_and_formula(
         version="ITIN-2025.1",
         cells={"traveler_name": "A1"},
         dropdowns={"transportation_mode": {"cell": "B1"}},
-        checkboxes={
-            "department": {"cell": "C1", "true_value": "Y", "false_value": "N"}
-        },
+        checkboxes={"department": {"cell": "C1", "true_value": "Y", "false_value": "N"}},
         formulas={"total": {"cell": "D1", "formula": "=1+1"}},
         metadata={},
     )

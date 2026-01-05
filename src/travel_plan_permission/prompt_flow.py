@@ -57,9 +57,7 @@ QUESTION_FLOW: tuple[Question, ...] = (
         "Where are you headed and what's the destination ZIP?",
         ("city_state", "destination_zip"),
     ),
-    Question(
-        "What are the departure and return dates?", ("depart_date", "return_date")
-    ),
+    Question("What are the departure and return dates?", ("depart_date", "return_date")),
     Question(
         "What's the business purpose and cost center?",
         ("business_purpose", "cost_center"),

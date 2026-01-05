@@ -90,9 +90,7 @@ def test_check_trip_plan_reports_policy_issues(trip_plan: TripPlan) -> None:
 def test_check_trip_plan_reports_pass_when_no_rules(
     trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(
-        PolicyEngine, "from_file", lambda *_args, **_kwargs: PolicyEngine([])
-    )
+    monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: PolicyEngine([]))
 
     result = check_trip_plan(trip_plan)
 
