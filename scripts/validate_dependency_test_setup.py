@@ -21,13 +21,14 @@ def check_lock_file_completeness() -> tuple[bool, list[str]]:
     pyproject = Path("pyproject.toml").read_text()
 
     # Extract optional dependency groups
-    optional_section = re.search(r'\[project\.optional-dependencies\](.*?)(?=\n\[|\Z)',
-                                 pyproject, re.DOTALL)
+    optional_section = re.search(
+        r"\[project\.optional-dependencies\](.*?)(?=\n\[|\Z)", pyproject, re.DOTALL
+    )
     if not optional_section:
         issues.append("No [project.optional-dependencies] section found")
         return False, issues
 
-    optional_groups = re.findall(r'^(\w+)\s*=', optional_section.group(1), re.MULTILINE)
+    optional_groups = re.findall(r"^(\w+)\s*=", optional_section.group(1), re.MULTILINE)
     print(f"✓ Found optional dependency groups: {', '.join(optional_groups)}")
 
     # Check dependabot-auto-lock.yml includes all extras
@@ -62,16 +63,19 @@ def check_for_hardcoded_versions() -> tuple[bool, list[str]]:
         content = test_file.read_text()
 
         # Skip if it's the lockfile consistency test or dependency alignment test
-        if "lockfile_consistency" in test_file.name or "dependency_version_alignment" in test_file.name:
+        if (
+            "lockfile_consistency" in test_file.name
+            or "dependency_version_alignment" in test_file.name
+        ):
             continue
 
         for pattern in version_patterns:
             if re.search(pattern, content):
                 # Check if it's in a comment
-                lines = content.split('\n')
+                lines = content.split("\n")
                 for i, line in enumerate(lines):
-                    if re.search(pattern, line) and not line.strip().startswith('#'):
-                        problematic_files.append((test_file, i+1, line.strip()))
+                    if re.search(pattern, line) and not line.strip().startswith("#"):
+                        problematic_files.append((test_file, i + 1, line.strip()))
 
     if problematic_files:
         issues.append("Found potential hardcoded versions in tests:")
@@ -138,10 +142,10 @@ def check_test_expectations() -> tuple[bool, list[str]]:
         content = test_file.read_text()
 
         # Check for problematic patterns
-        if re.search(r'\.attrs\[.*\]\.mode(?!\[)', content):
+        if re.search(r"\.attrs\[.*\]\.mode(?!\[)", content):
             issues.append(f"{test_file.name}: Uses .mode attribute access instead of dict access")
 
-        if "assert meta[\"metadata\"] is " in content and "is metadata" in content:
+        if 'assert meta["metadata"] is ' in content and "is metadata" in content:
             issues.append(f"{test_file.name}: Uses 'is' identity check instead of equality")
 
     if not issues:
