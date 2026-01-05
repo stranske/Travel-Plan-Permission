@@ -99,8 +99,7 @@ class AdvanceBookingRule(ValidationRule):
     def _is_international(self, plan: TripPlan) -> bool:
         destination_lower = plan.destination.lower()
         return any(
-            keyword.lower() in destination_lower
-            for keyword in self.international_destinations
+            keyword.lower() in destination_lower for keyword in self.international_destinations
         )
 
     def _required_notice(self, plan: TripPlan) -> int | None:
@@ -132,9 +131,7 @@ class AdvanceBookingRule(ValidationRule):
 class BudgetLimitRule(ValidationRule):
     """Validate trip cost against configured limits."""
 
-    type: Literal["budget_limit"] = Field(
-        default="budget_limit", description="Rule type"
-    )
+    type: Literal["budget_limit"] = Field(default="budget_limit", description="Rule type")
     trip_limit: Decimal | None = Field(
         default=None, ge=0, description="Maximum allowed estimated trip cost"
     )
@@ -149,9 +146,7 @@ class BudgetLimitRule(ValidationRule):
             return {}
         if not isinstance(value, dict):
             raise TypeError("category_limits must be a mapping")
-        return {
-            ExpenseCategory(key): Decimal(str(limit)) for key, limit in value.items()
-        }
+        return {ExpenseCategory(key): Decimal(str(limit)) for key, limit in value.items()}
 
     def evaluate(
         self, plan: TripPlan, *, reference_date: date | None = None  # noqa: ARG002
@@ -182,9 +177,7 @@ class BudgetLimitRule(ValidationRule):
 class DurationLimitRule(ValidationRule):
     """Restrict maximum consecutive travel days."""
 
-    type: Literal["duration_limit"] = Field(
-        default="duration_limit", description="Rule type"
-    )
+    type: Literal["duration_limit"] = Field(default="duration_limit", description="Rule type")
     max_consecutive_days: int = Field(
         ..., gt=0, description="Maximum allowed trip duration in days"
     )
@@ -207,9 +200,7 @@ class DurationLimitRule(ValidationRule):
 class ProviderApprovalRule(ValidationRule):
     """Warn when travelers select providers outside the approved registry."""
 
-    type: Literal["provider_approval"] = Field(
-        default="provider_approval", description="Rule type"
-    )
+    type: Literal["provider_approval"] = Field(default="provider_approval", description="Rule type")
     providers_path: str | None = Field(
         default=None,
         description="Optional override path to providers.yaml; defaults to package config",
@@ -232,9 +223,7 @@ class ProviderApprovalRule(ValidationRule):
 
         for category, provider_name in plan.selected_providers.items():
             provider_type = provider_type_for_category(
-                category.value
-                if isinstance(category, ExpenseCategory)
-                else str(category)
+                category.value if isinstance(category, ExpenseCategory) else str(category)
             )
             if provider_type is None:
                 continue
@@ -327,6 +316,5 @@ class PolicyValidator:
 
     def can_submit(self, plan: TripPlan, *, reference_date: date | None = None) -> bool:
         return not any(
-            result.is_blocking
-            for result in self.validate_plan(plan, reference_date=reference_date)
+            result.is_blocking for result in self.validate_plan(plan, reference_date=reference_date)
         )
