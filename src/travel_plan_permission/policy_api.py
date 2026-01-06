@@ -151,7 +151,7 @@ def _plan_field_values(
 ) -> dict[str, object]:
     if canonical_plan is not None:
         city_state = canonical_plan.city_state or ""
-        zip_code = canonical_plan.destination_zip
+        zip_code: str | None = canonical_plan.destination_zip
     else:
         city_state, zip_code = _split_destination(plan.destination)
     fields: dict[str, object] = dict(plan.model_dump())
