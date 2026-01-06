@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import re
 import tempfile
-from dataclasses import dataclass, field as dataclass_field
 from collections.abc import Sequence
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import date, datetime
 from decimal import Decimal
 from importlib import resources
@@ -519,9 +520,7 @@ def fill_travel_spreadsheet(
 
     output_path = Path(output_path)
     output_path.write_bytes(
-        render_travel_spreadsheet_bytes(
-            plan, canonical_plan=canonical_plan, report=report
-        )
+        render_travel_spreadsheet_bytes(plan, canonical_plan=canonical_plan, report=report)
     )
     return output_path
 
