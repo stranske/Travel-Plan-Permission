@@ -9,6 +9,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from .canonical import load_trip_plan_payload
 from .models import TripPlan
 from .policy_api import fill_travel_spreadsheet
 
@@ -39,7 +40,10 @@ def _load_trip_plan(path: Path) -> TripPlan:
         msg = f"Invalid JSON in input file: {path}"
         raise ValueError(msg) from exc
 
-    return TripPlan.model_validate(payload)
+    if not isinstance(payload, dict):
+        msg = f"TripPlan payload must be a JSON object: {path}"
+        raise ValueError(msg)
+    return load_trip_plan_payload(payload)
 
 
 def main(argv: list[str] | None = None) -> int:

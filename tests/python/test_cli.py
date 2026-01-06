@@ -4,42 +4,18 @@ import json
 import os
 import subprocess
 import sys
-from datetime import date
-from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from travel_plan_permission import ExpenseCategory, TripPlan
 from travel_plan_permission.cli import main
-
-
-def _plan() -> TripPlan:
-    return TripPlan(
-        trip_id="TRIP-CLI-001",
-        traveler_name="Taylor Brooks",
-        destination="Seattle, WA 98101",
-        departure_date=date(2024, 10, 12),
-        return_date=date(2024, 10, 15),
-        purpose="Partner planning",
-        estimated_cost=Decimal("900.00"),
-        expense_breakdown={
-            ExpenseCategory.CONFERENCE_FEES: Decimal("200.00"),
-            ExpenseCategory.AIRFARE: Decimal("500.00"),
-        },
-    )
-
-
-def _write_plan(path: Path, plan: TripPlan) -> None:
-    payload = plan.model_dump(mode="json")
-    path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def test_cli_success_creates_spreadsheet(tmp_path, capsys) -> None:
     input_path = tmp_path / "plan.json"
     output_path = tmp_path / "output.xlsx"
-
-    _write_plan(input_path, _plan())
+    fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_minimal.json"
+    input_path.write_text(fixture_path.read_text(encoding="utf-8"), encoding="utf-8")
 
     exit_code = main([str(input_path), str(output_path)])
 
