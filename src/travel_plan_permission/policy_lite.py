@@ -40,8 +40,8 @@ def _missing_fields(context: PolicyContext, fields: Iterable[str]) -> list[str]:
 
 
 def _missing_inputs_for_rule(rule_id: str, context: PolicyContext) -> list[str]:
+    missing: list[str] = []
     if rule_id == "local_overnight":
-        missing: list[str] = []
         if context.overnight_stay is None:
             missing.append("overnight_stay")
             return missing
@@ -49,7 +49,6 @@ def _missing_inputs_for_rule(rule_id: str, context: PolicyContext) -> list[str]:
             missing.append("distance_from_office_miles")
         return missing
     if rule_id == "meal_per_diem":
-        missing: list[str] = []
         if context.meals_provided is None:
             missing.append("meals_provided")
         if context.meal_per_diem_requested is None:
