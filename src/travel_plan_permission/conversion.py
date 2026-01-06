@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Literal
 
 from .models import ExpenseCategory, TripPlan, TripStatus
 
@@ -49,7 +49,7 @@ def trip_plan_from_minimal(
     origin_city: str | None = None,
     destination_city: str | None = None,
     funding_source: str | None = None,
-    transportation_mode: str | None = None,
+    transportation_mode: Literal["air", "train", "car", "mixed"] | None = None,
 ) -> TripPlan:
     """Convert a minimal intake payload into a canonical TripPlan."""
 
