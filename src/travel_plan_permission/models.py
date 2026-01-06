@@ -344,12 +344,8 @@ class TripPlan(BaseModel):
     booking_date: date | None = Field(
         default=None, description="Date the trip was booked or requested"
     )
-    selected_fare: Decimal | None = Field(
-        default=None, description="Selected fare for the trip"
-    )
-    lowest_fare: Decimal | None = Field(
-        default=None, description="Lowest comparable fare option"
-    )
+    selected_fare: Decimal | None = Field(default=None, description="Selected fare for the trip")
+    lowest_fare: Decimal | None = Field(default=None, description="Lowest comparable fare option")
     cabin_class: str | None = Field(default=None, description="Requested cabin class")
     flight_duration_hours: float | None = Field(
         default=None, description="Estimated flight duration in hours"
