@@ -13,10 +13,11 @@ from pathlib import Path
 from typing import Literal
 
 from openpyxl import load_workbook  # type: ignore[import-untyped]
+from openpyxl.workbook import Workbook  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
 
 from .canonical import CanonicalTripPlan
-from .mapping import load_template_mapping
+from .mapping import TemplateMapping, load_template_mapping
 from .models import ExpenseCategory, ExpenseItem, ExpenseReport, TripPlan
 from .policy import PolicyContext, PolicyEngine, PolicyResult, Severity
 from .policy_versioning import PolicyVersion
@@ -325,22 +326,14 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
     return sorted(providers, key=str.lower)
 
 
-def fill_travel_spreadsheet(
+def _populate_travel_workbook(
+    wb: Workbook,
     plan: TripPlan,
-    output_path: Path,
+    mapping: TemplateMapping,
     *,
     canonical_plan: CanonicalTripPlan | None = None,
-) -> Path:
-    """Fill a travel request spreadsheet template using trip plan data."""
-
-    mapping = load_template_mapping()
-    template_file = mapping.metadata.get("template_file")
-    template_bytes = _default_template_bytes(
-        template_file if isinstance(template_file, str) else None
-    )
-    wb = load_workbook(BytesIO(template_bytes))
+) -> None:
     ws = wb.active
-
     field_data = _plan_field_values(plan, canonical_plan=canonical_plan)
     for field_name, cell in mapping.cells.items():
         value = _resolve_field_value(field_data, field_name)
@@ -387,8 +380,35 @@ def fill_travel_spreadsheet(
         if isinstance(formula_cell, str) and isinstance(formula_value, str):
             ws[formula_cell] = formula_value
 
+
+def render_travel_spreadsheet_bytes(
+    plan: TripPlan, *, canonical_plan: CanonicalTripPlan | None = None
+) -> bytes:
+    """Render a travel request spreadsheet to a .xlsx byte stream."""
+
+    mapping = load_template_mapping()
+    template_file = mapping.metadata.get("template_file")
+    template_bytes = _default_template_bytes(
+        template_file if isinstance(template_file, str) else None
+    )
+    wb = load_workbook(BytesIO(template_bytes))
+    _populate_travel_workbook(wb, plan, mapping, canonical_plan=canonical_plan)
+    output = BytesIO()
+    wb.save(output)
+    wb.close()
+    return output.getvalue()
+
+
+def fill_travel_spreadsheet(
+    plan: TripPlan,
+    output_path: Path,
+    *,
+    canonical_plan: CanonicalTripPlan | None = None,
+) -> Path:
+    """Fill a travel request spreadsheet template using trip plan data."""
+
     output_path = Path(output_path)
-    wb.save(output_path)
+    output_path.write_bytes(render_travel_spreadsheet_bytes(plan, canonical_plan=canonical_plan))
     return output_path
 
 
