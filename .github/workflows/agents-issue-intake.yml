@@ -69,10 +69,6 @@ permissions:
   issues: write
   pull-requests: write
 
-concurrency:
-  group: issue-intake-${{ github.event.issue.number || github.run_id }}
-  cancel-in-progress: true
-
 jobs:
   # Determine which mode to run
   route:
@@ -181,7 +177,6 @@ jobs:
       contents: write
       issues: write
       id-token: write
-      models: read
       pull-requests: write
     uses: stranske/Workflows/.github/workflows/agents-63-issue-intake.yml@main
     with:
