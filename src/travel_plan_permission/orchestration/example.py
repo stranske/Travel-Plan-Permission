@@ -5,8 +5,10 @@ from __future__ import annotations
 from argparse import ArgumentParser, Namespace
 from datetime import date
 from decimal import Decimal
+import json
 from pathlib import Path
 
+from ..conversion import trip_plan_from_minimal
 from ..models import ExpenseCategory, TripPlan
 from .graph import run_policy_graph
 
@@ -31,6 +33,20 @@ def _sample_plan() -> TripPlan:
 def _parse_args() -> Namespace:
     parser = ArgumentParser(description="Run the minimal policy orchestration flow.")
     parser.add_argument(
+        "--minimal-json",
+        type=Path,
+        help="Path to a minimal intake JSON payload to convert before running the graph.",
+    )
+    parser.add_argument(
+        "--trip-id",
+        default="TRIP-ORCH-001",
+        help="Trip ID to use when converting minimal intake payloads.",
+    )
+    parser.add_argument(
+        "--origin-city",
+        help="Origin city to use when converting minimal intake payloads.",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=Path.cwd() / "travel_request_example.xlsx",
@@ -44,9 +60,17 @@ def _parse_args() -> Namespace:
     return parser.parse_args()
 
 
+def _plan_from_minimal(path: Path, trip_id: str, origin_city: str | None) -> TripPlan:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return trip_plan_from_minimal(payload, trip_id=trip_id, origin_city=origin_city)
+
+
 def main() -> int:
     args = _parse_args()
-    plan = _sample_plan()
+    if args.minimal_json:
+        plan = _plan_from_minimal(args.minimal_json, args.trip_id, args.origin_city)
+    else:
+        plan = _sample_plan()
     output_path = args.output
     state = run_policy_graph(
         plan,

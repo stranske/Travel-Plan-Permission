@@ -5,55 +5,42 @@ TripPlan contract and the policy tooling in this repo.
 
 ## Canonical TripPlan contract
 
-The canonical contract is `TripPlan` in `src/travel_plan_permission/models.py`.
-All policy APIs (`check_trip_plan`, `list_allowed_vendors`, `reconcile`,
-`fill_travel_spreadsheet`) expect this model.
+The canonical intake contract is the JSON schema in
+`schemas/trip_plan.min.schema.json`, represented by `CanonicalTripPlan` in
+`src/travel_plan_permission/canonical.py`. The policy APIs
+(`check_trip_plan`, `list_allowed_vendors`, `reconcile`,
+`fill_travel_spreadsheet`) expect the internal `TripPlan` model in
+`src/travel_plan_permission/models.py`, so canonical payloads must be converted
+before invoking policy checks.
 
-Example payload (matches `TripPlan`):
+Example payload (matches the canonical schema):
 
 ```json
 {
-  "trip_id": "TRIP-1001",
+  "type": "trip",
   "traveler_name": "Alex Rivera",
-  "traveler_role": "Senior Analyst",
-  "department": "Finance",
-  "destination": "Chicago, IL 60601",
-  "origin_city": "Austin, TX",
-  "destination_city": "Chicago, IL",
-  "departure_date": "2025-06-10",
+  "business_purpose": "Quarterly planning summit",
+  "destination_zip": "60601",
+  "city_state": "Chicago, IL",
+  "depart_date": "2025-06-10",
   "return_date": "2025-06-12",
-  "purpose": "Quarterly planning summit",
-  "transportation_mode": "air",
-  "expected_costs": {
-    "airfare": 420.5,
-    "lodging": 600.0
+  "event_registration_cost": 250.0,
+  "hotel": {
+    "nightly_rate": 200.0,
+    "nights": 3
   },
-  "funding_source": "FIN-OPS",
-  "estimated_cost": 1200.5,
-  "status": "submitted",
-  "expense_breakdown": {
-    "airfare": 420.5,
-    "lodging": 600.0,
-    "meals": 180.0
-  },
-  "selected_providers": {
-    "airfare": "Skyway Air",
-    "lodging": "Lakeside Hotel"
-  },
-  "validation_results": [],
-  "approval_history": [],
-  "exception_requests": []
+  "parking_estimate": 45.0
 }
 ```
 
-The minimal intake schema (`schemas/trip_plan.min.schema.json`) is a
-lightweight payload used for early UI or LLM intake. It is not the canonical
-contract; convert it into `TripPlan` before calling policy APIs.
+The canonical schema is a lightweight payload used for early UI or LLM intake.
+Convert it into `TripPlan` before calling policy APIs.
 
 ## Conversion process (minimal intake -> TripPlan)
 
-Use `trip_plan_from_minimal` in `src/travel_plan_permission/conversion.py` to
-map the minimal JSON schema to the canonical `TripPlan`. This function:
+Use `trip_plan_from_minimal` in `src/travel_plan_permission/conversion.py` (or
+`canonical_trip_plan_to_model` in `src/travel_plan_permission/canonical.py`) to
+map the canonical JSON schema to the internal `TripPlan`. This function:
 
 - Builds `destination` from `city_state` + `destination_zip`.
 - Maps `business_purpose` to `TripPlan.purpose`.
@@ -107,8 +94,11 @@ Steps:
    python -m travel_plan_permission.orchestration.example
    ```
 
-   Add `--no-langgraph` if you want to force the fallback graph, and pass
-   `--output /path/to/travel_request.xlsx` to control the spreadsheet path.
+   Add `--no-langgraph` if you want to force the fallback graph, pass
+   `--output /path/to/travel_request.xlsx` to control the spreadsheet path, and
+   use `--minimal-json /path/to/intake.json` if you want to convert a minimal
+   payload before running the graph (optionally set `--trip-id` and
+   `--origin-city`).
 
 ## Artifacts produced
 
