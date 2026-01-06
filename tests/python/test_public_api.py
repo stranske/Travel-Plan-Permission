@@ -20,9 +20,9 @@ def test_public_api_imports() -> None:
         TripPlan,
         check_trip_plan,
         fill_travel_spreadsheet,
-        render_travel_spreadsheet_bytes,
         list_allowed_vendors,
         reconcile,
+        render_travel_spreadsheet_bytes,
     )
 
     required_exports = {

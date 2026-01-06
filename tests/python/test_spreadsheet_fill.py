@@ -1,6 +1,6 @@
 from datetime import date
-from io import BytesIO
 from decimal import Decimal
+from io import BytesIO
 
 from openpyxl import load_workbook
 
