@@ -85,17 +85,20 @@ The `PolicyEngine` evaluates expense and travel policy compliance rules. These r
 
 ### Available Rules
 
-| Rule ID | Default severity | Configuration keys | Behavior |
-| --- | --- | --- | --- |
-| `advance_booking` | `advisory` | `days_required` | Require bookings be made at least the configured days before departure (default 14). |
-| `fare_comparison` | `blocking` | `max_over_lowest` | Selected fare cannot exceed the lowest comparable fare by more than the configured amount (default $200). |
-| `cabin_class` | `blocking` | `long_haul_hours`, `allowed_classes` | Flights at or under the long-haul threshold must use one of the allowed cabin classes (default ≤5 hours must be economy). |
-| `fare_evidence` | `blocking` | — | A screenshot or other fare evidence must be attached. |
-| `driving_vs_flying` | `advisory` | — | Reimbursement is limited to the lesser cost between driving and flying when both estimates are provided. |
-| `hotel_comparison` | `advisory` | `minimum_alternatives` | Require at least the configured number of comparable hotel quotes (default 2). |
-| `local_overnight` | `advisory` | `min_distance_miles` | Overnight stays within the configured distance from the office need a waiver (default 50 miles). |
-| `meal_per_diem` | `advisory` | — | Exclude conference-provided meals from per diem claims. |
-| `non_reimbursable` | `blocking` | `blocked_keywords` | Expenses containing the configured keywords are not reimbursable (defaults: liquor, alcohol, personal). |
-| `third_party_paid` | `blocking` | — | Third-party paid items must be itemized and excluded from reimbursement. |
+Active rules are defined in `config/policy.yaml`. The table below lists the
+active rule IDs along with their required `PolicyContext` inputs.
+
+| Rule ID | Default severity | Configuration keys | Required context fields | Behavior |
+| --- | --- | --- | --- | --- |
+| `advance_booking` | `advisory` | `days_required` | `booking_date`, `departure_date` | Require bookings be made at least the configured days before departure (default 14). |
+| `fare_comparison` | `blocking` | `max_over_lowest` | `selected_fare`, `lowest_fare` | Selected fare cannot exceed the lowest comparable fare by more than the configured amount (default $200). |
+| `cabin_class` | `blocking` | `long_haul_hours`, `allowed_classes` | `cabin_class`, `flight_duration_hours` | Flights at or under the long-haul threshold must use one of the allowed cabin classes (default ≤5 hours must be economy). |
+| `fare_evidence` | `blocking` | — | `fare_evidence_attached` | A screenshot or other fare evidence must be attached. |
+| `driving_vs_flying` | `advisory` | — | `driving_cost`, `flight_cost` | Reimbursement is limited to the lesser cost between driving and flying when both estimates are provided. |
+| `hotel_comparison` | `advisory` | `minimum_alternatives` | `comparable_hotels` | Require at least the configured number of comparable hotel quotes (default 2). |
+| `local_overnight` | `advisory` | `min_distance_miles` | `overnight_stay`, `distance_from_office_miles` | Overnight stays within the configured distance from the office need a waiver (default 50 miles). |
+| `meal_per_diem` | `advisory` | — | `meals_provided`, `meal_per_diem_requested` | Exclude conference-provided meals from per diem claims. |
+| `non_reimbursable` | `blocking` | `blocked_keywords` | `expenses` | Expenses containing the configured keywords are not reimbursable (defaults: liquor, alcohol, personal). |
+| `third_party_paid` | `blocking` | — | `third_party_payments` | Third-party paid items must be itemized and excluded from reimbursement. |
 
 Update `config/policy.yaml` to adjust thresholds or severities for your deployment. Rules are evaluated in the order shown above, and `PolicyEngine.blocking_results()` returns only failed blocking rules for submission gating.
