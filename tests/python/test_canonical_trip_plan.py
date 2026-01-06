@@ -4,7 +4,11 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-from travel_plan_permission.canonical import CanonicalTripPlan, canonical_trip_plan_to_model
+from travel_plan_permission.canonical import (
+    CanonicalTripPlan,
+    canonical_trip_plan_to_model,
+    load_trip_plan_payload,
+)
 from travel_plan_permission.models import ExpenseCategory, TripPlan
 
 
@@ -41,3 +45,14 @@ def test_canonical_conversion_builds_trip_plan() -> None:
     assert trip_plan.expense_breakdown[ExpenseCategory.GROUND_TRANSPORT] == Decimal("36")
     assert trip_plan.expense_breakdown[ExpenseCategory.LODGING] == Decimal("630")
     assert trip_plan.estimated_cost == Decimal("1566")
+
+
+def test_load_trip_plan_payload_handles_canonical() -> None:
+    payload = _load_fixture()
+
+    trip_plan = load_trip_plan_payload(payload)
+
+    assert isinstance(trip_plan, TripPlan)
+    assert trip_plan.trip_id.startswith("TRIP-")
+    assert trip_plan.traveler_name == payload["traveler_name"]
+    assert trip_plan.destination.endswith(payload["destination_zip"])
