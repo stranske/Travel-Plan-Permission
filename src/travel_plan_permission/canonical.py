@@ -135,7 +135,7 @@ def canonical_trip_plan_to_model(plan: CanonicalTripPlan) -> TripPlan:
     estimated_cost = sum(breakdown.values(), Decimal("0"))
     expected_costs = {category.value: amount for category, amount in breakdown.items()}
 
-    transportation_mode = None
+    transportation_mode: Literal["air", "train", "car", "mixed"] | None = None
     if airfare is not None:
         transportation_mode = "air"
 
