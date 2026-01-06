@@ -90,7 +90,26 @@ def test_fill_travel_spreadsheet_matches_rendered_bytes(tmp_path) -> None:
     output_bytes = render_travel_spreadsheet_bytes(plan)
     fill_travel_spreadsheet(plan, output_path)
 
-    assert output_path.read_bytes() == output_bytes
+    # Compare workbook contents instead of raw bytes (which include timestamps)
+    wb_from_bytes = load_workbook(BytesIO(output_bytes))
+    wb_from_file = load_workbook(output_path)
+
+    # Compare sheet names
+    assert wb_from_bytes.sheetnames == wb_from_file.sheetnames
+
+    # Compare cell values in all sheets
+    for sheet_name in wb_from_bytes.sheetnames:
+        sheet_bytes = wb_from_bytes[sheet_name]
+        sheet_file = wb_from_file[sheet_name]
+
+        # Compare all cell values
+        for row in sheet_bytes.iter_rows():
+            for cell in row:
+                file_cell = sheet_file[cell.coordinate]
+                assert file_cell.value == cell.value, f"Mismatch at {cell.coordinate}"
+
+    wb_from_bytes.close()
+    wb_from_file.close()
 
 
 def test_fill_travel_spreadsheet_rounds_currency_values(tmp_path) -> None:
