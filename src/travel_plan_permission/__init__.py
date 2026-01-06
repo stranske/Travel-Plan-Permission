@@ -67,6 +67,11 @@ from .policy_versioning import (
     PolicyVersion,
     simulate_policy_change,
 )
+from .notification_preferences import (
+    NotificationPreferenceStore,
+    NotificationPreferences,
+    NotificationPreferencesUpdate,
+)
 from .prompt_flow import (
     CANONICAL_TRIP_FIELDS,
     QUESTION_FLOW,
@@ -166,6 +171,9 @@ __all__ = [
     "QUESTION_FLOW",
     "MealPerDiemRule",
     "NonReimbursableRule",
+    "NotificationPreferenceStore",
+    "NotificationPreferences",
+    "NotificationPreferencesUpdate",
     "PolicyContext",
     "PolicyEngine",
     "PolicyResult",
