@@ -17,9 +17,7 @@ class NotificationPreferences(BaseModel):
     expense_reminders: bool = Field(
         default=True, description="Whether to send post-trip expense reminders"
     )
-    policy_digests: bool = Field(
-        default=True, description="Whether to send policy update digests"
-    )
+    policy_digests: bool = Field(default=True, description="Whether to send policy update digests")
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         description="Timestamp of the latest preference update",

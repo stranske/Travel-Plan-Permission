@@ -31,6 +31,11 @@ from .models import (
     build_exception_dashboard,
     determine_exception_approval_level,
 )
+from .notification_preferences import (
+    NotificationPreferences,
+    NotificationPreferenceStore,
+    NotificationPreferencesUpdate,
+)
 from .policy import (
     AdvanceBookingRule,
     CabinClassRule,
@@ -66,11 +71,6 @@ from .policy_versioning import (
     PolicyMigrationPlanner,
     PolicyVersion,
     simulate_policy_change,
-)
-from .notification_preferences import (
-    NotificationPreferenceStore,
-    NotificationPreferences,
-    NotificationPreferencesUpdate,
 )
 from .prompt_flow import (
     CANONICAL_TRIP_FIELDS,

@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from travel_plan_permission.notification_preferences import (
-    NotificationPreferenceStore,
     NotificationPreferences,
+    NotificationPreferenceStore,
     NotificationPreferencesUpdate,
 )
 
