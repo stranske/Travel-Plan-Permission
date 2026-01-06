@@ -227,12 +227,59 @@ def _policy_version(engine: PolicyEngine) -> str:
     return version.config_hash
 
 
+def _expected_cost_value(plan: TripPlan, *keys: str) -> Decimal | None:
+    for key in keys:
+        if key not in plan.expected_costs:
+            continue
+        amount = _format_currency_value(plan.expected_costs.get(key))
+        if amount is not None:
+            return amount
+    return None
+
+
 def _context_from_plan(plan: TripPlan) -> PolicyContext:
+    driving_cost = plan.driving_cost
+    if driving_cost is None:
+        driving_cost = plan.expense_breakdown.get(ExpenseCategory.GROUND_TRANSPORT)
+    if driving_cost is None:
+        driving_cost = _expected_cost_value(plan, "driving_cost", "ground_transport")
+
+    flight_cost = plan.flight_cost
+    if flight_cost is None:
+        flight_cost = plan.expense_breakdown.get(ExpenseCategory.AIRFARE)
+    if flight_cost is None:
+        flight_cost = _expected_cost_value(plan, "flight_cost", "airfare")
+
+    selected_fare = plan.selected_fare
+    if selected_fare is None:
+        selected_fare = _expected_cost_value(
+            plan, "selected_fare", "flight_pref_outbound.roundtrip_cost", "airfare"
+        )
+    if selected_fare is None:
+        selected_fare = flight_cost
+
+    lowest_fare = plan.lowest_fare
+    if lowest_fare is None:
+        lowest_fare = _expected_cost_value(plan, "lowest_fare", "lowest_cost_roundtrip")
+
     return PolicyContext(
+        booking_date=plan.booking_date,
         departure_date=plan.departure_date,
         return_date=plan.return_date,
-        driving_cost=plan.expense_breakdown.get(ExpenseCategory.GROUND_TRANSPORT),
-        flight_cost=plan.expense_breakdown.get(ExpenseCategory.AIRFARE),
+        selected_fare=selected_fare,
+        lowest_fare=lowest_fare,
+        cabin_class=plan.cabin_class,
+        flight_duration_hours=plan.flight_duration_hours,
+        fare_evidence_attached=plan.fare_evidence_attached,
+        driving_cost=driving_cost,
+        flight_cost=flight_cost,
+        comparable_hotels=plan.comparable_hotels,
+        distance_from_office_miles=plan.distance_from_office_miles,
+        overnight_stay=plan.overnight_stay,
+        meals_provided=plan.meals_provided,
+        meal_per_diem_requested=plan.meal_per_diem_requested,
+        expenses=plan.expenses,
+        third_party_payments=plan.third_party_payments,
     )
 
 
