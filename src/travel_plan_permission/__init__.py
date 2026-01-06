@@ -23,6 +23,7 @@ from .models import (
     ExceptionRequest,
     ExceptionStatus,
     ExceptionType,
+    ExceptionDashboardProfile,
     ExpenseCategory,
     ExpenseItem,
     ExpenseReport,
@@ -30,6 +31,7 @@ from .models import (
     TripStatus,
     build_exception_dashboard,
     determine_exception_approval_level,
+    profile_exception_dashboard,
 )
 from .policy import (
     AdvanceBookingRule,
@@ -137,6 +139,7 @@ __all__ = [
     "ApprovalStatus",
     "ExceptionApprovalLevel",
     "ExceptionApprovalRecord",
+    "ExceptionDashboardProfile",
     "ExceptionRequest",
     "ExceptionStatus",
     "ExceptionType",
@@ -157,6 +160,7 @@ __all__ = [
     "ExpenseItem",
     "ExpenseReport",
     "build_exception_dashboard",
+    "profile_exception_dashboard",
     "Receipt",
     "ExportService",
     "FareComparisonRule",

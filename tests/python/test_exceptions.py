@@ -13,6 +13,7 @@ from travel_plan_permission.models import (
     ExceptionType,
     build_exception_dashboard,
     determine_exception_approval_level,
+    profile_exception_dashboard,
 )
 from travel_plan_permission.policy import PolicyEngine, Severity
 
@@ -122,3 +123,35 @@ def test_exception_dashboard_patterns() -> None:
     assert dashboard["by_requestor"]["bob"] == 1
     assert dashboard["by_approver"]["mgr-1"] == 1
     assert dashboard["by_approver"]["director-9"] == 1
+
+
+def test_exception_dashboard_profile_records_timing() -> None:
+    """Profiling captures elapsed time and throughput."""
+
+    request_one = ExceptionRequest(
+        type=ExceptionType.ADVANCE_BOOKING,
+        justification=_justification("advance booking"),
+        requestor="alice",
+        amount=Decimal("1500"),
+    )
+    request_two = ExceptionRequest(
+        type=ExceptionType.DRIVING_VS_FLYING,
+        justification=_justification("driving vs flying"),
+        requestor="bob",
+        amount=Decimal("7000"),
+    )
+
+    timestamps = iter([100.0, 100.5])
+
+    def _fake_timer() -> float:
+        return next(timestamps)
+
+    dashboard, profile = profile_exception_dashboard(
+        [request_one, request_two], timer=_fake_timer
+    )
+
+    assert dashboard["by_type"]["advance_booking"] == 1
+    assert dashboard["by_type"]["driving_vs_flying"] == 1
+    assert profile.request_count == 2
+    assert profile.elapsed_seconds == pytest.approx(0.5)
+    assert profile.requests_per_second == pytest.approx(4.0)

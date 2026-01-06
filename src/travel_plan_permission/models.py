@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Literal
+from time import perf_counter
+from typing import TYPE_CHECKING, Annotated, Callable, Literal
 
 from pydantic import BaseModel, Field
 
@@ -312,6 +314,35 @@ def build_exception_dashboard(
         "by_requestor": dict(by_requestor),
         "by_approver": dict(by_approver),
     }
+
+
+@dataclass(frozen=True)
+class ExceptionDashboardProfile:
+    """Performance profile for dashboard aggregation."""
+
+    request_count: int
+    elapsed_seconds: float
+    requests_per_second: float
+
+
+def profile_exception_dashboard(
+    requests: list[ExceptionRequest],
+    *,
+    timer: Callable[[], float] | None = None,
+) -> tuple[dict[str, dict[str, int]], ExceptionDashboardProfile]:
+    """Profile dashboard aggregation timing and throughput."""
+
+    perf_timer = timer or perf_counter
+    start = perf_timer()
+    dashboard = build_exception_dashboard(requests)
+    elapsed = perf_timer() - start
+    request_count = len(requests)
+    throughput = request_count / elapsed if elapsed > 0 else 0.0
+    return dashboard, ExceptionDashboardProfile(
+        request_count=request_count,
+        elapsed_seconds=elapsed,
+        requests_per_second=throughput,
+    )
 
 
 class TripPlan(BaseModel):
