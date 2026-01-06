@@ -1,0 +1,4 @@
+# Repo-specific first-party modules for Travel-Plan-Permission
+# These standalone .py files or test helper modules should not be treated
+# as external dependencies.
+version_utils
