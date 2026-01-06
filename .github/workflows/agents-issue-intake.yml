@@ -177,6 +177,7 @@ jobs:
       contents: write
       issues: write
       id-token: write
+      models: read
       pull-requests: write
     uses: stranske/Workflows/.github/workflows/agents-63-issue-intake.yml@main
     with:
