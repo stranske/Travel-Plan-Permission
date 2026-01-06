@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from typing import Literal
@@ -88,6 +89,14 @@ class CanonicalTripPlan(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+@dataclass(frozen=True)
+class TripPlanInput:
+    """TripPlan payload with optional canonical source data."""
+
+    plan: TripPlan
+    canonical: "CanonicalTripPlan | None" = None
+
+
 def _slugify(text: str) -> str:
     cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").upper()
     return cleaned or "TRAVELER"
@@ -154,10 +163,17 @@ def canonical_trip_plan_to_model(plan: CanonicalTripPlan) -> TripPlan:
     )
 
 
-def load_trip_plan_payload(payload: dict[str, object]) -> TripPlan:
-    """Load either canonical schema payloads or internal TripPlan payloads."""
+def load_trip_plan_input(payload: dict[str, object]) -> TripPlanInput:
+    """Load canonical or internal TripPlan payloads with source metadata."""
 
     if payload.get("type") == "trip":
         canonical = CanonicalTripPlan.model_validate(payload)
-        return canonical_trip_plan_to_model(canonical)
-    return TripPlan.model_validate(payload)
+        plan = canonical_trip_plan_to_model(canonical)
+        return TripPlanInput(plan=plan, canonical=canonical)
+    return TripPlanInput(plan=TripPlan.model_validate(payload))
+
+
+def load_trip_plan_payload(payload: dict[str, object]) -> TripPlan:
+    """Load either canonical schema payloads or internal TripPlan payloads."""
+
+    return load_trip_plan_input(payload).plan
