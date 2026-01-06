@@ -222,3 +222,38 @@ def test_fill_travel_spreadsheet_uses_canonical_fields(tmp_path) -> None:
     assert sheet["G12"].value == "X"
     assert sheet["B15"].value == "rideshare/taxi"
     workbook.close()
+
+
+def test_fill_travel_spreadsheet_populates_flight_and_hotel_preferences(tmp_path) -> None:
+    fixture_path = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_rich.json"
+    )
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    canonical_plan = CanonicalTripPlan.model_validate(payload)
+    trip_plan = canonical_trip_plan_to_model(canonical_plan)
+    output_path = tmp_path / "filled-rich.xlsx"
+
+    fill_travel_spreadsheet(trip_plan, output_path, canonical_plan=canonical_plan)
+
+    workbook = load_workbook(output_path)
+    sheet = workbook.active
+
+    assert sheet["B8"].value == "UA204"
+    assert sheet["C8"].value == "2025-11-12T09:10"
+    assert sheet["D8"].value == "2025-11-12T12:45"
+    assert sheet["E8"].value == 612.4
+    assert sheet["B9"].value == "UA205"
+    assert sheet["C9"].value == "2025-11-16T16:05"
+    assert sheet["D9"].value == "2025-11-16T19:30"
+    assert sheet["B11"].value == "Harborview Suites"
+    assert sheet["B12"].value == "88 Mission St"
+    assert sheet["D12"].value == "San Francisco, CA"
+    assert sheet["E12"].value == 289.9
+    assert sheet["F12"].value == 4
+    assert sheet["G12"].value in (None, "")
+    assert sheet["B13"].value == "Conference hotel was $60 more per night"
+    assert sheet["B14"].value == "Market Square Inn"
+    assert sheet["C14"].value == 249.0
+    assert sheet["B15"].value == "rental car"
+    assert sheet["B16"].value == "Need early check-in and airport pickup."
+    workbook.close()

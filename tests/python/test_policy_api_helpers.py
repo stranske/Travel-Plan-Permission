@@ -252,6 +252,51 @@ def test_fill_travel_spreadsheet_skips_invalid_currency_and_date(
     workbook.close()
 
 
+def test_fill_travel_spreadsheet_reports_unfilled_mappings(
+    base_plan: TripPlan, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    mapping = TemplateMapping(
+        version="ITIN-2025.1",
+        cells={
+            "traveler_name": "A1",
+            "hotel.name": "A2",
+            "event_registration_cost": "A3",
+        },
+        dropdowns={"ground_transport_pref": {"cell": "B1", "options": ["rental car"]}},
+        checkboxes={
+            "hotel.conference_hotel": {"cell": "C1", "true_value": "X", "false_value": ""}
+        },
+        formulas={},
+        metadata={},
+    )
+    template_bytes = _blank_template_bytes()
+
+    monkeypatch.setattr(policy_api, "load_template_mapping", lambda: mapping)
+    monkeypatch.setattr(
+        policy_api,
+        "_default_template_bytes",
+        lambda *_args, **_kwargs: template_bytes,
+    )
+    monkeypatch.setattr(
+        policy_api,
+        "_plan_field_values",
+        lambda _plan, **_kwargs: {
+            "traveler_name": "Taylor Morgan",
+            "event_registration_cost": "not-a-number",
+        },
+    )
+
+    output_path = tmp_path / "unfilled.xlsx"
+    report = policy_api.UnfilledMappingReport()
+    policy_api.fill_travel_spreadsheet(base_plan, output_path, report=report)
+
+    cell_entries = {(entry.field, entry.reason) for entry in report.cells}
+    assert ("hotel.name", "missing") in cell_entries
+    assert ("event_registration_cost", "invalid_currency") in cell_entries
+    assert [entry.field for entry in report.dropdowns] == ["ground_transport_pref"]
+    assert [entry.field for entry in report.checkboxes] == ["hotel.conference_hotel"]
+
+
 def test_plan_field_values_includes_cost_center_and_destination(
     base_plan: TripPlan,
 ) -> None:
