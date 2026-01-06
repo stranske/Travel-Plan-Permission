@@ -8,6 +8,7 @@
 |-----------|---------------|
 | CI failing with mypy errors | [CI Debugging - Mypy](#mypy-type-errors) |
 | CI failing with coverage errors | [CI Debugging - Coverage](#coverage-threshold-failures) |
+| Adding test dependencies | [Dependency Management](#test-dependencies) |
 | Need to push changes | [GitHub Operations](#standard-pr-workflow) |
 | Authentication errors with `gh` | [GitHub Operations - PAT](#authentication--pat-usage) |
 | Making same mistake 3+ times | [Meta - Create a Skill](#recognize-when-to-create-a-new-skill) |
@@ -34,6 +35,87 @@
 3. Push branch: `git push origin branch-name`
 4. Create PR: `gh pr create --title "type: description" --body "..."`
 5. Wait for CI to pass before requesting merge
+
+---
+
+## Skill: Dependency Management
+
+**Trigger**: Need to add test dependencies to pyproject.toml
+
+### Test Dependencies
+
+**Critical Rule**: Test dependencies ALWAYS go in the `dev` extra, NEVER in a separate `test` extra.
+
+**Why**: 
+- `scripts/sync_test_dependencies.py` is hardcoded to use `DEV_EXTRA = "dev"` (line 33)
+- The script's `add_dependencies_to_pyproject()` function explicitly adds to the dev group
+- Lock files are regenerated with `--extra dev`, not `--extra test`
+- Creating a separate `test` group breaks the automated dependency sync workflow
+
+**Correct Structure** in `pyproject.toml`:
+```toml
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+    "hypothesis>=6.0.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "pyarrow>=10.0.0",
+    # All test dependencies here
+]
+```
+
+**WRONG - Never Do This**:
+```toml
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    # dev tools only
+]
+test = [
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    # separate test group - BREAKS AUTOMATION
+]
+```
+
+### How to Add Test Dependencies
+
+1. **Use the automation script** (preferred):
+   ```bash
+   python scripts/sync_test_dependencies.py --fix
+   ```
+
+2. **Manual edits** (if absolutely necessary):
+   - Add to the `[project.optional-dependencies]` `dev` array
+   - NEVER create a `test` array
+   - Always add to existing `dev` group
+
+3. **After adding dependencies**:
+   ```bash
+   pip-compile --extra=dev -o requirements-dev.lock pyproject.toml
+   ```
+
+### Common Mistakes to Avoid
+
+❌ Creating `[project.optional-dependencies.test]` group  
+❌ Adding `version-utils` as external package (it's a local test helper at `tests/helpers/version_utils.py`)  
+❌ Manual edits without running `--fix` flag  
+❌ Forgetting to regenerate lock files after changes  
+
+✅ Use `sync_test_dependencies.py --fix`  
+✅ Add to existing `dev` group  
+✅ Regenerate both requirements.lock and requirements-dev.lock  
+
+### Detection Pattern
+
+If you see in a PR review:
+- "Created separate test dependency group"
+- "Added version-utils as external dependency"
+- "Test dependencies not in dev extra"
+
+→ Stop and use this skill to fix the architecture
 
 ---
 
