@@ -41,9 +41,13 @@ ocr = [
     "Pillow>=10.0.0",
     "pytesseract>=0.3.10",
 ]
+orchestration = [
+    "langgraph>=0.2.0",
+]
 
 [project.scripts]
 fill-spreadsheet = "travel_plan_permission.cli:main"
+orchestration-demo = "travel_plan_permission.orchestration.example:main"
 
 [build-system]
 requires = []
