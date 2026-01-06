@@ -1,0 +1,47 @@
+{
+  "type": "trip",
+  "traveler_name": "Alex Rivera",
+  "business_purpose": "Regional partner summit",
+  "cost_center": "OPS-410",
+  "destination_zip": "98101",
+  "city_state": "Seattle, WA",
+  "depart_date": "2025-10-05",
+  "return_date": "2025-10-09",
+  "event_registration_cost": 320.0,
+  "flight_pref_outbound": {
+    "carrier_flight": "AS120",
+    "depart_time": "2025-10-05T07:15",
+    "arrive_time": "2025-10-05T09:40",
+    "roundtrip_cost": 455.25
+  },
+  "flight_pref_return": {
+    "carrier_flight": "AS221",
+    "depart_time": "2025-10-09T18:10",
+    "arrive_time": "2025-10-09T20:30"
+  },
+  "lowest_cost_roundtrip": 430.0,
+  "parking_estimate": 35.0,
+  "hotel": {
+    "name": "Pine Street Suites",
+    "address": "120 Pine St",
+    "city_state": "Seattle, WA",
+    "nightly_rate": 210.0,
+    "nights": 4,
+    "conference_hotel": true,
+    "price_compare_notes": "Conference hotel is $20 more per night"
+  },
+  "comparable_hotels": [
+    {
+      "name": "Marketview Hotel",
+      "nightly_rate": 190.0
+    }
+  ],
+  "ground_transport_pref": "rideshare/taxi",
+  "notes": "Request airport pickup and late checkout.",
+  "attachments": {
+    "conference_agenda": "partner_summit_agenda.pdf"
+  },
+  "attestations": {
+    "budget_ok": true
+  }
+}
