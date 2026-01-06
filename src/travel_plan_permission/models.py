@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -316,7 +316,7 @@ class LazyExceptionDashboard(Mapping[str, dict[str, int]]):
         self._cache[key] = value
         return value
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(("by_type", "by_requestor", "by_approver"))
 
     def __len__(self) -> int:
@@ -387,7 +387,7 @@ def profile_exception_dashboard(
     requests: list[ExceptionRequest],
     *,
     timer: Callable[[], float] | None = None,
-) -> tuple[dict[str, dict[str, int]], ExceptionDashboardProfile]:
+) -> tuple[Mapping[str, dict[str, int]], ExceptionDashboardProfile]:
     """Profile dashboard aggregation timing and throughput."""
 
     perf_timer = timer or perf_counter
