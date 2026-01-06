@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 import tempfile
 from collections.abc import Sequence
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import date, datetime
 from decimal import Decimal
 from importlib import resources
@@ -36,6 +38,8 @@ __all__ = [
     "PolicyIssue",
     "PolicyCheckResult",
     "ReconciliationResult",
+    "UnfilledMappingEntry",
+    "UnfilledMappingReport",
     "TripPlan",
     "Receipt",
     "check_trip_plan",
@@ -82,6 +86,33 @@ class ReconciliationResult(BaseModel):
     expenses_by_category: dict[ExpenseCategory, Decimal] = Field(
         default_factory=dict, description="Actual spend grouped by category"
     )
+
+
+@dataclass(frozen=True)
+class UnfilledMappingEntry:
+    """Details for a mapping entry that could not be populated."""
+
+    field: str
+    cell: str | None
+    reason: str
+
+
+@dataclass
+class UnfilledMappingReport:
+    """Structured summary of unfilled mapping entries."""
+
+    cells: list[UnfilledMappingEntry] = dataclass_field(default_factory=list)
+    dropdowns: list[UnfilledMappingEntry] = dataclass_field(default_factory=list)
+    checkboxes: list[UnfilledMappingEntry] = dataclass_field(default_factory=list)
+
+    def add(self, section: str, field: str, cell: str | None, reason: str) -> None:
+        entry = UnfilledMappingEntry(field=field, cell=cell, reason=reason)
+        if section == "cells":
+            self.cells.append(entry)
+        elif section == "dropdowns":
+            self.dropdowns.append(entry)
+        elif section == "checkboxes":
+            self.checkboxes.append(entry)
 
 
 _TEMPLATE_FILENAME = "travel_request_template.xlsx"
@@ -379,16 +410,21 @@ def _populate_travel_workbook(
     mapping: TemplateMapping,
     *,
     canonical_plan: CanonicalTripPlan | None = None,
+    report: UnfilledMappingReport | None = None,
 ) -> None:
     ws = wb.active
     field_data = _plan_field_values(plan, canonical_plan=canonical_plan)
     for field_name, cell in mapping.cells.items():
         value = _resolve_field_value(field_data, field_name)
         if value is None:
+            if report is not None:
+                report.add("cells", field_name, cell, "missing")
             continue
         if field_name in _CURRENCY_FIELDS:
             amount = _format_currency_value(value)
             if amount is None:
+                if report is not None:
+                    report.add("cells", field_name, cell, "invalid_currency")
                 continue
             ws[cell] = float(amount)
             ws[cell].number_format = _CURRENCY_FORMAT
@@ -396,6 +432,8 @@ def _populate_travel_workbook(
         if field_name in _DATE_FIELDS or isinstance(value, date):
             formatted = _format_date_value(value)
             if formatted is None:
+                if report is not None:
+                    report.add("cells", field_name, cell, "invalid_date")
                 continue
             ws[cell] = formatted
             continue
@@ -404,6 +442,14 @@ def _populate_travel_workbook(
     for field_name, dropdown_config in mapping.dropdowns.items():
         value = _resolve_field_value(field_data, field_name)
         if value is None:
+            if report is not None:
+                dropdown_cell = dropdown_config.get("cell")
+                report.add(
+                    "dropdowns",
+                    field_name,
+                    dropdown_cell if isinstance(dropdown_cell, str) else None,
+                    "missing",
+                )
             continue
         dropdown_cell = dropdown_config.get("cell")
         if isinstance(dropdown_cell, str):
@@ -413,6 +459,14 @@ def _populate_travel_workbook(
     for field_name, checkbox_config in mapping.checkboxes.items():
         value = _resolve_field_value(field_data, field_name)
         if value is None:
+            if report is not None:
+                checkbox_cell = checkbox_config.get("cell")
+                report.add(
+                    "checkboxes",
+                    field_name,
+                    checkbox_cell if isinstance(checkbox_cell, str) else None,
+                    "missing",
+                )
             continue
         checkbox_cell = checkbox_config.get("cell")
         if not isinstance(checkbox_cell, str):
@@ -429,7 +483,10 @@ def _populate_travel_workbook(
 
 
 def render_travel_spreadsheet_bytes(
-    plan: TripPlan, *, canonical_plan: CanonicalTripPlan | None = None
+    plan: TripPlan,
+    *,
+    canonical_plan: CanonicalTripPlan | None = None,
+    report: UnfilledMappingReport | None = None,
 ) -> bytes:
     """Render a travel request spreadsheet to a .xlsx byte stream."""
 
@@ -439,7 +496,13 @@ def render_travel_spreadsheet_bytes(
         template_file if isinstance(template_file, str) else None
     )
     wb = load_workbook(BytesIO(template_bytes))
-    _populate_travel_workbook(wb, plan, mapping, canonical_plan=canonical_plan)
+    _populate_travel_workbook(
+        wb,
+        plan,
+        mapping,
+        canonical_plan=canonical_plan,
+        report=report,
+    )
     output = BytesIO()
     wb.save(output)
     wb.close()
@@ -451,11 +514,14 @@ def fill_travel_spreadsheet(
     output_path: Path,
     *,
     canonical_plan: CanonicalTripPlan | None = None,
+    report: UnfilledMappingReport | None = None,
 ) -> Path:
     """Fill a travel request spreadsheet template using trip plan data."""
 
     output_path = Path(output_path)
-    output_path.write_bytes(render_travel_spreadsheet_bytes(plan, canonical_plan=canonical_plan))
+    output_path.write_bytes(
+        render_travel_spreadsheet_bytes(plan, canonical_plan=canonical_plan, report=report)
+    )
     return output_path
 
 

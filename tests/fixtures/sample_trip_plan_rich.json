@@ -1,0 +1,40 @@
+{
+  "type": "trip",
+  "traveler_name": "Morgan Chen",
+  "business_purpose": "Product launch summit",
+  "cost_center": "MKT-482",
+  "destination_zip": "94105",
+  "city_state": "San Francisco, CA",
+  "depart_date": "2025-11-12",
+  "return_date": "2025-11-16",
+  "event_registration_cost": 425.75,
+  "flight_pref_outbound": {
+    "carrier_flight": "UA204",
+    "depart_time": "2025-11-12T09:10",
+    "arrive_time": "2025-11-12T12:45",
+    "roundtrip_cost": 612.40
+  },
+  "flight_pref_return": {
+    "carrier_flight": "UA205",
+    "depart_time": "2025-11-16T16:05",
+    "arrive_time": "2025-11-16T19:30"
+  },
+  "lowest_cost_roundtrip": 575.00,
+  "parking_estimate": 48.50,
+  "hotel": {
+    "name": "Harborview Suites",
+    "address": "88 Mission St",
+    "city_state": "San Francisco, CA",
+    "nightly_rate": 289.90,
+    "nights": 4,
+    "conference_hotel": false,
+    "price_compare_notes": "Conference hotel was $60 more per night"
+  },
+  "comparable_hotels": [
+    { "name": "Market Square Inn", "nightly_rate": 249.00 }
+  ],
+  "ground_transport_pref": "rental car",
+  "notes": "Need early check-in and airport pickup.",
+  "attachments": { "conference_agenda": "agenda.pdf" },
+  "attestations": { "budget_ok": true }
+}
