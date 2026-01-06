@@ -11,9 +11,7 @@ from travel_plan_permission.policy_api import check_trip_plan, render_travel_spr
 
 def test_canonical_trip_plan_flow_renders_policy_and_spreadsheet() -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1]
-        / "fixtures"
-        / "canonical_trip_plan_realistic.json"
+        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
 
