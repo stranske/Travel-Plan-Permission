@@ -22,6 +22,7 @@ def test_public_api_imports() -> None:
         fill_travel_spreadsheet,
         list_allowed_vendors,
         reconcile,
+        render_travel_spreadsheet_bytes,
     )
 
     required_exports = {
@@ -35,6 +36,7 @@ def test_public_api_imports() -> None:
         "TripPlan",
         "check_trip_plan",
         "fill_travel_spreadsheet",
+        "render_travel_spreadsheet_bytes",
         "list_allowed_vendors",
         "reconcile",
         "__version__",
@@ -46,6 +48,7 @@ def test_public_api_imports() -> None:
     assert list_allowed_vendors is not None
     assert reconcile is not None
     assert fill_travel_spreadsheet is not None
+    assert render_travel_spreadsheet_bytes is not None
     assert PolicyCheckResult is not None
     assert PolicyCheckStatus is not None
     assert PolicyIssue is not None
