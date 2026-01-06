@@ -30,22 +30,50 @@
             <span class="tag">Avatar</span>
           </div>
           <div class="avatar">
-            <div class="avatar__image" aria-hidden="true"></div>
-            <div class="avatar__overlay">
-              <span>Drag a photo</span>
-              <button type="button">Upload new</button>
+            <div class="avatar__frame">
+              <canvas
+                id="avatarCanvas"
+                width="220"
+                height="220"
+                role="img"
+                aria-label="Profile photo crop preview"
+              ></canvas>
+              <div class="avatar__ring" aria-hidden="true"></div>
             </div>
+            <div class="avatar__overlay" aria-live="polite" id="avatarStatus">
+              Drop a photo or drag to reposition.
+            </div>
+          </div>
+          <div class="avatar__upload">
+            <input
+              type="file"
+              id="avatarInput"
+              accept="image/*"
+              class="avatar__input"
+            />
+            <button class="btn btn--ghost" type="button" id="avatarUploadButton">
+              Upload new
+            </button>
           </div>
           <div class="slider">
-            <div class="slider__label">Crop zoom</div>
-            <div class="slider__track">
-              <div class="slider__fill"></div>
-              <div class="slider__thumb"></div>
-            </div>
+            <label class="slider__label" for="avatarZoom">Crop zoom</label>
+            <input
+              class="slider__input"
+              id="avatarZoom"
+              type="range"
+              min="1"
+              max="3"
+              step="0.01"
+              value="1"
+            />
           </div>
           <div class="actions">
-            <button class="btn btn--ghost" type="button">Reset</button>
-            <button class="btn" type="button">Save photo</button>
+            <button class="btn btn--ghost" type="button" id="avatarResetButton">
+              Reset
+            </button>
+            <button class="btn" type="button" id="avatarSaveButton">
+              Save photo
+            </button>
           </div>
         </section>
 
@@ -156,5 +184,6 @@
         </section>
       </main>
     </div>
+    <script src="./profile_settings_mockup.js"></script>
   </body>
 </html>
