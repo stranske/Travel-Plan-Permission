@@ -25,3 +25,12 @@ def test_policy_lite_reports_missing_inputs() -> None:
     assert "local_overnight" in by_rule
     assert by_rule["local_overnight"].missing_fields == ["distance_from_office_miles"]
     assert "distance_from_office_miles" in by_rule["local_overnight"].message
+
+
+def test_policy_lite_skips_local_overnight_when_not_overnight() -> None:
+    context = PolicyContext(overnight_stay=False)
+
+    diagnostics = policy_lite.diagnose_missing_inputs(context)
+
+    rule_ids = {diag.rule_id for diag in diagnostics}
+    assert "local_overnight" not in rule_ids
