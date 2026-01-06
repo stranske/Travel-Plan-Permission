@@ -8,6 +8,7 @@ import pytest
 
 from travel_plan_permission import (
     ExpenseCategory,
+    ExpenseItem,
     PolicyCheckResult,
     PolicyContext,
     PolicyEngine,
@@ -85,6 +86,44 @@ def test_check_trip_plan_reports_policy_issues(trip_plan: TripPlan) -> None:
     assert any(issue.code == "fare_evidence" for issue in result.issues)
     for issue in result.issues:
         assert issue.context["rule_id"] == issue.code
+
+
+def test_check_trip_plan_triggers_fare_comparison_when_inputs_present(
+    trip_plan: TripPlan,
+) -> None:
+    plan = trip_plan.model_copy(
+        update={
+            "booking_date": date(2024, 8, 1),
+            "departure_date": date(2024, 9, 15),
+            "return_date": date(2024, 9, 20),
+            "selected_fare": Decimal("650.00"),
+            "lowest_fare": Decimal("300.00"),
+            "cabin_class": "economy",
+            "flight_duration_hours": 3.5,
+            "fare_evidence_attached": True,
+            "driving_cost": Decimal("120.00"),
+            "flight_cost": Decimal("200.00"),
+            "comparable_hotels": [Decimal("150.00"), Decimal("175.00")],
+            "overnight_stay": False,
+            "meals_provided": False,
+            "meal_per_diem_requested": True,
+            "expenses": [
+                ExpenseItem(
+                    category=ExpenseCategory.GROUND_TRANSPORT,
+                    description="Airport shuttle",
+                    vendor="City Shuttle",
+                    amount=Decimal("45.00"),
+                    expense_date=date(2024, 9, 15),
+                    receipt_attached=True,
+                )
+            ],
+            "third_party_payments": [{"description": "Sponsor covered ticket", "itemized": True}],
+        }
+    )
+
+    result = check_trip_plan(plan)
+
+    assert any(issue.code == "fare_comparison" for issue in result.issues)
 
 
 def test_check_trip_plan_reports_pass_when_no_rules(

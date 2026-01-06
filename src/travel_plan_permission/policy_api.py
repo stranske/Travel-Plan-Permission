@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 import tempfile
 from collections.abc import Sequence
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import date, datetime
 from decimal import Decimal
 from importlib import resources
@@ -13,9 +15,11 @@ from pathlib import Path
 from typing import Literal
 
 from openpyxl import load_workbook  # type: ignore[import-untyped]
+from openpyxl.workbook import Workbook  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
 
-from .mapping import load_template_mapping
+from .canonical import CanonicalTripPlan
+from .mapping import TemplateMapping, load_template_mapping
 from .models import ExpenseCategory, ExpenseItem, ExpenseReport, TripPlan
 from .policy import PolicyContext, PolicyEngine, PolicyResult, Severity
 from .policy_versioning import PolicyVersion
@@ -34,6 +38,8 @@ __all__ = [
     "PolicyIssue",
     "PolicyCheckResult",
     "ReconciliationResult",
+    "UnfilledMappingEntry",
+    "UnfilledMappingReport",
     "TripPlan",
     "Receipt",
     "check_trip_plan",
@@ -80,6 +86,33 @@ class ReconciliationResult(BaseModel):
     expenses_by_category: dict[ExpenseCategory, Decimal] = Field(
         default_factory=dict, description="Actual spend grouped by category"
     )
+
+
+@dataclass(frozen=True)
+class UnfilledMappingEntry:
+    """Details for a mapping entry that could not be populated."""
+
+    field: str
+    cell: str | None
+    reason: str
+
+
+@dataclass
+class UnfilledMappingReport:
+    """Structured summary of unfilled mapping entries."""
+
+    cells: list[UnfilledMappingEntry] = dataclass_field(default_factory=list)
+    dropdowns: list[UnfilledMappingEntry] = dataclass_field(default_factory=list)
+    checkboxes: list[UnfilledMappingEntry] = dataclass_field(default_factory=list)
+
+    def add(self, section: str, field: str, cell: str | None, reason: str) -> None:
+        entry = UnfilledMappingEntry(field=field, cell=cell, reason=reason)
+        if section == "cells":
+            self.cells.append(entry)
+        elif section == "dropdowns":
+            self.dropdowns.append(entry)
+        elif section == "checkboxes":
+            self.checkboxes.append(entry)
 
 
 _TEMPLATE_FILENAME = "travel_request_template.xlsx"
@@ -144,24 +177,54 @@ def _split_destination(destination: str) -> tuple[str, str | None]:
     return (city_state or destination), zip_code
 
 
-def _plan_field_values(plan: TripPlan) -> dict[str, object]:
-    city_state, zip_code = _split_destination(plan.destination)
+def _plan_field_values(
+    plan: TripPlan, canonical_plan: CanonicalTripPlan | None = None
+) -> dict[str, object]:
+    if canonical_plan is not None:
+        city_state = canonical_plan.city_state or ""
+        zip_code: str | None = canonical_plan.destination_zip
+    else:
+        city_state, zip_code = _split_destination(plan.destination)
     fields: dict[str, object] = dict(plan.model_dump())
+    if canonical_plan is not None:
+        fields.update(canonical_plan.model_dump())
     fields.update(
         {
-            "traveler_name": plan.traveler_name,
-            "business_purpose": plan.purpose,
-            "cost_center": plan.department or plan.funding_source,
+            "traveler_name": canonical_plan.traveler_name if canonical_plan else plan.traveler_name,
+            "business_purpose": (
+                canonical_plan.business_purpose if canonical_plan else plan.purpose
+            ),
+            "cost_center": (
+                canonical_plan.cost_center
+                if canonical_plan and canonical_plan.cost_center is not None
+                else plan.department or plan.funding_source
+            ),
             "city_state": city_state,
             "destination_zip": zip_code,
-            "depart_date": plan.departure_date,
-            "return_date": plan.return_date,
-            "event_registration_cost": plan.expense_breakdown.get(ExpenseCategory.CONFERENCE_FEES),
-            "flight_pref_outbound.roundtrip_cost": plan.expense_breakdown.get(
-                ExpenseCategory.AIRFARE
+            "depart_date": canonical_plan.depart_date if canonical_plan else plan.departure_date,
+            "return_date": canonical_plan.return_date if canonical_plan else plan.return_date,
+            "event_registration_cost": (
+                canonical_plan.event_registration_cost
+                if canonical_plan and canonical_plan.event_registration_cost is not None
+                else plan.expense_breakdown.get(ExpenseCategory.CONFERENCE_FEES)
             ),
-            "lowest_cost_roundtrip": plan.expense_breakdown.get(ExpenseCategory.AIRFARE),
-            "parking_estimate": plan.expense_breakdown.get(ExpenseCategory.GROUND_TRANSPORT),
+            "flight_pref_outbound.roundtrip_cost": (
+                canonical_plan.flight_pref_outbound.roundtrip_cost
+                if canonical_plan
+                and canonical_plan.flight_pref_outbound is not None
+                and canonical_plan.flight_pref_outbound.roundtrip_cost is not None
+                else plan.expense_breakdown.get(ExpenseCategory.AIRFARE)
+            ),
+            "lowest_cost_roundtrip": (
+                canonical_plan.lowest_cost_roundtrip
+                if canonical_plan and canonical_plan.lowest_cost_roundtrip is not None
+                else plan.expense_breakdown.get(ExpenseCategory.AIRFARE)
+            ),
+            "parking_estimate": (
+                canonical_plan.parking_estimate
+                if canonical_plan and canonical_plan.parking_estimate is not None
+                else plan.expense_breakdown.get(ExpenseCategory.GROUND_TRANSPORT)
+            ),
         }
     )
     return fields
@@ -219,18 +282,80 @@ def _format_currency_value(value: object) -> Decimal | None:
     return amount.quantize(Decimal("0.01"))
 
 
+def _normalize_dropdown_value(value: object, options: object) -> object:
+    if not isinstance(value, str) or not isinstance(options, list):
+        return value
+    normalized = value.strip().casefold()
+    for option in options:
+        option_str = str(option)
+        if normalized == option_str.strip().casefold():
+            return option
+    for option in options:
+        option_str = str(option)
+        if option_str.strip().casefold().startswith(normalized):
+            return option
+    return value
+
+
 def _policy_version(engine: PolicyEngine) -> str:
     rule_config = {"rules": engine.describe_rules()}
     version = PolicyVersion.from_config(None, rule_config)
     return version.config_hash
 
 
+def _expected_cost_value(plan: TripPlan, *keys: str) -> Decimal | None:
+    for key in keys:
+        if key not in plan.expected_costs:
+            continue
+        amount = _format_currency_value(plan.expected_costs.get(key))
+        if amount is not None:
+            return amount
+    return None
+
+
 def _context_from_plan(plan: TripPlan) -> PolicyContext:
+    driving_cost = plan.driving_cost
+    if driving_cost is None:
+        driving_cost = plan.expense_breakdown.get(ExpenseCategory.GROUND_TRANSPORT)
+    if driving_cost is None:
+        driving_cost = _expected_cost_value(plan, "driving_cost", "ground_transport")
+
+    flight_cost = plan.flight_cost
+    if flight_cost is None:
+        flight_cost = plan.expense_breakdown.get(ExpenseCategory.AIRFARE)
+    if flight_cost is None:
+        flight_cost = _expected_cost_value(plan, "flight_cost", "airfare")
+
+    selected_fare = plan.selected_fare
+    if selected_fare is None:
+        selected_fare = _expected_cost_value(
+            plan, "selected_fare", "flight_pref_outbound.roundtrip_cost", "airfare"
+        )
+    if selected_fare is None:
+        selected_fare = flight_cost
+
+    lowest_fare = plan.lowest_fare
+    if lowest_fare is None:
+        lowest_fare = _expected_cost_value(plan, "lowest_fare", "lowest_cost_roundtrip")
+
     return PolicyContext(
+        booking_date=plan.booking_date,
         departure_date=plan.departure_date,
         return_date=plan.return_date,
-        driving_cost=plan.expense_breakdown.get(ExpenseCategory.GROUND_TRANSPORT),
-        flight_cost=plan.expense_breakdown.get(ExpenseCategory.AIRFARE),
+        selected_fare=selected_fare,
+        lowest_fare=lowest_fare,
+        cabin_class=plan.cabin_class,
+        flight_duration_hours=plan.flight_duration_hours,
+        fare_evidence_attached=plan.fare_evidence_attached,
+        driving_cost=driving_cost,
+        flight_cost=flight_cost,
+        comparable_hotels=plan.comparable_hotels,
+        distance_from_office_miles=plan.distance_from_office_miles,
+        overnight_stay=plan.overnight_stay,
+        meals_provided=plan.meals_provided,
+        meal_per_diem_requested=plan.meal_per_diem_requested,
+        expenses=plan.expenses,
+        third_party_payments=plan.third_party_payments,
     )
 
 
@@ -279,25 +404,27 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
     return sorted(providers, key=str.lower)
 
 
-def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
-    """Fill a travel request spreadsheet template using trip plan data."""
-
-    mapping = load_template_mapping()
-    template_file = mapping.metadata.get("template_file")
-    template_bytes = _default_template_bytes(
-        template_file if isinstance(template_file, str) else None
-    )
-    wb = load_workbook(BytesIO(template_bytes))
+def _populate_travel_workbook(
+    wb: Workbook,
+    plan: TripPlan,
+    mapping: TemplateMapping,
+    *,
+    canonical_plan: CanonicalTripPlan | None = None,
+    report: UnfilledMappingReport | None = None,
+) -> None:
     ws = wb.active
-
-    field_data = _plan_field_values(plan)
+    field_data = _plan_field_values(plan, canonical_plan=canonical_plan)
     for field_name, cell in mapping.cells.items():
         value = _resolve_field_value(field_data, field_name)
         if value is None:
+            if report is not None:
+                report.add("cells", field_name, cell, "missing")
             continue
         if field_name in _CURRENCY_FIELDS:
             amount = _format_currency_value(value)
             if amount is None:
+                if report is not None:
+                    report.add("cells", field_name, cell, "invalid_currency")
                 continue
             ws[cell] = float(amount)
             ws[cell].number_format = _CURRENCY_FORMAT
@@ -305,6 +432,8 @@ def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
         if field_name in _DATE_FIELDS or isinstance(value, date):
             formatted = _format_date_value(value)
             if formatted is None:
+                if report is not None:
+                    report.add("cells", field_name, cell, "invalid_date")
                 continue
             ws[cell] = formatted
             continue
@@ -313,14 +442,31 @@ def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
     for field_name, dropdown_config in mapping.dropdowns.items():
         value = _resolve_field_value(field_data, field_name)
         if value is None:
+            if report is not None:
+                dropdown_cell = dropdown_config.get("cell")
+                report.add(
+                    "dropdowns",
+                    field_name,
+                    dropdown_cell if isinstance(dropdown_cell, str) else None,
+                    "missing",
+                )
             continue
         dropdown_cell = dropdown_config.get("cell")
         if isinstance(dropdown_cell, str):
-            ws[dropdown_cell] = value
+            options = dropdown_config.get("options")
+            ws[dropdown_cell] = _normalize_dropdown_value(value, options)
 
     for field_name, checkbox_config in mapping.checkboxes.items():
         value = _resolve_field_value(field_data, field_name)
         if value is None:
+            if report is not None:
+                checkbox_cell = checkbox_config.get("cell")
+                report.add(
+                    "checkboxes",
+                    field_name,
+                    checkbox_cell if isinstance(checkbox_cell, str) else None,
+                    "missing",
+                )
             continue
         checkbox_cell = checkbox_config.get("cell")
         if not isinstance(checkbox_cell, str):
@@ -335,8 +481,47 @@ def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
         if isinstance(formula_cell, str) and isinstance(formula_value, str):
             ws[formula_cell] = formula_value
 
+
+def render_travel_spreadsheet_bytes(
+    plan: TripPlan,
+    *,
+    canonical_plan: CanonicalTripPlan | None = None,
+    report: UnfilledMappingReport | None = None,
+) -> bytes:
+    """Render a travel request spreadsheet to a .xlsx byte stream."""
+
+    mapping = load_template_mapping()
+    template_file = mapping.metadata.get("template_file")
+    template_bytes = _default_template_bytes(
+        template_file if isinstance(template_file, str) else None
+    )
+    wb = load_workbook(BytesIO(template_bytes))
+    _populate_travel_workbook(
+        wb,
+        plan,
+        mapping,
+        canonical_plan=canonical_plan,
+        report=report,
+    )
+    output = BytesIO()
+    wb.save(output)
+    wb.close()
+    return output.getvalue()
+
+
+def fill_travel_spreadsheet(
+    plan: TripPlan,
+    output_path: Path,
+    *,
+    canonical_plan: CanonicalTripPlan | None = None,
+    report: UnfilledMappingReport | None = None,
+) -> Path:
+    """Fill a travel request spreadsheet template using trip plan data."""
+
     output_path = Path(output_path)
-    wb.save(output_path)
+    output_path.write_bytes(
+        render_travel_spreadsheet_bytes(plan, canonical_plan=canonical_plan, report=report)
+    )
     return output_path
 
 

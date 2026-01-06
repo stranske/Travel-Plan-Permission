@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from .models import TripPlan
+from .canonical import TripPlanInput, load_trip_plan_input
 from .policy_api import fill_travel_spreadsheet
 
 
@@ -23,7 +23,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _load_trip_plan(path: Path) -> TripPlan:
+def _load_trip_plan(path: Path) -> TripPlanInput:
     try:
         raw_data = path.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
@@ -39,7 +39,10 @@ def _load_trip_plan(path: Path) -> TripPlan:
         msg = f"Invalid JSON in input file: {path}"
         raise ValueError(msg) from exc
 
-    return TripPlan.model_validate(payload)
+    if not isinstance(payload, dict):
+        msg = f"TripPlan payload must be a JSON object: {path}"
+        raise ValueError(msg)
+    return load_trip_plan_input(payload)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -47,8 +50,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        plan = _load_trip_plan(args.input_json)
-        output_path = fill_travel_spreadsheet(plan, args.output_xlsx)
+        plan_input = _load_trip_plan(args.input_json)
+        output_path = fill_travel_spreadsheet(
+            plan_input.plan,
+            args.output_xlsx,
+            canonical_plan=plan_input.canonical,
+        )
     except ValidationError as exc:
         print("Error: TripPlan validation failed.", file=sys.stderr)
         print(str(exc), file=sys.stderr)
