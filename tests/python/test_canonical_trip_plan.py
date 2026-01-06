@@ -9,7 +9,9 @@ from travel_plan_permission.models import ExpenseCategory, TripPlan
 
 
 def _load_fixture() -> dict[str, object]:
-    fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_minimal.json"
+    fixture_path = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_minimal.json"
+    )
     return json.loads(fixture_path.read_text(encoding="utf-8"))
 
 

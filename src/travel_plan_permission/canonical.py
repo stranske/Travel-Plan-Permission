@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 
 from .models import ExpenseCategory, TripPlan
 
-
 _ZIP_PATTERN = re.compile(r"^[0-9]{5}(-[0-9]{4})?$")
 
 
