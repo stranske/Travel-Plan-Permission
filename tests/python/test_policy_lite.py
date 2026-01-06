@@ -20,5 +20,8 @@ def test_policy_lite_reports_missing_inputs() -> None:
     assert "fare_comparison" in by_rule
     assert by_rule["fare_comparison"].missing_fields == ["selected_fare", "lowest_fare"]
     assert "missing required inputs" in by_rule["fare_comparison"].message.lower()
+    assert "selected_fare" in by_rule["fare_comparison"].message
+    assert "lowest_fare" in by_rule["fare_comparison"].message
     assert "local_overnight" in by_rule
     assert by_rule["local_overnight"].missing_fields == ["distance_from_office_miles"]
+    assert "distance_from_office_miles" in by_rule["local_overnight"].message

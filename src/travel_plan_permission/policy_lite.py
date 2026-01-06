@@ -74,7 +74,7 @@ def diagnose_missing_inputs(
             RuleDiagnostic(
                 rule_id=rule.rule_id,
                 missing_fields=missing,
-                message=f"Missing required inputs for '{rule.rule_id}': {missing_list}.",
+                message=f"Missing required inputs: {missing_list} (rule '{rule.rule_id}').",
             )
         )
     return diagnostics
