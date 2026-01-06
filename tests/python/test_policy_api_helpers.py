@@ -236,7 +236,7 @@ def test_fill_travel_spreadsheet_skips_invalid_currency_and_date(
     monkeypatch.setattr(
         policy_api,
         "_plan_field_values",
-        lambda _plan: {
+        lambda _plan, **_kwargs: {
             "event_registration_cost": "not-a-number",
             "depart_date": object(),
         },
