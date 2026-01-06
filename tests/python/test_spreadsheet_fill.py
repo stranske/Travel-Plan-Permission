@@ -1,4 +1,5 @@
 from datetime import date
+from io import BytesIO
 from decimal import Decimal
 
 from openpyxl import load_workbook
@@ -8,6 +9,7 @@ from travel_plan_permission import (
     ExpenseCategory,
     TripPlan,
     fill_travel_spreadsheet,
+    render_travel_spreadsheet_bytes,
 )
 from travel_plan_permission.mapping import TemplateMapping
 
@@ -66,6 +68,26 @@ def test_fill_travel_spreadsheet_writes_mapped_fields(tmp_path) -> None:
     assert sheet["F9"].value == 40.0
     assert sheet["F9"].number_format == "$#,##0.00"
     workbook.close()
+
+
+def test_render_travel_spreadsheet_bytes_returns_xlsx_bytes() -> None:
+    plan = _plan()
+
+    output_bytes = render_travel_spreadsheet_bytes(plan)
+
+    workbook = load_workbook(BytesIO(output_bytes))
+    assert workbook.sheetnames
+    workbook.close()
+
+
+def test_fill_travel_spreadsheet_matches_rendered_bytes(tmp_path) -> None:
+    plan = _plan()
+    output_path = tmp_path / "filled-match.xlsx"
+
+    output_bytes = render_travel_spreadsheet_bytes(plan)
+    fill_travel_spreadsheet(plan, output_path)
+
+    assert output_path.read_bytes() == output_bytes
 
 
 def test_fill_travel_spreadsheet_rounds_currency_values(tmp_path) -> None:

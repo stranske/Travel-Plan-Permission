@@ -37,6 +37,7 @@ __all__ = [
     "TripPlan",
     "Receipt",
     "check_trip_plan",
+    "render_travel_spreadsheet_bytes",
     "fill_travel_spreadsheet",
     "list_allowed_vendors",
     "reconcile",
@@ -279,17 +280,8 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
     return sorted(providers, key=str.lower)
 
 
-def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
-    """Fill a travel request spreadsheet template using trip plan data."""
-
-    mapping = load_template_mapping()
-    template_file = mapping.metadata.get("template_file")
-    template_bytes = _default_template_bytes(
-        template_file if isinstance(template_file, str) else None
-    )
-    wb = load_workbook(BytesIO(template_bytes))
+def _populate_travel_workbook(wb, plan: TripPlan, mapping) -> None:
     ws = wb.active
-
     field_data = _plan_field_values(plan)
     for field_name, cell in mapping.cells.items():
         value = _resolve_field_value(field_data, field_name)
@@ -335,8 +327,28 @@ def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
         if isinstance(formula_cell, str) and isinstance(formula_value, str):
             ws[formula_cell] = formula_value
 
+
+def render_travel_spreadsheet_bytes(plan: TripPlan) -> bytes:
+    """Render a travel request spreadsheet to a .xlsx byte stream."""
+
+    mapping = load_template_mapping()
+    template_file = mapping.metadata.get("template_file")
+    template_bytes = _default_template_bytes(
+        template_file if isinstance(template_file, str) else None
+    )
+    wb = load_workbook(BytesIO(template_bytes))
+    _populate_travel_workbook(wb, plan, mapping)
+    output = BytesIO()
+    wb.save(output)
+    wb.close()
+    return output.getvalue()
+
+
+def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
+    """Fill a travel request spreadsheet template using trip plan data."""
+
     output_path = Path(output_path)
-    wb.save(output_path)
+    output_path.write_bytes(render_travel_spreadsheet_bytes(plan))
     return output_path
 
 
