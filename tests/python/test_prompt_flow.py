@@ -1,3 +1,4 @@
+from travel_plan_permission import prompt_flow
 from travel_plan_permission.prompt_flow import (
     build_output_bundle,
     generate_questions,
@@ -43,5 +44,26 @@ def test_output_bundle_includes_brochure_reference():
     assert bundle["itinerary_excel"]["content"] == itinerary
     assert "conference_brochure.pdf" in bundle["attachments"]
     assert "conference_brochure.pdf" in bundle["conversation_log_json"]
-    assert bundle["summary_pdf"]["filename"] == "summary.pdf"
-    assert "Ada Lovelace" in bundle["summary_pdf"]["content"].decode()
+    summary = bundle["summary_pdf"]
+    assert summary["filename"] == "summary.pdf"
+    assert summary["mime_type"] == "application/pdf"
+    assert summary["content"].startswith(b"%PDF-")
+    assert b"/Type /Page" in summary["content"]
+    assert b"%%EOF" in summary["content"][-2048:]
+
+
+def test_output_bundle_uses_text_for_invalid_pdf(monkeypatch):
+    answers = {"traveler_name": "Ada Lovelace", "city_state": "Boston, MA"}
+    itinerary = b"excel-bytes"
+
+    monkeypatch.setattr(prompt_flow, "_build_summary_pdf", lambda _: b"not-a-pdf")
+
+    bundle = build_output_bundle(
+        itinerary_excel=itinerary,
+        answers=answers,
+    )
+
+    summary = bundle["summary_pdf"]
+    assert summary["filename"] == "summary.txt"
+    assert summary["mime_type"] == "text/plain"
+    assert b"Travel Plan Summary" in summary["content"]
