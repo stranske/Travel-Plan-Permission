@@ -13,9 +13,10 @@ from pathlib import Path
 from typing import Literal
 
 from openpyxl import load_workbook  # type: ignore[import-untyped]
+from openpyxl.workbook import Workbook  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
 
-from .mapping import load_template_mapping
+from .mapping import TemplateMapping, load_template_mapping
 from .models import ExpenseCategory, ExpenseItem, ExpenseReport, TripPlan
 from .policy import PolicyContext, PolicyEngine, PolicyResult, Severity
 from .policy_versioning import PolicyVersion
@@ -280,7 +281,7 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
     return sorted(providers, key=str.lower)
 
 
-def _populate_travel_workbook(wb, plan: TripPlan, mapping) -> None:
+def _populate_travel_workbook(wb: Workbook, plan: TripPlan, mapping: TemplateMapping) -> None:
     ws = wb.active
     field_data = _plan_field_values(plan)
     for field_name, cell in mapping.cells.items():
