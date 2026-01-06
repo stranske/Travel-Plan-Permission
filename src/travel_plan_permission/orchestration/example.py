@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from argparse import ArgumentParser, Namespace
 from datetime import date
 from decimal import Decimal
-import json
 from pathlib import Path
 
 from ..conversion import trip_plan_from_minimal
