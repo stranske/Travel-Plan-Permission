@@ -8,6 +8,7 @@ from .approval_packet import (
     build_approval_packet,
     generate_packet_pdf,
 )
+from .conversion import trip_plan_from_minimal
 from .export import ExportService
 from .mapping import DEFAULT_TEMPLATE_VERSION, TemplateMapping, load_template_mapping
 from .models import (
@@ -202,6 +203,7 @@ __all__ = [
     "ThirdPartyPaidRule",
     "TripPlan",
     "TripStatus",
+    "trip_plan_from_minimal",
     "determine_exception_approval_level",
     "ValidationAdvanceBookingRule",
     "ValidationComparison",
