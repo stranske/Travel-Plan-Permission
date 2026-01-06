@@ -94,7 +94,7 @@ class TripPlanInput:
     """TripPlan payload with optional canonical source data."""
 
     plan: TripPlan
-    canonical: "CanonicalTripPlan | None" = None
+    canonical: CanonicalTripPlan | None = None
 
 
 def _slugify(text: str) -> str:
