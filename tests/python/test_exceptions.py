@@ -146,9 +146,7 @@ def test_exception_dashboard_profile_records_timing() -> None:
     def _fake_timer() -> float:
         return next(timestamps)
 
-    dashboard, profile = profile_exception_dashboard(
-        [request_one, request_two], timer=_fake_timer
-    )
+    dashboard, profile = profile_exception_dashboard([request_one, request_two], timer=_fake_timer)
 
     assert dashboard["by_type"]["advance_booking"] == 1
     assert dashboard["by_type"]["driving_vs_flying"] == 1
