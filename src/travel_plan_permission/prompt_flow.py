@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import json
+import io
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+
+from reportlab.lib.pagesizes import letter  # type: ignore[import-untyped]
+from reportlab.lib.styles import getSampleStyleSheet  # type: ignore[import-untyped]
+from reportlab.lib.units import inch  # type: ignore[import-untyped]
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer  # type: ignore[import-untyped]
 
 from .mapping import DEFAULT_TEMPLATE_VERSION
 
@@ -161,10 +167,25 @@ def build_output_bundle(
         f"Template: {template_version}",
     ]
     summary_bytes = "\n".join(summary_lines).encode("utf-8")
+    summary_pdf_bytes = _build_summary_pdf(summary_lines)
 
     attachments: dict[str, bytes] = {}
     if brochure is not None:
         attachments["conference_brochure.pdf"] = brochure
+
+    summary_payload: dict[str, object]
+    if _looks_like_pdf(summary_pdf_bytes):
+        summary_payload = {
+            "filename": "summary.pdf",
+            "content": summary_pdf_bytes,
+            "mime_type": "application/pdf",
+        }
+    else:
+        summary_payload = {
+            "filename": "summary.txt",
+            "content": summary_bytes,
+            "mime_type": "text/plain",
+        }
 
     bundle: dict[str, object] = {
         "itinerary_excel": {
@@ -172,16 +193,46 @@ def build_output_bundle(
             "content": itinerary_excel,
             "template_version": template_version,
         },
-        "summary_pdf": {
-            "filename": "summary.pdf",
-            "content": summary_bytes,
-            "mime_type": "application/pdf",
-        },
+        "summary_pdf": summary_payload,
         "conversation_log_json": json.dumps(conversation, ensure_ascii=False),
         "attachments": attachments,
     }
 
     return bundle
+
+
+def _build_summary_pdf(summary_lines: Sequence[str]) -> bytes:
+    """Render the summary lines into a simple PDF."""
+
+    buffer = io.BytesIO()
+    try:
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=letter,
+            title=summary_lines[0] if summary_lines else "Travel Plan Summary",
+        )
+        styles = getSampleStyleSheet()
+        elements = []
+        if summary_lines:
+            elements.append(Paragraph(summary_lines[0], styles["Title"]))
+        for line in summary_lines[1:]:
+            elements.append(Spacer(1, 0.12 * inch))
+            elements.append(Paragraph(line, styles["Normal"]))
+        doc.build(elements)
+    except Exception:
+        return b""
+    return buffer.getvalue()
+
+
+def _looks_like_pdf(payload: bytes) -> bool:
+    """Basic PDF signature check to avoid mislabeled text."""
+
+    if not payload.startswith(b"%PDF-"):
+        return False
+    if b"/Type /Page" not in payload:
+        return False
+    trailer = payload[-2048:] if len(payload) > 2048 else payload
+    return b"%%EOF" in trailer
 
 
 def required_field_gaps(
