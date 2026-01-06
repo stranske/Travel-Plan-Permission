@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import io
+import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
