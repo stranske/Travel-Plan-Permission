@@ -1,6 +1,8 @@
+import json
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
+from pathlib import Path
 
 from openpyxl import load_workbook
 
@@ -11,6 +13,7 @@ from travel_plan_permission import (
     fill_travel_spreadsheet,
     render_travel_spreadsheet_bytes,
 )
+from travel_plan_permission.canonical import CanonicalTripPlan, canonical_trip_plan_to_model
 from travel_plan_permission.mapping import TemplateMapping
 
 
@@ -87,7 +90,26 @@ def test_fill_travel_spreadsheet_matches_rendered_bytes(tmp_path) -> None:
     output_bytes = render_travel_spreadsheet_bytes(plan)
     fill_travel_spreadsheet(plan, output_path)
 
-    assert output_path.read_bytes() == output_bytes
+    # Compare workbook contents instead of raw bytes (which include timestamps)
+    wb_from_bytes = load_workbook(BytesIO(output_bytes))
+    wb_from_file = load_workbook(output_path)
+
+    # Compare sheet names
+    assert wb_from_bytes.sheetnames == wb_from_file.sheetnames
+
+    # Compare cell values in all sheets
+    for sheet_name in wb_from_bytes.sheetnames:
+        sheet_bytes = wb_from_bytes[sheet_name]
+        sheet_file = wb_from_file[sheet_name]
+
+        # Compare all cell values
+        for row in sheet_bytes.iter_rows():
+            for cell in row:
+                file_cell = sheet_file[cell.coordinate]
+                assert file_cell.value == cell.value, f"Mismatch at {cell.coordinate}"
+
+    wb_from_bytes.close()
+    wb_from_file.close()
 
 
 def test_fill_travel_spreadsheet_rounds_currency_values(tmp_path) -> None:
@@ -178,3 +200,25 @@ def test_fill_travel_spreadsheet_uses_template_metadata(tmp_path, monkeypatch) -
     fill_travel_spreadsheet(plan, output_path)
 
     assert observed["template_file"] == "custom_template.xlsx"
+
+
+def test_fill_travel_spreadsheet_uses_canonical_fields(tmp_path) -> None:
+    fixture_path = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_minimal.json"
+    )
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    canonical_plan = CanonicalTripPlan.model_validate(payload)
+    trip_plan = canonical_trip_plan_to_model(canonical_plan)
+    output_path = tmp_path / "filled-canonical.xlsx"
+
+    fill_travel_spreadsheet(trip_plan, output_path, canonical_plan=canonical_plan)
+
+    workbook = load_workbook(output_path)
+    sheet = workbook.active
+
+    assert canonical_plan.hotel is not None
+    assert sheet["B11"].value == canonical_plan.hotel.name
+    assert sheet["B12"].value == canonical_plan.hotel.address
+    assert sheet["G12"].value == "X"
+    assert sheet["B15"].value == "rideshare/taxi"
+    workbook.close()
