@@ -81,9 +81,9 @@ plan = trip_plan_from_minimal(
 ## Run the minimal LangGraph flow locally
 
 The minimal LangGraph orchestration is tracked in
-`docs/ORCHESTRATION_PLAN.md` (Phase 2). This repo does not ship the
-orchestrator, but you can prototype the flow locally by wiring LangGraph to the
-policy API in this package.
+`docs/ORCHESTRATION_PLAN.md` (Phase 2) and implemented as a lightweight graph
+in `src/travel_plan_permission/orchestration/graph.py`. You can run the example
+entry point locally to validate the flow wiring.
 
 Steps:
 
@@ -101,10 +101,14 @@ Steps:
    pip install langgraph
    ```
 
-3. Create a small local script that loads a `TripPlan`, calls
-   `check_trip_plan`, and then uses `fill_travel_spreadsheet` for the approved
-   path. Use the Phase 2 nodes in `docs/ORCHESTRATION_PLAN.md` as the template
-   for the graph shape.
+3. Run the example module:
+
+   ```bash
+   python -m travel_plan_permission.orchestration.example
+   ```
+
+   Add `--no-langgraph` if you want to force the fallback graph, and pass
+   `--output /path/to/travel_request.xlsx` to control the spreadsheet path.
 
 ## Artifacts produced
 
