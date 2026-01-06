@@ -12,6 +12,8 @@ coverage[toml]==7.13.0
     # via pytest-cov
 et-xmlfile==1.1.0
     # via openpyxl
+hypothesis==6.149.1
+    # via travel-plan-permission (pyproject.toml)
 iniconfig==2.0.0
     # via pytest
 jinja2==3.1.6
@@ -24,10 +26,18 @@ mypy==1.19.1
     # via travel-plan-permission (pyproject.toml)
 mypy-extensions==1.0.0
     # via mypy
+numpy==2.4.0
+    # via
+    #   pandas
+    #   travel-plan-permission (pyproject.toml)
 openpyxl==3.1.5
     # via travel-plan-permission (pyproject.toml)
 packaging==24.2
-    # via pytest
+    # via
+    #   pytest
+    #   travel-plan-permission (pyproject.toml)
+pandas==2.3.3
+    # via travel-plan-permission (pyproject.toml)
 pathspec==0.12.1
     # via mypy
 pillow==12.0.0
@@ -36,6 +46,8 @@ pluggy==1.5.0
     # via
     #   pytest
     #   pytest-cov
+pyarrow==22.0.0
+    # via travel-plan-permission (pyproject.toml)
 pydantic==2.10.4
     # via travel-plan-permission (pyproject.toml)
 pydantic-core==2.27.2
@@ -48,12 +60,20 @@ pytest==9.0.2
     #   travel-plan-permission (pyproject.toml)
 pytest-cov==7.0.0
     # via travel-plan-permission (pyproject.toml)
+python-dateutil==2.9.0.post0
+    # via pandas
+pytz==2025.2
+    # via pandas
 pyyaml==6.0.3
     # via travel-plan-permission (pyproject.toml)
 reportlab==4.4.7
     # via travel-plan-permission (pyproject.toml)
 ruff==0.14.10
     # via travel-plan-permission (pyproject.toml)
+six==1.17.0
+    # via python-dateutil
+sortedcontainers==2.4.0
+    # via hypothesis
 types-pyyaml==6.0.12.20250915
     # via travel-plan-permission (pyproject.toml)
 typing-extensions==4.12.2
@@ -61,3 +81,5 @@ typing-extensions==4.12.2
     #   mypy
     #   pydantic
     #   pydantic-core
+tzdata==2025.3
+    # via pandas

@@ -25,19 +25,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = [
-    "numpy>=1.24.0",
-    "packaging>=23.0",
-    "pandas>=2.0.0",
-    "pyarrow>=10.0.0",
-    "version-utils>=0.1.0",
-]
 dev = [
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.10",
     "mypy>=1.19.1",
     "types-PyYAML>=6.0.12",
+    "numpy>=1.24.0",
+    "packaging>=23.0",
+    "pandas>=2.0.0",
+    "pyarrow>=10.0.0",
+    "hypothesis>=6.0.0",
 ]
 ocr = [
     "Pillow>=10.0.0",
