@@ -26,8 +26,7 @@ class TripState(BaseModel):
 class PolicyGraph(Protocol):
     """Minimal interface for invoking orchestration graphs."""
 
-    def invoke(self, state: TripState) -> TripState:
-        ...
+    def invoke(self, state: TripState) -> TripState: ...
 
 
 def _default_spreadsheet_path(plan: TripPlan) -> Path:
