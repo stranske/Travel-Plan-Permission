@@ -341,6 +341,45 @@ class TripPlan(BaseModel):
         default_factory=dict,
         description="Optional planned spend by category",
     )
+    booking_date: date | None = Field(
+        default=None, description="Date the trip was booked or requested"
+    )
+    selected_fare: Decimal | None = Field(default=None, description="Selected fare for the trip")
+    lowest_fare: Decimal | None = Field(default=None, description="Lowest comparable fare option")
+    cabin_class: str | None = Field(default=None, description="Requested cabin class")
+    flight_duration_hours: float | None = Field(
+        default=None, description="Estimated flight duration in hours"
+    )
+    fare_evidence_attached: bool | None = Field(
+        default=None, description="Whether fare evidence is attached"
+    )
+    driving_cost: Decimal | None = Field(
+        default=None, description="Estimated driving cost for the trip"
+    )
+    flight_cost: Decimal | None = Field(
+        default=None, description="Estimated flight cost for the trip"
+    )
+    comparable_hotels: list[Decimal] | None = Field(
+        default=None, description="Comparable hotel nightly rates"
+    )
+    distance_from_office_miles: float | None = Field(
+        default=None, description="Distance from office in miles"
+    )
+    overnight_stay: bool | None = Field(
+        default=None, description="Whether an overnight stay is requested"
+    )
+    meals_provided: bool | None = Field(
+        default=None, description="Whether meals are provided by the event"
+    )
+    meal_per_diem_requested: bool | None = Field(
+        default=None, description="Whether meal per diem is requested"
+    )
+    expenses: list[ExpenseItem] | None = Field(
+        default=None, description="Planned expense items for the trip"
+    )
+    third_party_payments: list[dict[str, object]] | None = Field(
+        default=None, description="Third-party paid expense entries"
+    )
     selected_providers: dict[ExpenseCategory, str] = Field(
         default_factory=dict,
         description=(
@@ -449,8 +488,6 @@ from .snapshots import (  # noqa: E402
 )
 from .validation import PolicyValidator, ValidationResult  # noqa: E402
 
-TripPlan.model_rebuild()
-
 if TYPE_CHECKING:
     PolicyValidator = PolicyValidator
     ValidationResult = ValidationResult
@@ -529,3 +566,6 @@ class ExpenseReport(BaseModel):
         for expense in self.expenses:
             totals[expense.category] = totals.get(expense.category, Decimal("0")) + expense.amount
         return totals
+
+
+TripPlan.model_rebuild()

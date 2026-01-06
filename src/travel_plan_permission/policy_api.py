@@ -13,9 +13,10 @@ from pathlib import Path
 from typing import Literal
 
 from openpyxl import load_workbook  # type: ignore[import-untyped]
+from openpyxl.workbook import Workbook  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
 
-from .mapping import load_template_mapping
+from .mapping import TemplateMapping, load_template_mapping
 from .models import ExpenseCategory, ExpenseItem, ExpenseReport, TripPlan
 from .policy import PolicyContext, PolicyEngine, PolicyResult, Severity
 from .policy_versioning import PolicyVersion
@@ -37,6 +38,7 @@ __all__ = [
     "TripPlan",
     "Receipt",
     "check_trip_plan",
+    "render_travel_spreadsheet_bytes",
     "fill_travel_spreadsheet",
     "list_allowed_vendors",
     "reconcile",
@@ -225,12 +227,59 @@ def _policy_version(engine: PolicyEngine) -> str:
     return version.config_hash
 
 
+def _expected_cost_value(plan: TripPlan, *keys: str) -> Decimal | None:
+    for key in keys:
+        if key not in plan.expected_costs:
+            continue
+        amount = _format_currency_value(plan.expected_costs.get(key))
+        if amount is not None:
+            return amount
+    return None
+
+
 def _context_from_plan(plan: TripPlan) -> PolicyContext:
+    driving_cost = plan.driving_cost
+    if driving_cost is None:
+        driving_cost = plan.expense_breakdown.get(ExpenseCategory.GROUND_TRANSPORT)
+    if driving_cost is None:
+        driving_cost = _expected_cost_value(plan, "driving_cost", "ground_transport")
+
+    flight_cost = plan.flight_cost
+    if flight_cost is None:
+        flight_cost = plan.expense_breakdown.get(ExpenseCategory.AIRFARE)
+    if flight_cost is None:
+        flight_cost = _expected_cost_value(plan, "flight_cost", "airfare")
+
+    selected_fare = plan.selected_fare
+    if selected_fare is None:
+        selected_fare = _expected_cost_value(
+            plan, "selected_fare", "flight_pref_outbound.roundtrip_cost", "airfare"
+        )
+    if selected_fare is None:
+        selected_fare = flight_cost
+
+    lowest_fare = plan.lowest_fare
+    if lowest_fare is None:
+        lowest_fare = _expected_cost_value(plan, "lowest_fare", "lowest_cost_roundtrip")
+
     return PolicyContext(
+        booking_date=plan.booking_date,
         departure_date=plan.departure_date,
         return_date=plan.return_date,
-        driving_cost=plan.expense_breakdown.get(ExpenseCategory.GROUND_TRANSPORT),
-        flight_cost=plan.expense_breakdown.get(ExpenseCategory.AIRFARE),
+        selected_fare=selected_fare,
+        lowest_fare=lowest_fare,
+        cabin_class=plan.cabin_class,
+        flight_duration_hours=plan.flight_duration_hours,
+        fare_evidence_attached=plan.fare_evidence_attached,
+        driving_cost=driving_cost,
+        flight_cost=flight_cost,
+        comparable_hotels=plan.comparable_hotels,
+        distance_from_office_miles=plan.distance_from_office_miles,
+        overnight_stay=plan.overnight_stay,
+        meals_provided=plan.meals_provided,
+        meal_per_diem_requested=plan.meal_per_diem_requested,
+        expenses=plan.expenses,
+        third_party_payments=plan.third_party_payments,
     )
 
 
@@ -279,17 +328,8 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
     return sorted(providers, key=str.lower)
 
 
-def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
-    """Fill a travel request spreadsheet template using trip plan data."""
-
-    mapping = load_template_mapping()
-    template_file = mapping.metadata.get("template_file")
-    template_bytes = _default_template_bytes(
-        template_file if isinstance(template_file, str) else None
-    )
-    wb = load_workbook(BytesIO(template_bytes))
+def _populate_travel_workbook(wb: Workbook, plan: TripPlan, mapping: TemplateMapping) -> None:
     ws = wb.active
-
     field_data = _plan_field_values(plan)
     for field_name, cell in mapping.cells.items():
         value = _resolve_field_value(field_data, field_name)
@@ -335,8 +375,28 @@ def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
         if isinstance(formula_cell, str) and isinstance(formula_value, str):
             ws[formula_cell] = formula_value
 
+
+def render_travel_spreadsheet_bytes(plan: TripPlan) -> bytes:
+    """Render a travel request spreadsheet to a .xlsx byte stream."""
+
+    mapping = load_template_mapping()
+    template_file = mapping.metadata.get("template_file")
+    template_bytes = _default_template_bytes(
+        template_file if isinstance(template_file, str) else None
+    )
+    wb = load_workbook(BytesIO(template_bytes))
+    _populate_travel_workbook(wb, plan, mapping)
+    output = BytesIO()
+    wb.save(output)
+    wb.close()
+    return output.getvalue()
+
+
+def fill_travel_spreadsheet(plan: TripPlan, output_path: Path) -> Path:
+    """Fill a travel request spreadsheet template using trip plan data."""
+
     output_path = Path(output_path)
-    wb.save(output_path)
+    output_path.write_bytes(render_travel_spreadsheet_bytes(plan))
     return output_path
 
 
