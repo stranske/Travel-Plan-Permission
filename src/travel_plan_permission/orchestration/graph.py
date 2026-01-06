@@ -1,0 +1,91 @@
+"""Minimal orchestration graph for policy checks and artifacts."""
+
+from __future__ import annotations
+
+import tempfile
+from pathlib import Path
+from typing import Protocol
+
+from pydantic import BaseModel, Field
+
+from ..models import TripPlan
+from ..policy_api import PolicyCheckResult, check_trip_plan, fill_travel_spreadsheet
+
+
+class TripState(BaseModel):
+    """State container for the orchestration flow."""
+
+    plan: TripPlan
+    policy_result: PolicyCheckResult | None = None
+    spreadsheet_path: Path | None = None
+    errors: list[str] = Field(default_factory=list)
+
+    model_config = {"arbitrary_types_allowed": True}
+
+
+class PolicyGraph(Protocol):
+    """Minimal interface for invoking orchestration graphs."""
+
+    def invoke(self, state: TripState) -> TripState: ...
+
+
+def _default_spreadsheet_path(plan: TripPlan) -> Path:
+    temp_dir = Path(tempfile.mkdtemp(prefix="travel_plan_"))
+    return temp_dir / f"{plan.trip_id}_request.xlsx"
+
+
+def _policy_check_node(state: TripState) -> TripState:
+    state.policy_result = check_trip_plan(state.plan)
+    return state
+
+
+def _spreadsheet_node(state: TripState) -> TripState:
+    output_path = state.spreadsheet_path or _default_spreadsheet_path(state.plan)
+    state.spreadsheet_path = fill_travel_spreadsheet(state.plan, output_path)
+    return state
+
+
+class _SimplePolicyGraph:
+    def invoke(self, state: TripState) -> TripState:
+        state = _policy_check_node(state)
+        state = _spreadsheet_node(state)
+        return state
+
+
+def _build_langgraph() -> PolicyGraph | None:
+    try:
+        from langgraph.graph import END, StateGraph  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+
+    graph = StateGraph(TripState)
+    graph.add_node("policy_check", _policy_check_node)
+    graph.add_node("spreadsheet", _spreadsheet_node)
+    graph.add_edge("policy_check", "spreadsheet")
+    graph.add_edge("spreadsheet", END)
+    graph.set_entry_point("policy_check")
+    return graph.compile()  # type: ignore[no-any-return]
+
+
+def build_policy_graph(*, prefer_langgraph: bool = True) -> PolicyGraph:
+    """Create an orchestration graph, using LangGraph when available."""
+
+    if prefer_langgraph:
+        compiled = _build_langgraph()
+        if compiled is not None:
+            return compiled
+    return _SimplePolicyGraph()
+
+
+def run_policy_graph(
+    plan: TripPlan,
+    *,
+    output_path: Path | str | None = None,
+    prefer_langgraph: bool = True,
+) -> TripState:
+    """Run the policy graph over a trip plan and return the final state."""
+
+    spreadsheet_path = Path(output_path) if output_path is not None else None
+    graph = build_policy_graph(prefer_langgraph=prefer_langgraph)
+    state = TripState(plan=plan, spreadsheet_path=spreadsheet_path)
+    return graph.invoke(state)

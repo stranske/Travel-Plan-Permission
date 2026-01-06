@@ -17,6 +17,18 @@ def test_mapping_covers_canonical_fields():
     assert mapping.metadata.get("template_id") == DEFAULT_TEMPLATE_VERSION
 
 
+def test_mapping_fields_match_canonical_contract():
+    mapping = load_template_mapping()
+
+    mapping_fields = set(mapping.cells)
+    canonical_fields = set(CANONICAL_TRIP_FIELDS)
+    missing_in_mapping = sorted(canonical_fields - mapping_fields)
+    extra_in_mapping = sorted(mapping_fields - canonical_fields)
+
+    assert missing_in_mapping == []
+    assert extra_in_mapping == []
+
+
 def test_version_mismatch_requires_opt_in(tmp_path: Path):
     source = Path("config/excel_mappings.yaml").read_text(encoding="utf-8")
     data = yaml.safe_load(source)

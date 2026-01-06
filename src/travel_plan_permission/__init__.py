@@ -59,6 +59,7 @@ from .policy_api import (
     fill_travel_spreadsheet,
     list_allowed_vendors,
     reconcile,
+    render_travel_spreadsheet_bytes,
 )
 from .policy_versioning import (
     PolicyMigrationPlan,
@@ -186,6 +187,7 @@ __all__ = [
     "ProviderType",
     "check_trip_plan",
     "fill_travel_spreadsheet",
+    "render_travel_spreadsheet_bytes",
     "list_allowed_vendors",
     "reconcile",
     "ReceiptExtractionResult",
