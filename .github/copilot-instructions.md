@@ -8,6 +8,7 @@
 |-----------|---------------|
 | CI failing with mypy errors | [CI Debugging - Mypy](#mypy-type-errors) |
 | CI failing with coverage errors | [CI Debugging - Coverage](#coverage-threshold-failures) |
+| Adding test dependencies | [Dependency Management](#test-dependencies) |
 | Need to push changes | [GitHub Operations](#standard-pr-workflow) |
 | Authentication errors with `gh` | [GitHub Operations - PAT](#authentication--pat-usage) |
 | Making same mistake 3+ times | [Meta - Create a Skill](#recognize-when-to-create-a-new-skill) |
