@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Profile Settings Mockup</title>
+    <link rel="stylesheet" href="./profile_settings_mockup.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div class="hero__eyebrow">Travel Profile</div>
+        <h1 class="hero__title">Profile settings that feel personal.</h1>
+        <p class="hero__subtitle">
+          A calm control room for identity, preferences, and privacy choices.
+        </p>
+        <div class="hero__badge">
+          <span>Profile completeness</span>
+          <strong>82%</strong>
+        </div>
+      </header>
+
+      <main class="grid">
+        <section class="card card--photo">
+          <div class="card__header">
+            <h2>Profile photo</h2>
+            <span class="tag">Avatar</span>
+          </div>
+          <div class="avatar">
+            <div class="avatar__image" aria-hidden="true"></div>
+            <div class="avatar__overlay">
+              <span>Drag a photo</span>
+              <button type="button">Upload new</button>
+            </div>
+          </div>
+          <div class="slider">
+            <div class="slider__label">Crop zoom</div>
+            <div class="slider__track">
+              <div class="slider__fill"></div>
+              <div class="slider__thumb"></div>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn btn--ghost" type="button">Reset</button>
+            <button class="btn" type="button">Save photo</button>
+          </div>
+        </section>
+
+        <section class="card card--identity">
+          <div class="card__header">
+            <h2>Identity</h2>
+            <span class="tag">Core</span>
+          </div>
+          <div class="field">
+            <label>Full name</label>
+            <div class="input">Avery Jordan</div>
+          </div>
+          <div class="field">
+            <label>Role</label>
+            <div class="input">Research Program Manager</div>
+          </div>
+          <div class="field">
+            <label>Home airport</label>
+            <div class="input">SEA · Seattle Tacoma</div>
+          </div>
+          <div class="field field--split">
+            <div>
+              <label>Time zone</label>
+              <div class="input">Pacific (GMT-7)</div>
+            </div>
+            <div>
+              <label>Locale</label>
+              <div class="input">United States</div>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn btn--ghost" type="button">Discard</button>
+            <button class="btn" type="button">Save identity</button>
+          </div>
+        </section>
+
+        <section class="card card--notifications">
+          <div class="card__header">
+            <h2>Notifications</h2>
+            <span class="tag">Alerts</span>
+          </div>
+          <div class="toggle">
+            <div>
+              <div class="toggle__title">Trip status updates</div>
+              <div class="toggle__detail">Approvals, changes, and itinerary edits.</div>
+            </div>
+            <div class="toggle__pill toggle__pill--on">On</div>
+          </div>
+          <div class="toggle">
+            <div>
+              <div class="toggle__title">Expense reminders</div>
+              <div class="toggle__detail">Smart nudges after travel ends.</div>
+            </div>
+            <div class="toggle__pill">Off</div>
+          </div>
+          <div class="toggle">
+            <div>
+              <div class="toggle__title">Policy digests</div>
+              <div class="toggle__detail">Weekly summary of policy updates.</div>
+            </div>
+            <div class="toggle__pill toggle__pill--on">On</div>
+          </div>
+          <div class="actions">
+            <button class="btn btn--ghost" type="button">Reset</button>
+            <button class="btn" type="button">Save alerts</button>
+          </div>
+        </section>
+
+        <section class="card card--privacy">
+          <div class="card__header">
+            <h2>Privacy</h2>
+            <span class="tag">Visibility</span>
+          </div>
+          <div class="privacy-row">
+            <div>
+              <div class="privacy-row__title">Show travel history</div>
+              <div class="privacy-row__detail">Visible to managers and finance.</div>
+            </div>
+            <div class="chips">
+              <span class="chip chip--active">Team</span>
+              <span class="chip">Private</span>
+            </div>
+          </div>
+          <div class="privacy-row">
+            <div>
+              <div class="privacy-row__title">Share approvals timeline</div>
+              <div class="privacy-row__detail">Used for audit visibility.</div>
+            </div>
+            <div class="chips">
+              <span class="chip chip--active">On</span>
+              <span class="chip">Off</span>
+            </div>
+          </div>
+          <div class="privacy-row">
+            <div>
+              <div class="privacy-row__title">Allow profile lookup</div>
+              <div class="privacy-row__detail">Searchable by email or name.</div>
+            </div>
+            <div class="chips">
+              <span class="chip">Off</span>
+              <span class="chip chip--active">On</span>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn btn--ghost" type="button">Restore defaults</button>
+            <button class="btn" type="button">Save privacy</button>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
