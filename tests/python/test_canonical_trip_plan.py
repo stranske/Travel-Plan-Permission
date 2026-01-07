@@ -8,6 +8,7 @@ from pathlib import Path
 import travel_plan_permission.canonical as canonical
 from travel_plan_permission.canonical import (
     CanonicalTripPlan,
+    TripPlanInput,
     canonical_trip_plan_to_model,
     load_trip_plan_input,
     load_trip_plan_payload,
@@ -100,3 +101,20 @@ def test_load_trip_plan_payload_delegates_to_loader(monkeypatch) -> None:
         load_trip_plan_payload(payload)
 
     assert called["payload"]["type"] == "trip"
+
+
+def test_load_trip_plan_payload_returns_loader_plan(monkeypatch) -> None:
+    payload = _load_fixture()
+    base_plan = load_trip_plan_input(payload).plan
+    delegated_plan = base_plan.model_copy(update={"traveler_name": "Delegated Traveler"})
+
+    def _wrapped_loader(payload_dict: dict[str, object]) -> TripPlanInput:
+        return TripPlanInput(plan=delegated_plan)
+
+    monkeypatch.setattr(canonical, "load_trip_plan_input", _wrapped_loader)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        trip_plan = load_trip_plan_payload(payload)
+
+    assert trip_plan.traveler_name == "Delegated Traveler"

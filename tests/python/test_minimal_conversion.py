@@ -11,6 +11,7 @@ from travel_plan_permission import (
     load_trip_plan_input,
     trip_plan_from_minimal,
 )
+from travel_plan_permission.canonical import TripPlanInput
 
 
 def test_trip_plan_from_minimal_builds_plan() -> None:
@@ -119,3 +120,22 @@ def test_trip_plan_from_minimal_adds_type_before_loader(monkeypatch) -> None:
 
     assert "type" not in payload
     assert called["payload"]["type"] == "trip"
+
+
+def test_trip_plan_from_minimal_uses_loader_plan(monkeypatch) -> None:
+    payload = json.loads(
+        Path("tests/fixtures/sample_trip_plan_minimal.json").read_text(encoding="utf-8")
+    )
+    base_plan = load_trip_plan_input(payload).plan
+    delegated_plan = base_plan.model_copy(update={"traveler_name": "Delegated Traveler"})
+
+    def _wrapped_loader(payload_dict: dict[str, object]) -> TripPlanInput:
+        return TripPlanInput(plan=delegated_plan)
+
+    monkeypatch.setattr(conversion, "load_trip_plan_input", _wrapped_loader)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        plan = trip_plan_from_minimal(payload, trip_id="TRIP-4001")
+
+    assert plan.traveler_name == "Delegated Traveler"

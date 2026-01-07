@@ -163,7 +163,7 @@ Tasks
 Task Reconciliation (Issue 4 extras)
 
 - [x] Create a short alternatives note.
-- [x] Provide specific examples/tests that demonstrate delegation of logic for extra conversion helpers.
+- [x] Provide specific examples/tests that demonstrate delegation of logic for extra conversion helpers (tests/python/test_minimal_conversion.py, tests/python/test_canonical_trip_plan.py).
 
 Acceptance Criteria
 
