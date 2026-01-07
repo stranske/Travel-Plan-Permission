@@ -53,10 +53,15 @@ class RateLimitStrategy:
             reason = "endpoint_override"
         else:
             resolved_permission = permission or API_ENDPOINT_PERMISSIONS.get(endpoint)
-            tier = self.tiers_by_permission.get(resolved_permission, self.default_tier)
+            tier = (
+                self.tiers_by_permission.get(resolved_permission, self.default_tier)
+                if resolved_permission is not None
+                else self.default_tier
+            )
             reason = (
                 "permission_tier"
-                if resolved_permission in self.tiers_by_permission
+                if resolved_permission is not None
+                and resolved_permission in self.tiers_by_permission
                 else "default_tier"
             )
 
