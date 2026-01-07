@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Protocol
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from ..canonical import CanonicalTripPlan
 from ..models import TripPlan
@@ -20,6 +20,8 @@ from ..policy_api import (
 
 class TripState(BaseModel):
     """State container for the orchestration flow."""
+
+    model_config = ConfigDict(validate_assignment=True)
 
     plan_json: dict[str, object]
     canonical_plan: dict[str, object] | None = None

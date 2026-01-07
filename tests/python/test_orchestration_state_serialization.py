@@ -64,4 +64,6 @@ def test_trip_state_serializes_assigned_models(tmp_path: Path) -> None:
     state.plan_json = trip_input.plan
     state.canonical_plan = trip_input.canonical
 
+    assert isinstance(state.plan_json, dict)
+    assert isinstance(state.canonical_plan, dict)
     json.dumps(state.model_dump(mode="json"))
