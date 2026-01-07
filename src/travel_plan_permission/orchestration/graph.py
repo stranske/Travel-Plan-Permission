@@ -125,9 +125,9 @@ def run_policy_graph(
     graph = build_policy_graph(prefer_langgraph=prefer_langgraph)
     state = TripState(
         plan=plan.model_dump(mode="json"),
-        canonical_plan=canonical_plan.model_dump(mode="json")
-        if canonical_plan is not None
-        else None,
+        canonical_plan=(
+            canonical_plan.model_dump(mode="json") if canonical_plan is not None else None
+        ),
         spreadsheet_path=spreadsheet_path,
     )
     return graph.invoke(state)
