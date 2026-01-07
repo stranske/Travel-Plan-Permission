@@ -88,6 +88,13 @@ from .receipts import (
     ReceiptExtractionResult,
     ReceiptProcessor,
 )
+from .rate_limit import (
+    DEFAULT_RATE_LIMIT_STRATEGY,
+    DEFAULT_RATE_LIMIT_TIERS,
+    RateLimitPolicy,
+    RateLimitStrategy,
+    RateLimitTier,
+)
 from .security import (
     API_ENDPOINT_PERMISSIONS,
     DEFAULT_ROLES,
@@ -202,6 +209,11 @@ __all__ = [
     "ReceiptProcessor",
     "Question",
     "TemplateMapping",
+    "DEFAULT_RATE_LIMIT_STRATEGY",
+    "DEFAULT_RATE_LIMIT_TIERS",
+    "RateLimitPolicy",
+    "RateLimitStrategy",
+    "RateLimitTier",
     "build_approval_packet",
     "build_output_bundle",
     "generate_questions",
