@@ -5,7 +5,7 @@ import pytest
 
 from travel_plan_permission.canonical import CanonicalTripPlan, load_trip_plan_input
 from travel_plan_permission.models import TripPlan
-from travel_plan_permission.orchestration import run_policy_graph
+from travel_plan_permission.orchestration import build_policy_graph, run_policy_graph
 
 
 def _fixture_trip_input() -> tuple[TripPlan, CanonicalTripPlan | None]:
@@ -50,3 +50,11 @@ def test_policy_graph_langgraph_smoke(tmp_path: Path) -> None:
     assert state.policy_result.status == "fail"
     assert state.spreadsheet_path == output_path
     assert output_path.exists()
+
+
+def test_policy_graph_prefers_langgraph_when_available() -> None:
+    pytest.importorskip("langgraph")
+
+    graph = build_policy_graph(prefer_langgraph=True)
+
+    assert graph.__class__.__name__ == "_LangGraphPolicyGraph"
