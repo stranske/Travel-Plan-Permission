@@ -123,3 +123,53 @@ def test_decisions_logged_with_timestamp_and_rule() -> None:
     decision = evaluated.approval_decisions[0]
     assert decision.rule_name == "default_under_100"
     assert decision.timestamp.tzinfo is not None
+
+
+def test_evaluate_report_handles_empty_expenses() -> None:
+    """Empty reports should remain pending with no decisions."""
+
+    engine = ApprovalEngine.from_file()
+    report = ExpenseReport(
+        report_id="EXP-EMPTY-001",
+        trip_id="TRIP-EMPTY-001",
+        traveler_name="No Expenses",
+        expenses=[],
+    )
+
+    evaluated = engine.evaluate_report(report)
+
+    assert evaluated.approval_status == ApprovalStatus.PENDING
+    assert evaluated.approval_decisions == []
+
+
+def test_evaluate_report_flags_when_any_expense_flagged() -> None:
+    """Any flagged decision should mark the report as flagged."""
+
+    engine = ApprovalEngine.from_file()
+    report = ExpenseReport(
+        report_id="EXP-MIXED-001",
+        trip_id="TRIP-MIXED-001",
+        traveler_name="Mixed Decisions",
+        expenses=[
+            ExpenseItem(
+                category=ExpenseCategory.AIRFARE,
+                description="Shuttle",
+                amount=Decimal("45.00"),
+                expense_date=date(2025, 1, 1),
+            ),
+            ExpenseItem(
+                category=ExpenseCategory.LODGING,
+                description="Luxury suite",
+                amount=Decimal("7500.00"),
+                expense_date=date(2025, 1, 2),
+            ),
+        ],
+    )
+
+    evaluated = engine.evaluate_report(report)
+
+    assert evaluated.approval_status == ApprovalStatus.FLAGGED
+    assert {decision.status for decision in evaluated.approval_decisions} == {
+        ApprovalStatus.AUTO_APPROVED,
+        ApprovalStatus.FLAGGED,
+    }

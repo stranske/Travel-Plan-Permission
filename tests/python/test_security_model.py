@@ -83,6 +83,27 @@ def test_role_change_requires_admin_approval_and_is_logged() -> None:
     }
 
 
+def test_reject_role_change_updates_state_and_audit_log() -> None:
+    audit_log = AuditLog()
+    security = SecurityModel(audit_log=audit_log)
+    request = security.request_role_change(
+        requester="alice", target_user="bob", new_role=RoleName.POLICY_ADMIN
+    )
+
+    rejected_request = security.reject_role_change(
+        admin_actor="susan",
+        admin_role=RoleName.POLICY_ADMIN,
+        request_id=request.request_id,
+    )
+    assert rejected_request.state == RoleChangeState.REJECTED
+
+    outcomes = {event.outcome for event in audit_log.filter_by_type(AuditEventType.ROLE_CHANGE)}
+    assert outcomes == {
+        RoleChangeState.PENDING_APPROVAL.value,
+        RoleChangeState.REJECTED.value,
+    }
+
+
 def test_audit_log_captures_authentication_and_authorization_events() -> None:
     audit_log = AuditLog()
     audit_log.record(
@@ -111,3 +132,10 @@ def test_sso_plan_supports_major_providers() -> None:
         assert plan.token_endpoint
         assert plan.jwks_uri
         assert plan.supports_pkce is True
+
+
+def test_required_permission_raises_for_unknown_endpoint() -> None:
+    security = SecurityModel()
+
+    with pytest.raises(KeyError):
+        security.required_permission("DELETE /api/unknown")
