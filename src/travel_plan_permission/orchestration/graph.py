@@ -32,6 +32,8 @@ class TripState(BaseModel):
     def _coerce_plan(cls, value: object) -> dict[str, object]:
         if isinstance(value, TripPlan):
             return value.model_dump(mode="json")
+        if isinstance(value, dict):
+            return TripPlan.model_validate(value).model_dump(mode="json")
         return value  # type: ignore[return-value]
 
     @field_validator("canonical_plan", mode="before")
@@ -41,6 +43,8 @@ class TripState(BaseModel):
             return None
         if isinstance(value, CanonicalTripPlan):
             return value.model_dump(mode="json")
+        if isinstance(value, dict):
+            return CanonicalTripPlan.model_validate(value).model_dump(mode="json")
         return value  # type: ignore[return-value]
 
     @field_validator("spreadsheet_path", mode="before")
