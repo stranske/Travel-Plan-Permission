@@ -33,6 +33,11 @@ from .models import (
     determine_exception_approval_level,
     profile_exception_dashboard,
 )
+from .notification_preferences import (
+    NotificationPreferences,
+    NotificationPreferenceStore,
+    NotificationPreferencesUpdate,
+)
 from .policy import (
     AdvanceBookingRule,
     CabinClassRule,
@@ -170,6 +175,9 @@ __all__ = [
     "QUESTION_FLOW",
     "MealPerDiemRule",
     "NonReimbursableRule",
+    "NotificationPreferenceStore",
+    "NotificationPreferences",
+    "NotificationPreferencesUpdate",
     "PolicyContext",
     "PolicyEngine",
     "PolicyResult",
