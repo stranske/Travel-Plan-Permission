@@ -98,6 +98,12 @@ def main() -> int:
         raise RuntimeError("No policy result returned from orchestration graph.")
 
     print(f"Policy status: {state.policy_result['status']}")
+    if state.policy_missing_inputs:
+        print("Missing policy inputs:")
+        print(json.dumps(state.policy_missing_inputs, indent=2))
+    if state.unfilled_mapping_report is not None:
+        print("Unfilled mapping report:")
+        print(json.dumps(state.unfilled_mapping_report, indent=2))
     print(f"Spreadsheet: {state.spreadsheet_path}")
     return 0
 

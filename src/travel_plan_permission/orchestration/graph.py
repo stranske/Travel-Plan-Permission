@@ -12,10 +12,13 @@ from ..canonical import CanonicalTripPlan
 from ..models import TripPlan
 from ..policy_api import (
     PolicyCheckResult,
+    UnfilledMappingReport,
+    _context_from_plan,
     check_trip_plan,
     fill_travel_spreadsheet,
     render_travel_spreadsheet_bytes,
 )
+from ..policy_lite import RuleDiagnostic, diagnose_missing_inputs
 
 
 class TripState(BaseModel):
@@ -26,6 +29,8 @@ class TripState(BaseModel):
     plan_json: dict[str, object]
     canonical_plan: dict[str, object] | None = None
     policy_result: dict[str, object] | None = None
+    policy_missing_inputs: list[dict[str, object]] = Field(default_factory=list)
+    unfilled_mapping_report: dict[str, list[dict[str, object]]] | None = None
     spreadsheet_path: str | None = None
     errors: list[str] = Field(default_factory=list)
 
@@ -69,6 +74,34 @@ class TripState(BaseModel):
             return PolicyCheckResult.model_validate(value).model_dump(mode="json")
         return value  # type: ignore[return-value]
 
+    @field_validator("policy_missing_inputs", mode="before")
+    @classmethod
+    def _coerce_policy_missing_inputs(cls, value: object) -> list[dict[str, object]]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            normalized: list[dict[str, object]] = []
+            for entry in value:
+                if isinstance(entry, RuleDiagnostic):
+                    normalized.append(_serialize_policy_missing_input(entry))
+                elif isinstance(entry, dict):
+                    normalized.append(entry)
+            return normalized
+        return value  # type: ignore[return-value]
+
+    @field_validator("unfilled_mapping_report", mode="before")
+    @classmethod
+    def _coerce_unfilled_mapping_report(
+        cls, value: object
+    ) -> dict[str, list[dict[str, object]]] | None:
+        if value is None:
+            return None
+        if isinstance(value, UnfilledMappingReport):
+            return _serialize_unfilled_mapping_report(value)
+        if isinstance(value, dict):
+            return value
+        return value  # type: ignore[return-value]
+
     @field_serializer("plan_json", mode="plain")
     def _serialize_plan(self, value: object) -> dict[str, object]:
         if isinstance(value, TripPlan):
@@ -85,6 +118,26 @@ class TripState(BaseModel):
     def _serialize_spreadsheet_path(self, value: object) -> str | None:
         if isinstance(value, Path):
             return str(value)
+        return value  # type: ignore[return-value]
+
+    @field_serializer("policy_missing_inputs", mode="plain")
+    def _serialize_policy_missing_inputs(self, value: object) -> list[dict[str, object]]:
+        if isinstance(value, list):
+            serialized: list[dict[str, object]] = []
+            for entry in value:
+                if isinstance(entry, RuleDiagnostic):
+                    serialized.append(_serialize_policy_missing_input(entry))
+                elif isinstance(entry, dict):
+                    serialized.append(entry)
+            return serialized
+        return value  # type: ignore[return-value]
+
+    @field_serializer("unfilled_mapping_report", mode="plain")
+    def _serialize_unfilled_mapping_report(
+        self, value: object
+    ) -> dict[str, list[dict[str, object]]] | None:
+        if isinstance(value, UnfilledMappingReport):
+            return _serialize_unfilled_mapping_report(value)
         return value  # type: ignore[return-value]
 
 
@@ -111,14 +164,18 @@ def _load_canonical_plan(state: TripState) -> CanonicalTripPlan | None:
 
 def _policy_check_node(state: TripState) -> TripState:
     plan = _load_plan(state)
+    context = _context_from_plan(plan)
+    diagnostics = diagnose_missing_inputs(context)
     result = check_trip_plan(plan)
     state.policy_result = result.model_dump(mode="json")
+    state.policy_missing_inputs = diagnostics
     return state
 
 
 def _spreadsheet_node(state: TripState) -> TripState:
     plan = _load_plan(state)
     canonical_plan = _load_canonical_plan(state)
+    report = UnfilledMappingReport()
     output_path = (
         Path(state.spreadsheet_path)
         if state.spreadsheet_path is not None
@@ -128,6 +185,7 @@ def _spreadsheet_node(state: TripState) -> TripState:
         spreadsheet_bytes = render_travel_spreadsheet_bytes(
             plan,
             canonical_plan=canonical_plan,
+            report=report,
         )
         output_path.write_bytes(spreadsheet_bytes)
         state.spreadsheet_path = str(output_path)
@@ -136,9 +194,44 @@ def _spreadsheet_node(state: TripState) -> TripState:
             plan,
             output_path,
             canonical_plan=canonical_plan,
+            report=report,
         )
         state.spreadsheet_path = str(output_path)
+    state.unfilled_mapping_report = report
     return state
+
+
+def _serialize_policy_missing_input(diagnostic: RuleDiagnostic) -> dict[str, object]:
+    return {
+        "rule_id": diagnostic.rule_id,
+        "missing_fields": list(diagnostic.missing_fields),
+        "message": diagnostic.message,
+    }
+
+
+def _serialize_unfilled_mapping_report(
+    report: UnfilledMappingReport,
+) -> dict[str, list[dict[str, object]]]:
+    def serialize_entries(entries: list[object]) -> list[dict[str, object]]:
+        serialized: list[dict[str, object]] = []
+        for entry in entries:
+            if hasattr(entry, "field") and hasattr(entry, "cell") and hasattr(entry, "reason"):
+                serialized.append(
+                    {
+                        "field": entry.field,
+                        "cell": entry.cell,
+                        "reason": entry.reason,
+                    }
+                )
+            elif isinstance(entry, dict):
+                serialized.append(entry)
+        return serialized
+
+    return {
+        "cells": serialize_entries(report.cells),
+        "dropdowns": serialize_entries(report.dropdowns),
+        "checkboxes": serialize_entries(report.checkboxes),
+    }
 
 
 class _SimplePolicyGraph:

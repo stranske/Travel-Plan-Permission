@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 
 from openpyxl import load_workbook
+import pytest
 
 import travel_plan_permission.policy_api as policy_api
 from travel_plan_permission import (
@@ -172,6 +173,42 @@ def test_fill_travel_spreadsheet_uses_mapping_cells(tmp_path, monkeypatch) -> No
     assert sheet["Z101"].value == 200.0
     assert sheet["Z101"].number_format == "$#,##0.00"
     workbook.close()
+
+
+@pytest.mark.filterwarnings("ignore:.*PydanticSerializationUnexpectedValue.*")
+def test_unfilled_mapping_report_tracks_missing_and_invalid(monkeypatch) -> None:
+    plan = TripPlan.model_construct(
+        trip_id="TRIP-XL-REPORT",
+        traveler_name="Jordan Lee",
+        destination="Austin, TX 78701",
+        departure_date=123,
+        return_date=123,
+        purpose="Conference planning",
+        estimated_cost=Decimal("1200.00"),
+        expense_breakdown={ExpenseCategory.CONFERENCE_FEES: object()},
+    )
+    mapping = TemplateMapping(
+        version="ITIN-2025.1",
+        cells={
+            "event_registration_cost": "B2",
+            "depart_date": "B3",
+            "nonexistent_field": "B4",
+        },
+        dropdowns={},
+        checkboxes={},
+        formulas={},
+        metadata={},
+    )
+    report = policy_api.UnfilledMappingReport()
+
+    monkeypatch.setattr(policy_api, "load_template_mapping", lambda: mapping)
+
+    policy_api.render_travel_spreadsheet_bytes(plan, report=report)
+
+    observed = {(entry.field, entry.reason) for entry in report.cells}
+    assert ("event_registration_cost", "invalid_currency") in observed
+    assert ("depart_date", "invalid_date") in observed
+    assert ("nonexistent_field", "missing") in observed
 
 
 def test_fill_travel_spreadsheet_uses_template_metadata(tmp_path, monkeypatch) -> None:
