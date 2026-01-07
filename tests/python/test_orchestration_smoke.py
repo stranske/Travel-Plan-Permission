@@ -68,6 +68,8 @@ def test_policy_graph_records_missing_policy_inputs(tmp_path: Path) -> None:
     assert "advance_booking" in rule_ids
     advance_booking = next(entry for entry in missing if entry.get("rule_id") == "advance_booking")
     assert "booking_date" in advance_booking.get("missing_fields", [])
+    assert isinstance(advance_booking.get("missing_fields"), list)
+    assert advance_booking.get("message", "").startswith("Missing required inputs:")
 
 
 @pytest.mark.filterwarnings("ignore:Pydantic serializer warnings.*:UserWarning")
@@ -119,6 +121,7 @@ def test_spreadsheet_node_records_unfilled_mapping_report_entries(
 
     report = state.unfilled_mapping_report
     assert report is not None
+    assert set(report.keys()) == {"cells", "dropdowns", "checkboxes"}
     cells = {(entry["field"], entry["reason"]) for entry in report["cells"]}
     assert ("event_registration_cost", "invalid_currency") in cells
     assert ("depart_date", "invalid_date") in cells
