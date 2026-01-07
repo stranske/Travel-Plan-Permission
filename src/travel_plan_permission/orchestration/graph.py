@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from ..canonical import CanonicalTripPlan
 from ..models import TripPlan
@@ -21,13 +21,71 @@ from ..policy_api import (
 class TripState(BaseModel):
     """State container for the orchestration flow."""
 
-    plan: TripPlan
-    canonical_plan: CanonicalTripPlan | None = None
-    policy_result: PolicyCheckResult | None = None
-    spreadsheet_path: Path | None = None
+    model_config = ConfigDict(validate_assignment=True)
+
+    plan_json: dict[str, object]
+    canonical_plan: dict[str, object] | None = None
+    policy_result: dict[str, object] | None = None
+    spreadsheet_path: str | None = None
     errors: list[str] = Field(default_factory=list)
 
-    model_config = {"arbitrary_types_allowed": True}
+    @field_validator("plan_json", mode="before")
+    @classmethod
+    def _coerce_plan(cls, value: object) -> dict[str, object]:
+        if isinstance(value, TripPlan):
+            return value.model_dump(mode="json")
+        if isinstance(value, dict):
+            return TripPlan.model_validate(value).model_dump(mode="json")
+        return value  # type: ignore[return-value]
+
+    @field_validator("canonical_plan", mode="before")
+    @classmethod
+    def _coerce_canonical_plan(cls, value: object) -> dict[str, object] | None:
+        if value is None:
+            return None
+        if isinstance(value, CanonicalTripPlan):
+            return value.model_dump(mode="json")
+        if isinstance(value, dict):
+            return CanonicalTripPlan.model_validate(value).model_dump(mode="json")
+        return value  # type: ignore[return-value]
+
+    @field_validator("spreadsheet_path", mode="before")
+    @classmethod
+    def _coerce_spreadsheet_path(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, Path):
+            return str(value)
+        return value  # type: ignore[return-value]
+
+    @field_validator("policy_result", mode="before")
+    @classmethod
+    def _coerce_policy_result(cls, value: object) -> dict[str, object] | None:
+        if value is None:
+            return None
+        if isinstance(value, PolicyCheckResult):
+            return value.model_dump(mode="json")
+        if isinstance(value, dict):
+            return PolicyCheckResult.model_validate(value).model_dump(mode="json")
+        return value  # type: ignore[return-value]
+
+    @field_serializer("plan_json", mode="plain")
+    def _serialize_plan(self, value: object) -> dict[str, object]:
+        if isinstance(value, TripPlan):
+            return value.model_dump(mode="json")
+        return value  # type: ignore[return-value]
+
+    @field_serializer("canonical_plan", mode="plain")
+    def _serialize_canonical_plan(self, value: object) -> dict[str, object] | None:
+        if isinstance(value, CanonicalTripPlan):
+            return value.model_dump(mode="json")
+        return value  # type: ignore[return-value]
+
+    @field_serializer("spreadsheet_path", mode="plain")
+    def _serialize_spreadsheet_path(self, value: object) -> str | None:
+        if isinstance(value, Path):
+            return str(value)
+        return value  # type: ignore[return-value]
 
 
 class PolicyGraph(Protocol):
@@ -41,26 +99,45 @@ def _default_spreadsheet_path(plan: TripPlan) -> Path:
     return temp_dir / f"{plan.trip_id}_request.xlsx"
 
 
+def _load_plan(state: TripState) -> TripPlan:
+    return TripPlan.model_validate(state.plan_json)
+
+
+def _load_canonical_plan(state: TripState) -> CanonicalTripPlan | None:
+    if state.canonical_plan is None:
+        return None
+    return CanonicalTripPlan.model_validate(state.canonical_plan)
+
+
 def _policy_check_node(state: TripState) -> TripState:
-    state.policy_result = check_trip_plan(state.plan)
+    plan = _load_plan(state)
+    result = check_trip_plan(plan)
+    state.policy_result = result.model_dump(mode="json")
     return state
 
 
 def _spreadsheet_node(state: TripState) -> TripState:
-    output_path = state.spreadsheet_path or _default_spreadsheet_path(state.plan)
+    plan = _load_plan(state)
+    canonical_plan = _load_canonical_plan(state)
+    output_path = (
+        Path(state.spreadsheet_path)
+        if state.spreadsheet_path is not None
+        else _default_spreadsheet_path(plan)
+    )
     if state.spreadsheet_path is None:
         spreadsheet_bytes = render_travel_spreadsheet_bytes(
-            state.plan,
-            canonical_plan=state.canonical_plan,
+            plan,
+            canonical_plan=canonical_plan,
         )
         output_path.write_bytes(spreadsheet_bytes)
-        state.spreadsheet_path = output_path
+        state.spreadsheet_path = str(output_path)
     else:
-        state.spreadsheet_path = fill_travel_spreadsheet(
-            state.plan,
+        output_path = fill_travel_spreadsheet(
+            plan,
             output_path,
-            canonical_plan=state.canonical_plan,
+            canonical_plan=canonical_plan,
         )
+        state.spreadsheet_path = str(output_path)
     return state
 
 
@@ -105,11 +182,13 @@ def run_policy_graph(
 ) -> TripState:
     """Run the policy graph over a trip plan and return the final state."""
 
-    spreadsheet_path = Path(output_path) if output_path is not None else None
+    spreadsheet_path = str(Path(output_path)) if output_path is not None else None
     graph = build_policy_graph(prefer_langgraph=prefer_langgraph)
     state = TripState(
-        plan=plan,
-        canonical_plan=canonical_plan,
+        plan_json=plan.model_dump(mode="json"),
+        canonical_plan=(
+            canonical_plan.model_dump(mode="json") if canonical_plan is not None else None
+        ),
         spreadsheet_path=spreadsheet_path,
     )
     return graph.invoke(state)

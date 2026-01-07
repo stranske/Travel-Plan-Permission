@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -21,6 +22,11 @@ def test_policy_graph_smoke(tmp_path: Path) -> None:
     state = run_policy_graph(plan, output_path=output_path, prefer_langgraph=False)
 
     assert state.policy_result is not None
-    assert state.policy_result.status == "fail"
-    assert state.spreadsheet_path == output_path
+    assert isinstance(state.policy_result, dict)
+    assert state.policy_result["status"] == "fail"
+    assert state.spreadsheet_path == str(output_path)
     assert output_path.exists()
+    serialized = state.model_dump(mode="json")
+    assert isinstance(serialized["policy_result"], dict)
+    assert serialized["policy_result"]["status"] == "fail"
+    json.dumps(serialized)
