@@ -8,6 +8,7 @@ from .approval_packet import (
     build_approval_packet,
     generate_packet_pdf,
 )
+from .canonical import load_trip_plan_input
 from .conversion import trip_plan_from_minimal
 from .export import ExportService
 from .mapping import DEFAULT_TEMPLATE_VERSION, TemplateMapping, load_template_mapping
@@ -206,6 +207,7 @@ __all__ = [
     "TripPlan",
     "TripStatus",
     "trip_plan_from_minimal",
+    "load_trip_plan_input",
     "determine_exception_approval_level",
     "ValidationAdvanceBookingRule",
     "ValidationComparison",

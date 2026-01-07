@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import warnings
 from decimal import Decimal
 from pathlib import Path
 
+import travel_plan_permission.canonical as canonical
 from travel_plan_permission.canonical import (
     CanonicalTripPlan,
+    TripPlanInput,
     canonical_trip_plan_to_model,
+    load_trip_plan_input,
     load_trip_plan_payload,
 )
 from travel_plan_permission.models import ExpenseCategory, TripPlan
@@ -50,9 +54,67 @@ def test_canonical_conversion_builds_trip_plan() -> None:
 def test_load_trip_plan_payload_handles_canonical() -> None:
     payload = _load_fixture()
 
-    trip_plan = load_trip_plan_payload(payload)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        trip_plan = load_trip_plan_payload(payload)
 
     assert isinstance(trip_plan, TripPlan)
     assert trip_plan.trip_id.startswith("TRIP-")
     assert trip_plan.traveler_name == payload["traveler_name"]
     assert trip_plan.destination.endswith(payload["destination_zip"])
+
+
+def test_load_trip_plan_payload_matches_loader() -> None:
+    payload = _load_fixture()
+
+    plan_input = load_trip_plan_input(payload)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        trip_plan = load_trip_plan_payload(payload)
+
+    assert trip_plan.model_dump() == plan_input.plan.model_dump()
+
+
+def test_canonical_trip_plan_to_model_matches_loader() -> None:
+    payload = _load_fixture()
+
+    canonical_plan = CanonicalTripPlan.model_validate(payload)
+    trip_plan = canonical_trip_plan_to_model(canonical_plan)
+    plan_input = load_trip_plan_input(payload)
+
+    assert trip_plan.model_dump() == plan_input.plan.model_dump()
+
+
+def test_load_trip_plan_payload_delegates_to_loader(monkeypatch) -> None:
+    payload = _load_fixture()
+    called: dict[str, dict[str, object]] = {}
+    original_loader = canonical.load_trip_plan_input
+
+    def _wrapped_loader(payload_dict: dict[str, object]) -> object:
+        called["payload"] = payload_dict
+        return original_loader(payload_dict)
+
+    monkeypatch.setattr(canonical, "load_trip_plan_input", _wrapped_loader)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        load_trip_plan_payload(payload)
+
+    assert called["payload"]["type"] == "trip"
+
+
+def test_load_trip_plan_payload_returns_loader_plan(monkeypatch) -> None:
+    payload = _load_fixture()
+    base_plan = load_trip_plan_input(payload).plan
+    delegated_plan = base_plan.model_copy(update={"traveler_name": "Delegated Traveler"})
+
+    def _wrapped_loader(_payload_dict: dict[str, object]) -> TripPlanInput:
+        return TripPlanInput(plan=delegated_plan)
+
+    monkeypatch.setattr(canonical, "load_trip_plan_input", _wrapped_loader)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        trip_plan = load_trip_plan_payload(payload)
+
+    assert trip_plan.traveler_name == "Delegated Traveler"
