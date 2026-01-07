@@ -244,5 +244,107 @@
     setStatus("Photo saved locally with your crop.");
   });
 
+  const runMobileAudit = () => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("audit") !== "mobile") {
+      return;
+    }
+
+    const minTarget = 44;
+    const auditTargets = [
+      { selector: ".btn", label: "Button" },
+      { selector: ".chip", label: "Chip" },
+      { selector: ".toggle__pill", label: "Toggle pill" },
+      { selector: ".avatar__frame canvas", label: "Avatar canvas" },
+      { selector: ".slider__input", label: "Range input" },
+    ];
+    const findings = [];
+
+    auditTargets.forEach(({ selector, label }) => {
+      document.querySelectorAll(selector).forEach((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width >= minTarget && rect.height >= minTarget) {
+          return;
+        }
+
+        element.classList.add("audit--small-target");
+        const name =
+          element.getAttribute("aria-label") ||
+          element.textContent.trim() ||
+          label;
+        findings.push(
+          `${label}: "${name}" is ${Math.round(rect.width)}x${Math.round(
+            rect.height,
+          )}px.`,
+        );
+      });
+    });
+
+    const panel = document.createElement("aside");
+    panel.className = "audit-panel";
+
+    const title = document.createElement("div");
+    title.className = "audit-panel__title";
+    title.textContent = "Mobile audit";
+
+    const subtitle = document.createElement("div");
+    subtitle.className = "audit-panel__subtitle";
+    subtitle.textContent = "Targets under 44px are outlined.";
+
+    const list = document.createElement("ul");
+    list.className = "audit-panel__list";
+
+    if (findings.length === 0) {
+      const item = document.createElement("li");
+      item.textContent = "No touch targets under 44px detected.";
+      list.appendChild(item);
+    } else {
+      findings.forEach((finding) => {
+        const item = document.createElement("li");
+        item.textContent = finding;
+        list.appendChild(item);
+      });
+    }
+
+    panel.appendChild(title);
+    panel.appendChild(subtitle);
+    panel.appendChild(list);
+    document.body.appendChild(panel);
+  };
+
+  const initNavMenu = () => {
+    const nav = document.querySelector(".site-nav");
+    const toggle = document.querySelector(".site-nav__toggle");
+    const menu = document.getElementById("siteNavMenu");
+
+    if (!nav || !toggle || !menu) {
+      return;
+    }
+
+    const setOpen = (nextState) => {
+      nav.dataset.open = nextState ? "true" : "false";
+      toggle.setAttribute("aria-expanded", nextState ? "true" : "false");
+    };
+
+    toggle.addEventListener("click", () => {
+      const isOpen = nav.dataset.open === "true";
+      setOpen(!isOpen);
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!nav.contains(event.target)) {
+        setOpen(false);
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    });
+  };
+
   drawImage();
+  initNavMenu();
+  runMobileAudit();
 })();
