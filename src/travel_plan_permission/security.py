@@ -80,7 +80,6 @@ API_ENDPOINT_PERMISSIONS: dict[str, Permission] = {
     "POST /api/approvals/delegate": Permission.APPROVE,
     "POST /api/exports/expenses": Permission.EXPORT,
     "GET /api/exports/audit": Permission.EXPORT,
-    "POST /api/notifications/preferences": Permission.CREATE,
     "POST /api/policy/version": Permission.CONFIGURE,
     "POST /api/policy/rules": Permission.CONFIGURE,
     "POST /api/admin/roles": Permission.CONFIGURE,
