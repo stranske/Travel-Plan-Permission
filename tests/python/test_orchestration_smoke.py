@@ -3,8 +3,13 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from travel_plan_permission.models import TripPlan
+import pytest
+
+from travel_plan_permission import policy_api
+from travel_plan_permission.models import ExpenseCategory, TripPlan
 from travel_plan_permission.orchestration import run_policy_graph
+from travel_plan_permission.orchestration import graph as orchestration_graph
+from travel_plan_permission.mapping import TemplateMapping
 
 
 def test_policy_graph_smoke(tmp_path: Path) -> None:
@@ -56,3 +61,58 @@ def test_policy_graph_records_missing_policy_inputs(tmp_path: Path) -> None:
     assert "advance_booking" in rule_ids
     advance_booking = next(entry for entry in missing if entry.get("rule_id") == "advance_booking")
     assert "booking_date" in advance_booking.get("missing_fields", [])
+
+
+@pytest.mark.filterwarnings("ignore:Pydantic serializer warnings.*:UserWarning")
+def test_spreadsheet_node_records_unfilled_mapping_report_entries(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    plan = TripPlan(
+        trip_id="TRIP-ORCH-REPORT",
+        traveler_name="Jordan Lee",
+        destination="Austin, TX 78701",
+        departure_date=date(2025, 4, 10),
+        return_date=date(2025, 4, 12),
+        purpose="Conference planning",
+        estimated_cost=Decimal("1200.00"),
+    )
+    invalid_plan = TripPlan.model_construct(
+        trip_id=plan.trip_id,
+        traveler_name=plan.traveler_name,
+        destination=plan.destination,
+        departure_date=123,
+        return_date=123,
+        purpose=plan.purpose,
+        estimated_cost=plan.estimated_cost,
+        expense_breakdown={ExpenseCategory.CONFERENCE_FEES: object()},
+    )
+    mapping = TemplateMapping(
+        version="ITIN-2025.1",
+        cells={
+            "event_registration_cost": "B2",
+            "depart_date": "B3",
+            "nonexistent_field": "B4",
+        },
+        dropdowns={},
+        checkboxes={},
+        formulas={},
+        metadata={},
+    )
+    output_path = tmp_path / "travel_request.xlsx"
+    state = orchestration_graph.TripState(
+        plan_json=plan.model_dump(mode="json"),
+        spreadsheet_path=output_path,
+    )
+
+    monkeypatch.setattr(policy_api, "load_template_mapping", lambda: mapping)
+    monkeypatch.setattr(orchestration_graph, "_load_plan", lambda _: invalid_plan)
+
+    state = orchestration_graph._spreadsheet_node(state)
+
+    report = state.unfilled_mapping_report
+    assert report is not None
+    cells = {(entry["field"], entry["reason"]) for entry in report["cells"]}
+    assert ("event_registration_cost", "invalid_currency") in cells
+    assert ("depart_date", "invalid_date") in cells
+    assert ("nonexistent_field", "missing") in cells

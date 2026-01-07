@@ -3,6 +3,8 @@ from pathlib import Path
 
 from travel_plan_permission.canonical import load_trip_plan_input
 from travel_plan_permission.orchestration import TripState
+from travel_plan_permission.policy_api import UnfilledMappingReport
+from travel_plan_permission.policy_lite import RuleDiagnostic
 from travel_plan_permission.policy_api import check_trip_plan
 
 
@@ -113,4 +115,80 @@ def test_trip_state_coerces_assigned_policy_result(tmp_path: Path) -> None:
 
     assert isinstance(state.policy_result, dict)
     assert state.policy_result["status"] == policy_result.status
+    json.dumps(state.model_dump(mode="json"))
+
+
+def test_trip_state_coerces_assigned_policy_missing_inputs(tmp_path: Path) -> None:
+    fixture_path = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
+    )
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    trip_input = load_trip_plan_input(payload)
+    spreadsheet_path = tmp_path / "travel_request.xlsx"
+
+    state = TripState(
+        plan_json=trip_input.plan.model_dump(mode="json"),
+        canonical_plan=(
+            trip_input.canonical.model_dump(mode="json") if trip_input.canonical else None
+        ),
+        spreadsheet_path=str(spreadsheet_path),
+    )
+
+    state.policy_missing_inputs = [
+        RuleDiagnostic(
+            rule_id="advance_booking",
+            missing_fields=["booking_date"],
+            message="Missing required inputs: booking_date (rule 'advance_booking').",
+        )
+    ]
+
+    assert state.policy_missing_inputs == [
+        {
+            "rule_id": "advance_booking",
+            "missing_fields": ["booking_date"],
+            "message": "Missing required inputs: booking_date (rule 'advance_booking').",
+        }
+    ]
+    json.dumps(state.model_dump(mode="json"))
+
+
+def test_trip_state_coerces_assigned_unfilled_mapping_report(tmp_path: Path) -> None:
+    fixture_path = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
+    )
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    trip_input = load_trip_plan_input(payload)
+    spreadsheet_path = tmp_path / "travel_request.xlsx"
+
+    state = TripState(
+        plan_json=trip_input.plan.model_dump(mode="json"),
+        canonical_plan=(
+            trip_input.canonical.model_dump(mode="json") if trip_input.canonical else None
+        ),
+        spreadsheet_path=str(spreadsheet_path),
+    )
+
+    report = UnfilledMappingReport()
+    report.add("cells", "event_registration_cost", "B2", "invalid_currency")
+    report.add("dropdowns", "department", "B3", "missing")
+
+    state.unfilled_mapping_report = report
+
+    assert state.unfilled_mapping_report == {
+        "cells": [
+            {
+                "field": "event_registration_cost",
+                "cell": "B2",
+                "reason": "invalid_currency",
+            }
+        ],
+        "dropdowns": [
+            {
+                "field": "department",
+                "cell": "B3",
+                "reason": "missing",
+            }
+        ],
+        "checkboxes": [],
+    }
     json.dumps(state.model_dump(mode="json"))
