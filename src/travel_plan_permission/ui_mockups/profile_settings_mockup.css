@@ -7,6 +7,7 @@
   --sky: #cfe6ec;
   --shadow: 0 18px 45px rgba(37, 31, 26, 0.18);
   --radius: 24px;
+  --touch-target: 48px;
 }
 
 *,
@@ -104,8 +105,8 @@ body {
   background: #f0e4d9;
   color: var(--ink);
   border-radius: 999px;
-  padding: 10px 16px;
-  min-height: 44px;
+  padding: 12px 18px;
+  min-height: var(--touch-target);
   font-size: 0.9rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -121,9 +122,9 @@ body {
 .site-nav__link {
   text-decoration: none;
   color: var(--ink);
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-radius: 999px;
-  min-height: 44px;
+  min-height: var(--touch-target);
   font-size: 0.9rem;
   background: rgba(230, 216, 204, 0.4);
   display: inline-flex;
@@ -138,8 +139,8 @@ body {
 .site-nav__cta {
   border: none;
   border-radius: 999px;
-  padding: 10px 16px;
-  min-height: 44px;
+  padding: 12px 18px;
+  min-height: var(--touch-target);
   background: var(--teal);
   color: #fff;
   font-size: 0.9rem;
@@ -317,7 +318,7 @@ body {
 .slider__input {
   width: 100%;
   accent-color: var(--copper);
-  height: 8px;
+  height: 12px;
 }
 
 .field {
@@ -333,10 +334,13 @@ body {
 }
 
 .field .input {
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-radius: 14px;
   background: #f4eee7;
   font-size: 0.95rem;
+  min-height: var(--touch-target);
+  display: flex;
+  align-items: center;
 }
 
 .field--split {
@@ -350,7 +354,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px;
+  padding: 16px;
+  min-height: var(--touch-target);
   border-radius: 16px;
   background: #f6f0ea;
 }
@@ -365,12 +370,16 @@ body {
 }
 
 .toggle__pill {
-  min-width: 54px;
-  padding: 6px 12px;
+  min-width: 64px;
+  min-height: 36px;
+  padding: 8px 14px;
   border-radius: 999px;
   text-align: center;
   background: #e7ded5;
   font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .toggle__pill--on {
@@ -403,13 +412,17 @@ body {
 .chips {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .chip {
-  padding: 6px 14px;
+  padding: 8px 16px;
+  min-height: 40px;
   border-radius: 999px;
   background: #ece1d8;
   font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
 }
 
 .chip--active {
@@ -427,7 +440,8 @@ body {
 .btn {
   border: none;
   border-radius: 999px;
-  padding: 10px 18px;
+  padding: 12px 18px;
+  min-height: var(--touch-target);
   background: var(--ink);
   color: #fff;
   font-size: 0.9rem;
