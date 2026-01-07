@@ -170,7 +170,9 @@ def _policy_check_node(state: TripState) -> TripState:
     diagnostics = diagnose_missing_inputs(context)
     result = check_trip_plan(plan)
     state.policy_result = result.model_dump(mode="json")
-    state.policy_missing_inputs = diagnostics  # type: ignore[assignment]
+    state.policy_missing_inputs = [
+        _serialize_policy_missing_input(diagnostic) for diagnostic in diagnostics
+    ]
     return state
 
 

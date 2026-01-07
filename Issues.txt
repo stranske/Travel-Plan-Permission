@@ -214,27 +214,17 @@ Changing policy rule logic.
 
 Tasks
 
- Extend TripState to include:
-
-policy_missing_inputs (list/dict, JSON-safe)
-
-unfilled_mapping_report (JSON-safe summary)
-
- In the policy node:
-
-compute diagnostics and attach to state (using context extraction + diagnose_missing_inputs)
-
- In the spreadsheet node:
-
-instantiate a UnfilledMappingReport, pass it into spreadsheet fill/render, store a serialized form in state
-
- Update orchestration example to print/report these diagnostics.
-
- Add tests that confirm:
-
-diagnostics are present when expected (missing inputs scenario)
-
-mapping report includes missing/invalid entries in a controlled fixture scenario
+- [x] Extend TripState to include:
+- [x] policy_missing_inputs (list/dict, JSON-safe)
+- [x] unfilled_mapping_report (JSON-safe summary)
+- [x] In the policy node:
+- [x] compute diagnostics and attach to state (using context extraction + diagnose_missing_inputs)
+- [x] In the spreadsheet node:
+- [x] instantiate a UnfilledMappingReport, pass it into spreadsheet fill/render, store a serialized form in state
+- [x] Update orchestration example to print/report these diagnostics.
+- [x] Add tests that confirm:
+- [x] diagnostics are present when expected (missing inputs scenario)
+- [x] mapping report includes missing/invalid entries in a controlled fixture scenario
 
 Acceptance Criteria
 
