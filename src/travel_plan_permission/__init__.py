@@ -20,6 +20,7 @@ from .models import (
     ApprovalStatus,
     ExceptionApprovalLevel,
     ExceptionApprovalRecord,
+    ExceptionDashboardProfile,
     ExceptionRequest,
     ExceptionStatus,
     ExceptionType,
@@ -30,6 +31,7 @@ from .models import (
     TripStatus,
     build_exception_dashboard,
     determine_exception_approval_level,
+    profile_exception_dashboard,
 )
 from .notification_preferences import (
     NotificationPreferences,
@@ -149,6 +151,7 @@ __all__ = [
     "ApprovalStatus",
     "ExceptionApprovalLevel",
     "ExceptionApprovalRecord",
+    "ExceptionDashboardProfile",
     "ExceptionRequest",
     "ExceptionStatus",
     "ExceptionType",
@@ -169,6 +172,7 @@ __all__ = [
     "ExpenseItem",
     "ExpenseReport",
     "build_exception_dashboard",
+    "profile_exception_dashboard",
     "Receipt",
     "ExportService",
     "FareComparisonRule",

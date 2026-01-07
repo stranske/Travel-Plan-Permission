@@ -120,6 +120,19 @@ def _format_cost_breakdown(costs: Mapping[str, Decimal]) -> list[list[str]]:
     return rows
 
 
+def _chunk_history(
+    approval_history: Sequence[ApprovalEvent], entries_per_page: int
+) -> list[Sequence[ApprovalEvent]]:
+    if entries_per_page <= 0:
+        raise ValueError("entries_per_page must be a positive integer")
+    if not approval_history:
+        return [()]
+    return [
+        approval_history[index : index + entries_per_page]
+        for index in range(0, len(approval_history), entries_per_page)
+    ]
+
+
 def generate_packet_pdf(
     *,
     trip_plan: TripPlan,
@@ -173,37 +186,36 @@ def generate_packet_pdf(
         )
     )
     elements.append(cost_table)
+    elements.append(Spacer(1, 0.2 * inch))
 
-    if len(cost_rows) + len(approval_history) > entries_per_page:
-        elements.append(PageBreak())
-    else:
-        elements.append(Spacer(1, 0.2 * inch))
+    for index, chunk in enumerate(_chunk_history(approval_history, entries_per_page)):
+        if index > 0:
+            elements.append(PageBreak())
+        elements.append(Paragraph("Approval and override history", styles["Heading2"]))
+        history_rows = [["Approver", "Level", "Outcome", "Timestamp", "Justification"]]
+        for event in chunk:
+            history_rows.append(
+                [
+                    event.approver_id,
+                    event.level,
+                    event.outcome.value,
+                    event.timestamp.isoformat(),
+                    event.justification or "",
+                ]
+            )
 
-    elements.append(Paragraph("Approval and override history", styles["Heading2"]))
-    history_rows = [["Approver", "Level", "Outcome", "Timestamp", "Justification"]]
-    for event in approval_history:
-        history_rows.append(
-            [
-                event.approver_id,
-                event.level,
-                event.outcome.value,
-                event.timestamp.isoformat(),
-                event.justification or "",
-            ]
+        history_table = Table(history_rows, hAlign="LEFT", repeatRows=1)
+        history_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
         )
-
-    history_table = Table(history_rows, hAlign="LEFT", repeatRows=1)
-    history_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ]
-        )
-    )
-    elements.append(history_table)
+        elements.append(history_table)
 
     doc.build(elements)
     return buffer.getvalue()
