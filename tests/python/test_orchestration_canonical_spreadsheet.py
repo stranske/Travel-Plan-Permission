@@ -21,7 +21,7 @@ def test_policy_graph_retains_canonical_fields(tmp_path: Path) -> None:
         prefer_langgraph=False,
     )
 
-    assert state.spreadsheet_path == output_path
+    assert state.spreadsheet_path == str(output_path)
 
     workbook = load_workbook(output_path)
     sheet = workbook.active
@@ -31,3 +31,21 @@ def test_policy_graph_retains_canonical_fields(tmp_path: Path) -> None:
     assert sheet["B12"].value == "88 Mission St"
     assert sheet["D12"].value == "San Francisco, CA"
     workbook.close()
+
+
+def test_policy_graph_state_is_json_serializable(tmp_path: Path) -> None:
+    fixture_path = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
+    )
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    trip_input = load_trip_plan_input(payload)
+
+    output_path = tmp_path / "travel_request.xlsx"
+    state = run_policy_graph(
+        trip_input.plan,
+        canonical_plan=trip_input.canonical,
+        output_path=output_path,
+        prefer_langgraph=False,
+    )
+
+    json.dumps(state.model_dump(mode="json"))
