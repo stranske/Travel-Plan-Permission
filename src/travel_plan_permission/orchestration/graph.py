@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field
 
 from ..canonical import CanonicalTripPlan
 from ..models import TripPlan
-from ..policy_api import PolicyCheckResult, check_trip_plan, fill_travel_spreadsheet
+from ..policy_api import (
+    PolicyCheckResult,
+    check_trip_plan,
+    fill_travel_spreadsheet,
+    render_travel_spreadsheet_bytes,
+)
 
 
 class TripState(BaseModel):
@@ -43,11 +48,19 @@ def _policy_check_node(state: TripState) -> TripState:
 
 def _spreadsheet_node(state: TripState) -> TripState:
     output_path = state.spreadsheet_path or _default_spreadsheet_path(state.plan)
-    state.spreadsheet_path = fill_travel_spreadsheet(
-        state.plan,
-        output_path,
-        canonical_plan=state.canonical_plan,
-    )
+    if state.spreadsheet_path is None:
+        spreadsheet_bytes = render_travel_spreadsheet_bytes(
+            state.plan,
+            canonical_plan=state.canonical_plan,
+        )
+        output_path.write_bytes(spreadsheet_bytes)
+        state.spreadsheet_path = output_path
+    else:
+        state.spreadsheet_path = fill_travel_spreadsheet(
+            state.plan,
+            output_path,
+            canonical_plan=state.canonical_plan,
+        )
     return state
 
 
