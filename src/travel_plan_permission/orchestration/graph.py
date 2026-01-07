@@ -86,8 +86,8 @@ def _build_langgraph() -> PolicyGraph | None:
     except ImportError:
         return None
 
-    END = getattr(langgraph_graph, "END")
-    StateGraph = getattr(langgraph_graph, "StateGraph")
+    END = langgraph_graph.END
+    StateGraph = langgraph_graph.StateGraph
 
     graph = StateGraph(TripState)
     graph.add_node("policy_check", _policy_check_node)
