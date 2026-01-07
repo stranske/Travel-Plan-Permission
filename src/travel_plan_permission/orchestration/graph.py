@@ -70,6 +70,14 @@ class TripState(BaseModel):
             return value.model_dump(mode="json")
         return value  # type: ignore[return-value]
 
+    @field_serializer("policy_result", mode="plain")
+    def _serialize_policy_result(self, value: object) -> dict[str, object] | None:
+        if value is None:
+            return None
+        if isinstance(value, PolicyCheckResult):
+            return value.model_dump(mode="json")
+        return PolicyCheckResult.model_validate(value).model_dump(mode="json")
+
     @field_serializer("spreadsheet_path", mode="plain")
     def _serialize_spreadsheet_path(self, value: object) -> str | None:
         if isinstance(value, Path):

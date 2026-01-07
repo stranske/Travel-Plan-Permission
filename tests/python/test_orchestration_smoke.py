@@ -25,4 +25,7 @@ def test_policy_graph_smoke(tmp_path: Path) -> None:
     assert state.policy_result.status == "fail"
     assert state.spreadsheet_path == str(output_path)
     assert output_path.exists()
-    json.dumps(state.model_dump(mode="json"))
+    serialized = state.model_dump(mode="json")
+    assert isinstance(serialized["policy_result"], dict)
+    assert serialized["policy_result"]["status"] == "fail"
+    json.dumps(serialized)
