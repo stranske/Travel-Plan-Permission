@@ -36,11 +36,11 @@ Example payload (matches the canonical schema):
 The canonical schema is a lightweight payload used for early UI or LLM intake.
 Convert it into `TripPlan` before calling policy APIs.
 
-## Conversion process (minimal intake -> TripPlan)
+## Conversion process (canonical intake -> TripPlan)
 
-Use `trip_plan_from_minimal` in `src/travel_plan_permission/conversion.py` (or
-`canonical_trip_plan_to_model` in `src/travel_plan_permission/canonical.py`) to
-map the canonical JSON schema to the internal `TripPlan`. This function:
+Use `load_trip_plan_input` from `src/travel_plan_permission/canonical.py` to
+validate the canonical JSON schema and convert it into the internal `TripPlan`.
+This loader:
 
 - Builds `destination` from `city_state` + `destination_zip`.
 - Maps `business_purpose` to `TripPlan.purpose`.
@@ -52,18 +52,23 @@ Example:
 import json
 from pathlib import Path
 
-from travel_plan_permission import trip_plan_from_minimal
+from travel_plan_permission import load_trip_plan_input
 
 payload = json.loads(
     Path("tests/fixtures/sample_trip_plan_minimal.json").read_text(encoding="utf-8")
 )
 
-plan = trip_plan_from_minimal(
-    payload,
-    trip_id="TRIP-1001",
-    origin_city="Austin, TX",
-)
+plan_input = load_trip_plan_input(payload)
+plan = plan_input.plan
 ```
+
+Alternatives (advanced/legacy only):
+
+- `canonical_trip_plan_to_model` accepts an already-validated `CanonicalTripPlan`.
+- `trip_plan_from_minimal` is deprecated; it delegates to `load_trip_plan_input`
+  and only applies overrides like `trip_id` or `origin_city`.
+- `load_trip_plan_payload` is deprecated; it delegates to `load_trip_plan_input`
+  and returns only the `TripPlan`.
 
 ## Run the minimal LangGraph flow locally
 

@@ -9,7 +9,6 @@ from decimal import Decimal
 from pathlib import Path
 
 from ..canonical import TripPlanInput, load_trip_plan_input
-from ..conversion import trip_plan_from_minimal
 from ..models import ExpenseCategory, TripPlan
 from .graph import run_policy_graph
 
@@ -67,10 +66,12 @@ def _plan_input_from_minimal(
     origin_city: str | None,
 ) -> TripPlanInput:
     payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("type") == "trip":
-        return load_trip_plan_input(payload)
-    plan = trip_plan_from_minimal(payload, trip_id=trip_id, origin_city=origin_city)
-    return TripPlanInput(plan=plan)
+    plan_input = load_trip_plan_input(payload)
+    overrides: dict[str, object] = {"trip_id": trip_id}
+    if origin_city is not None:
+        overrides["origin_city"] = origin_city
+    plan = plan_input.plan.model_copy(update=overrides)
+    return TripPlanInput(plan=plan, canonical=plan_input.canonical)
 
 
 def main() -> int:

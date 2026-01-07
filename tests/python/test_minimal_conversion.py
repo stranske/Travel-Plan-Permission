@@ -1,9 +1,17 @@
 import json
+import warnings
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from travel_plan_permission import ExpenseCategory, trip_plan_from_minimal
+import travel_plan_permission.conversion as conversion
+from travel_plan_permission import (
+    ExpenseCategory,
+    TripStatus,
+    load_trip_plan_input,
+    trip_plan_from_minimal,
+)
+from travel_plan_permission.canonical import TripPlanInput
 
 
 def test_trip_plan_from_minimal_builds_plan() -> None:
@@ -11,11 +19,13 @@ def test_trip_plan_from_minimal_builds_plan() -> None:
         Path("tests/fixtures/sample_trip_plan_minimal.json").read_text(encoding="utf-8")
     )
 
-    plan = trip_plan_from_minimal(
-        payload,
-        trip_id="TRIP-1001",
-        origin_city="Austin, TX",
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        plan = trip_plan_from_minimal(
+            payload,
+            trip_id="TRIP-1001",
+            origin_city="Austin, TX",
+        )
 
     assert plan.trip_id == "TRIP-1001"
     assert plan.traveler_name == payload["traveler_name"]
@@ -36,3 +46,96 @@ def test_trip_plan_from_minimal_builds_plan() -> None:
     assert plan.expense_breakdown[ExpenseCategory.LODGING] == expected_lodging
     assert plan.expense_breakdown[ExpenseCategory.CONFERENCE_FEES] == expected_fees
     assert plan.expense_breakdown[ExpenseCategory.GROUND_TRANSPORT] == expected_parking
+
+
+def test_trip_plan_from_minimal_applies_overrides() -> None:
+    payload = json.loads(
+        Path("tests/fixtures/sample_trip_plan_minimal.json").read_text(encoding="utf-8")
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        plan = trip_plan_from_minimal(
+            payload,
+            trip_id="TRIP-3001",
+            status=TripStatus.SUBMITTED,
+            origin_city="Seattle, WA",
+        )
+
+    assert plan.trip_id == "TRIP-3001"
+    assert plan.status == TripStatus.SUBMITTED
+    assert plan.origin_city == "Seattle, WA"
+
+
+def test_trip_plan_from_minimal_matches_canonical_loader() -> None:
+    payload = json.loads(
+        Path("tests/fixtures/sample_trip_plan_minimal.json").read_text(encoding="utf-8")
+    )
+
+    plan_input = load_trip_plan_input(payload)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        plan = trip_plan_from_minimal(payload, trip_id=plan_input.plan.trip_id)
+
+    assert plan.model_dump() == plan_input.plan.model_dump()
+
+
+def test_trip_plan_from_minimal_delegates_to_loader(monkeypatch) -> None:
+    payload = json.loads(
+        Path("tests/fixtures/sample_trip_plan_minimal.json").read_text(encoding="utf-8")
+    )
+    called: dict[str, dict[str, object]] = {}
+    original_loader = conversion.load_trip_plan_input
+
+    def _wrapped_loader(payload_dict: dict[str, object]) -> object:
+        called["payload"] = payload_dict
+        return original_loader(payload_dict)
+
+    monkeypatch.setattr(conversion, "load_trip_plan_input", _wrapped_loader)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        trip_plan_from_minimal(payload, trip_id="TRIP-2002")
+
+    assert called["payload"]["type"] == "trip"
+
+
+def test_trip_plan_from_minimal_adds_type_before_loader(monkeypatch) -> None:
+    payload = json.loads(
+        Path("tests/fixtures/sample_trip_plan_minimal.json").read_text(encoding="utf-8")
+    )
+    payload.pop("type", None)
+    called: dict[str, dict[str, object]] = {}
+    original_loader = conversion.load_trip_plan_input
+
+    def _wrapped_loader(payload_dict: dict[str, object]) -> object:
+        called["payload"] = payload_dict
+        return original_loader(payload_dict)
+
+    monkeypatch.setattr(conversion, "load_trip_plan_input", _wrapped_loader)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        trip_plan_from_minimal(payload, trip_id="TRIP-2003")
+
+    assert "type" not in payload
+    assert called["payload"]["type"] == "trip"
+
+
+def test_trip_plan_from_minimal_uses_loader_plan(monkeypatch) -> None:
+    payload = json.loads(
+        Path("tests/fixtures/sample_trip_plan_minimal.json").read_text(encoding="utf-8")
+    )
+    base_plan = load_trip_plan_input(payload).plan
+    delegated_plan = base_plan.model_copy(update={"traveler_name": "Delegated Traveler"})
+
+    def _wrapped_loader(_payload_dict: dict[str, object]) -> TripPlanInput:
+        return TripPlanInput(plan=delegated_plan)
+
+    monkeypatch.setattr(conversion, "load_trip_plan_input", _wrapped_loader)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        plan = trip_plan_from_minimal(payload, trip_id="TRIP-4001")
+
+    assert plan.traveler_name == "Delegated Traveler"
