@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import warnings
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -176,4 +177,9 @@ def load_trip_plan_input(payload: dict[str, object]) -> TripPlanInput:
 def load_trip_plan_payload(payload: dict[str, object]) -> TripPlan:
     """Load either canonical schema payloads or internal TripPlan payloads."""
 
+    warnings.warn(
+        "load_trip_plan_payload is deprecated; use load_trip_plan_input instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return load_trip_plan_input(payload).plan
