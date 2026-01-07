@@ -8,6 +8,7 @@ from pathlib import Path
 from travel_plan_permission.canonical import (
     CanonicalTripPlan,
     canonical_trip_plan_to_model,
+    load_trip_plan_input,
     load_trip_plan_payload,
 )
 from travel_plan_permission.models import ExpenseCategory, TripPlan
@@ -59,3 +60,14 @@ def test_load_trip_plan_payload_handles_canonical() -> None:
     assert trip_plan.trip_id.startswith("TRIP-")
     assert trip_plan.traveler_name == payload["traveler_name"]
     assert trip_plan.destination.endswith(payload["destination_zip"])
+
+
+def test_load_trip_plan_payload_matches_loader() -> None:
+    payload = _load_fixture()
+
+    plan_input = load_trip_plan_input(payload)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        trip_plan = load_trip_plan_payload(payload)
+
+    assert trip_plan.model_dump() == plan_input.plan.model_dump()
