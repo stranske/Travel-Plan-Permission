@@ -244,5 +244,74 @@
     setStatus("Photo saved locally with your crop.");
   });
 
+  const runMobileAudit = () => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("audit") !== "mobile") {
+      return;
+    }
+
+    const minTarget = 44;
+    const auditTargets = [
+      { selector: ".btn", label: "Button" },
+      { selector: ".chip", label: "Chip" },
+      { selector: ".toggle__pill", label: "Toggle pill" },
+      { selector: ".avatar__frame canvas", label: "Avatar canvas" },
+      { selector: ".slider__input", label: "Range input" },
+    ];
+    const findings = [];
+
+    auditTargets.forEach(({ selector, label }) => {
+      document.querySelectorAll(selector).forEach((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width >= minTarget && rect.height >= minTarget) {
+          return;
+        }
+
+        element.classList.add("audit--small-target");
+        const name =
+          element.getAttribute("aria-label") ||
+          element.textContent.trim() ||
+          label;
+        findings.push(
+          `${label}: "${name}" is ${Math.round(rect.width)}x${Math.round(
+            rect.height,
+          )}px.`,
+        );
+      });
+    });
+
+    const panel = document.createElement("aside");
+    panel.className = "audit-panel";
+
+    const title = document.createElement("div");
+    title.className = "audit-panel__title";
+    title.textContent = "Mobile audit";
+
+    const subtitle = document.createElement("div");
+    subtitle.className = "audit-panel__subtitle";
+    subtitle.textContent = "Targets under 44px are outlined.";
+
+    const list = document.createElement("ul");
+    list.className = "audit-panel__list";
+
+    if (findings.length === 0) {
+      const item = document.createElement("li");
+      item.textContent = "No touch targets under 44px detected.";
+      list.appendChild(item);
+    } else {
+      findings.forEach((finding) => {
+        const item = document.createElement("li");
+        item.textContent = finding;
+        list.appendChild(item);
+      });
+    }
+
+    panel.appendChild(title);
+    panel.appendChild(subtitle);
+    panel.appendChild(list);
+    document.body.appendChild(panel);
+  };
+
   drawImage();
+  runMobileAudit();
 })();
