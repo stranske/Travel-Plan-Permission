@@ -191,3 +191,30 @@ def test_trip_state_coerces_assigned_unfilled_mapping_report(tmp_path: Path) -> 
         "checkboxes": [],
     }
     json.dumps(state.model_dump(mode="json"))
+
+
+def test_trip_state_accepts_dict_unfilled_mapping_report(tmp_path: Path) -> None:
+    fixture_path = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
+    )
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    trip_input = load_trip_plan_input(payload)
+    spreadsheet_path = tmp_path / "travel_request.xlsx"
+
+    state = TripState(
+        plan_json=trip_input.plan.model_dump(mode="json"),
+        canonical_plan=(
+            trip_input.canonical.model_dump(mode="json") if trip_input.canonical else None
+        ),
+        spreadsheet_path=str(spreadsheet_path),
+    )
+
+    report = {
+        "cells": [{"field": "purpose", "cell": "B5", "reason": "missing"}],
+        "dropdowns": [],
+        "checkboxes": [],
+    }
+    state.unfilled_mapping_report = report
+
+    assert state.unfilled_mapping_report == report
+    json.dumps(state.model_dump(mode="json"))
