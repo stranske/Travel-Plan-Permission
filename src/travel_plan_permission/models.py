@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from time import perf_counter
 from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, Field
@@ -295,67 +292,10 @@ class ExceptionRequest(BaseModel):
         return True
 
 
-class LazyExceptionDashboard(Mapping[str, dict[str, int]]):
-    """Lazily compute dashboard widgets when accessed."""
-
-    def __init__(self, requests: list[ExceptionRequest]) -> None:
-        self._requests = requests
-        self._cache: dict[str, dict[str, int]] = {}
-
-    def __getitem__(self, key: str) -> dict[str, int]:
-        if key in self._cache:
-            return self._cache[key]
-        if key == "by_type":
-            value = self._build_by_type()
-        elif key == "by_requestor":
-            value = self._build_by_requestor()
-        elif key == "by_approver":
-            value = self._build_by_approver()
-        else:
-            raise KeyError(key)
-        self._cache[key] = value
-        return value
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(("by_type", "by_requestor", "by_approver"))
-
-    def __len__(self) -> int:
-        return 3
-
-    def materialize(self) -> dict[str, dict[str, int]]:
-        """Compute all widgets and return a fully built dashboard."""
-
-        return {key: self[key] for key in self}
-
-    def _build_by_type(self) -> dict[str, int]:
-        by_type: Counter[str] = Counter()
-        for request in self._requests:
-            by_type[request.type.value] += 1
-        return dict(by_type)
-
-    def _build_by_requestor(self) -> dict[str, int]:
-        by_requestor: Counter[str] = Counter()
-        for request in self._requests:
-            by_requestor[request.requestor] += 1
-        return dict(by_requestor)
-
-    def _build_by_approver(self) -> dict[str, int]:
-        by_approver: Counter[str] = Counter()
-        for request in self._requests:
-            if request.approval is not None:
-                by_approver[request.approval.approver_id] += 1
-        return dict(by_approver)
-
-
 def build_exception_dashboard(
     requests: list[ExceptionRequest],
-    *,
-    lazy: bool = True,
-) -> Mapping[str, dict[str, int]]:
+) -> dict[str, dict[str, int]]:
     """Aggregate exception patterns for reporting surfaces."""
-
-    if lazy:
-        return LazyExceptionDashboard(requests)
 
     by_type: Counter[str] = Counter()
     by_requestor: Counter[str] = Counter()
@@ -372,37 +312,6 @@ def build_exception_dashboard(
         "by_requestor": dict(by_requestor),
         "by_approver": dict(by_approver),
     }
-
-
-@dataclass(frozen=True)
-class ExceptionDashboardProfile:
-    """Performance profile for dashboard aggregation."""
-
-    request_count: int
-    elapsed_seconds: float
-    requests_per_second: float
-
-
-def profile_exception_dashboard(
-    requests: list[ExceptionRequest],
-    *,
-    timer: Callable[[], float] | None = None,
-) -> tuple[Mapping[str, dict[str, int]], ExceptionDashboardProfile]:
-    """Profile dashboard aggregation timing and throughput."""
-
-    perf_timer = timer or perf_counter
-    start = perf_timer()
-    dashboard = build_exception_dashboard(requests)
-    if isinstance(dashboard, LazyExceptionDashboard):
-        dashboard = dashboard.materialize()
-    elapsed = perf_timer() - start
-    request_count = len(requests)
-    throughput = request_count / elapsed if elapsed > 0 else 0.0
-    return dashboard, ExceptionDashboardProfile(
-        request_count=request_count,
-        elapsed_seconds=elapsed,
-        requests_per_second=throughput,
-    )
 
 
 class TripPlan(BaseModel):
