@@ -71,3 +71,13 @@ def test_load_trip_plan_payload_matches_loader() -> None:
         trip_plan = load_trip_plan_payload(payload)
 
     assert trip_plan.model_dump() == plan_input.plan.model_dump()
+
+
+def test_canonical_trip_plan_to_model_matches_loader() -> None:
+    payload = _load_fixture()
+
+    canonical_plan = CanonicalTripPlan.model_validate(payload)
+    trip_plan = canonical_trip_plan_to_model(canonical_plan)
+    plan_input = load_trip_plan_input(payload)
+
+    assert trip_plan.model_dump() == plan_input.plan.model_dump()
