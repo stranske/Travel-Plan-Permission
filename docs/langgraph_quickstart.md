@@ -67,6 +67,8 @@ Alternatives (advanced/legacy only):
 - `canonical_trip_plan_to_model` accepts an already-validated `CanonicalTripPlan`.
 - `trip_plan_from_minimal` is deprecated; it delegates to `load_trip_plan_input`
   and only applies overrides like `trip_id` or `origin_city`.
+- `load_trip_plan_payload` is deprecated; it delegates to `load_trip_plan_input`
+  and returns only the `TripPlan`.
 
 ## Run the minimal LangGraph flow locally
 
