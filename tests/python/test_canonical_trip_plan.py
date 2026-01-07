@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from decimal import Decimal
 from pathlib import Path
 
@@ -50,7 +51,9 @@ def test_canonical_conversion_builds_trip_plan() -> None:
 def test_load_trip_plan_payload_handles_canonical() -> None:
     payload = _load_fixture()
 
-    trip_plan = load_trip_plan_payload(payload)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        trip_plan = load_trip_plan_payload(payload)
 
     assert isinstance(trip_plan, TripPlan)
     assert trip_plan.trip_id.startswith("TRIP-")

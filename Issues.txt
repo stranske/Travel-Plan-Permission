@@ -150,15 +150,15 @@ Removing useful flexibility like allowing overrides (trip_id, origin_city) unles
 
 Tasks
 
- Designate the blessed API (recommended: load_trip_plan_input() from canonical.py).
+- [x] Designate the blessed API (recommended: load_trip_plan_input() from canonical.py).
 
- Update trip_plan_from_minimal to be a wrapper around canonical validation + conversion, applying overrides via TripPlan.model_copy(update=...) (or equivalent).
+- [x] Update trip_plan_from_minimal to be a wrapper around canonical validation + conversion, applying overrides via TripPlan.model_copy(update=...) (or equivalent).
 
- Update docs (docs/langgraph_quickstart.md) to reference one path, and move the rest into a short “alternatives” note (or deprecate).
+- [x] Update docs (docs/langgraph_quickstart.md) to reference one path, and move the rest into a short “alternatives” note (or deprecate).
 
- Update orchestration example to use the blessed loader/converter.
+- [x] Update orchestration example to use the blessed loader/converter.
 
- Add/update a test asserting the wrapper and the canonical loader produce consistent results for the same payload.
+- [x] Add/update a test asserting the wrapper and the canonical loader produce consistent results for the same payload.
 
 Acceptance Criteria
 
