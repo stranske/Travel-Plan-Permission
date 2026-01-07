@@ -21,13 +21,11 @@ from ..policy_api import (
 class TripState(BaseModel):
     """State container for the orchestration flow."""
 
-    plan: TripPlan
-    canonical_plan: CanonicalTripPlan | None = None
+    plan: dict[str, object]
+    canonical_plan: dict[str, object] | None = None
     policy_result: PolicyCheckResult | None = None
-    spreadsheet_path: Path | None = None
+    spreadsheet_path: str | None = None
     errors: list[str] = Field(default_factory=list)
-
-    model_config = {"arbitrary_types_allowed": True}
 
 
 class PolicyGraph(Protocol):
@@ -41,26 +39,44 @@ def _default_spreadsheet_path(plan: TripPlan) -> Path:
     return temp_dir / f"{plan.trip_id}_request.xlsx"
 
 
+def _load_plan(state: TripState) -> TripPlan:
+    return TripPlan.model_validate(state.plan)
+
+
+def _load_canonical_plan(state: TripState) -> CanonicalTripPlan | None:
+    if state.canonical_plan is None:
+        return None
+    return CanonicalTripPlan.model_validate(state.canonical_plan)
+
+
 def _policy_check_node(state: TripState) -> TripState:
-    state.policy_result = check_trip_plan(state.plan)
+    plan = _load_plan(state)
+    state.policy_result = check_trip_plan(plan)
     return state
 
 
 def _spreadsheet_node(state: TripState) -> TripState:
-    output_path = state.spreadsheet_path or _default_spreadsheet_path(state.plan)
+    plan = _load_plan(state)
+    canonical_plan = _load_canonical_plan(state)
+    output_path = (
+        Path(state.spreadsheet_path)
+        if state.spreadsheet_path is not None
+        else _default_spreadsheet_path(plan)
+    )
     if state.spreadsheet_path is None:
         spreadsheet_bytes = render_travel_spreadsheet_bytes(
-            state.plan,
-            canonical_plan=state.canonical_plan,
+            plan,
+            canonical_plan=canonical_plan,
         )
         output_path.write_bytes(spreadsheet_bytes)
-        state.spreadsheet_path = output_path
+        state.spreadsheet_path = str(output_path)
     else:
-        state.spreadsheet_path = fill_travel_spreadsheet(
-            state.plan,
+        output_path = fill_travel_spreadsheet(
+            plan,
             output_path,
-            canonical_plan=state.canonical_plan,
+            canonical_plan=canonical_plan,
         )
+        state.spreadsheet_path = str(output_path)
     return state
 
 
@@ -105,11 +121,13 @@ def run_policy_graph(
 ) -> TripState:
     """Run the policy graph over a trip plan and return the final state."""
 
-    spreadsheet_path = Path(output_path) if output_path is not None else None
+    spreadsheet_path = str(Path(output_path)) if output_path is not None else None
     graph = build_policy_graph(prefer_langgraph=prefer_langgraph)
     state = TripState(
-        plan=plan,
-        canonical_plan=canonical_plan,
+        plan=plan.model_dump(mode="json"),
+        canonical_plan=canonical_plan.model_dump(mode="json")
+        if canonical_plan is not None
+        else None,
         spreadsheet_path=spreadsheet_path,
     )
     return graph.invoke(state)
