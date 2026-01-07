@@ -108,7 +108,7 @@ def test_load_trip_plan_payload_returns_loader_plan(monkeypatch) -> None:
     base_plan = load_trip_plan_input(payload).plan
     delegated_plan = base_plan.model_copy(update={"traveler_name": "Delegated Traveler"})
 
-    def _wrapped_loader(payload_dict: dict[str, object]) -> TripPlanInput:
+    def _wrapped_loader(_payload_dict: dict[str, object]) -> TripPlanInput:
         return TripPlanInput(plan=delegated_plan)
 
     monkeypatch.setattr(canonical, "load_trip_plan_input", _wrapped_loader)
