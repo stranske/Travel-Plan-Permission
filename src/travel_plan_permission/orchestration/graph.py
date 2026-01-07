@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import importlib
 import tempfile
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -148,11 +149,29 @@ class _SimplePolicyGraph:
         return state
 
 
+class _LangGraphPolicyGraph:
+    def __init__(self, compiled: Any) -> None:
+        self._compiled = compiled
+
+    def invoke(self, state: TripState) -> TripState:
+        result = self._compiled.invoke(state)
+        if isinstance(result, TripState):
+            return result
+        if isinstance(result, dict):
+            if hasattr(TripState, "model_validate"):
+                return TripState.model_validate(result)
+            return TripState.parse_obj(result)
+        return cast(TripState, result)
+
+
 def _build_langgraph() -> PolicyGraph | None:
     try:
-        from langgraph.graph import END, StateGraph  # type: ignore[import-not-found]
+        langgraph_graph = importlib.import_module("langgraph.graph")
     except ImportError:
         return None
+
+    END = langgraph_graph.END
+    StateGraph = langgraph_graph.StateGraph
 
     graph = StateGraph(TripState)
     graph.add_node("policy_check", _policy_check_node)
@@ -160,7 +179,8 @@ def _build_langgraph() -> PolicyGraph | None:
     graph.add_edge("policy_check", "spreadsheet")
     graph.add_edge("spreadsheet", END)
     graph.set_entry_point("policy_check")
-    return graph.compile()  # type: ignore[no-any-return]
+    compiled = graph.compile()
+    return _LangGraphPolicyGraph(compiled)
 
 
 def build_policy_graph(*, prefer_langgraph: bool = True) -> PolicyGraph:

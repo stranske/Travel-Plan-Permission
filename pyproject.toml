@@ -36,6 +36,7 @@ dev = [
     "pandas>=2.0.0",
     "pyarrow>=10.0.0",
     "hypothesis>=6.0.0",
+    "langgraph>=0.2.0",
 ]
 ocr = [
     "Pillow>=10.0.0",
