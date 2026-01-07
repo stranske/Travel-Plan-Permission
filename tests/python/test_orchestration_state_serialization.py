@@ -19,5 +19,7 @@ def test_trip_state_coerces_plans_to_json(tmp_path: Path) -> None:
         spreadsheet_path=spreadsheet_path,
     )
 
+    assert isinstance(state.plan_json, dict)
+    assert isinstance(state.canonical_plan, dict)
     assert state.spreadsheet_path == str(spreadsheet_path)
     json.dumps(state.model_dump(mode="json"))
