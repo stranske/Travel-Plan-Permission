@@ -150,7 +150,7 @@ class _SimplePolicyGraph:
 
 def _build_langgraph() -> PolicyGraph | None:
     try:
-        from langgraph.graph import END, StateGraph
+        from langgraph.graph import END, StateGraph  # type: ignore[import-not-found]
     except ImportError:
         return None
 
@@ -160,7 +160,7 @@ def _build_langgraph() -> PolicyGraph | None:
     graph.add_edge("policy_check", "spreadsheet")
     graph.add_edge("spreadsheet", END)
     graph.set_entry_point("policy_check")
-    return graph.compile()  # type: ignore[return-value]
+    return graph.compile()  # type: ignore[no-any-return,return-value]
 
 
 def build_policy_graph(*, prefer_langgraph: bool = True) -> PolicyGraph:
