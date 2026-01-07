@@ -1,0 +1,23 @@
+name: ChatGPT Sync Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      raw_input:
+        description: "Small pasted topic list"
+        required: false
+        type: string
+
+jobs:
+  sync:
+    uses: stranske/Workflows/.github/workflows/agents-63-issue-intake.yml@main
+    with:
+      intake_mode: "chatgpt_sync"
+      raw_input: ${{ inputs.raw_input || '' }}
+      source: ''
+      source_url: ''
+      debug: 'false'
+      apply_langchain_formatting: 'false'
+    secrets:
+      service_bot_pat: ${{ secrets.SERVICE_BOT_PAT }}
+      owner_pr_pat: ${{ secrets.OWNER_PR_PAT }}
