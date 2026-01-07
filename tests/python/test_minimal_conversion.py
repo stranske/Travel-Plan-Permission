@@ -73,3 +73,25 @@ def test_trip_plan_from_minimal_delegates_to_loader(monkeypatch) -> None:
         trip_plan_from_minimal(payload, trip_id="TRIP-2002")
 
     assert called["payload"]["type"] == "trip"
+
+
+def test_trip_plan_from_minimal_adds_type_before_loader(monkeypatch) -> None:
+    payload = json.loads(
+        Path("tests/fixtures/sample_trip_plan_minimal.json").read_text(encoding="utf-8")
+    )
+    payload.pop("type", None)
+    called: dict[str, dict[str, object]] = {}
+    original_loader = conversion.load_trip_plan_input
+
+    def _wrapped_loader(payload_dict: dict[str, object]) -> object:
+        called["payload"] = payload_dict
+        return original_loader(payload_dict)
+
+    monkeypatch.setattr(conversion, "load_trip_plan_input", _wrapped_loader)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        trip_plan_from_minimal(payload, trip_id="TRIP-2003")
+
+    assert "type" not in payload
+    assert called["payload"]["type"] == "trip"
