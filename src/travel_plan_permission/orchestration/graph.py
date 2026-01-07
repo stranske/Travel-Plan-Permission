@@ -43,6 +43,15 @@ class TripState(BaseModel):
             return value.model_dump(mode="json")
         return value  # type: ignore[return-value]
 
+    @field_validator("spreadsheet_path", mode="before")
+    @classmethod
+    def _coerce_spreadsheet_path(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, Path):
+            return str(value)
+        return value  # type: ignore[return-value]
+
 
 class PolicyGraph(Protocol):
     """Minimal interface for invoking orchestration graphs."""

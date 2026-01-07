@@ -11,11 +11,13 @@ def test_trip_state_coerces_plans_to_json(tmp_path: Path) -> None:
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
+    spreadsheet_path = tmp_path / "travel_request.xlsx"
 
     state = TripState(
         plan_json=trip_input.plan,
         canonical_plan=trip_input.canonical,
-        spreadsheet_path=str(tmp_path / "travel_request.xlsx"),
+        spreadsheet_path=spreadsheet_path,
     )
 
+    assert state.spreadsheet_path == str(spreadsheet_path)
     json.dumps(state.model_dump(mode="json"))
