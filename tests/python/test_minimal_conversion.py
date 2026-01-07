@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+import travel_plan_permission.conversion as conversion
 from travel_plan_permission import ExpenseCategory, load_trip_plan_input, trip_plan_from_minimal
 
 
@@ -52,3 +53,23 @@ def test_trip_plan_from_minimal_matches_canonical_loader() -> None:
         plan = trip_plan_from_minimal(payload, trip_id=plan_input.plan.trip_id)
 
     assert plan.model_dump() == plan_input.plan.model_dump()
+
+
+def test_trip_plan_from_minimal_delegates_to_loader(monkeypatch) -> None:
+    payload = json.loads(
+        Path("tests/fixtures/sample_trip_plan_minimal.json").read_text(encoding="utf-8")
+    )
+    called: dict[str, dict[str, object]] = {}
+    original_loader = conversion.load_trip_plan_input
+
+    def _wrapped_loader(payload_dict: dict[str, object]) -> object:
+        called["payload"] = payload_dict
+        return original_loader(payload_dict)
+
+    monkeypatch.setattr(conversion, "load_trip_plan_input", _wrapped_loader)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        trip_plan_from_minimal(payload, trip_id="TRIP-2002")
+
+    assert called["payload"]["type"] == "trip"

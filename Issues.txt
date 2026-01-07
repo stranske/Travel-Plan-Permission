@@ -160,6 +160,11 @@ Tasks
 
 - [x] Add/update a test asserting the wrapper and the canonical loader produce consistent results for the same payload.
 
+Task Reconciliation (Issue 4 extras)
+
+- [x] Create a short alternatives note.
+- [x] Provide specific examples/tests that demonstrate delegation of logic for extra conversion helpers.
+
 Acceptance Criteria
 
  Docs present one primary conversion path for canonical intake.

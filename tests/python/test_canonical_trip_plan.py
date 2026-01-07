@@ -5,6 +5,7 @@ import warnings
 from decimal import Decimal
 from pathlib import Path
 
+import travel_plan_permission.canonical as canonical
 from travel_plan_permission.canonical import (
     CanonicalTripPlan,
     canonical_trip_plan_to_model,
@@ -81,3 +82,21 @@ def test_canonical_trip_plan_to_model_matches_loader() -> None:
     plan_input = load_trip_plan_input(payload)
 
     assert trip_plan.model_dump() == plan_input.plan.model_dump()
+
+
+def test_load_trip_plan_payload_delegates_to_loader(monkeypatch) -> None:
+    payload = _load_fixture()
+    called: dict[str, dict[str, object]] = {}
+    original_loader = canonical.load_trip_plan_input
+
+    def _wrapped_loader(payload_dict: dict[str, object]) -> object:
+        called["payload"] = payload_dict
+        return original_loader(payload_dict)
+
+    monkeypatch.setattr(canonical, "load_trip_plan_input", _wrapped_loader)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        load_trip_plan_payload(payload)
+
+    assert called["payload"]["type"] == "trip"
