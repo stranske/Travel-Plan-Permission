@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import warnings
+from collections.abc import Mapping
 from typing import Any, Literal
 
 from .canonical import load_trip_plan_input
