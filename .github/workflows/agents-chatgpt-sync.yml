@@ -40,14 +40,6 @@ on:
         type: boolean
         default: false
 
-permissions:
-  contents: read
-  issues: write
-
-concurrency:
-  group: chatgpt-sync-${{ github.run_id }}
-  cancel-in-progress: false
-
 jobs:
   sync:
     uses: stranske/Workflows/.github/workflows/agents-63-issue-intake.yml@main
