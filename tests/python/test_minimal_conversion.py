@@ -5,7 +5,12 @@ from decimal import Decimal
 from pathlib import Path
 
 import travel_plan_permission.conversion as conversion
-from travel_plan_permission import ExpenseCategory, load_trip_plan_input, trip_plan_from_minimal
+from travel_plan_permission import (
+    ExpenseCategory,
+    TripStatus,
+    load_trip_plan_input,
+    trip_plan_from_minimal,
+)
 
 
 def test_trip_plan_from_minimal_builds_plan() -> None:
@@ -40,6 +45,25 @@ def test_trip_plan_from_minimal_builds_plan() -> None:
     assert plan.expense_breakdown[ExpenseCategory.LODGING] == expected_lodging
     assert plan.expense_breakdown[ExpenseCategory.CONFERENCE_FEES] == expected_fees
     assert plan.expense_breakdown[ExpenseCategory.GROUND_TRANSPORT] == expected_parking
+
+
+def test_trip_plan_from_minimal_applies_overrides() -> None:
+    payload = json.loads(
+        Path("tests/fixtures/sample_trip_plan_minimal.json").read_text(encoding="utf-8")
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        plan = trip_plan_from_minimal(
+            payload,
+            trip_id="TRIP-3001",
+            status=TripStatus.SUBMITTED,
+            origin_city="Seattle, WA",
+        )
+
+    assert plan.trip_id == "TRIP-3001"
+    assert plan.status == TripStatus.SUBMITTED
+    assert plan.origin_city == "Seattle, WA"
 
 
 def test_trip_plan_from_minimal_matches_canonical_loader() -> None:
