@@ -97,7 +97,7 @@ def main() -> int:
     if state.policy_result is None:
         raise RuntimeError("No policy result returned from orchestration graph.")
 
-    print(f"Policy status: {state.policy_result.status}")
+    print(f"Policy status: {state.policy_result['status']}")
     print(f"Spreadsheet: {state.spreadsheet_path}")
     return 0
 

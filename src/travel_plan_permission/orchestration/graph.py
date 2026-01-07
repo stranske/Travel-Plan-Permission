@@ -25,7 +25,7 @@ class TripState(BaseModel):
 
     plan_json: dict[str, object]
     canonical_plan: dict[str, object] | None = None
-    policy_result: PolicyCheckResult | None = None
+    policy_result: dict[str, object] | None = None
     spreadsheet_path: str | None = None
     errors: list[str] = Field(default_factory=list)
 
@@ -58,6 +58,17 @@ class TripState(BaseModel):
             return str(value)
         return value  # type: ignore[return-value]
 
+    @field_validator("policy_result", mode="before")
+    @classmethod
+    def _coerce_policy_result(cls, value: object) -> dict[str, object] | None:
+        if value is None:
+            return None
+        if isinstance(value, PolicyCheckResult):
+            return value.model_dump(mode="json")
+        if isinstance(value, dict):
+            return PolicyCheckResult.model_validate(value).model_dump(mode="json")
+        return value  # type: ignore[return-value]
+
     @field_serializer("plan_json", mode="plain")
     def _serialize_plan(self, value: object) -> dict[str, object]:
         if isinstance(value, TripPlan):
@@ -69,14 +80,6 @@ class TripState(BaseModel):
         if isinstance(value, CanonicalTripPlan):
             return value.model_dump(mode="json")
         return value  # type: ignore[return-value]
-
-    @field_serializer("policy_result", mode="plain")
-    def _serialize_policy_result(self, value: object) -> dict[str, object] | None:
-        if value is None:
-            return None
-        if isinstance(value, PolicyCheckResult):
-            return value.model_dump(mode="json")
-        return PolicyCheckResult.model_validate(value).model_dump(mode="json")
 
     @field_serializer("spreadsheet_path", mode="plain")
     def _serialize_spreadsheet_path(self, value: object) -> str | None:
