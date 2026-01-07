@@ -62,17 +62,12 @@ Refactoring the entire policy layer.
 
 Tasks
 
- Replace Path fields in state with str (or structured artifact metadata objects that serialize cleanly).
-
- Decide how to represent plan data in state:
-
-Option A: keep TripPlan but ensure dumps are JSON-safe, or
-
-Option B: store plan_json dict + validate/construct TripPlan at node boundaries.
-
- Ensure canonical intake representation in state is also JSON-safe (dict or pydantic model dump).
-
- Add a test asserting json.dumps(state.model_dump(mode="json")) succeeds for a “realistic” run.
+- [x] Replace Path fields in state with str (or structured artifact metadata objects that serialize cleanly).
+- [x] Decide how to represent plan data in state:
+- [ ] Option A: keep TripPlan but ensure dumps are JSON-safe, or
+- [x] Option B: store plan_json dict + validate/construct TripPlan at node boundaries.
+- [x] Ensure canonical intake representation in state is also JSON-safe (dict or pydantic model dump).
+- [x] Add a test asserting json.dumps(state.model_dump(mode="json")) succeeds for a “realistic” run.
 
 Acceptance Criteria
 
