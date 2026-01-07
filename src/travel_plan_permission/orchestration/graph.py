@@ -77,7 +77,14 @@ class _LangGraphPolicyGraph:
         self._compiled = compiled
 
     def invoke(self, state: TripState) -> TripState:
-        return cast(TripState, self._compiled.invoke(state))
+        result = self._compiled.invoke(state)
+        if isinstance(result, TripState):
+            return result
+        if isinstance(result, dict):
+            if hasattr(TripState, "model_validate"):
+                return TripState.model_validate(result)  # type: ignore[no-any-return]
+            return TripState.parse_obj(result)  # type: ignore[attr-defined,no-any-return]
+        return cast(TripState, result)
 
 
 def _build_langgraph() -> PolicyGraph | None:
