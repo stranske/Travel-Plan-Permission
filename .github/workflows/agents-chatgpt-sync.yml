@@ -1,0 +1,63 @@
+# ChatGPT Sync workflow - bulk create issues from topic files
+#
+# This workflow reads topic files and creates GitHub issues in bulk.
+# It calls the Workflows repo reusable workflow which contains the full
+# chatgpt_sync implementation with LangChain formatting support.
+#
+# Triggers:
+# - Manual dispatch only (workflow_dispatch)
+#
+# This file: .github/workflows/agents-chatgpt-sync.yml
+#
+# Required secrets:
+# - SERVICE_BOT_PAT: PAT for service bot account (comments, labels)
+# - OWNER_PR_PAT: PAT for creating issues on behalf of repository owner
+name: ChatGPT Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Path to topics file in repo (e.g., topics.json, agents/*.md)"
+        required: false
+        type: string
+      raw_input:
+        description: "Small pasted topic list (may truncate around 1KB)"
+        required: false
+        type: string
+      source_url:
+        description: "Raw text URL (raw.githubusercontent.com / Gist raw)"
+        required: false
+        type: string
+      apply_langchain_formatting:
+        description: "Apply LangChain formatting to created issues"
+        required: false
+        type: boolean
+        default: false
+      debug:
+        description: "Enable verbose debug diagnostics"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: chatgpt-sync-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    uses: stranske/Workflows/.github/workflows/agents-63-issue-intake.yml@main
+    with:
+      intake_mode: "chatgpt_sync"
+      source: ${{ inputs.source }}
+      raw_input: ${{ inputs.raw_input }}
+      source_url: ${{ inputs.source_url }}
+      apply_langchain_formatting: ${{ inputs.apply_langchain_formatting && 'true' || 'false' }}
+      debug: ${{ inputs.debug && 'true' || 'false' }}
+    secrets:
+      service_bot_pat: ${{ secrets.SERVICE_BOT_PAT }}
+      owner_pr_pat: ${{ secrets.OWNER_PR_PAT }}
