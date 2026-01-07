@@ -30,7 +30,9 @@ def trip_plan_from_minimal(
         stacklevel=2,
     )
 
-    plan_input = load_trip_plan_input(dict(payload))
+    payload_dict = dict(payload)
+    payload_dict.setdefault("type", "trip")
+    plan_input = load_trip_plan_input(payload_dict)
     overrides: dict[str, object] = {"trip_id": trip_id, "status": status}
     if traveler_role is not None:
         overrides["traveler_role"] = traveler_role
