@@ -8,6 +8,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+from ..canonical import TripPlanInput, load_trip_plan_input
 from ..conversion import trip_plan_from_minimal
 from ..models import ExpenseCategory, TripPlan
 from .graph import run_policy_graph
@@ -60,20 +61,35 @@ def _parse_args() -> Namespace:
     return parser.parse_args()
 
 
-def _plan_from_minimal(path: Path, trip_id: str, origin_city: str | None) -> TripPlan:
+def _plan_input_from_minimal(
+    path: Path,
+    trip_id: str,
+    origin_city: str | None,
+) -> TripPlanInput:
     payload = json.loads(path.read_text(encoding="utf-8"))
-    return trip_plan_from_minimal(payload, trip_id=trip_id, origin_city=origin_city)
+    if payload.get("type") == "trip":
+        return load_trip_plan_input(payload)
+    plan = trip_plan_from_minimal(payload, trip_id=trip_id, origin_city=origin_city)
+    return TripPlanInput(plan=plan)
 
 
 def main() -> int:
     args = _parse_args()
     if args.minimal_json:
-        plan = _plan_from_minimal(args.minimal_json, args.trip_id, args.origin_city)
+        plan_input = _plan_input_from_minimal(
+            args.minimal_json,
+            args.trip_id,
+            args.origin_city,
+        )
+        plan = plan_input.plan
+        canonical_plan = plan_input.canonical
     else:
         plan = _sample_plan()
+        canonical_plan = None
     output_path = args.output
     state = run_policy_graph(
         plan,
+        canonical_plan=canonical_plan,
         output_path=output_path,
         prefer_langgraph=not args.no_langgraph,
     )
