@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -168,7 +168,7 @@ def _policy_check_node(state: TripState) -> TripState:
     diagnostics = diagnose_missing_inputs(context)
     result = check_trip_plan(plan)
     state.policy_result = result.model_dump(mode="json")
-    state.policy_missing_inputs = diagnostics
+    state.policy_missing_inputs = diagnostics  # type: ignore[assignment]
     return state
 
 
@@ -197,7 +197,7 @@ def _spreadsheet_node(state: TripState) -> TripState:
             report=report,
         )
         state.spreadsheet_path = str(output_path)
-    state.unfilled_mapping_report = report
+    state.unfilled_mapping_report = report  # type: ignore[assignment]
     return state
 
 
@@ -212,7 +212,7 @@ def _serialize_policy_missing_input(diagnostic: RuleDiagnostic) -> dict[str, obj
 def _serialize_unfilled_mapping_report(
     report: UnfilledMappingReport,
 ) -> dict[str, list[dict[str, object]]]:
-    def serialize_entries(entries: list[object]) -> list[dict[str, object]]:
+    def serialize_entries(entries: Sequence[Any]) -> list[dict[str, object]]:
         serialized: list[dict[str, object]] = []
         for entry in entries:
             if hasattr(entry, "field") and hasattr(entry, "cell") and hasattr(entry, "reason"):
