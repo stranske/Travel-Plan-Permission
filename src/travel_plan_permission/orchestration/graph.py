@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Protocol
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 from ..canonical import CanonicalTripPlan
 from ..models import TripPlan
@@ -54,6 +54,18 @@ class TripState(BaseModel):
             return None
         if isinstance(value, Path):
             return str(value)
+        return value  # type: ignore[return-value]
+
+    @field_serializer("plan_json", mode="plain")
+    def _serialize_plan(self, value: object) -> dict[str, object]:
+        if isinstance(value, TripPlan):
+            return value.model_dump(mode="json")
+        return value  # type: ignore[return-value]
+
+    @field_serializer("canonical_plan", mode="plain")
+    def _serialize_canonical_plan(self, value: object) -> dict[str, object] | None:
+        if isinstance(value, CanonicalTripPlan):
+            return value.model_dump(mode="json")
         return value  # type: ignore[return-value]
 
 
