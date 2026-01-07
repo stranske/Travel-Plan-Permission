@@ -13,7 +13,7 @@ def test_trip_state_coerces_plans_to_json(tmp_path: Path) -> None:
     trip_input = load_trip_plan_input(payload)
 
     state = TripState(
-        plan=trip_input.plan,
+        plan_json=trip_input.plan,
         canonical_plan=trip_input.canonical,
         spreadsheet_path=str(tmp_path / "travel_request.xlsx"),
     )

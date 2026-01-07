@@ -21,13 +21,13 @@ from ..policy_api import (
 class TripState(BaseModel):
     """State container for the orchestration flow."""
 
-    plan: dict[str, object]
+    plan_json: dict[str, object]
     canonical_plan: dict[str, object] | None = None
     policy_result: PolicyCheckResult | None = None
     spreadsheet_path: str | None = None
     errors: list[str] = Field(default_factory=list)
 
-    @field_validator("plan", mode="before")
+    @field_validator("plan_json", mode="before")
     @classmethod
     def _coerce_plan(cls, value: object) -> dict[str, object]:
         if isinstance(value, TripPlan):
@@ -56,7 +56,7 @@ def _default_spreadsheet_path(plan: TripPlan) -> Path:
 
 
 def _load_plan(state: TripState) -> TripPlan:
-    return TripPlan.model_validate(state.plan)
+    return TripPlan.model_validate(state.plan_json)
 
 
 def _load_canonical_plan(state: TripState) -> CanonicalTripPlan | None:
@@ -140,7 +140,7 @@ def run_policy_graph(
     spreadsheet_path = str(Path(output_path)) if output_path is not None else None
     graph = build_policy_graph(prefer_langgraph=prefer_langgraph)
     state = TripState(
-        plan=plan.model_dump(mode="json"),
+        plan_json=plan.model_dump(mode="json"),
         canonical_plan=(
             canonical_plan.model_dump(mode="json") if canonical_plan is not None else None
         ),
