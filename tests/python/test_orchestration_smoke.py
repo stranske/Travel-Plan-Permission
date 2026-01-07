@@ -47,5 +47,6 @@ def test_policy_graph_langgraph_smoke(tmp_path: Path) -> None:
     )
 
     assert state.policy_result is not None
+    assert state.policy_result.status == "fail"
     assert state.spreadsheet_path == output_path
     assert output_path.exists()

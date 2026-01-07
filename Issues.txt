@@ -107,19 +107,19 @@ Introducing heavyweight infrastructure just to run one test.
 
 Tasks
 
- Add a pytest that does:
+- [x] Add a pytest that does:
 
-pytest.importorskip("langgraph")
+- [x] pytest.importorskip("langgraph")
 
-runs run_policy_graph(..., prefer_langgraph=True) on a small fixture plan
+- [x] runs run_policy_graph(..., prefer_langgraph=True) on a small fixture plan
 
-asserts policy result exists + artifact produced
+- [x] asserts policy result exists + artifact produced
 
- Ensure at least one CI run installs .[orchestration] so that test executes (not skipped).
+- [ ] Ensure at least one CI run installs .[orchestration] so that test executes (not skipped).
 
-This may require adding a small repo-local workflow OR configuring the reusable CI workflow to include the extra.
+- [ ] (needs-human) Update `.github/workflows/ci.yml` or the Workflows reusable CI to install `.[orchestration]`.
 
- Keep runtime small (smoke-level only).
+- [x] Keep runtime small (smoke-level only).
 
 Acceptance Criteria
 
