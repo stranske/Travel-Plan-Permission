@@ -150,7 +150,7 @@ class _SimplePolicyGraph:
 
 def _build_langgraph() -> PolicyGraph | None:
     try:
-        from langgraph.graph import END, StateGraph  
+        from langgraph.graph import END, StateGraph
     except ImportError:
         return None
 
