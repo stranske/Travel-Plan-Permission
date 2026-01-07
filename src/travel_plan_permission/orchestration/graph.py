@@ -111,7 +111,8 @@ def _load_canonical_plan(state: TripState) -> CanonicalTripPlan | None:
 
 def _policy_check_node(state: TripState) -> TripState:
     plan = _load_plan(state)
-    state.policy_result = check_trip_plan(plan)
+    result = check_trip_plan(plan)
+    state.policy_result = result.model_dump(mode="json")
     return state
 
 
@@ -149,7 +150,7 @@ class _SimplePolicyGraph:
 
 def _build_langgraph() -> PolicyGraph | None:
     try:
-        from langgraph.graph import END, StateGraph  # type: ignore[import-not-found]
+        from langgraph.graph import END, StateGraph  
     except ImportError:
         return None
 
@@ -159,7 +160,7 @@ def _build_langgraph() -> PolicyGraph | None:
     graph.add_edge("policy_check", "spreadsheet")
     graph.add_edge("spreadsheet", END)
     graph.set_entry_point("policy_check")
-    return graph.compile()  # type: ignore[no-any-return]
+    return graph.compile()  # type: ignore[return-value]
 
 
 def build_policy_graph(*, prefer_langgraph: bool = True) -> PolicyGraph:
