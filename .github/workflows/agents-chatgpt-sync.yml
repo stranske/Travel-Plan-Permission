@@ -53,11 +53,11 @@ jobs:
     uses: stranske/Workflows/.github/workflows/agents-63-issue-intake.yml@main
     with:
       intake_mode: "chatgpt_sync"
-      source: ${{ inputs.source }}
-      raw_input: ${{ inputs.raw_input }}
-      source_url: ${{ inputs.source_url }}
-      apply_langchain_formatting: ${{ inputs.apply_langchain_formatting && 'true' || 'false' }}
-      debug: ${{ inputs.debug && 'true' || 'false' }}
+      source: ${{ inputs.source || '' }}
+      raw_input: ${{ inputs.raw_input || '' }}
+      source_url: ${{ inputs.source_url || '' }}
+      apply_langchain_formatting: ${{ inputs.apply_langchain_formatting == true && 'true' || 'false' }}
+      debug: ${{ inputs.debug == true && 'true' || 'false' }}
     secrets:
       service_bot_pat: ${{ secrets.SERVICE_BOT_PAT }}
       owner_pr_pat: ${{ secrets.OWNER_PR_PAT }}
