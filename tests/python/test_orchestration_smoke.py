@@ -48,7 +48,6 @@ def test_policy_graph_smoke(tmp_path: Path) -> None:
     json.dumps(serialized)
 
 
-
 def test_policy_graph_records_missing_policy_inputs(tmp_path: Path) -> None:
     plan = TripPlan(
         trip_id="TRIP-ORCH-MISSING",

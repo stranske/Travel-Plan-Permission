@@ -3,9 +3,8 @@ from pathlib import Path
 
 from travel_plan_permission.canonical import load_trip_plan_input
 from travel_plan_permission.orchestration import TripState
-from travel_plan_permission.policy_api import UnfilledMappingReport
+from travel_plan_permission.policy_api import UnfilledMappingReport, check_trip_plan
 from travel_plan_permission.policy_lite import RuleDiagnostic
-from travel_plan_permission.policy_api import check_trip_plan
 
 
 def test_trip_state_coerces_plans_to_json(tmp_path: Path) -> None:
