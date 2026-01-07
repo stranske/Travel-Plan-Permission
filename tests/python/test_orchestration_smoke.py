@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -24,3 +25,4 @@ def test_policy_graph_smoke(tmp_path: Path) -> None:
     assert state.policy_result.status == "fail"
     assert state.spreadsheet_path == str(output_path)
     assert output_path.exists()
+    json.dumps(state.model_dump(mode="json"))
