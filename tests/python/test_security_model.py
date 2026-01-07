@@ -30,6 +30,7 @@ def test_roles_and_permissions_matrix() -> None:
     assert Permission.CONFIGURE in DEFAULT_ROLES[RoleName.POLICY_ADMIN].permissions
     assert set(Permission) == DEFAULT_ROLES[RoleName.SYSTEM_ADMIN].permissions
     assert "POST /api/approvals/:id/decision" in API_ENDPOINT_PERMISSIONS
+    assert "POST /api/notifications/preferences" in API_ENDPOINT_PERMISSIONS
 
 
 def test_endpoint_authorization_and_delegation() -> None:
