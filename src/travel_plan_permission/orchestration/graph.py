@@ -82,8 +82,8 @@ class _LangGraphPolicyGraph:
             return result
         if isinstance(result, dict):
             if hasattr(TripState, "model_validate"):
-                return TripState.model_validate(result)  # type: ignore[no-any-return]
-            return TripState.parse_obj(result)  # type: ignore[attr-defined,no-any-return]
+                return TripState.model_validate(result)
+            return TripState.parse_obj(result)
         return cast(TripState, result)
 
 
