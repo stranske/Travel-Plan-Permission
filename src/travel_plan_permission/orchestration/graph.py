@@ -70,6 +70,12 @@ class TripState(BaseModel):
             return value.model_dump(mode="json")
         return value  # type: ignore[return-value]
 
+    @field_serializer("spreadsheet_path", mode="plain")
+    def _serialize_spreadsheet_path(self, value: object) -> str | None:
+        if isinstance(value, Path):
+            return str(value)
+        return value  # type: ignore[return-value]
+
 
 class PolicyGraph(Protocol):
     """Minimal interface for invoking orchestration graphs."""
