@@ -4,8 +4,8 @@ from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 
-from openpyxl import load_workbook
 import pytest
+from openpyxl import load_workbook
 
 import travel_plan_permission.policy_api as policy_api
 from travel_plan_permission import (
