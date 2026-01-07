@@ -83,6 +83,17 @@ from .prompt_flow import (
     required_field_gaps,
 )
 from .providers import Provider, ProviderRegistry, ProviderType
+from .rate_limit import (
+    DEFAULT_RATE_LIMIT_STRATEGY,
+    DEFAULT_RATE_LIMIT_TIERS,
+    RateLimitDashboardProfile,
+    RateLimitEvent,
+    RateLimitPolicy,
+    RateLimitStrategy,
+    RateLimitTier,
+    build_rate_limit_dashboard,
+    profile_rate_limit_dashboard,
+)
 from .receipts import (
     ALLOWED_RECEIPT_TYPES,
     MAX_RECEIPT_SIZE_BYTES,
@@ -206,6 +217,15 @@ __all__ = [
     "ReceiptProcessor",
     "Question",
     "TemplateMapping",
+    "DEFAULT_RATE_LIMIT_STRATEGY",
+    "DEFAULT_RATE_LIMIT_TIERS",
+    "RateLimitDashboardProfile",
+    "RateLimitEvent",
+    "RateLimitPolicy",
+    "RateLimitStrategy",
+    "RateLimitTier",
+    "build_rate_limit_dashboard",
+    "profile_rate_limit_dashboard",
     "build_approval_packet",
     "build_output_bundle",
     "generate_questions",
