@@ -11,6 +11,30 @@
   </head>
   <body>
     <div class="page">
+      <nav class="site-nav" aria-label="Primary" data-open="false">
+        <div class="site-nav__brand">
+          <div class="site-nav__logo" aria-hidden="true">TP</div>
+          <div>
+            <div class="site-nav__name">Travel Plan</div>
+            <div class="site-nav__status">Approvals Center</div>
+          </div>
+        </div>
+        <button
+          class="site-nav__toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="siteNavMenu"
+        >
+          Menu
+        </button>
+        <div class="site-nav__menu" id="siteNavMenu">
+          <a class="site-nav__link site-nav__link--active" href="#">Profile</a>
+          <a class="site-nav__link" href="#">Trips</a>
+          <a class="site-nav__link" href="#">Approvals</a>
+          <a class="site-nav__link" href="#">Expenses</a>
+          <button class="site-nav__cta" type="button">New request</button>
+        </div>
+      </nav>
       <header class="hero">
         <div class="hero__eyebrow">Travel Profile</div>
         <h1 class="hero__title">Profile settings that feel personal.</h1>

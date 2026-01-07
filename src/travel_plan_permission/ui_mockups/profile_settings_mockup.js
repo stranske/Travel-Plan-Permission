@@ -312,6 +312,39 @@
     document.body.appendChild(panel);
   };
 
+  const initNavMenu = () => {
+    const nav = document.querySelector(".site-nav");
+    const toggle = document.querySelector(".site-nav__toggle");
+    const menu = document.getElementById("siteNavMenu");
+
+    if (!nav || !toggle || !menu) {
+      return;
+    }
+
+    const setOpen = (nextState) => {
+      nav.dataset.open = nextState ? "true" : "false";
+      toggle.setAttribute("aria-expanded", nextState ? "true" : "false");
+    };
+
+    toggle.addEventListener("click", () => {
+      const isOpen = nav.dataset.open === "true";
+      setOpen(!isOpen);
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!nav.contains(event.target)) {
+        setOpen(false);
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    });
+  };
+
   drawImage();
+  initNavMenu();
   runMobileAudit();
 })();

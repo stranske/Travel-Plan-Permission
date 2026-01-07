@@ -57,6 +57,94 @@ body {
   background: rgba(192, 112, 61, 0.12);
 }
 
+.site-nav {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
+}
+
+.site-nav__brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.site-nav__logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  background: linear-gradient(130deg, #1f6d6c, #e6d8cc);
+  color: #fff;
+}
+
+.site-nav__name {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.site-nav__status {
+  font-size: 0.8rem;
+  color: rgba(31, 26, 23, 0.6);
+}
+
+.site-nav__toggle {
+  border: none;
+  background: #f0e4d9;
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 10px 16px;
+  min-height: 44px;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: none;
+}
+
+.site-nav__menu {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.site-nav__link {
+  text-decoration: none;
+  color: var(--ink);
+  padding: 10px 14px;
+  border-radius: 999px;
+  min-height: 44px;
+  font-size: 0.9rem;
+  background: rgba(230, 216, 204, 0.4);
+  display: inline-flex;
+  align-items: center;
+}
+
+.site-nav__link--active {
+  background: var(--ink);
+  color: #fff;
+}
+
+.site-nav__cta {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  min-height: 44px;
+  background: var(--teal);
+  color: #fff;
+  font-size: 0.9rem;
+}
+
 .hero {
   position: relative;
   z-index: 1;
@@ -424,6 +512,51 @@ body {
 
   .hero {
     max-width: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .site-nav {
+    padding: 14px 16px;
+    border-radius: 24px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .site-nav__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .site-nav__menu {
+    position: absolute;
+    top: calc(100% + 12px);
+    left: 0;
+    right: 0;
+    padding: 18px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    display: grid;
+    gap: 12px;
+    transform-origin: top right;
+    transform: scale(0.96);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 160ms ease, transform 160ms ease;
+  }
+
+  .site-nav[data-open="true"] .site-nav__menu {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+  }
+
+  .site-nav__link,
+  .site-nav__cta {
+    width: 100%;
+    text-align: left;
   }
 }
 
