@@ -8,14 +8,21 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field
 
+from ..canonical import CanonicalTripPlan
 from ..models import TripPlan
-from ..policy_api import PolicyCheckResult, check_trip_plan, fill_travel_spreadsheet
+from ..policy_api import (
+    PolicyCheckResult,
+    check_trip_plan,
+    fill_travel_spreadsheet,
+    render_travel_spreadsheet_bytes,
+)
 
 
 class TripState(BaseModel):
     """State container for the orchestration flow."""
 
     plan: TripPlan
+    canonical_plan: CanonicalTripPlan | None = None
     policy_result: PolicyCheckResult | None = None
     spreadsheet_path: Path | None = None
     errors: list[str] = Field(default_factory=list)
@@ -41,7 +48,19 @@ def _policy_check_node(state: TripState) -> TripState:
 
 def _spreadsheet_node(state: TripState) -> TripState:
     output_path = state.spreadsheet_path or _default_spreadsheet_path(state.plan)
-    state.spreadsheet_path = fill_travel_spreadsheet(state.plan, output_path)
+    if state.spreadsheet_path is None:
+        spreadsheet_bytes = render_travel_spreadsheet_bytes(
+            state.plan,
+            canonical_plan=state.canonical_plan,
+        )
+        output_path.write_bytes(spreadsheet_bytes)
+        state.spreadsheet_path = output_path
+    else:
+        state.spreadsheet_path = fill_travel_spreadsheet(
+            state.plan,
+            output_path,
+            canonical_plan=state.canonical_plan,
+        )
     return state
 
 
@@ -80,6 +99,7 @@ def build_policy_graph(*, prefer_langgraph: bool = True) -> PolicyGraph:
 def run_policy_graph(
     plan: TripPlan,
     *,
+    canonical_plan: CanonicalTripPlan | None = None,
     output_path: Path | str | None = None,
     prefer_langgraph: bool = True,
 ) -> TripState:
@@ -87,5 +107,9 @@ def run_policy_graph(
 
     spreadsheet_path = Path(output_path) if output_path is not None else None
     graph = build_policy_graph(prefer_langgraph=prefer_langgraph)
-    state = TripState(plan=plan, spreadsheet_path=spreadsheet_path)
+    state = TripState(
+        plan=plan,
+        canonical_plan=canonical_plan,
+        spreadsheet_path=spreadsheet_path,
+    )
     return graph.invoke(state)

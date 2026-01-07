@@ -17,17 +17,11 @@ Changing the canonical schema itself.
 
 Tasks
 
- Update TripState (or introduce a new state model) to include canonical_plan (or canonical_payload) in addition to plan.
-
- Update orchestration graph nodes to pass canonical_plan into:
-
-fill_travel_spreadsheet(..., canonical_plan=...) and/or
-
-render_travel_spreadsheet_bytes(..., canonical_plan=...)
-
- Update orchestration/example.py so when --minimal-json is used it retains canonical data in state (prefer using load_trip_plan_input() rather than ad-hoc conversion).
-
- Add a regression test that runs run_policy_graph() from a canonical fixture and asserts spreadsheet cells for flight/hotel preferences are populated (e.g., B8/B11 etc., similar to existing spreadsheet tests).
+- [x] Update TripState (or introduce a new state model) to include canonical_plan (or canonical_payload) in addition to plan.
+- [x] Update orchestration graph nodes to pass canonical_plan into fill_travel_spreadsheet(..., canonical_plan=...).
+- [x] Update orchestration graph nodes to pass canonical_plan into render_travel_spreadsheet_bytes(..., canonical_plan=...).
+- [x] Update orchestration/example.py so when --minimal-json is used it retains canonical data in state (prefer using load_trip_plan_input() rather than ad-hoc conversion).
+- [x] Add a regression test that runs run_policy_graph() from a canonical fixture and asserts spreadsheet cells for flight/hotel preferences are populated (e.g., B8/B11 etc., similar to existing spreadsheet tests).
 
 Acceptance Criteria
 
