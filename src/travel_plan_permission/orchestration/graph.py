@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..canonical import CanonicalTripPlan
 from ..models import TripPlan
@@ -26,6 +26,22 @@ class TripState(BaseModel):
     policy_result: PolicyCheckResult | None = None
     spreadsheet_path: str | None = None
     errors: list[str] = Field(default_factory=list)
+
+    @field_validator("plan", mode="before")
+    @classmethod
+    def _coerce_plan(cls, value: object) -> dict[str, object]:
+        if isinstance(value, TripPlan):
+            return value.model_dump(mode="json")
+        return value  # type: ignore[return-value]
+
+    @field_validator("canonical_plan", mode="before")
+    @classmethod
+    def _coerce_canonical_plan(cls, value: object) -> dict[str, object] | None:
+        if value is None:
+            return None
+        if isinstance(value, CanonicalTripPlan):
+            return value.model_dump(mode="json")
+        return value  # type: ignore[return-value]
 
 
 class PolicyGraph(Protocol):
