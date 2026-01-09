@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -17,8 +18,15 @@ def _fixture_trip_input() -> tuple[TripPlan, CanonicalTripPlan | None]:
     return trip_input.plan, trip_input.canonical
 
 
+def _require_langgraph() -> None:
+    if os.getenv("CI"):
+        __import__("langgraph")
+    else:
+        pytest.importorskip("langgraph")
+
+
 def test_policy_graph_runs_with_langgraph(tmp_path: Path) -> None:
-    pytest.importorskip("langgraph")
+    _require_langgraph()
     plan, canonical = _fixture_trip_input()
 
     output_path = tmp_path / "travel_request_langgraph.xlsx"

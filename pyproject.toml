@@ -29,6 +29,7 @@ dev = [
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.11",
+    "black>=24.0.0",
     "mypy>=1.19.1",
     "types-PyYAML>=6.0.12",
     "numpy>=1.24.0",
@@ -65,8 +66,8 @@ where = ["src"]
 travel_plan_permission = ["config/*.yaml", "templates/*.xlsx"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests/python"]
-python_files = ["test_*.py"]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
 python_functions = ["test_*"]
 addopts = [
     "-v",
