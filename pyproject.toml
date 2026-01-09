@@ -66,7 +66,7 @@ where = ["src"]
 travel_plan_permission = ["config/*.yaml", "templates/*.xlsx"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests/python"]
+testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = [
