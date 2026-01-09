@@ -51,9 +51,31 @@ jobs:
       enable-soft-gate: true
     secrets: inherit
 
+  orchestration-tests:
+    name: Orchestration Tests (LangGraph)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies with orchestration extra
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[orchestration,dev]"
+
+      - name: Run LangGraph orchestration tests
+        run: |
+          pytest tests/orchestration_graph_test.py tests/python/test_langgraph_orchestration.py -v
+
   summary:
     name: gate-summary
-    needs: [python-ci]
+    needs: [python-ci, orchestration-tests]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
@@ -75,10 +97,12 @@ jobs:
         id: summarize
         env:
           PYTHON_RESULT: ${{ needs.python-ci.result || 'skipped' }}
+          ORCHESTRATION_RESULT: ${{ needs.orchestration-tests.result || 'skipped' }}
         run: |
           set -euo pipefail
 
           python_result="${PYTHON_RESULT:-skipped}"
+          orchestration_result="${ORCHESTRATION_RESULT:-skipped}"
           state="success"
           description="All checks passed"
 
@@ -102,6 +126,31 @@ jobs:
             *)
               state="pending"
               description="Python CI status unknown"
+              ;;
+          esac
+
+          # Check orchestration result
+          case "$orchestration_result" in
+            failure)
+              state="failure"
+              description="Orchestration tests failed"
+              ;;
+            cancelled)
+              state="error"
+              description="Orchestration tests were cancelled"
+              ;;
+            skipped)
+              # Keep current state
+              ;;
+            success)
+              # Keep current state, update description if all passed
+              if [ "$state" = "success" ] && [ "$python_result" = "success" ]; then
+                description="All checks passed"
+              fi
+              ;;
+            *)
+              state="pending"
+              description="Orchestration tests status unknown"
               ;;
           esac
 
