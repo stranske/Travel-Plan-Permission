@@ -47,9 +47,7 @@ def test_langgraph_compiled_path_creates_spreadsheet(
     state = graph.invoke(
         orchestration_graph.TripState(
             plan_json=plan.model_dump(mode="json"),
-            canonical_plan=(
-                canonical.model_dump(mode="json") if canonical is not None else None
-            ),
+            canonical_plan=(canonical.model_dump(mode="json") if canonical is not None else None),
             spreadsheet_path=output_path,
         )
     )
