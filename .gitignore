@@ -250,3 +250,4 @@ node_modules/
 codex-prompt.md
 codex-output.md
 verifier-context.md
+scripts/langchain/
