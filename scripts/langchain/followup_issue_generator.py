@@ -631,9 +631,9 @@ def generate_followup_issue(
             pr_number,
             codex_log,
             reasoning_client=reasoning_client_info[0],
-            reasoning_model=reasoning_client_info[1],
+            _reasoning_model=reasoning_client_info[1],
             standard_client=standard_client_info[0],
-            standard_model=standard_client_info[1],
+            _standard_model=standard_client_info[1],
         )
     elif reasoning_client_info:
         # Only reasoning client available - use it for all steps
@@ -643,9 +643,9 @@ def generate_followup_issue(
             pr_number,
             codex_log,
             reasoning_client=reasoning_client_info[0],
-            reasoning_model=reasoning_client_info[1],
+            _reasoning_model=reasoning_client_info[1],
             standard_client=reasoning_client_info[0],
-            standard_model=reasoning_client_info[1],
+            _standard_model=reasoning_client_info[1],
         )
     elif standard_client_info:
         # Only standard client available - use it for all steps
@@ -655,9 +655,9 @@ def generate_followup_issue(
             pr_number,
             codex_log,
             reasoning_client=standard_client_info[0],
-            reasoning_model=standard_client_info[1],
+            _reasoning_model=standard_client_info[1],
             standard_client=standard_client_info[0],
-            standard_model=standard_client_info[1],
+            _standard_model=standard_client_info[1],
         )
     else:
         # No LLM clients available
