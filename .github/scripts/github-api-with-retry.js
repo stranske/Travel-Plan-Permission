@@ -40,13 +40,13 @@ async function withRetry(fn, options = {}) {
       
       // Check if it's a rate limit error
       const isRateLimit = 
-        error.status === 403 &&
+        (error.status === 403 || error.status === 429) &&
         (error.message?.includes('rate limit') ||
          error.message?.includes('API rate limit exceeded'));
       
       // Check if it's a secondary rate limit (abuse detection)
       const isSecondaryRateLimit =
-        error.status === 403 &&
+        (error.status === 403 || error.status === 429) &&
         error.message?.includes('secondary rate limit');
       
       // Don't retry on non-rate-limit errors
