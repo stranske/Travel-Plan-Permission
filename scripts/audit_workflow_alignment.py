@@ -114,6 +114,48 @@ def build_markdown_report(report: dict[str, object]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def build_comment_report(report: dict[str, object]) -> str:
+    summary = report["summary"]
+    missing = report["missing"]
+    extra = report["extra"]
+    modified = report["modified"]
+
+    lines = [
+        "## Workflow alignment (needs human)",
+        "",
+        f"- Local root: `{report['local_root']}`",
+        f"- Workflows root: `{report['workflows_root']}`",
+        f"- Missing: {summary['missing']}",
+        f"- Extra: {summary['extra']}",
+        f"- Modified: {summary['modified']}",
+        "",
+    ]
+
+    def add_section(title: str, items: list[str]) -> None:
+        lines.append(f"### {title}")
+        if items:
+            lines.extend(f"- `{item}`" for item in items)
+        else:
+            lines.append("- None")
+        lines.append("")
+
+    add_section("Missing workflows", missing)
+    add_section("Extra workflows", extra)
+    add_section("Modified workflows", modified)
+
+    if missing or extra or modified:
+        lines.extend(
+            [
+                "### Needs human",
+                "Workflow files differ from the Workflows repo snapshot. Aligning them requires",
+                "updating `.github/workflows/**`, which needs agent-high-privilege access.",
+                "",
+            ]
+        )
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Compare .github/workflows YAML files with .workflows-lib snapshot."
@@ -151,6 +193,15 @@ def main(argv: list[str] | None = None) -> int:
         "--markdown-output",
         help="Write markdown report to the provided path.",
     )
+    parser.add_argument(
+        "--comment",
+        action="store_true",
+        help="Print comment-friendly markdown report to stdout.",
+    )
+    parser.add_argument(
+        "--comment-output",
+        help="Write comment-friendly markdown report to the provided path.",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -177,6 +228,15 @@ def main(argv: list[str] | None = None) -> int:
             Path(args.markdown_output).write_text(markdown, encoding="utf-8")
         if args.markdown:
             print(markdown.rstrip())
+        if args.check and (missing or extra or modified):
+            return 1
+        return 0
+    if args.comment or args.comment_output:
+        comment = build_comment_report(report)
+        if args.comment_output:
+            Path(args.comment_output).write_text(comment, encoding="utf-8")
+        if args.comment:
+            print(comment.rstrip())
         if args.check and (missing or extra or modified):
             return 1
         return 0

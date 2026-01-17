@@ -6,6 +6,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.audit_workflow_alignment import (
+    build_comment_report,
     build_markdown_report,
     build_workflow_report,
     collect_workflow_files,
@@ -75,6 +76,22 @@ def test_build_markdown_report_includes_needs_human(tmp_path: Path) -> None:
 
     assert "Workflow alignment report" in markdown
     assert "Needs human" in markdown
+
+
+def test_build_comment_report_includes_needs_human(tmp_path: Path) -> None:
+    local = tmp_path / "local"
+    workflows = tmp_path / "workflows"
+    local.mkdir()
+    workflows.mkdir()
+
+    (local / "shared.yml").write_text("local", encoding="utf-8")
+    (workflows / "shared.yml").write_text("workflows", encoding="utf-8")
+
+    report = build_workflow_report(local, workflows)
+    comment = build_comment_report(report)
+
+    assert "Workflow alignment (needs human)" in comment
+    assert "Needs human" in comment
 
 
 def test_collect_workflow_files_ignores_non_yaml(tmp_path: Path) -> None:
