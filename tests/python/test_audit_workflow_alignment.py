@@ -6,8 +6,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.audit_workflow_alignment import (
-    build_workflow_report,
     build_markdown_report,
+    build_workflow_report,
     collect_workflow_files,
     compare_workflow_trees,
     write_json_report,
