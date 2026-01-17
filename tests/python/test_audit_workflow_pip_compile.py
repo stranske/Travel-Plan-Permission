@@ -3,7 +3,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from scripts.audit_workflow_pip_compile import PATTERNS, find_occurrences
+from scripts.audit_workflow_pip_compile import (
+    PATTERNS,
+    REPLACEMENT_COMMAND,
+    find_occurrences,
+    render_replacement_suggestions,
+)
 
 
 def test_find_occurrences_reports_matches(tmp_path: Path) -> None:
@@ -33,3 +38,12 @@ def test_find_occurrences_reports_matches(tmp_path: Path) -> None:
 def test_find_occurrences_missing_directory() -> None:
     missing = Path("does-not-exist")
     assert find_occurrences(missing, PATTERNS["pip-compile"]) == []
+
+
+def test_render_replacement_suggestions() -> None:
+    matches = ["workflow.yml:12: pip-compile requirements.in"]
+    suggestions = render_replacement_suggestions(matches)
+
+    assert len(suggestions) == 1
+    assert matches[0] in suggestions[0]
+    assert REPLACEMENT_COMMAND in suggestions[0]
