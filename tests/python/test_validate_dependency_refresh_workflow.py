@@ -24,8 +24,7 @@ def test_find_workflow_issues_reports_expected_problems() -> None:
     assert "Found requirements-dev.lock usage; expected single requirements.lock." in issues
     assert "Expected uv pip compile command with extras is missing." in issues
     assert (
-        "Expected verification subprocess.run for uv pip compile with extras is missing."
-        in issues
+        "Expected verification subprocess.run for uv pip compile with extras is missing." in issues
     )
 
 
