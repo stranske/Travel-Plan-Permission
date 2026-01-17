@@ -13,6 +13,12 @@ EXPECTED_COMPILE_COMMAND = (
     "uv pip compile --upgrade pyproject.toml --extra dev --extra ocr "
     "--extra orchestration -o requirements.lock"
 )
+VERIFY_SNIPPET_PATTERN = re.compile(
+    r"subprocess\.run\(\s*\[\s*['\"]uv['\"],\s*['\"]pip['\"],\s*['\"]compile['\"],\s*"
+    r"['\"]pyproject\.toml['\"],\s*['\"]--extra['\"],\s*['\"]dev['\"],\s*"
+    r"['\"]--extra['\"],\s*['\"]ocr['\"],\s*['\"]--extra['\"],\s*['\"]orchestration['\"]",
+    re.DOTALL,
+)
 
 PIP_COMPILE_PATTERN = re.compile(r"\bpip-compile\b", re.IGNORECASE)
 REQUIREMENTS_DEV_PATTERN = re.compile(r"\brequirements-dev\.lock\b", re.IGNORECASE)
@@ -26,6 +32,10 @@ def find_workflow_issues(content: str) -> list[str]:
         issues.append("Found requirements-dev.lock usage; expected single requirements.lock.")
     if EXPECTED_COMPILE_COMMAND not in content:
         issues.append("Expected uv pip compile command with extras is missing.")
+    if not VERIFY_SNIPPET_PATTERN.search(content):
+        issues.append(
+            "Expected verification subprocess.run for uv pip compile with extras is missing."
+        )
     return issues
 
 

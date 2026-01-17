@@ -23,6 +23,10 @@ def test_find_workflow_issues_reports_expected_problems() -> None:
     assert "Found pip-compile usage; expected uv pip compile." in issues
     assert "Found requirements-dev.lock usage; expected single requirements.lock." in issues
     assert "Expected uv pip compile command with extras is missing." in issues
+    assert (
+        "Expected verification subprocess.run for uv pip compile with extras is missing."
+        in issues
+    )
 
 
 def test_find_workflow_issues_accepts_expected_command() -> None:
@@ -30,6 +34,13 @@ def test_find_workflow_issues_accepts_expected_command() -> None:
         [
             "steps:",
             f"  - run: {EXPECTED_COMPILE_COMMAND}",
+            "  - run: |",
+            "      python - <<'PY'",
+            "      import subprocess",
+            "      compiled_proc = subprocess.run(['uv', 'pip', 'compile', 'pyproject.toml',",
+            "                                     '--extra', 'dev', '--extra', 'ocr',",
+            "                                     '--extra', 'orchestration'])",
+            "      PY",
             "  - run: uv pip sync requirements.lock",
         ]
     )
