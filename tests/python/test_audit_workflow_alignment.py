@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from scripts.audit_workflow_alignment import compare_workflow_trees, collect_workflow_files
+from scripts.audit_workflow_alignment import collect_workflow_files, compare_workflow_trees
 
 
 def test_collect_workflow_files_missing_directory(tmp_path: Path) -> None:

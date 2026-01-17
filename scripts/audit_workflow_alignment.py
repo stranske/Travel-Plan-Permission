@@ -67,9 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        missing, extra, modified = compare_workflow_trees(
-            Path(args.local), Path(args.workflows)
-        )
+        missing, extra, modified = compare_workflow_trees(Path(args.local), Path(args.workflows))
     except FileNotFoundError as exc:
         print(str(exc), file=sys.stderr)
         return 2
