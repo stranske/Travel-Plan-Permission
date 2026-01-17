@@ -52,7 +52,7 @@ permissions:
 jobs:
   run-worker:
     name: Run Codex belt worker
-    uses: ./.github/workflows/agents-72-codex-belt-worker.yml
+    uses: ./.github/workflows/agents-72-codex-belt-worker.yaml
     with:
       issue: ${{ inputs.issue }}
       branch: ${{ inputs.branch }}
