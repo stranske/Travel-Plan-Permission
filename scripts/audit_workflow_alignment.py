@@ -17,12 +17,16 @@ def _hash_file(path: Path) -> str:
     return hasher.hexdigest()
 
 
+def _is_workflow_yaml(path: Path) -> bool:
+    return path.suffix in {".yml", ".yaml"}
+
+
 def collect_workflow_files(root: Path) -> dict[str, str]:
     if not root.exists():
         raise FileNotFoundError(f"Workflow directory not found: {root}")
     files: dict[str, str] = {}
     for path in sorted(root.rglob("*")):
-        if path.is_file():
+        if path.is_file() and _is_workflow_yaml(path):
             relative = path.relative_to(root).as_posix()
             files[relative] = _hash_file(path)
     return files
@@ -112,7 +116,7 @@ def build_markdown_report(report: dict[str, object]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Compare .github/workflows with .workflows-lib snapshot."
+        description="Compare .github/workflows YAML files with .workflows-lib snapshot."
     )
     parser.add_argument(
         "--local",

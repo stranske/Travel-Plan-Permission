@@ -75,3 +75,16 @@ def test_build_markdown_report_includes_needs_human(tmp_path: Path) -> None:
 
     assert "Workflow alignment report" in markdown
     assert "Needs human" in markdown
+
+
+def test_collect_workflow_files_ignores_non_yaml(tmp_path: Path) -> None:
+    workflows = tmp_path / "workflows"
+    workflows.mkdir()
+
+    (workflows / "ci.yml").write_text("name: CI", encoding="utf-8")
+    (workflows / "notes.txt").write_text("ignore", encoding="utf-8")
+    (workflows / "autofix-versions.env").write_text("PIN=1", encoding="utf-8")
+
+    files = collect_workflow_files(workflows)
+
+    assert list(files) == ["ci.yml"]
