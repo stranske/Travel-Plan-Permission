@@ -66,6 +66,50 @@ def write_json_report(report: dict[str, object], output_path: Path) -> None:
     output_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def build_markdown_report(report: dict[str, object]) -> str:
+    summary = report["summary"]
+    missing = report["missing"]
+    extra = report["extra"]
+    modified = report["modified"]
+
+    lines = [
+        "# Workflow alignment report",
+        "",
+        f"Local root: `{report['local_root']}`",
+        f"Workflows root: `{report['workflows_root']}`",
+        "",
+        "## Summary",
+        f"- Missing: {summary['missing']}",
+        f"- Extra: {summary['extra']}",
+        f"- Modified: {summary['modified']}",
+        "",
+    ]
+
+    def add_section(title: str, items: list[str]) -> None:
+        lines.append(f"## {title}")
+        if items:
+            lines.extend(f"- {item}" for item in items)
+        else:
+            lines.append("- None")
+        lines.append("")
+
+    add_section("Missing workflows", missing)
+    add_section("Extra workflows", extra)
+    add_section("Modified workflows", modified)
+
+    if missing or extra or modified:
+        lines.extend(
+            [
+                "## Needs human",
+                "Workflow files differ from the Workflows repo snapshot. Aligning them requires",
+                "updating `.github/workflows/**`, which needs agent-high-privilege access.",
+                "",
+            ]
+        )
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Compare .github/workflows with .workflows-lib snapshot."
@@ -91,8 +135,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Print JSON report to stdout.",
     )
     parser.add_argument(
+        "--markdown",
+        action="store_true",
+        help="Print markdown report to stdout.",
+    )
+    parser.add_argument(
         "--output",
         help="Write JSON report to the provided path.",
+    )
+    parser.add_argument(
+        "--markdown-output",
+        help="Write markdown report to the provided path.",
     )
     args = parser.parse_args(argv)
 
@@ -111,6 +164,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
+        if args.check and (missing or extra or modified):
+            return 1
+        return 0
+    if args.markdown or args.markdown_output:
+        markdown = build_markdown_report(report)
+        if args.markdown_output:
+            Path(args.markdown_output).write_text(markdown, encoding="utf-8")
+        if args.markdown:
+            print(markdown.rstrip())
         if args.check and (missing or extra or modified):
             return 1
         return 0

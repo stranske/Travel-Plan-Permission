@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.audit_workflow_alignment import (
     build_workflow_report,
+    build_markdown_report,
     collect_workflow_files,
     compare_workflow_trees,
     write_json_report,
@@ -58,3 +59,19 @@ def test_build_workflow_report_and_write_json(tmp_path: Path) -> None:
     write_json_report(report, output_path)
     content = output_path.read_text(encoding="utf-8")
     assert '"missing": [' in content
+
+
+def test_build_markdown_report_includes_needs_human(tmp_path: Path) -> None:
+    local = tmp_path / "local"
+    workflows = tmp_path / "workflows"
+    local.mkdir()
+    workflows.mkdir()
+
+    (local / "shared.yml").write_text("local", encoding="utf-8")
+    (workflows / "shared.yml").write_text("workflows", encoding="utf-8")
+
+    report = build_workflow_report(local, workflows)
+    markdown = build_markdown_report(report)
+
+    assert "Workflow alignment report" in markdown
+    assert "Needs human" in markdown
