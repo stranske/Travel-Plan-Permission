@@ -16,6 +16,7 @@ PATTERNS = {
     "uv pip compile": re.compile(r"\buv\s+pip\s+compile\b", re.IGNORECASE),
 }
 
+
 def find_occurrences(workflows_dir: Path, pattern: re.Pattern[str]) -> list[str]:
     matches: list[str] = []
     if not workflows_dir.exists():
@@ -31,8 +32,7 @@ def find_occurrences(workflows_dir: Path, pattern: re.Pattern[str]) -> list[str]
 
 def main() -> int:
     all_matches = {
-        label: find_occurrences(WORKFLOWS_DIR, pattern)
-        for label, pattern in PATTERNS.items()
+        label: find_occurrences(WORKFLOWS_DIR, pattern) for label, pattern in PATTERNS.items()
     }
     printed = False
     for label, matches in all_matches.items():
