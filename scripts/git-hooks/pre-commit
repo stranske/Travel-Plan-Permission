@@ -23,7 +23,7 @@ if git diff --cached --name-only | grep -q "pyproject.toml"; then
     
     # Generate fresh lock file to temp location
     echo "Compiling dependencies..."
-    uv pip compile pyproject.toml --output-file requirements.check 2>&1 || {
+    uv pip compile pyproject.toml --extra dev --extra ocr --extra orchestration --output-file requirements.check 2>&1 || {
         echo "❌ Failed to compile dependencies"
         echo "   Check pyproject.toml for errors"
         exit 1
