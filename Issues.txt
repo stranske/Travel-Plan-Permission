@@ -247,3 +247,23 @@ src/travel_plan_permission/policy_lite.py
 src/travel_plan_permission/policy_api.py (UnfilledMappingReport)
 
 tests/python/ (new tests)
+
+Issue 6 — Workflow alignment with Workflows repo snapshot
+Why
+
+The local `.github/workflows` directory is out of sync with the Workflows repo snapshot
+in `.workflows-lib/.github/workflows`, which blocks verifying the updated workflow structure.
+
+Scope
+
+Align the local workflow structure with the Workflows repo snapshot by syncing
+the missing/extra/modified files.
+
+Tasks
+
+- [ ] (needs-human) Sync `.github/workflows` from the Workflows repo snapshot or trigger
+      the Workflows repo sync job so this repo matches the snapshot.
+
+Acceptance Criteria
+
+`.github/workflows` matches `.workflows-lib/.github/workflows` (no missing/extra/modified files).

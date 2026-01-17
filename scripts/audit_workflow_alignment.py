@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -45,6 +46,28 @@ def compare_workflow_trees(
     return missing, extra, modified
 
 
+def build_workflow_report(local_root: Path, workflows_root: Path) -> dict[str, object]:
+    missing, extra, modified = compare_workflow_trees(local_root, workflows_root)
+    return {
+        "local_root": str(local_root),
+        "workflows_root": str(workflows_root),
+        "missing": missing,
+        "extra": extra,
+        "modified": modified,
+        "summary": {
+            "missing": len(missing),
+            "extra": len(extra),
+            "modified": len(modified),
+        },
+    }
+
+
+def write_json_report(report: dict[str, object], output_path: Path) -> None:
+    output_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Compare .github/workflows with .workflows-lib snapshot."
@@ -64,13 +87,35 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Exit non-zero when differences are found.",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print JSON report to stdout.",
+    )
+    parser.add_argument(
+        "--output",
+        help="Write JSON report to the provided path.",
+    )
     args = parser.parse_args(argv)
 
     try:
-        missing, extra, modified = compare_workflow_trees(Path(args.local), Path(args.workflows))
+        report = build_workflow_report(Path(args.local), Path(args.workflows))
     except FileNotFoundError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+
+    missing = report["missing"]
+    extra = report["extra"]
+    modified = report["modified"]
+
+    if args.output:
+        write_json_report(report, Path(args.output))
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+        if args.check and (missing or extra or modified):
+            return 1
+        return 0
 
     if missing:
         print("Missing workflows:")
