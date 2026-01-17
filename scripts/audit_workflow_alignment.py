@@ -63,9 +63,7 @@ def build_workflow_report(local_root: Path, workflows_root: Path) -> dict[str, o
 
 
 def write_json_report(report: dict[str, object], output_path: Path) -> None:
-    output_path.write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    output_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
