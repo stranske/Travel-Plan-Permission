@@ -6,10 +6,9 @@ Scope: scan .github/workflows for "pip-compile" strings.
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
 import sys
-
+from pathlib import Path
 
 WORKFLOWS_DIR = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 PATTERN = re.compile(r"\bpip-compile\b", re.IGNORECASE)
