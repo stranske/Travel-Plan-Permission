@@ -464,7 +464,7 @@ Run audit Phase 1 across all consumer repos and document findings
 ## Questions for Discussion
 
 1. **Lock File Tool**: Should we standardize on `uv`, `pip-tools`, or `poetry`?
-   - Current: Mixed (some repos use `uv`, some use `pip-compile`)
+   - Current: Mixed (some repos use `uv`, some use `pip-tools`)
    - Recommendation: Standardize on `uv` (faster, better dependency resolution)
 
 2. **Auto-Merge Strategy**: Should we auto-merge passing Dependabot PRs?

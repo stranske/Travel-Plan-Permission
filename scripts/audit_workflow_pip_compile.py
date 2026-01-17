@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Report pip-compile usage in workflow files.
+"""Report uv pip compile usage in workflow files.
 
-Scope: scan .github/workflows for "pip-compile" strings.
+Scope: scan .github/workflows for "uv pip compile" strings.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 WORKFLOWS_DIR = Path(__file__).resolve().parents[1] / ".github" / "workflows"
-PATTERN = re.compile(r"\bpip-compile\b", re.IGNORECASE)
+PATTERN = re.compile(r"\buv\s+pip\s+compile\b", re.IGNORECASE)
 
 
 def find_occurrences(workflows_dir: Path) -> list[str]:
@@ -30,10 +30,10 @@ def find_occurrences(workflows_dir: Path) -> list[str]:
 def main() -> int:
     matches = find_occurrences(WORKFLOWS_DIR)
     if not matches:
-        print("No pip-compile usage found in workflows.")
+        print("No uv pip compile usage found in workflows.")
         return 0
 
-    print("pip-compile usage in workflows:")
+    print("uv pip compile usage in workflows:")
     for match in matches:
         print(match)
     return 0
