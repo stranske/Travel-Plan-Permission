@@ -119,15 +119,13 @@ def test_policy_engine_from_file_defaults():
 
 
 def test_policy_messages_include_thresholds_from_config():
-    engine = PolicyEngine.from_yaml(
-        """
+    engine = PolicyEngine.from_yaml("""
 rules:
   advance_booking:
     days_required: 21
   fare_comparison:
     max_over_lowest: 175
-"""
-    )
+""")
 
     context = PolicyContext(
         booking_date=date(2025, 1, 1),
