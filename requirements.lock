@@ -8,7 +8,7 @@ annotated-types==0.7.0
     # via pydantic
 anyio==4.12.1
     # via httpx
-black==25.12.0
+black==26.1.0
     # via travel-plan-permission (pyproject.toml)
 certifi==2026.1.4
     # via
