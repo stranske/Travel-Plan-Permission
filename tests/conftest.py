@@ -23,7 +23,7 @@ def _only_orchestration_tests(args: list[str]) -> bool:
     return selected == orchestration_tests
 
 
-def pytest_load_initial_conftests(early_config, parser, args):
+def pytest_load_initial_conftests(early_config, _parser, args):
     if _only_orchestration_tests(args):
         if "--no-cov" not in args:
             args.append("--no-cov")
