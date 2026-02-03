@@ -133,15 +133,6 @@ jobs:
           script: |
             const fs = require('fs');
             const path = require('path');
-            const retryHelperPath = path.resolve(process.env.GITHUB_WORKSPACE || process.cwd(), '.github/scripts/github-api-with-retry.js');
-            const retryHelpers = fs.existsSync(retryHelperPath)
-              ? require(retryHelperPath)
-              : {
-                  withRetry: (fn) => fn(),
-                  paginateWithRetry: (githubInstance, method, params) =>
-                    githubInstance.paginate(method, params),
-                };
-            const { withRetry, paginateWithRetry } = retryHelpers;
             const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
             const guardRelativePath = '.github/scripts/agents-guard.js';
             const guardPath = path.resolve(workspace, guardRelativePath);
