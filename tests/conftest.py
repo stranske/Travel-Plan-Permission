@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import pytest
 
 
@@ -18,11 +19,7 @@ def _only_orchestration_tests(args: list[str]) -> bool:
         (root / "tests/python/test_langgraph_orchestration.py").resolve().as_posix(),
     }
 
-    selected = {
-        _resolved(arg)
-        for arg in args
-        if arg.endswith(".py") or Path(arg).is_file()
-    }
+    selected = {_resolved(arg) for arg in args if arg.endswith(".py") or Path(arg).is_file()}
     return selected == orchestration_tests
 
 
@@ -32,6 +29,7 @@ def pytest_load_initial_conftests(early_config, parser, args):
             args.append("--no-cov")
         early_config.pluginmanager.set_blocked("pytest_cov")
         early_config.pluginmanager.set_blocked("cov")
+
 
 def pytest_configure(config):
     if not hasattr(config.option, "cov_source"):
