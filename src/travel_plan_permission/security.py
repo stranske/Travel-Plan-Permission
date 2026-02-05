@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
 
-class Permission(str, Enum):
+class Permission(StrEnum):
     """Supported permissions for API endpoints."""
 
     VIEW = "view"
@@ -19,7 +19,7 @@ class Permission(str, Enum):
     CONFIGURE = "configure"
 
 
-class RoleName(str, Enum):
+class RoleName(StrEnum):
     """Defined roles within the travel system."""
 
     TRAVELER = "traveler"
@@ -87,7 +87,7 @@ API_ENDPOINT_PERMISSIONS: dict[str, Permission] = {
 }
 
 
-class AuditEventType(str, Enum):
+class AuditEventType(StrEnum):
     """Types of audit events recorded by the system."""
 
     AUTHENTICATION = "authentication"
@@ -149,7 +149,7 @@ class Delegation:
     permissions: set[Permission]
 
 
-class RoleChangeState(str, Enum):
+class RoleChangeState(StrEnum):
     """Lifecycle state for role change requests."""
 
     PENDING_APPROVAL = "pending_admin_approval"
