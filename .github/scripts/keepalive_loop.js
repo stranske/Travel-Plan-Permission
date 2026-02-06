@@ -1871,8 +1871,6 @@ async function evaluateKeepaliveLoop({ github: rawGithub, context, core, payload
     // An iteration is productive if it has a reasonable productivity score
     const isProductive = productivityScore >= 20 && !hasRecentFailures;
 
-    // Early detection: Check for diminishing returns pattern
-    // If we had activity before but now have none, might be naturally completing
     // max_iterations is a "stuck detection" threshold, not a hard cap
     // Continue past max if productive work is happening
     const shouldStopForMaxIterations = iteration >= maxIterations && !isProductive;
@@ -1977,6 +1975,7 @@ async function evaluateKeepaliveLoop({ github: rawGithub, context, core, payload
     } else if (needsProgressReview) {
       // Trigger LLM-based progress review when agent is active but not completing tasks
       // This allows legitimate prep work while catching scope drift early
+      // Checked after max-iteration handling to avoid trapping the loop in review-only mode
       action = 'review';
       reason = `progress-review-${roundsWithoutTaskCompletion}`;
     } else if (tasksRemaining) {
