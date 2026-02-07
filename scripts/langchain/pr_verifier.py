@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
-
 from scripts import api_client
 
 PR_EVALUATION_PROMPT = """
