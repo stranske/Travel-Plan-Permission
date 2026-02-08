@@ -6,7 +6,7 @@ import os
 from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from .models import TripPlan
 
 
-class ValidationSeverity(str, Enum):
+class ValidationSeverity(StrEnum):
     """Severity for validation results."""
 
     ERROR = "error"

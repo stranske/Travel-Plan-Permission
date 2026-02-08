@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, Field
@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from .receipts import Receipt
 
 
-class TripStatus(str, Enum):
+class TripStatus(StrEnum):
     """Status of a trip plan."""
 
     DRAFT = "draft"
@@ -23,7 +23,7 @@ class TripStatus(str, Enum):
     COMPLETED = "completed"
 
 
-class ExpenseCategory(str, Enum):
+class ExpenseCategory(StrEnum):
     """Categories for expense items."""
 
     AIRFARE = "airfare"
@@ -34,7 +34,7 @@ class ExpenseCategory(str, Enum):
     OTHER = "other"
 
 
-class ApprovalStatus(str, Enum):
+class ApprovalStatus(StrEnum):
     """Status of expense approval processing."""
 
     PENDING = "pending"
@@ -42,7 +42,7 @@ class ApprovalStatus(str, Enum):
     FLAGGED = "flagged"
 
 
-class ApprovalAction(str, Enum):
+class ApprovalAction(StrEnum):
     """Action to take when a rule matches an expense."""
 
     AUTO_APPROVE = "auto_approve"
@@ -93,7 +93,7 @@ class ApprovalDecision(BaseModel):
     reason: str | None = Field(default=None, description="Optional explanation for the decision")
 
 
-class ApprovalOutcome(str, Enum):
+class ApprovalOutcome(StrEnum):
     """Outcome of an approval workflow decision."""
 
     APPROVED = "approved"
@@ -125,7 +125,7 @@ class ApprovalEvent(BaseModel):
             raise ValueError(msg)
 
 
-class ExceptionType(str, Enum):
+class ExceptionType(StrEnum):
     """Exception categories aligned to policy-lite advisory rules."""
 
     ADVANCE_BOOKING = "advance_booking"
@@ -145,7 +145,7 @@ class ExceptionType(str, Enum):
             raise ValueError(msg) from exc
 
 
-class ExceptionApprovalLevel(str, Enum):
+class ExceptionApprovalLevel(StrEnum):
     """Approval levels for exception routing."""
 
     MANAGER = "manager"
@@ -153,7 +153,7 @@ class ExceptionApprovalLevel(str, Enum):
     BOARD = "board"
 
 
-class ExceptionStatus(str, Enum):
+class ExceptionStatus(StrEnum):
     """Lifecycle status for an exception request."""
 
     PENDING = "pending"
