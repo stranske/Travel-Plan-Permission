@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
@@ -18,11 +19,14 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
 from scripts import api_client
 from scripts.langchain.structured_output import (
     build_repair_callback,
     parse_structured_output,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 PR_EVALUATION_PROMPT = """
 You are reviewing a **merged** pull request to evaluate whether the code
@@ -296,7 +300,11 @@ def _invoke_llm(
     )
     try:
         return client.invoke(prompt, config=config)
-    except TypeError:
+    except TypeError as exc:
+        LOGGER.warning(
+            "LLM invoke failed with config/metadata; using config/metadata fallback. Error: %s",
+            exc,
+        )
         return client.invoke(prompt)
 
 
