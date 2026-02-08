@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from datetime import date
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-class ProviderType(str, Enum):
+class ProviderType(StrEnum):
     """Categories of supported travel providers."""
 
     AIRLINE = "airline"
