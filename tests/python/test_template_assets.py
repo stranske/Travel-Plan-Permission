@@ -39,9 +39,9 @@ def test_template_asset_loads_and_matches_mapping() -> None:
 def test_template_mapping_requires_template_asset(tmp_path: Path) -> None:
     source = Path("config/excel_mappings.yaml").read_text(encoding="utf-8")
     data = yaml.safe_load(source)
-    data["templates"][DEFAULT_TEMPLATE_VERSION]["metadata"][
-        "template_file"
-    ] = "missing_template.xlsx"
+    data["templates"][DEFAULT_TEMPLATE_VERSION]["metadata"]["template_file"] = (
+        "missing_template.xlsx"
+    )
     target = tmp_path / "excel_mappings.yaml"
     target.write_text(yaml.safe_dump(data), encoding="utf-8")
 
