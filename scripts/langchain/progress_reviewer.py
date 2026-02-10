@@ -142,7 +142,6 @@ def build_review_payload(result: ProgressReviewResult) -> dict:
 def heuristic_alignment_check(
     acceptance_criteria: list[str],
     recent_commits: list[str],
-    files_changed: list[str],
 ) -> tuple[float, list[str], list[str]]:
     """
     Quick heuristic check for alignment before invoking LLM.
@@ -306,7 +305,7 @@ def review_progress_with_llm(
     resolved = build_chat_client(model=model) if build_chat_client else None
     if not resolved:
         score, aligned, unaligned = heuristic_alignment_check(
-            acceptance_criteria, recent_commits, files_changed
+            acceptance_criteria, recent_commits
         )
 
         if score >= 6:
@@ -366,7 +365,7 @@ def review_progress_with_llm(
     except Exception as e:
         # Fall back to heuristic on any error
         score, aligned, unaligned = heuristic_alignment_check(
-            acceptance_criteria, recent_commits, files_changed
+            acceptance_criteria, recent_commits
         )
 
         return ProgressReviewResult(
@@ -414,7 +413,7 @@ def review_progress(
     """
     # Quick heuristic check first
     heuristic_score, aligned, unaligned = heuristic_alignment_check(
-        acceptance_criteria, recent_commits, files_changed
+        acceptance_criteria, recent_commits
     )
 
     # If clearly aligned or clearly not, skip LLM
