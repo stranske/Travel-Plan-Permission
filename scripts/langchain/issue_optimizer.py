@@ -17,11 +17,17 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+
 from scripts.langchain.structured_output import (
     DEFAULT_REPAIR_PROMPT,
     build_repair_callback,
     parse_structured_output,
 )
+
+try:
+    from scripts.langchain.injection_guard import check_prompt_injection
+except ModuleNotFoundError:
+    from injection_guard import check_prompt_injection
 
 AGENT_LIMITATIONS = [
     "Cannot modify .github/workflows/*.yml (protected)",
@@ -127,9 +133,11 @@ class IssueOptimizationResult:
     formatting_issues: list[str]
     overall_notes: str | None
     provider_used: str | None = None
+    guard_blocked: bool = False
+    guard_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "task_splitting": self.task_splitting,
             "blocked_tasks": self.blocked_tasks,
             "objective_criteria": self.objective_criteria,
@@ -138,6 +146,10 @@ class IssueOptimizationResult:
             "overall_notes": self.overall_notes or "",
             "provider_used": self.provider_used,
         }
+        if self.guard_blocked:
+            payload["guard_blocked"] = True
+            payload["guard_reason"] = self.guard_reason
+        return payload
 
 
 class IssueOptimizationPayload(BaseModel):
@@ -668,6 +680,20 @@ def analyze_issue(issue_body: str, *, use_llm: bool = True) -> IssueOptimization
     if not issue_body:
         issue_body = ""
 
+    guard_result = check_prompt_injection(issue_body)
+    if guard_result["blocked"]:
+        return IssueOptimizationResult(
+            task_splitting=[],
+            blocked_tasks=[],
+            objective_criteria=[],
+            missing_sections=[],
+            formatting_issues=[],
+            overall_notes="",
+            provider_used=None,
+            guard_blocked=True,
+            guard_reason=guard_result["reason"],
+        )
+
     last_error: str | None = None
     if use_llm:
         from tools.llm_provider import _is_token_limit_error
@@ -878,6 +904,17 @@ def apply_suggestions(
     if not issue_body:
         issue_body = ""
 
+    guard_result = check_prompt_injection(issue_body)
+    if guard_result["blocked"]:
+        return {
+            "formatted_body": issue_body,
+            "provider_used": None,
+            "used_llm": False,
+            "blocked": True,
+            "guard_blocked": True,
+            "guard_reason": guard_result["reason"],
+        }
+
     if use_llm:
         from tools.llm_provider import _is_token_limit_error
 
@@ -1063,6 +1100,9 @@ def main() -> None:
                 "provider_used": result.get("provider_used"),
                 "used_llm": result.get("used_llm", False),
             }
+            if result.get("blocked"):
+                payload["guard_blocked"] = True
+                payload["guard_reason"] = result.get("guard_reason") or ""
             print(json.dumps(payload, ensure_ascii=True))
         else:
             print(result["formatted_body"])
