@@ -304,9 +304,7 @@ def review_progress_with_llm(
 
     resolved = build_chat_client(model=model) if build_chat_client else None
     if not resolved:
-        score, aligned, unaligned = heuristic_alignment_check(
-            acceptance_criteria, recent_commits
-        )
+        score, aligned, unaligned = heuristic_alignment_check(acceptance_criteria, recent_commits)
 
         if score >= 6:
             rec = "CONTINUE"
@@ -364,9 +362,7 @@ def review_progress_with_llm(
 
     except Exception as e:
         # Fall back to heuristic on any error
-        score, aligned, unaligned = heuristic_alignment_check(
-            acceptance_criteria, recent_commits
-        )
+        score, aligned, unaligned = heuristic_alignment_check(acceptance_criteria, recent_commits)
 
         return ProgressReviewResult(
             recommendation="REDIRECT",
