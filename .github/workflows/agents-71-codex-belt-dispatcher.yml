@@ -158,27 +158,11 @@ jobs:
           token: ${{ env.GH_DISPATCH_TOKEN }}
           fetch-depth: 1
 
-      - name: Export load balancer tokens
-        uses: ./.github/actions/export-load-balancer-tokens
+      - name: Setup API client
+        uses: ./.github/actions/setup-api-client
         with:
+          secrets: ${{ toJSON(secrets) }}
           github_token: ${{ env.GH_DISPATCH_TOKEN || github.token }}
-          service_bot_pat: ${{ secrets.SERVICE_BOT_PAT }}
-          actions_bot_pat: ${{ secrets.ACTIONS_BOT_PAT }}
-          codespaces_workflows: ${{ secrets.CODESPACES_WORKFLOWS }}
-          owner_pr_pat: ${{ secrets.OWNER_PR_PAT }}
-          agents_automation_pat: ${{ secrets.AGENTS_AUTOMATION_PAT }}
-          workflows_app_id: ${{ secrets.WORKFLOWS_APP_ID }}
-          workflows_app_private_key: ${{ secrets.WORKFLOWS_APP_PRIVATE_KEY }}
-          keepalive_app_id: ${{ secrets.KEEPALIVE_APP_ID }}
-          keepalive_app_private_key: ${{ secrets.KEEPALIVE_APP_PRIVATE_KEY }}
-          gh_app_id: ${{ secrets.GH_APP_ID }}
-          gh_app_private_key: ${{ secrets.GH_APP_PRIVATE_KEY }}
-          app_1_id: ${{ secrets.APP_1_ID }}
-          app_1_private_key: ${{ secrets.APP_1_PRIVATE_KEY }}
-          app_2_id: ${{ secrets.APP_2_ID }}
-          app_2_private_key: ${{ secrets.APP_2_PRIVATE_KEY }}
-          token_rotation_json: ${{ secrets.TOKEN_ROTATION_JSON }}
-          token_rotation_env_keys: ${{ vars.TOKEN_ROTATION_ENV_KEYS }}
 
       - name: Resolve Workflows default branch
         id: workflows_ref
@@ -205,8 +189,9 @@ jobs:
           repository: stranske/Workflows
           ref: ${{ steps.workflows_ref.outputs.ref }}
           sparse-checkout: |
-            .github/actions/export-load-balancer-tokens
+            .github/actions/setup-api-client
             .github/scripts/github-api-with-retry.js
+            .github/scripts/token_load_balancer.js
           sparse-checkout-cone-mode: false
 
       - name: Resolve candidate issue
@@ -215,7 +200,12 @@ jobs:
         with:
           github-token: ${{ env.GH_DISPATCH_TOKEN }}
           script: |
-            const { withRetry } = require('./.github/scripts/github-api-with-retry.js');
+            const { createTokenAwareRetry } = require('./.github/scripts/github-api-with-retry.js');
+            const { withRetry } = await createTokenAwareRetry({
+              github,
+              core,
+              task: 'codex-belt-dispatcher-pick',
+            });
             const forced = '${{ inputs.force_issue }}';
             const { owner, repo } = context.repo;
 
@@ -231,7 +221,7 @@ jobs:
             }
 
             if (!issueNumber) {
-              const { data: issues } = await withRetry(() => github.rest.issues.listForRepo({
+              const { data: issues } = await withRetry((client) => client.rest.issues.listForRepo({
                 owner,
                 repo,
                 state: 'open',
@@ -265,7 +255,7 @@ jobs:
               ]
             ]);
 
-            const { data: repoInfo } = await withRetry(() => github.rest.repos.get({ owner, repo }));
+            const { data: repoInfo } = await withRetry((client) => client.rest.repos.get({ owner, repo }));
             const base = repoInfo.default_branch;
             if (!base) {
               core.setFailed('Repository default branch not available');
@@ -316,25 +306,30 @@ jobs:
         with:
           github-token: ${{ env.GH_DISPATCH_TOKEN }}
           script: |
-            const { withRetry } = require('./.github/scripts/github-api-with-retry.js');
+            const { createTokenAwareRetry } = require('./.github/scripts/github-api-with-retry.js');
+            const { withRetry } = await createTokenAwareRetry({
+              github,
+              core,
+              task: 'codex-belt-dispatcher-transition',
+            });
             const issue = Number('${{ steps.pick.outputs.issue }}');
             if (!issue) { return; }
             const { owner, repo } = context.repo;
             const branch = '${{ steps.pick.outputs.branch }}';
             try {
-              await withRetry(() => github.rest.issues.removeLabel({ owner, repo, issue_number: issue, name: 'status:ready' }));
+              await withRetry((client) => client.rest.issues.removeLabel({ owner, repo, issue_number: issue, name: 'status:ready' }));
             } catch (error) {
               if (error.status !== 404) {
                 core.warning(`Failed to remove status:ready: ${error.message}`);
               }
             }
             try {
-              await withRetry(() => github.rest.issues.addLabels({ owner, repo, issue_number: issue, labels: ['status:in-progress'] }));
+              await withRetry((client) => client.rest.issues.addLabels({ owner, repo, issue_number: issue, labels: ['status:in-progress'] }));
             } catch (error) {
               core.warning(`Failed to add status:in-progress: ${error.message}`);
             }
             try {
-              await withRetry(() => github.rest.issues.createComment({
+              await withRetry((client) => client.rest.issues.createComment({
                 owner,
                 repo,
                 issue_number: issue,

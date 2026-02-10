@@ -73,27 +73,29 @@ jobs:
           repository: stranske/Workflows
           token: ${{ steps.select-token.outputs.token }}
           sparse-checkout: |
-            .github/actions/export-load-balancer-tokens
+            .github/actions/setup-api-client
             .github/scripts/github-api-with-retry.js
+            .github/scripts/token_load_balancer.js
             scripts/langchain
             tools
 
-      - name: Export load balancer tokens
-        uses: ./.github/actions/export-load-balancer-tokens
+      - name: Setup API client
+        uses: ./.github/actions/setup-api-client
         with:
+          secrets: ${{ toJSON(secrets) }}
           github_token: ${{ github.token }}
-          token_rotation_json: ${{ secrets.TOKEN_ROTATION_JSON }}
-          token_rotation_env_keys: ${{ vars.TOKEN_ROTATION_ENV_KEYS }}
+
+
       - name: Set up Python
         if: steps.check-merged.outputs.merged == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
         if: steps.check-merged.outputs.merged == 'true'
         run: |
-          pip install langchain langchain-openai requests
+          pip install langchain langchain-openai langchain-anthropic requests
 
       - name: Collect verification and original issue data
         id: collect
@@ -196,6 +198,7 @@ jobs:
         if: steps.check-merged.outputs.merged == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CLAUDE_API_STRANSKE: ${{ secrets.CLAUDE_API_STRANSKE }}
           GITHUB_TOKEN: ${{ steps.select-token.outputs.token }}
           ORIGINAL_ISSUE_NUMBER: ${{ steps.collect.outputs.original_issue_number }}
           ORIGINAL_ISSUE_TITLE: ${{ steps.collect.outputs.original_issue_title }}

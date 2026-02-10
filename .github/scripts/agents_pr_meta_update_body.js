@@ -55,31 +55,147 @@ function extractSection(body, heading) {
 }
 
 function ensureChecklist(text) {
-  const lines = String(text || '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (!lines.length) {
+  const raw = String(text || '');
+  const lines = raw.split(/\r?\n/);
+  if (!lines.some((line) => line.trim())) {
     return '- [ ] —';
   }
-  return lines
-    .map((line) => {
-      // Skip lines that are already checkboxes
-      if (line.startsWith('- [')) {
-        return line;
+
+  const updated = [];
+  let inCodeBlock = false;
+  let lastWasList = false;
+
+  for (const rawLine of lines) {
+    if (isCodeFenceLine(rawLine)) {
+      inCodeBlock = !inCodeBlock;
+      updated.push(rawLine.trimEnd());
+      lastWasList = false;
+      continue;
+    }
+    if (inCodeBlock) {
+      updated.push(rawLine);
+      lastWasList = false;
+      continue;
+    }
+
+    if (!rawLine.trim()) {
+      updated.push('');
+      lastWasList = false;
+      continue;
+    }
+
+    const trimmed = rawLine.trim();
+    if (trimmed.startsWith('<!--') && trimmed.endsWith('-->')) {
+      updated.push(trimmed);
+      lastWasList = false;
+      continue;
+    }
+    if (trimmed.startsWith('#')) {
+      updated.push(trimmed);
+      lastWasList = false;
+      continue;
+    }
+
+    const listMatch = rawLine.match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/);
+    if (listMatch) {
+      const indent = listMatch[1];
+      const bullet = listMatch[2];
+      const remainder = listMatch[3].trim();
+      if (!remainder) {
+        updated.push(trimmed);
+      } else if (/^\[[ xX]\]/.test(remainder)) {
+        updated.push(`${indent}${bullet} ${remainder}`);
+      } else {
+        updated.push(`${indent}${bullet} [ ] ${remainder}`);
       }
-      // Skip HTML comments - they are informational, not actionable
-      if (line.startsWith('<!--') && line.endsWith('-->')) {
-        return line;
-      }
-      // Skip section headers
-      if (line.startsWith('#')) {
-        return line;
-      }
-      // Convert other lines to checkboxes
-      return `- [ ] ${line}`;
-    })
-    .join('\n');
+      lastWasList = true;
+      continue;
+    }
+
+    if (lastWasList && /^\s+\S/.test(rawLine)) {
+      updated.push(rawLine.trimEnd());
+      continue;
+    }
+
+    updated.push(`- [ ] ${trimmed}`);
+    lastWasList = true;
+  }
+
+  return updated.join('\n');
+}
+
+function coalesceWrappedChecklist(text) {
+  const raw = String(text || '');
+  const lines = raw.split(/\r?\n/);
+  if (!lines.some((line) => line.trim())) {
+    return raw;
+  }
+
+  const updated = [];
+  let inCodeBlock = false;
+  let pendingIndex = null;
+  let pendingChecked = false;
+  let pendingText = '';
+  let pendingPrefix = '';
+
+  const joinerPattern = /\b(and|or|with|to|so|for|of|into|that|in)\s*$/i;
+
+  const parseCheckbox = (line) => {
+    const match = line.match(/^(\s*)([-*+]|\d+[.)])\s+\[(x|X| )\]\s+(.+)$/);
+    if (!match) {
+      return null;
+    }
+    return {
+      indent: match[1],
+      bullet: match[2],
+      checked: match[3].toLowerCase() === 'x',
+      text: match[4].trim(),
+    };
+  };
+
+  for (const line of lines) {
+    if (isCodeFenceLine(line)) {
+      inCodeBlock = !inCodeBlock;
+      updated.push(line);
+      pendingIndex = null;
+      continue;
+    }
+    if (inCodeBlock) {
+      updated.push(line);
+      pendingIndex = null;
+      continue;
+    }
+
+    const parsed = parseCheckbox(line);
+    if (!parsed) {
+      updated.push(line);
+      pendingIndex = null;
+      continue;
+    }
+
+    if (
+      pendingIndex !== null &&
+      (joinerPattern.test(pendingText)
+        || (/^[a-z]/.test(parsed.text) && !/[.!?]$/.test(pendingText)))
+    ) {
+      const mergedText = `${pendingText} ${parsed.text}`.replace(/\s+/g, ' ').trim();
+      const mergedChecked = pendingChecked || parsed.checked;
+      const checkbox = mergedChecked ? '[x]' : '[ ]';
+      updated[pendingIndex] = `${pendingPrefix}${checkbox} ${mergedText}`;
+      pendingText = mergedText;
+      pendingChecked = mergedChecked;
+      continue;
+    }
+
+    const checkbox = parsed.checked ? '[x]' : '[ ]';
+    pendingPrefix = `${parsed.indent}${parsed.bullet} `;
+    pendingText = parsed.text;
+    pendingChecked = parsed.checked;
+    pendingIndex = updated.length;
+    updated.push(`${pendingPrefix}${checkbox} ${parsed.text}`);
+  }
+
+  return updated.join('\n');
 }
 
 function extractBlock(body, marker) {
@@ -367,7 +483,157 @@ function mergeCheckboxStates(newContent, existingStates) {
 const CONNECTOR_BOT_LOGINS = [
   'chatgpt-codex-connector[bot]',
   'github-actions[bot]',  // Sometimes used for automation
+  'stranske-keepalive[bot]',
+  'agents-workflows-bot[bot]',
 ];
+
+const COMPLETION_COMMENT_MARKER = '<!-- codex-completion-checkpoint -->';
+const COMPLETION_WARNING_MARKER = '<!-- completion-author-warning -->';
+
+function normaliseLogin(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+async function fetchIssueComments(github, owner, repo, prNumber, core) {
+  try {
+    return await github.paginate(github.rest.issues.listComments, {
+      owner,
+      repo,
+      issue_number: prNumber,
+      per_page: 100,
+    });
+  } catch (error) {
+    if (core) {
+      core.warning(`Failed to fetch PR comments: ${error.message}`);
+    }
+    return [];
+  }
+}
+
+function parseConnectorCheckboxStatesFromComments(comments, core) {
+  const states = new Map();
+  const allowed = new Set(CONNECTOR_BOT_LOGINS.map(normaliseLogin));
+  const connectorComments = Array.isArray(comments)
+    ? comments.filter((comment) => allowed.has(normaliseLogin(comment?.user?.login)))
+    : [];
+
+  if (connectorComments.length === 0) {
+    return states;
+  }
+
+  for (const comment of connectorComments) {
+    const commentStates = parseCheckboxStates(comment.body);
+    for (const [key] of commentStates) {
+      states.set(key, true);
+    }
+  }
+
+  if (states.size > 0 && core) {
+    core.info(`Found ${states.size} checked checkbox(es) from connector bot comments`);
+  }
+
+  return states;
+}
+
+function findUnauthorizedCompletionAuthors(comments) {
+  const allowed = new Set(CONNECTOR_BOT_LOGINS.map(normaliseLogin));
+  const found = new Map();
+  for (const comment of Array.isArray(comments) ? comments : []) {
+    const body = String(comment?.body || '');
+    if (!body.includes(COMPLETION_COMMENT_MARKER)) {
+      continue;
+    }
+    const rawLogin = String(comment?.user?.login || '').trim();
+    const login = normaliseLogin(rawLogin);
+    if (!login || allowed.has(login)) {
+      continue;
+    }
+    if (!found.has(login)) {
+      found.set(login, rawLogin || login);
+    }
+  }
+  return Array.from(found.values());
+}
+
+function buildCompletionAuthorWarningBody(logins, { resolved = false } = {}) {
+  const lines = [COMPLETION_WARNING_MARKER];
+  if (resolved) {
+    lines.push('## ✅ Completion Comment Authors Authorized');
+    lines.push('');
+    lines.push('No unauthorized completion checkpoint authors were detected in the latest scan.');
+    return lines.join('\n');
+  }
+
+  lines.push('## ⚠️ Completion Comment Author Not Authorized');
+  lines.push('');
+  lines.push('The PR has completion checkpoint comments from the following login(s):');
+  for (const login of logins) {
+    lines.push(`- ${login}`);
+  }
+  lines.push('');
+  lines.push('Automated Status Summary only merges completion checkboxes from authorized bots.');
+  lines.push('If this bot should be trusted, add it to `CONNECTOR_BOT_LOGINS` in `agents_pr_meta_update_body.js` (Workflows repo and consumer templates).');
+  return lines.join('\n');
+}
+
+async function upsertCompletionAuthorWarning({ github, owner, repo, prNumber, comments, unauthorizedLogins, core }) {
+  try {
+    const list = Array.isArray(unauthorizedLogins) ? unauthorizedLogins.filter(Boolean) : [];
+    const existing = (Array.isArray(comments) ? comments : [])
+      .find((comment) => comment?.body && comment.body.includes(COMPLETION_WARNING_MARKER));
+    const updateComment = async (commentId, body, label) => {
+      await withRetries(
+        () => github.rest.issues.updateComment({
+          owner,
+          repo,
+          comment_id: commentId,
+          body,
+        }),
+        { description: label, core },
+      );
+    };
+    const createComment = async (body, label) => {
+      await withRetries(
+        () => github.rest.issues.createComment({
+          owner,
+          repo,
+          issue_number: prNumber,
+          body,
+        }),
+        { description: label, core },
+      );
+    };
+
+    if (list.length === 0) {
+      if (existing) {
+        const body = buildCompletionAuthorWarningBody([], { resolved: true });
+        await updateComment(existing.id, body, `issues.updateComment #${existing.id}`);
+        if (core) {
+          core.info('Updated completion author warning comment to resolved state.');
+        }
+      }
+      return;
+    }
+
+    const body = buildCompletionAuthorWarningBody(list);
+    if (existing) {
+      await updateComment(existing.id, body, `issues.updateComment #${existing.id}`);
+      if (core) {
+        core.info('Updated completion author warning comment.');
+      }
+      return;
+    }
+
+    await createComment(body, `issues.createComment #${prNumber}`);
+    if (core) {
+      core.info('Posted completion author warning comment.');
+    }
+  } catch (error) {
+    if (core) {
+      core.warning(`Failed to upsert completion author warning: ${error.message}`);
+    }
+  }
+}
 
 /**
  * Fetch comments from connector bots and extract checked checkbox states.
@@ -381,44 +647,8 @@ const CONNECTOR_BOT_LOGINS = [
  * @returns {Promise<Map<string, boolean>>} Map of normalized checkbox text to checked state
  */
 async function fetchConnectorCheckboxStates(github, owner, repo, prNumber, core) {
-  const states = new Map();
-  
-  try {
-    const comments = await github.paginate(github.rest.issues.listComments, {
-      owner,
-      repo,
-      issue_number: prNumber,
-      per_page: 100,
-    });
-    
-    // Filter to connector bot comments only
-    const connectorComments = comments.filter((c) => 
-      c.user && CONNECTOR_BOT_LOGINS.includes(c.user.login)
-    );
-    
-    if (connectorComments.length === 0) {
-      return states;
-    }
-    
-    // Parse checkbox states from all connector comments
-    // Later comments override earlier ones (most recent state wins)
-    for (const comment of connectorComments) {
-      const commentStates = parseCheckboxStates(comment.body);
-      for (const [key] of commentStates) {
-        states.set(key, true);
-      }
-    }
-    
-    if (states.size > 0 && core) {
-      core.info(`Found ${states.size} checked checkbox(es) from connector bot comments`);
-    }
-  } catch (error) {
-    if (core) {
-      core.warning(`Failed to fetch connector comments: ${error.message}`);
-    }
-  }
-  
-  return states;
+  const comments = await fetchIssueComments(github, owner, repo, prNumber, core);
+  return parseConnectorCheckboxStatesFromComments(comments, core);
 }
 
 /**
@@ -697,13 +927,19 @@ function buildStatusBlock({scope, contextSection, tasks, acceptance, headSha, wo
   }
 
   statusLines.push('#### Tasks');
-  let tasksFormatted = tasks ? ensureChecklist(tasks) : fallbackChecklist('Tasks section missing from source issue.');
+  const tasksNormalized = tasks ? coalesceWrappedChecklist(tasks) : '';
+  let tasksFormatted = tasksNormalized
+    ? ensureChecklist(tasksNormalized)
+    : fallbackChecklist('Tasks section missing from source issue.');
   tasksFormatted = mergeCheckboxStates(tasksFormatted, mergedStates);
   statusLines.push(tasksFormatted);
   statusLines.push('');
 
   statusLines.push('#### Acceptance criteria');
-  let acceptanceFormatted = acceptance ? ensureChecklist(acceptance) : fallbackChecklist('Acceptance criteria section missing from source issue.');
+  const acceptanceNormalized = acceptance ? coalesceWrappedChecklist(acceptance) : '';
+  let acceptanceFormatted = acceptanceNormalized
+    ? ensureChecklist(acceptanceNormalized)
+    : fallbackChecklist('Acceptance criteria section missing from source issue.');
   acceptanceFormatted = mergeCheckboxStates(acceptanceFormatted, mergedStates);
   statusLines.push(acceptanceFormatted);
   statusLines.push('');
@@ -1008,25 +1244,6 @@ async function run({github: rawGithub, context, core, inputs}) {
   let contextSection = extractSection(issueBody, 'Context for Agent')
     || extractBlock(pr.body || '', 'context')
     || '';
-  if (!String(contextSection || '').trim()) {
-    let issueComments = [];
-    try {
-      issueComments = await github.paginate(github.rest.issues.listComments, {
-        owner,
-        repo,
-        issue_number: issueNumber,
-        per_page: 100,
-      });
-    } catch (error) {
-      core.warning(`Failed to fetch issue comments for context extraction: ${error.message}`);
-    }
-    const commentBodies = Array.isArray(issueComments)
-      ? issueComments
-        .map((comment) => String(comment?.body || '').trim())
-        .filter(Boolean)
-      : [];
-    contextSection = extractContextSectionWithPython(issueBody, commentBodies, core);
-  }
   contextSection = augmentContextWithRelatedIssues(contextSection, issueBody);
 
   const preamble = buildPreamble({summary, testing, ci, issueNumber});
@@ -1048,8 +1265,23 @@ async function run({github: rawGithub, context, core, inputs}) {
     ? [...requiredChecksRaw, 'gate']
     : requiredChecksRaw;
 
+  const issueComments = await fetchIssueComments(github, owner, repo, pr.number, core);
   // Fetch checkbox states from connector bot comments to merge into status summary
-  const connectorStates = await fetchConnectorCheckboxStates(github, owner, repo, pr.number, core);
+  const connectorStates = parseConnectorCheckboxStatesFromComments(issueComments, core);
+  const unauthorizedAuthors = findUnauthorizedCompletionAuthors(issueComments);
+  try {
+    await upsertCompletionAuthorWarning({
+      github,
+      owner,
+      repo,
+      prNumber: pr.number,
+      comments: issueComments,
+      unauthorizedLogins: unauthorizedAuthors,
+      core,
+    });
+  } catch (error) {
+    core.warning(`Completion author warning skipped: ${error.message}`);
+  }
 
   const agentType = resolveAgentType({ inputs, env: process.env, pr });
 
@@ -1108,6 +1340,7 @@ module.exports = {
   normalizeWhitespace,
   extractSection,
   ensureChecklist,
+  coalesceWrappedChecklist,
   extractBlock,
   extractContextSectionWithPython,
   extractIssueRefsFromText,
@@ -1115,6 +1348,11 @@ module.exports = {
   parseCheckboxStates,
   mergeCheckboxStates,
   fetchConnectorCheckboxStates,
+  fetchIssueComments,
+  parseConnectorCheckboxStatesFromComments,
+  findUnauthorizedCompletionAuthors,
+  buildCompletionAuthorWarningBody,
+  upsertCompletionAuthorWarning,
   stripPrTemplateContent,
   upsertBlock,
   buildContextBlock,

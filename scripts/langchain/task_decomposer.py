@@ -82,45 +82,30 @@ def _load_prompt() -> str:
 
 
 def _get_llm_client(force_openai: bool = False) -> tuple[object, str] | None:
-    """Get LLM client, trying GitHub Models first (cheaper), then OpenAI.
+    """Get LLM client using slot order (OpenAI, Claude, GitHub Models).
 
     Args:
-        force_openai: If True, skip GitHub Models and use OpenAI directly.
-                      Use this for retry after GitHub Models 401 error.
+        force_openai: If True, force OpenAI for retry after GitHub Models 401 error.
     """
     try:
-        from langchain_openai import ChatOpenAI
+        from tools.langchain_client import build_chat_client
     except ImportError:
         return None
 
-    github_token = os.environ.get("GITHUB_TOKEN")
-    openai_token = os.environ.get("OPENAI_API_KEY")
-    if not github_token and not openai_token:
+    provider = None
+    if force_openai:
+        provider = "openai"
+    else:
+        env_provider = os.environ.get("LANGCHAIN_PROVIDER")
+        if env_provider:
+            provider = env_provider
+        elif os.environ.get("GITHUB_TOKEN") and not os.environ.get("OPENAI_API_KEY"):
+            provider = "github-models"
+
+    resolved = build_chat_client(provider=provider)
+    if not resolved:
         return None
-
-    from tools.llm_provider import DEFAULT_MODEL, GITHUB_MODELS_BASE_URL
-
-    # Try GitHub Models first (cheaper) unless forced to use OpenAI
-    if github_token and not force_openai:
-        return (
-            ChatOpenAI(
-                model=DEFAULT_MODEL,
-                base_url=GITHUB_MODELS_BASE_URL,
-                api_key=github_token,
-                temperature=0.1,
-            ),
-            "github-models",
-        )
-    if openai_token:
-        return (
-            ChatOpenAI(
-                model=DEFAULT_MODEL,
-                api_key=openai_token,
-                temperature=0.1,
-            ),
-            "openai",
-        )
-    return None
+    return resolved.client, resolved.provider
 
 
 def _ensure_verification(text: str) -> str:
@@ -277,12 +262,18 @@ def _rewrite_dependency_task(task: str) -> str:
 
 def _normalize_subtasks(sub_tasks: list[str]) -> list[str]:
     normalized: list[str] = []
+    seen: set[str] = set()
     for task in sub_tasks:
         cleaned_task = _strip_dependency_clause(task.strip())
         for part in _split_task_parts(cleaned_task):
             cleaned = _strip_dependency_clause(part.strip())
             if not cleaned:
                 continue
+            # Deduplicate by normalized text
+            norm_key = re.sub(r"\s+", " ", cleaned.lower().strip())
+            if norm_key in seen:
+                continue
+            seen.add(norm_key)
             if _contains_dependency_phrase(cleaned):
                 cleaned = _rewrite_dependency_task(cleaned)
             if _is_large_task(cleaned) and not cleaned.lower().startswith("document dependency"):
@@ -290,7 +281,17 @@ def _normalize_subtasks(sub_tasks: list[str]) -> list[str]:
                     normalized.append(_ensure_verification(scoped_task))
                 continue
             normalized.append(_ensure_verification(cleaned))
-    return normalized
+    # Second dedupe pass on final output — catches duplicates introduced by
+    # _rewrite_dependency_task / _ensure_verification rewriting different
+    # inputs to the same canonical form.
+    final: list[str] = []
+    seen_final: set[str] = set()
+    for entry in normalized:
+        key = re.sub(r"\s+", " ", entry.lower().strip())
+        if key not in seen_final:
+            seen_final.add(key)
+            final.append(entry)
+    return final
 
 
 def normalize_subtasks(sub_tasks: list[str]) -> list[str]:

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -103,38 +102,14 @@ def _get_llm_client(force_openai: bool = False) -> tuple[object, str] | None:
                       Use this for retry after GitHub Models 401 error.
     """
     try:
-        # Keep imports contiguous; consumer repos treat both as third-party
-        from langchain_openai import ChatOpenAI  # noqa: I001
-        from tools.llm_provider import DEFAULT_MODEL, GITHUB_MODELS_BASE_URL
+        from tools.langchain_client import build_chat_client
     except ImportError:
         return None
 
-    github_token = os.environ.get("GITHUB_TOKEN")
-    openai_token = os.environ.get("OPENAI_API_KEY")
-    if not github_token and not openai_token:
+    resolved = build_chat_client(force_openai=force_openai)
+    if not resolved:
         return None
-
-    # Try GitHub Models first (cheaper) unless forced to use OpenAI
-    if github_token and not force_openai:
-        return (
-            ChatOpenAI(
-                model=DEFAULT_MODEL,
-                base_url=GITHUB_MODELS_BASE_URL,
-                api_key=github_token,
-                temperature=0.1,
-            ),
-            "github-models",
-        )
-    if openai_token:
-        return (
-            ChatOpenAI(
-                model=DEFAULT_MODEL,
-                api_key=openai_token,
-                temperature=0.1,
-            ),
-            "openai",
-        )
-    return None
+    return resolved.client, resolved.provider
 
 
 def _normalize_heading(text: str) -> str:
@@ -212,7 +187,47 @@ def _parse_sections(body: str) -> tuple[dict[str, list[str]], list[str]]:
     sections: dict[str, list[str]] = {key: [] for key in SECTION_TITLES}
     preamble: list[str] = []
     current: str | None = None
+    code_fence_marker: str | None = None  # exact opening fence (e.g. ```, ````)
+    in_details_block = False
     for line in body.splitlines():
+        stripped = line.strip()
+        # Track code fences — match the exact opening fence length to avoid
+        # being fooled by nested fences of different lengths (e.g. ``` inside ````)
+        fence_match = re.match(r"^(`{3,})", stripped)
+        if fence_match:
+            if code_fence_marker is None:
+                code_fence_marker = fence_match.group(1)
+            elif len(fence_match.group(1)) >= len(code_fence_marker):
+                code_fence_marker = None
+        if code_fence_marker is not None:
+            if current:
+                sections[current].append(line)
+            else:
+                preamble.append(line)
+            continue
+        # Stop parsing at <details> blocks (Original Issue metadata).
+        # Handle both multi-line and inline <details>...</details> on one line.
+        lower_stripped = stripped.lower()
+        if lower_stripped.startswith("<details") and not in_details_block:
+            # Check if </details> also appears on the same line (inline block)
+            if "</details" in lower_stripped:
+                # Entire block on one line — preserve it but don't enter state
+                if current:
+                    sections[current].append(line)
+                else:
+                    preamble.append(line)
+                continue
+            in_details_block = True
+        if in_details_block:
+            if "</details" in lower_stripped:
+                in_details_block = False
+            # Preserve <details> content under the current section so it
+            # survives the round-trip, but don't parse headings from it.
+            if current:
+                sections[current].append(line)
+            else:
+                preamble.append(line)
+            continue
         heading_match = re.match(r"^\s*#{1,6}\s+(.*)$", line)
         if heading_match:
             section_key = _resolve_section(heading_match.group(1))

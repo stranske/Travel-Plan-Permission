@@ -33,7 +33,10 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           LABEL_NAME: ${{ github.event.label.name }}
           DISPATCH_PHASE: ${{ inputs.phase }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             {
               echo "phase=$DISPATCH_PHASE"
@@ -41,23 +44,47 @@ jobs:
               echo "should_run=true"
             } >> "$GITHUB_OUTPUT"
           elif [[ "$LABEL_NAME" == "agents:optimize" ]]; then
-            {
-              echo "phase=analyze"
-              echo "issue_number=${{ github.event.issue.number }}"
-              echo "should_run=true"
-            } >> "$GITHUB_OUTPUT"
+            # Skip if auto-pilot label is present (auto-pilot runs optimizer inline)
+            # Use pipefail to ensure gh errors cause check to fail-closed
+            if gh issue view "${{ github.event.issue.number }}" --json labels \
+                --jq '.labels[].name' | grep -qx 'agents:auto-pilot'; then
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              echo "Skipping: auto-pilot label present (runs inline)"
+            else
+              {
+                echo "phase=analyze"
+                echo "issue_number=${{ github.event.issue.number }}"
+                echo "should_run=true"
+              } >> "$GITHUB_OUTPUT"
+            fi
           elif [[ "$LABEL_NAME" == "agents:apply-suggestions" ]]; then
-            {
-              echo "phase=apply"
-              echo "issue_number=${{ github.event.issue.number }}"
-              echo "should_run=true"
-            } >> "$GITHUB_OUTPUT"
+            # Skip if auto-pilot label is present (auto-pilot manages this label for state)
+            # Use pipefail to ensure gh errors cause check to fail-closed
+            if gh issue view "${{ github.event.issue.number }}" --json labels \
+                --jq '.labels[].name' | grep -qx 'agents:auto-pilot'; then
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              echo "Skipping: auto-pilot label present (manages apply inline)"
+            else
+              {
+                echo "phase=apply"
+                echo "issue_number=${{ github.event.issue.number }}"
+                echo "should_run=true"
+              } >> "$GITHUB_OUTPUT"
+            fi
           elif [[ "$LABEL_NAME" == "agents:format" ]]; then
-            {
-              echo "phase=format"
-              echo "issue_number=${{ github.event.issue.number }}"
-              echo "should_run=true"
-            } >> "$GITHUB_OUTPUT"
+            # Skip if auto-pilot label is present (auto-pilot runs format inline)
+            # Use pipefail to ensure gh errors cause check to fail-closed
+            if gh issue view "${{ github.event.issue.number }}" --json labels \
+                --jq '.labels[].name' | grep -qx 'agents:auto-pilot'; then
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              echo "Skipping: auto-pilot label present (runs inline)"
+            else
+              {
+                echo "phase=format"
+                echo "issue_number=${{ github.event.issue.number }}"
+                echo "should_run=true"
+              } >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "should_run=false" >> "$GITHUB_OUTPUT"
           fi
@@ -103,9 +130,16 @@ jobs:
             tools
           sparse-checkout-cone-mode: false
 
+      - name: Setup API client
+        if: steps.check.outputs.should_run == 'true'
+        uses: ./.github/actions/setup-api-client
+        with:
+          secrets: ${{ toJSON(secrets) }}
+          github_token: ${{ steps.token.outputs.token }}
+
       - name: Set up Python
         if: steps.check.outputs.should_run == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -115,7 +149,70 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           # Install langchain dependencies
-          pip install langchain langchain-core langchain-openai langchain-community
+          pip install langchain langchain-core langchain-openai \
+            langchain-anthropic langchain-community
+
+      - name: Check optimizer recursion guard
+        if: steps.check.outputs.should_run == 'true'
+        id: recursion_guard
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
+        run: |
+          # Check how many optimizer runs for this issue in last hour
+          one_hour_ago=$( \
+            date -u -d '1 hour ago' \
+            '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+            || date -u -v-1H '+%Y-%m-%dT%H:%M:%SZ')
+
+          # shellcheck disable=SC2016
+          count=$(gh run list \
+            --workflow=agents-issue-optimizer.yml \
+            --json conclusion,createdAt,displayTitle \
+            | jq --arg cutoff "$one_hour_ago" \
+              --arg issue "#$ISSUE_NUMBER" \
+              '[.[] | select(.createdAt > $cutoff
+              and (.displayTitle | contains($issue)))
+              ] | length')
+
+          echo "Optimizer runs for issue #$ISSUE_NUMBER in last hour: $count"
+
+          if [ "$count" -gt 3 ]; then
+            echo "⚠️ Too many optimizer runs ($count > 3) in last hour"
+            echo "recursion_detected=true" >> "$GITHUB_OUTPUT"
+
+            # Post warning comment
+            REPO="${{ github.repository }}"
+            DOCS_URL="https://github.com/${REPO}"
+            DOCS_URL+="/blob/phase-3/Agents.md"
+            DOCS_URL+="#auto-pilot-recovery-procedures"
+            printf '%s\n' \
+              "## ⚠️ Optimizer Paused" \
+              "" \
+              "**Reason:** More than 3 optimizer runs detected in the last hour (__COUNT__ runs)." \
+              "" \
+              "This usually indicates:" \
+              "- Task decomposition spiral (creating too many subtasks)" \
+              "- Repeated failures causing retry loop" \
+              "" \
+              "**Next steps:**" \
+              "1. Check issue body for task explosion (hundreds of repeated tasks)" \
+              "2. Check recent workflow runs for errors" \
+              "3. If issue body is corrupted, close and recreate with clean body" \
+              "4. Remove \`agents:auto-pilot-pause\` label to retry after fixing" \
+              "" \
+              "Auto-pilot has been paused. See [recovery procedures](${DOCS_URL})." \
+              > /tmp/recursion_guard_comment.md
+            sed -i "s/__COUNT__/${count}/g" /tmp/recursion_guard_comment.md
+            gh issue comment "$ISSUE_NUMBER" --body-file /tmp/recursion_guard_comment.md
+
+            # Add pause label
+            gh issue edit "$ISSUE_NUMBER" --add-label "agents:auto-pilot-pause"
+
+            exit 1
+          else
+            echo "recursion_detected=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Get issue body
         if: steps.check.outputs.should_run == 'true'
@@ -123,10 +220,27 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
-        run: |
-          gh api "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" > /tmp/issue.json
-          jq -r '.body' /tmp/issue.json > /tmp/issue_body.md
-          echo "Issue body saved to /tmp/issue_body.md"
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.token.outputs.token }}
+          script: |
+            const fs = require('fs');
+            const { createTokenAwareRetry } = require('./.github/scripts/github-api-with-retry.js');
+            const { github: retryGithub, withRetry } = await createTokenAwareRetry({
+              github,
+              core,
+              env: process.env,
+              task: 'issue-optimizer',
+              capabilities: ['issues:read'],
+            });
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const { owner, repo } = context.repo;
+            const { data } = await withRetry((client) =>
+              client.rest.issues.get({ owner, repo, issue_number: issueNumber })
+            );
+            fs.writeFileSync('/tmp/issue.json', JSON.stringify(data, null, 2));
+            fs.writeFileSync('/tmp/issue_body.md', data.body || '');
+            core.info('Issue body saved to /tmp/issue_body.md');
 
       - name: Phase 1 - Analyze Issue
         if: steps.check.outputs.should_run == 'true' && steps.check.outputs.phase == 'analyze'
@@ -135,6 +249,9 @@ jobs:
           ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CLAUDE_API_STRANSKE: ${{ secrets.CLAUDE_API_STRANSKE }}
+          LANGCHAIN_PROVIDER: anthropic
+          LANGCHAIN_MODEL: claude-sonnet-4-5-20250929
           PYTHONPATH: ${{ github.workspace }}/workflows-scripts
         run: |
           echo "Running analysis on issue #${ISSUE_NUMBER}"
@@ -183,15 +300,47 @@ jobs:
           ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CLAUDE_API_STRANSKE: ${{ secrets.CLAUDE_API_STRANSKE }}
           PYTHONPATH: ${{ github.workspace }}/workflows-scripts
         run: |
           echo "Checking for potential duplicate issues (advisory)"
-            gh api \
-              "repos/${{ github.repository }}/issues?state=open&per_page=100" \
-              --paginate > /tmp/open_issues.json
-            gh api \
-              "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments" \
-              --paginate > /tmp/dedup_comments.json
+
+          node - <<'NODE'
+          const fs = require('fs');
+          const { Octokit } = require('@octokit/rest');
+          const { createTokenAwareRetry } = require('./.github/scripts/github-api-with-retry.js');
+
+          const issueNumber = Number(process.env.ISSUE_NUMBER);
+          const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+          const github = new Octokit({ auth: process.env.GH_TOKEN });
+          const core = { info: console.log, warning: console.warn, debug: () => {} };
+
+          (async () => {
+            const { paginateWithRetry } = await createTokenAwareRetry({
+              github,
+              core,
+              env: process.env,
+              task: 'issue-optimizer',
+              capabilities: ['issues:read'],
+            });
+
+            const openIssues = await paginateWithRetry(
+              github.rest.issues.listForRepo,
+              { owner, repo, state: 'open', per_page: 100 }
+            );
+
+            const comments = await paginateWithRetry(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: issueNumber, per_page: 100 }
+            );
+
+            fs.writeFileSync('/tmp/open_issues.json', JSON.stringify(openIssues, null, 2));
+            fs.writeFileSync('/tmp/dedup_comments.json', JSON.stringify(comments, null, 2));
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
 
           python - <<'PY' || true
           import json
@@ -243,14 +392,45 @@ jobs:
         env:
           ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
           GH_TOKEN: ${{ steps.token.outputs.token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CLAUDE_API_STRANSKE: ${{ secrets.CLAUDE_API_STRANSKE }}
+          LANGCHAIN_PROVIDER: anthropic
+          LANGCHAIN_MODEL: claude-sonnet-4-5-20250929
           PYTHONPATH: ${{ github.workspace }}/workflows-scripts
         run: |
           echo "Extracting suggestions from comments on issue #${ISSUE_NUMBER}"
 
-          # Get all comments and find the one with suggestions JSON
-            gh api \
-              "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments" \
-              --paginate > /tmp/comments.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const { Octokit } = require('@octokit/rest');
+          const { createTokenAwareRetry } = require('./.github/scripts/github-api-with-retry.js');
+
+          const issueNumber = Number(process.env.ISSUE_NUMBER);
+          const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+          const github = new Octokit({ auth: process.env.GH_TOKEN });
+          const core = { info: console.log, warning: console.warn, debug: () => {} };
+
+          (async () => {
+            const { paginateWithRetry } = await createTokenAwareRetry({
+              github,
+              core,
+              env: process.env,
+              task: 'issue-optimizer',
+              capabilities: ['issues:read'],
+            });
+
+            const comments = await paginateWithRetry(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: issueNumber, per_page: 100 }
+            );
+
+            fs.writeFileSync('/tmp/comments.json', JSON.stringify(comments, null, 2));
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
 
           # Extract suggestions JSON from comment
           python -c "
@@ -280,7 +460,7 @@ jobs:
               issue_body = f.read()
 
           # Apply suggestions
-          result = apply_suggestions(issue_body, suggestions, use_llm=False)
+          result = apply_suggestions(issue_body, suggestions, use_llm=True)
 
           with open('/tmp/updated_body.md', 'w') as f:
               f.write(result['formatted_body'])
@@ -301,6 +481,7 @@ jobs:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CLAUDE_API_STRANSKE: ${{ secrets.CLAUDE_API_STRANSKE }}
           PYTHONPATH: ${{ github.workspace }}/workflows-scripts
         run: |
           echo "Formatting issue #${ISSUE_NUMBER} into AGENT_ISSUE_TEMPLATE structure"
@@ -338,11 +519,10 @@ jobs:
           PHASE: ${{ steps.check.outputs.phase }}
         run: |
           if [[ "$PHASE" == "apply" ]]; then
-            # Remove both optimization labels and add formatted label
+            # Only remove agents:optimize, keep agents:apply-suggestions for state tracking
             gh issue edit "${ISSUE_NUMBER}" --remove-label "agents:optimize" || true
-            gh issue edit "${ISSUE_NUMBER}" --remove-label "agents:apply-suggestions"
             gh issue edit "${ISSUE_NUMBER}" --add-label "agents:formatted"
-            echo "Labels updated: removed optimize/apply-suggestions, added formatted"
+            echo "Labels updated: removed optimize, kept apply-suggestions for state tracking"
           elif [[ "$PHASE" == "format" ]]; then
             # Remove format trigger label and add formatted result label
             gh issue edit "${ISSUE_NUMBER}" --remove-label "agents:format"
@@ -355,7 +535,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.token.outputs.token || github.token }}
           ISSUE_NUMBER: ${{ steps.check.outputs.issue_number }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_URL: >-
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -n "${ISSUE_NUMBER}" ]; then
             body=$(cat <<'COMMENT'

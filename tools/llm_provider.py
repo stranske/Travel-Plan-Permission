@@ -2,9 +2,10 @@
 LLM Provider Abstraction with Fallback Chain
 
 Provides a unified interface for LLM calls with automatic fallback:
-1. GitHub Models API (primary) - uses GITHUB_TOKEN
-2. OpenAI API (fallback) - uses OPENAI_API_KEY
-3. Regex patterns (last resort) - no API calls
+1. OpenAI API (primary) - uses OPENAI_API_KEY
+2. Anthropic API (secondary) - uses CLAUDE_API_STRANSKE
+3. GitHub Models API (fallback) - uses GITHUB_TOKEN
+4. Regex patterns (last resort) - no API calls
 
 Usage:
     from tools.llm_provider import get_llm_provider, LLMProvider
@@ -21,6 +22,7 @@ LangSmith Tracing:
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import os
@@ -31,10 +33,13 @@ logger = logging.getLogger(__name__)
 
 # GitHub Models API endpoint (OpenAI-compatible)
 GITHUB_MODELS_BASE_URL = "https://models.inference.ai.azure.com"
-# Use gpt-4o for evaluation - best available on GitHub Models
-# gpt-4o-mini was too lenient and passed obvious deficiencies
-# Also avoids token-limit failures on large issues (8k limit in gpt-4o-mini)
-DEFAULT_MODEL = "gpt-4o"
+# Legacy/default model identifier:
+# - Not used for issuing requests to primary providers (OpenAI/Anthropic/GitHub Models)
+# - Still used internally (e.g., default slot model in langchain_client.py)
+# - Kept for backward compatibility with external code that references it
+DEFAULT_MODEL = "codex-mini-latest"
+ANTHROPIC_API_KEY_ENV = "CLAUDE_API_STRANSKE"
+SHORT_ANALYSIS_CONFIDENCE_CAP = 0.4
 
 
 def _setup_langsmith_tracing() -> bool:
@@ -48,9 +53,10 @@ def _setup_langsmith_tracing() -> bool:
         return False
 
     # Enable LangChain tracing v2
-    os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
     os.environ.setdefault("LANGCHAIN_PROJECT", "workflows-agents")
     # LangSmith uses LANGSMITH_API_KEY directly, but LangChain expects LANGCHAIN_API_KEY
+    os.environ.setdefault("LANGCHAIN_API_KEY", api_key)
     os.environ.setdefault("LANGSMITH_API_KEY", api_key)
 
     project = os.environ.get("LANGCHAIN_PROJECT")
@@ -82,6 +88,7 @@ class CompletionAnalysis:
     confidence: float  # 0.0 to 1.0
     reasoning: str  # Explanation of the analysis
     provider_used: str  # Which provider generated this
+    model_name: str = "unknown"  # Specific model used (e.g., gpt-4o, claude-3.5-sonnet)
 
     # Quality metrics for BS detection
     raw_confidence: float | None = None  # Original confidence before adjustment
@@ -122,6 +129,7 @@ class LLMProvider(ABC):
         session_output: str,
         tasks: list[str],
         context: str | None = None,
+        quality_context: SessionQualityContext | None = None,
     ) -> CompletionAnalysis:
         """
         Analyze session output to determine task completion status.
@@ -130,11 +138,48 @@ class LLMProvider(ABC):
             session_output: Codex session output (summary or JSONL events)
             tasks: List of task descriptions from PR checkboxes
             context: Optional additional context (PR description, etc.)
+            quality_context: Optional session quality context for confidence checks
 
         Returns:
             CompletionAnalysis with task status breakdown
         """
         pass
+
+    def supports_quality_context(self) -> bool:
+        """Return True if analyze_completion accepts a quality_context parameter."""
+        try:
+            parameters = inspect.signature(self.analyze_completion).parameters
+        except (TypeError, ValueError):
+            return False
+        return "quality_context" in parameters or any(
+            param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values()
+        )
+
+
+def _supports_quality_context(provider: LLMProvider) -> bool:
+    supports = getattr(provider, "supports_quality_context", None)
+    if callable(supports):
+        try:
+            return bool(supports())
+        except Exception:
+            logger.debug(
+                "supports_quality_context raised for %s, falling back to signature",
+                getattr(provider, "name", provider.__class__.__name__),
+            )
+    if supports is not None:
+        return bool(supports)
+    try:
+        parameters = inspect.signature(provider.analyze_completion).parameters
+    except (TypeError, ValueError):
+        return False
+    return "quality_context" in parameters or any(
+        param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values()
+    )
+
+
+def supports_quality_context(provider: LLMProvider) -> bool:
+    """Return True if provider supports a quality_context parameter."""
+    return _supports_quality_context(provider)
 
 
 class GitHubModelsProvider(LLMProvider):
@@ -147,6 +192,9 @@ class GitHubModelsProvider(LLMProvider):
     def is_available(self) -> bool:
         return bool(os.environ.get("GITHUB_TOKEN"))
 
+    def supports_quality_context(self) -> bool:
+        return True
+
     def _get_client(self):
         """Get LangChain ChatOpenAI client configured for GitHub Models."""
         try:
@@ -156,7 +204,7 @@ class GitHubModelsProvider(LLMProvider):
             return None
 
         return ChatOpenAI(
-            model=DEFAULT_MODEL,
+            model="gpt-4.1",  # Battle-tested, reliable, available on GitHub Models
             base_url=GITHUB_MODELS_BASE_URL,
             api_key=os.environ.get("GITHUB_TOKEN"),
             temperature=0.1,  # Low temperature for consistent analysis
@@ -240,7 +288,7 @@ class GitHubModelsProvider(LLMProvider):
                 "possible data loss in pipeline"
             )
             # Short text means limited evidence - cap confidence
-            confidence = min(confidence, 0.4)
+            confidence = min(confidence, SHORT_ANALYSIS_CONFIDENCE_CAP)
             logger.warning(f"Short analysis text: {quality_context.analysis_text_length} chars")
 
         # BS Detection Rule 3: Zero tasks + high effort score = something's wrong
@@ -362,6 +410,7 @@ Be conservative - if unsure, don't mark as completed."""
                 confidence=adjusted_confidence,
                 reasoning=reasoning,
                 provider_used=self.name,
+                model_name="gpt-4.1",  # Actual model used by GitHubModelsProvider
                 raw_confidence=raw_confidence if adjusted_confidence != raw_confidence else None,
                 confidence_adjusted=adjusted_confidence != raw_confidence,
                 quality_warnings=warnings if warnings else None,
@@ -376,6 +425,7 @@ Be conservative - if unsure, don't mark as completed."""
                 confidence=0.0,
                 reasoning=f"Failed to parse response: {e}",
                 provider_used=self.name,
+                model_name="gpt-4.1",  # Actual model used by GitHubModelsProvider
             )
 
 
@@ -389,6 +439,9 @@ class OpenAIProvider(LLMProvider):
     def is_available(self) -> bool:
         return bool(os.environ.get("OPENAI_API_KEY"))
 
+    def supports_quality_context(self) -> bool:
+        return True
+
     def _get_client(self):
         """Get LangChain ChatOpenAI client."""
         try:
@@ -398,7 +451,7 @@ class OpenAIProvider(LLMProvider):
             return None
 
         return ChatOpenAI(
-            model=DEFAULT_MODEL,
+            model="gpt-5.1-codex",  # Purpose-built for analyzing Codex coding sessions
             api_key=os.environ.get("OPENAI_API_KEY"),
             temperature=0.1,
         )
@@ -408,6 +461,7 @@ class OpenAIProvider(LLMProvider):
         session_output: str,
         tasks: list[str],
         context: str | None = None,
+        quality_context: SessionQualityContext | None = None,
     ) -> CompletionAnalysis:
         client = self._get_client()
         if not client:
@@ -418,8 +472,15 @@ class OpenAIProvider(LLMProvider):
         prompt = github_provider._build_analysis_prompt(session_output, tasks, context)
 
         try:
-            response = client.invoke(prompt)
-            result = github_provider._parse_response(response.content, tasks)
+            if quality_context is not None:
+                response = client.invoke(prompt, quality_context=quality_context)
+            else:
+                response = client.invoke(prompt)
+            result = github_provider._parse_response(
+                response.content,
+                tasks,
+                quality_context=quality_context,
+            )
             # Override provider name
             return CompletionAnalysis(
                 completed_tasks=result.completed_tasks,
@@ -428,9 +489,80 @@ class OpenAIProvider(LLMProvider):
                 confidence=result.confidence,
                 reasoning=result.reasoning,
                 provider_used=self.name,
+                model_name="gpt-5.1-codex",  # Actual model used by OpenAIProvider
+                raw_confidence=result.raw_confidence,
+                confidence_adjusted=result.confidence_adjusted,
+                quality_warnings=result.quality_warnings,
             )
         except Exception as e:
             logger.error(f"OpenAI API error: {e}")
+            raise
+
+
+class AnthropicProvider(LLMProvider):
+    """LLM provider using Anthropic API directly."""
+
+    @property
+    def name(self) -> str:
+        return "anthropic"
+
+    def is_available(self) -> bool:
+        return bool(os.environ.get(ANTHROPIC_API_KEY_ENV))
+
+    def supports_quality_context(self) -> bool:
+        return True
+
+    def _get_client(self):
+        try:
+            from langchain_anthropic import ChatAnthropic
+        except ImportError:
+            logger.warning("langchain_anthropic not installed")
+            return None
+
+        return ChatAnthropic(
+            model="claude-sonnet-4-5-20250929",
+            anthropic_api_key=os.environ.get(ANTHROPIC_API_KEY_ENV),
+            temperature=0.1,
+        )
+
+    def analyze_completion(
+        self,
+        session_output: str,
+        tasks: list[str],
+        context: str | None = None,
+        quality_context: SessionQualityContext | None = None,
+    ) -> CompletionAnalysis:
+        client = self._get_client()
+        if not client:
+            raise RuntimeError("LangChain Anthropic not available")
+
+        github_provider = GitHubModelsProvider()
+        prompt = github_provider._build_analysis_prompt(session_output, tasks, context)
+
+        try:
+            if quality_context is not None:
+                response = client.invoke(prompt, quality_context=quality_context)
+            else:
+                response = client.invoke(prompt)
+            result = github_provider._parse_response(
+                response.content,
+                tasks,
+                quality_context=quality_context,
+            )
+            return CompletionAnalysis(
+                completed_tasks=result.completed_tasks,
+                in_progress_tasks=result.in_progress_tasks,
+                blocked_tasks=result.blocked_tasks,
+                confidence=result.confidence,
+                reasoning=result.reasoning,
+                provider_used=self.name,
+                model_name="claude-sonnet-4-5-20250929",
+                raw_confidence=result.raw_confidence,
+                confidence_adjusted=result.confidence_adjusted,
+                quality_warnings=result.quality_warnings,
+            )
+        except Exception as e:
+            logger.error(f"Anthropic API error: {e}")
             raise
 
 
@@ -464,13 +596,18 @@ class RegexFallbackProvider(LLMProvider):
     def is_available(self) -> bool:
         return True  # Always available
 
+    def supports_quality_context(self) -> bool:
+        return False
+
     def analyze_completion(
         self,
         session_output: str,
         tasks: list[str],
-        _context: str | None = None,
+        context: str | None = None,
+        quality_context: SessionQualityContext | None = None,
     ) -> CompletionAnalysis:
-
+        _ = context
+        _ = quality_context
         output_lower = session_output.lower()
         completed = []
         in_progress = []
@@ -525,6 +662,7 @@ class RegexFallbackProvider(LLMProvider):
             in_progress_tasks=in_progress,
             blocked_tasks=blocked,
             confidence=0.3,  # Low confidence for regex
+            model_name="regex-patterns",
             reasoning="Pattern-based analysis (no LLM available)",
             provider_used=self.name,
         )
@@ -536,6 +674,18 @@ class FallbackChainProvider(LLMProvider):
     def __init__(self, providers: list[LLMProvider]):
         self._providers = providers
         self._active_provider: LLMProvider | None = None
+
+    def supports_quality_context(self) -> bool:
+        """Return True if any underlying provider supports quality_context."""
+        return any(self._provider_supports_quality_context(p) for p in self._providers)
+
+    def quality_context_capable_providers(self) -> list[str]:
+        """List provider names in the chain that support quality_context."""
+        return [
+            provider.name
+            for provider in self._providers
+            if self._provider_supports_quality_context(provider)
+        ]
 
     @property
     def name(self) -> str:
@@ -551,10 +701,21 @@ class FallbackChainProvider(LLMProvider):
         session_output: str,
         tasks: list[str],
         context: str | None = None,
+        quality_context: SessionQualityContext | None = None,
     ) -> CompletionAnalysis:
         last_error = None
+        providers = self._providers
 
-        for provider in self._providers:
+        if quality_context is not None:
+            quality_aware, legacy = self._partition_providers_by_quality_context()
+            if quality_aware:
+                logger.debug(
+                    "Quality context available; preferring providers: %s",
+                    [provider.name for provider in quality_aware],
+                )
+            providers = quality_aware + legacy
+
+        for provider in providers:
             if not provider.is_available():
                 logger.debug(f"Provider {provider.name} not available, skipping")
                 continue
@@ -562,7 +723,13 @@ class FallbackChainProvider(LLMProvider):
             try:
                 logger.info(f"Attempting analysis with {provider.name}")
                 self._active_provider = provider
-                result = provider.analyze_completion(session_output, tasks, context)
+                result = self._analyze_with_provider(
+                    provider,
+                    session_output=session_output,
+                    tasks=tasks,
+                    context=context,
+                    quality_context=quality_context,
+                )
                 logger.info(f"Successfully analyzed with {provider.name}")
                 return result
             except Exception as e:
@@ -574,6 +741,62 @@ class FallbackChainProvider(LLMProvider):
             raise RuntimeError(f"All providers failed. Last error: {last_error}")
         raise RuntimeError("No providers available")
 
+    @staticmethod
+    def _provider_supports_quality_context(provider: LLMProvider) -> bool:
+        return _supports_quality_context(provider)
+
+    def _partition_providers_by_quality_context(
+        self,
+    ) -> tuple[list[LLMProvider], list[LLMProvider]]:
+        quality_aware: list[LLMProvider] = []
+        legacy: list[LLMProvider] = []
+        for provider in self._providers:
+            if self._provider_supports_quality_context(provider):
+                quality_aware.append(provider)
+            else:
+                legacy.append(provider)
+        return quality_aware, legacy
+
+    def _analyze_with_provider(
+        self,
+        provider: LLMProvider,
+        *,
+        session_output: str,
+        tasks: list[str],
+        context: str | None,
+        quality_context: SessionQualityContext | None,
+    ) -> CompletionAnalysis:
+        if quality_context is not None and self._provider_supports_quality_context(provider):
+            try:
+                return provider.analyze_completion(
+                    session_output=session_output,
+                    tasks=tasks,
+                    context=context,
+                    quality_context=quality_context,
+                )
+            except TypeError as exc:
+                if not self._is_quality_context_type_error(exc):
+                    raise
+                logger.debug(
+                    "Provider %s rejected quality_context, retrying without it",
+                    provider.name,
+                )
+
+        return provider.analyze_completion(
+            session_output=session_output,
+            tasks=tasks,
+            context=context,
+        )
+
+    @staticmethod
+    def _is_quality_context_type_error(error: TypeError) -> bool:
+        message = str(error)
+        if "quality_context" not in message:
+            return False
+        if "unexpected keyword argument" in message:
+            return True
+        return "got multiple values for argument" in message
+
 
 def get_llm_provider(force_provider: str | None = None) -> LLMProvider:
     """
@@ -581,23 +804,25 @@ def get_llm_provider(force_provider: str | None = None) -> LLMProvider:
 
     Args:
         force_provider: If set, use only this provider (for testing).
-            Options: "github-models", "openai", "regex-fallback"
+            Options: "github-models", "openai", "anthropic", "regex-fallback"
 
     Returns a FallbackChainProvider that tries:
-    1. GitHub Models API (if GITHUB_TOKEN set)
-    2. OpenAI API (if OPENAI_API_KEY set)
-    3. Regex fallback (always available)
+    1. Anthropic claude-sonnet-4-5 (if CLAUDE_API_STRANSKE set) - Best reasoning
+    2. OpenAI gpt-5.1-codex (if OPENAI_API_KEY set) - Purpose-built for code analysis
+    3. GitHub Models gpt-4.1 (if GITHUB_TOKEN set) - Always available, reliable
+    4. Regex fallback (always available) - 30% confidence baseline
     """
     # Force a specific provider for testing
     if force_provider:
         provider_map: dict[str, type[LLMProvider]] = {
             "github-models": GitHubModelsProvider,
             "openai": OpenAIProvider,
+            "anthropic": AnthropicProvider,
             "regex-fallback": RegexFallbackProvider,
         }
         if force_provider not in provider_map:
             raise ValueError(
-                f"Unknown provider: {force_provider}. " f"Options: {list(provider_map.keys())}"
+                f"Unknown provider: {force_provider}. Options: {list(provider_map.keys())}"
             )
         provider_class = provider_map[force_provider]
         provider = provider_class()
@@ -610,9 +835,10 @@ def get_llm_provider(force_provider: str | None = None) -> LLMProvider:
         return provider
 
     providers = [
-        GitHubModelsProvider(),
-        OpenAIProvider(),
-        RegexFallbackProvider(),
+        AnthropicProvider(),  # Primary: claude-sonnet-4-5 for best reasoning
+        OpenAIProvider(),  # Secondary: gpt-5.1-codex for code-optimized analysis
+        GitHubModelsProvider(),  # Tertiary: gpt-4.1 via GITHUB_TOKEN (always available)
+        RegexFallbackProvider(),  # Last resort: 30% confidence pattern matching
     ]
 
     return FallbackChainProvider(providers)
@@ -623,8 +849,26 @@ def check_providers() -> dict[str, bool]:
     return {
         "github-models": GitHubModelsProvider().is_available(),
         "openai": OpenAIProvider().is_available(),
+        "anthropic": AnthropicProvider().is_available(),
         "regex-fallback": True,
     }
+
+
+def get_quality_context_support_table() -> dict[str, bool]:
+    """Return provider -> quality_context support map for built-in providers."""
+    providers = [
+        OpenAIProvider(),
+        AnthropicProvider(),
+        GitHubModelsProvider(),
+        RegexFallbackProvider(),
+    ]
+    return {provider.name: _supports_quality_context(provider) for provider in providers}
+
+
+def get_quality_context_capable_providers() -> list[str]:
+    """List providers that support quality_context."""
+    support_table = get_quality_context_support_table()
+    return [name for name, supported in support_table.items() if supported]
 
 
 if __name__ == "__main__":

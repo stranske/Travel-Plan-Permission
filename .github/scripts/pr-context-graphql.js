@@ -1,5 +1,8 @@
 'use strict';
 
+const { ensureRateLimitWrapped } = require('./github-rate-limited-wrapper.js');
+const { minimatch } = require('minimatch');
+
 /**
  * GraphQL-based PR Context Fetcher
  * 
@@ -132,6 +135,166 @@ query PRBasic($owner: String!, $repo: String!, $number: Int!) {
 }
 `;
 
+const DEFAULT_IGNORED_PATH_PREFIXES = ['.agents/'];
+const DEFAULT_IGNORED_PATH_PATTERNS = ['.agents/issue-*-ledger.yml'];
+const MINIMATCH_OPTIONS = { dot: true, nocomment: true, nonegate: true };
+
+async function resolveGithubClient(github) {
+  if (!github) {
+    return github;
+  }
+  if (github.__rateLimitWrapped) {
+    return github;
+  }
+  try {
+    return await ensureRateLimitWrapped({ github, core: null, env: process.env });
+  } catch (error) {
+    return github;
+  }
+}
+
+function parseCsv(value) {
+  if (!value) {
+    return [];
+  }
+  const raw = String(value);
+  const entries = [];
+  let current = '';
+  let depth = 0;
+  let escaped = false;
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const char = raw[i];
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      current += char;
+      escaped = true;
+      continue;
+    }
+    if (char === '{') {
+      depth += 1;
+      current += char;
+      continue;
+    }
+    if (char === '}') {
+      depth = Math.max(0, depth - 1);
+      current += char;
+      continue;
+    }
+    if (char === ',' && depth === 0) {
+      entries.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+
+  entries.push(current.trim());
+  return entries.filter(Boolean);
+}
+
+function normalizePath(value) {
+  return String(value || '').replace(/\\/g, '/').toLowerCase();
+}
+
+function normalizePattern(value) {
+  const raw = String(value || '');
+  if (!raw) {
+    return '';
+  }
+  let normalized = '';
+  for (let i = 0; i < raw.length; i += 1) {
+    const char = raw[i];
+    if (char === '\\') {
+      const next = raw[i + 1];
+      if (next && /[\\*?[\]{}()]/.test(next)) {
+        normalized += `\\${next}`;
+        i += 1;
+        continue;
+      }
+      normalized += '/';
+      continue;
+    }
+    normalized += char;
+  }
+  return normalized.toLowerCase();
+}
+
+function buildIgnoredPathMatchers(env = process.env) {
+  const prefixes = parseCsv(env.PR_CONTEXT_IGNORED_PATHS);
+  const patterns = parseCsv(env.PR_CONTEXT_IGNORED_PATTERNS);
+  const includes = parseCsv(env.PR_CONTEXT_INCLUDE_PATTERNS);
+  const normalizedPrefixes = (prefixes.length ? prefixes : DEFAULT_IGNORED_PATH_PREFIXES)
+    .map((entry) => normalizePath(entry))
+    .filter(Boolean);
+  const normalizedPatterns = (patterns.length ? patterns : DEFAULT_IGNORED_PATH_PATTERNS)
+    .map((entry) => normalizePattern(entry))
+    .filter(Boolean);
+  const normalizedIncludes = includes.map((entry) => normalizePattern(entry)).filter(Boolean);
+  return {
+    prefixes: normalizedPrefixes,
+    patterns: normalizedPatterns,
+    includes: normalizedIncludes,
+  };
+}
+
+function shouldIgnorePath(filename, matchers) {
+  const normalized = normalizePath(filename);
+  if (!normalized) {
+    return false;
+  }
+  if (matchers.prefixes.some((prefix) => normalized.startsWith(prefix))) {
+    return true;
+  }
+  return matchers.patterns.some((pattern) => minimatch(normalized, pattern, MINIMATCH_OPTIONS));
+}
+
+function shouldIncludePath(filename, matchers) {
+  if (!matchers || !matchers.includes || matchers.includes.length === 0) {
+    return true;
+  }
+  const normalized = normalizePath(filename);
+  if (!normalized) {
+    return false;
+  }
+  return matchers.includes.some((pattern) => minimatch(normalized, pattern, MINIMATCH_OPTIONS));
+}
+
+function filterPaths(paths, matchers) {
+  const kept = [];
+  const ignored = [];
+
+  for (const path of paths || []) {
+    if (shouldIgnorePath(path, matchers) || !shouldIncludePath(path, matchers)) {
+      ignored.push(path);
+    } else {
+      kept.push(path);
+    }
+  }
+
+  return { kept, ignored };
+}
+
+function filterFileNodes(fileNodes, matchers) {
+  const kept = [];
+  const ignored = [];
+
+  for (const file of fileNodes || []) {
+    const path = file?.path;
+    if (shouldIgnorePath(path, matchers) || !shouldIncludePath(path, matchers)) {
+      ignored.push(file);
+    } else {
+      kept.push(file);
+    }
+  }
+
+  return { kept, ignored };
+}
+
 /**
  * PAGINATION LIMITS:
  * The GraphQL queries above use fixed pagination limits:
@@ -156,7 +319,8 @@ query PRBasic($owner: String!, $repo: String!, $number: Int!) {
  */
 async function fetchPRContext(github, owner, repo, number) {
   try {
-    const result = await github.graphql(PR_CONTEXT_QUERY, {
+    const client = await resolveGithubClient(github);
+    const result = await client.graphql(PR_CONTEXT_QUERY, {
       owner,
       repo,
       number: parseInt(number, 10)
@@ -168,6 +332,12 @@ async function fetchPRContext(github, owner, repo, number) {
     }
     
     // Transform to a more usable format
+    const ignoredMatchers = buildIgnoredPathMatchers(process.env);
+    const rawFiles = pr.files?.nodes || [];
+    const { kept: filteredFiles, ignored: ignoredFiles } = filterFileNodes(rawFiles, ignoredMatchers);
+
+    const ignoredCount = ignoredFiles.length;
+
     return {
       id: pr.id,
       number: pr.number,
@@ -187,9 +357,12 @@ async function fetchPRContext(github, owner, repo, number) {
       labelsDetailed: pr.labels?.nodes || [],
       
       files: {
-        total: pr.files?.totalCount || 0,
-        paths: (pr.files?.nodes || []).map(f => f.path),
-        detailed: pr.files?.nodes || []
+        total: filteredFiles.length,
+        unfilteredTotal: pr.files?.totalCount || rawFiles.length,
+        ignored: ignoredCount,
+        ignoredPaths: ignoredFiles.map(f => f.path),
+        paths: filteredFiles.map(f => f.path),
+        detailed: filteredFiles
       },
       
       reviews: (pr.reviews?.nodes || []).map(r => ({
@@ -246,7 +419,8 @@ async function fetchPRContext(github, owner, repo, number) {
  * @returns {Object} Basic PR data
  */
 async function fetchPRBasic(github, owner, repo, number) {
-  const result = await github.graphql(PR_BASIC_QUERY, {
+  const client = await resolveGithubClient(github);
+  const result = await client.graphql(PR_BASIC_QUERY, {
     owner,
     repo,
     number: parseInt(number, 10)
@@ -379,6 +553,11 @@ module.exports = {
   PR_BASIC_QUERY,
   fetchPRContext,
   fetchPRBasic,
+  buildIgnoredPathMatchers,
+  shouldIgnorePath,
+  shouldIncludePath,
+  filterPaths,
+  filterFileNodes,
   serializeForOutput,
   deserializeFromOutput,
   createPRContextCache

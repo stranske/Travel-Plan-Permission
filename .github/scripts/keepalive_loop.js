@@ -1542,6 +1542,17 @@ async function detectRateLimitCancellation({ github, context, runId, core }) {
     });
     const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
     for (const job of jobs) {
+      // Skip jobs that never ran — they have no logs to download and
+      // querying them returns 404 ("Not Found"), producing noisy warnings.
+      const jobStatusRaw = job?.status;
+      const jobConclusionRaw = job?.conclusion;
+      const jobStatus = String(jobStatusRaw || '').toLowerCase();
+      const jobConclusion = String(jobConclusionRaw || '').toLowerCase();
+      const hasStatus = typeof jobStatusRaw === 'string' && jobStatusRaw.trim() !== '';
+      const hasConclusion = typeof jobConclusionRaw === 'string' && jobConclusionRaw.trim() !== '';
+      const jobRan = (!hasStatus && !hasConclusion) ||
+        (jobStatus === 'completed' && jobConclusion !== 'skipped');
+
       if (canCheckAnnotations) {
         const checkRunId = extractCheckRunId(job);
         if (checkRunId) {
@@ -1562,7 +1573,7 @@ async function detectRateLimitCancellation({ github, context, runId, core }) {
 
       if (canCheckLogs) {
         const jobId = Number(job?.id) || 0;
-        if (jobId) {
+        if (jobId && jobRan) {
           try {
             const logs = await github.rest.actions.downloadJobLogsForWorkflowRun({
               owner: context.repo.owner,
@@ -1740,18 +1751,12 @@ async function evaluateKeepaliveLoop({ github: rawGithub, context, core, payload
 
   // Check rate limit status early
   let rateLimitStatus = null;
+  let rateLimitDefer = false;
   try {
     rateLimitStatus = await checkRateLimitStatus({ github, core, minRequired: 50 });
-
-    // If all tokens are exhausted and we're not forcing retry, defer immediately
-    if (rateLimitStatus.shouldDefer && !forceRetry) {
+    rateLimitDefer = Boolean(rateLimitStatus?.shouldDefer) && !forceRetry;
+    if (rateLimitDefer) {
       core?.info?.(`Rate limits exhausted - deferring. Recommendation: ${rateLimitStatus.recommendation}`);
-      return {
-        prNumber: overridePrNumber || 0,
-        action: 'defer',
-        reason: 'rate-limit-exhausted',
-        rateLimitStatus,
-      };
     }
   } catch (error) {
     core?.warning?.(`Rate limit check failed: ${error.message} - continuing anyway`);
@@ -1762,6 +1767,7 @@ async function evaluateKeepaliveLoop({ github: rawGithub, context, core, payload
     if (!prNumber) {
       return {
         prNumber: 0,
+        baseRef: '',
         action: 'skip',
         reason: 'pr-not-found',
       };
@@ -1869,8 +1875,6 @@ async function evaluateKeepaliveLoop({ github: rawGithub, context, core, payload
     // An iteration is productive if it has a reasonable productivity score
     const isProductive = productivityScore >= 20 && !hasRecentFailures;
 
-    // Early detection: Check for diminishing returns pattern
-    // If we had activity before but now have none, might be naturally completing
     // max_iterations is a "stuck detection" threshold, not a hard cap
     // Continue past max if productive work is happening
     const shouldStopForMaxIterations = iteration >= maxIterations && !isProductive;
@@ -1921,25 +1925,34 @@ async function evaluateKeepaliveLoop({ github: rawGithub, context, core, payload
         action = 'stop';
         reason = 'complete-gate-failure-max';
       } else if (gateNormalized === 'cancelled') {
-        gateRateLimit = await detectRateLimitCancellation({
-          github,
-          context,
-          runId: gateRun.runId,
-          core,
-        });
-        // Rate limits are infrastructure noise, not code quality issues
-        // Proceed with work if Gate only failed due to rate limits
-        if (gateRateLimit && tasksRemaining) {
-          action = 'run';
-          reason = 'bypass-rate-limit-gate';
-          if (core) core.info('Gate cancelled due to rate limits only - proceeding with work');
-        } else if (forceRetry && tasksRemaining) {
-          action = 'run';
-          reason = 'force-retry-cancelled';
-          if (core) core.info(`Force retry enabled: bypassing cancelled gate (rate_limit=${gateRateLimit})`);
+        if (rateLimitDefer) {
+          action = 'defer';
+          reason = 'rate-limit-exhausted';
         } else {
-          action = gateRateLimit ? 'defer' : 'wait';
-          reason = gateRateLimit ? 'gate-cancelled-rate-limit' : 'gate-cancelled';
+          gateRateLimit = await detectRateLimitCancellation({
+            github,
+            context,
+            runId: gateRun.runId,
+            core,
+          });
+          if (gateRateLimit) {
+            if (tasksRemaining && !rateLimitDefer) {
+              // Rate limits are infrastructure noise; proceed with work when tokens remain.
+              action = 'run';
+              reason = 'bypass-rate-limit-gate';
+              if (core) core.info('Gate cancelled due to rate limits - bypassing Gate');
+            } else {
+              action = 'wait';
+              reason = 'gate-cancelled';
+            }
+          } else if (forceRetry && tasksRemaining) {
+            action = 'run';
+            reason = 'force-retry-cancelled';
+            if (core) core.info(`Force retry enabled: bypassing cancelled gate (rate_limit=${gateRateLimit})`);
+          } else {
+            action = 'wait';
+            reason = 'gate-cancelled';
+          }
         }
       } else {
         // Gate failed - check if failure is rate-limit related vs code quality
@@ -1975,11 +1988,21 @@ async function evaluateKeepaliveLoop({ github: rawGithub, context, core, payload
     } else if (needsProgressReview) {
       // Trigger LLM-based progress review when agent is active but not completing tasks
       // This allows legitimate prep work while catching scope drift early
+      // Checked after max-iteration handling to avoid trapping the loop in review-only mode
       action = 'review';
       reason = `progress-review-${roundsWithoutTaskCompletion}`;
     } else if (tasksRemaining) {
       action = 'run';
       reason = iteration >= maxIterations ? 'ready-extended' : 'ready';
+    }
+
+    if (
+      rateLimitDefer &&
+      ['run', 'fix', 'review', 'conflict'].includes(action) &&
+      reason !== 'bypass-rate-limit-gate'
+    ) {
+      action = 'defer';
+      reason = 'rate-limit-exhausted';
     }
 
     const promptScenario = normalise(config.prompt_scenario);
@@ -1997,6 +2020,7 @@ async function evaluateKeepaliveLoop({ github: rawGithub, context, core, payload
     return {
       prNumber,
       prRef: pr.head.ref || '',
+      baseRef: pr.base?.ref || '',
       headSha: pr.head.sha || '',
       action,
       reason,
@@ -2187,6 +2211,7 @@ async function updateKeepaliveLoopSummary({ github: rawGithub, context, core, in
 
     // LLM task analysis details
     const llmProvider = normalise(inputs.llm_provider ?? inputs.llmProvider);
+    const llmModel = normalise(inputs.llm_model ?? inputs.llmModel);
     const llmConfidence = toNumber(inputs.llm_confidence ?? inputs.llmConfidence, 0);
     const llmAnalysisRun = toBool(inputs.llm_analysis_run ?? inputs.llmAnalysisRun, false);
 
@@ -2266,6 +2291,7 @@ async function updateKeepaliveLoopSummary({ github: rawGithub, context, core, in
       'missing-agent-label',
       'gate-cancelled',
       'gate-cancelled-rate-limit',
+      'rate-limit-exhausted',
     ].includes(baseReason);
     const isTransientWait =
       waitLikeAction &&
@@ -2596,8 +2622,14 @@ async function updateKeepaliveLoopSummary({ github: rawGithub, context, core, in
         '',
         '### 🧠 Task Analysis',
         `| Provider | ${providerIcon} ${providerLabel} |`,
-        `| Confidence | ${confidencePercent}% |`,
       );
+
+      // Show model name if available
+      if (llmModel && llmModel !== 'unknown') {
+        summaryLines.push(`| Model | ${llmModel} |`);
+      }
+
+      summaryLines.push(`| Confidence | ${confidencePercent}% |`);
 
       // Show quality metrics if available
       if (sessionDataQuality) {
@@ -2651,6 +2683,20 @@ async function updateKeepaliveLoopSummary({ github: rawGithub, context, core, in
           `> ⚠️ Primary provider (GitHub Models) was unavailable; used ${providerLabel} instead.`,
         );
       }
+    } else if (agentChangesMade === 'true' && iteration > 0) {
+      // Warn when LLM analysis didn't run but agent made changes
+      // This indicates an infrastructure issue that should be investigated
+      summaryLines.push(
+        '',
+        '### ⚠️ Task Analysis Unavailable',
+        '> **Warning**: LLM-powered task completion analysis did not run for this iteration.',
+        '> This may be due to:',
+        '> - Missing analysis dependencies or scripts',
+        '> - Failed PR body fetch',
+        '> - Session data not captured',
+        '>',
+        '> Task checkboxes may not be automatically updated. Please review manually.',
+      );
     }
 
     if (isTransientFailure) {
@@ -2681,7 +2727,29 @@ async function updateKeepaliveLoopSummary({ github: rawGithub, context, core, in
       );
     }
 
-    if (stop) {
+    // Rate limit exhaustion - special case with detailed token status
+    const isRateLimitExhausted = summaryReason === 'rate-limit-exhausted' || 
+      baseReason === 'rate-limit-exhausted' ||
+      action === 'defer' && (summaryReason?.includes('rate') || baseReason?.includes('rate'));
+    
+    if (isRateLimitExhausted) {
+      summaryLines.push(
+        '',
+        '### 🛑 Agent Stopped: API capacity depleted',
+        '',
+        '**All available API token pools have been exhausted.** The agent cannot make progress until rate limits reset.',
+        '',
+        '| Status | Details |',
+        '|--------|---------|',
+        `| Reason | ${summaryReason || baseReason || 'API rate limits exhausted'} |`,
+        '| Capacity | All token pools at/near limit |',
+        '| Recovery | Automatic when limits reset (usually ~1 hour) |',
+        '',
+        '**This is NOT a code or prompt problem** - it is a resource limit that will automatically resolve.',
+        '',
+        '_To resume immediately: Wait for rate limit reset, or add additional API tokens._',
+      );
+    } else if (stop) {
       summaryLines.push(
         '',
         '### 🛑 Paused – Human Attention Required',

@@ -10,15 +10,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
+from scripts import api_client
+from scripts.langchain.structured_output import (
+    build_repair_callback,
+    parse_structured_output,
+)
+
+LOGGER = logging.getLogger(__name__)
 
 PR_EVALUATION_PROMPT = """
 You are reviewing a **merged** pull request to evaluate whether the code
@@ -44,6 +51,14 @@ Evaluate the **code changes** against the acceptance criteria:
 
 Ignore CI workflow status - focus on code quality and acceptance criteria fulfillment.
 
+**Verdict guidelines:**
+- **PASS**: correctness and completeness are satisfied.  Testing gaps alone
+  should NOT prevent a PASS if the implementation is functionally correct.
+- **CONCERNS**: significant correctness or completeness issues exist, OR the
+  implementation introduces meaningful risks.
+- **FAIL**: the changes do not address the acceptance criteria or introduce
+  breaking problems.
+
 Respond in JSON with:
 {{
   "verdict": "PASS | CONCERNS | FAIL",
@@ -59,6 +74,119 @@ Respond in JSON with:
   "summary": "concise report"
 }}
 """.strip()
+
+# Relaxed prompt for infrastructure/platform changes (.github/, scripts/,
+# docs/, templates/, config files).  Focuses on functional correctness and
+# de-emphasizes comprehensive test coverage which is often impractical for
+# workflow YAML, shell scripts, and documentation.
+PR_EVALUATION_PROMPT_INFRA = """
+You are reviewing a **merged** pull request that primarily modifies
+**infrastructure and platform files** (GitHub Actions workflows, CI scripts,
+documentation, configuration, or templates).
+
+**IMPORTANT: This verification runs AFTER the PR has been merged.** Therefore:
+- Do NOT evaluate CI status, workflow runs, or pending checks
+- Focus on the actual changes and whether they fulfill the requirements
+
+PR Context:
+{context}
+
+PR Diff (summary or full):
+{diff}
+
+Evaluate the **infrastructure changes** against the acceptance criteria.
+Because these are infrastructure/platform changes rather than application code:
+- **testing**: Only flag missing tests if the change breaks existing test suites
+  or introduces testable logic (e.g., a new Python utility). Do NOT flag missing
+  tests for workflow YAML, documentation, shell scripts, or config file changes.
+- **correctness**: Does the implementation do what the issue asked for?
+- **completeness**: Are all acceptance criteria addressed?
+- **quality**: Is the code/config readable and maintainable?
+- **risks**: Could this break CI, consumer repos, or existing automation?
+
+Be LENIENT on test coverage for infrastructure work. Be STRICT on correctness
+and risks (broken CI or consumer repos is a critical failure).
+
+Respond in JSON with:
+{{
+  "verdict": "PASS | CONCERNS | FAIL",
+  "confidence": 0.0-1.0,
+  "scores": {{
+    "correctness": 0-10,
+    "completeness": 0-10,
+    "quality": 0-10,
+    "testing": 0-10,
+    "risks": 0-10
+  }},
+  "concerns": ["..."],
+  "summary": "concise report"
+}}
+""".strip()
+
+# Addendum appended to any prompt (including custom) when infrastructure-
+# dominant changes are detected.  This is lighter than the full INFRA prompt
+# and avoids overriding a custom prompt file.
+INFRA_PROMPT_ADDENDUM = """
+
+## Infrastructure Change Guidance
+
+This PR primarily modifies infrastructure/platform files (workflows, scripts,
+docs, templates, or config).  Apply the following adjustments:
+- **testing**: Do NOT penalise missing tests for workflow YAML, documentation,
+  shell scripts, or config file changes.  Only flag missing tests when the PR
+  introduces testable application logic (e.g. a new Python module).
+- **risks**: Pay extra attention to CI breakage and consumer-repo impact.
+- Be LENIENT on test coverage for infrastructure work.
+""".strip()
+
+# Addendum for follow-up PRs (chain depth > 0).  These are fix iterations
+# addressing prior verifier feedback — testing gaps should NOT perpetuate
+# the chain when the functional fix is correct.
+CHAIN_DEPTH_ADDENDUM = """
+
+## Follow-up Iteration Context
+
+This PR is **follow-up iteration {depth}** in a verification chain.  It was
+created specifically to address concerns raised by a previous verification.
+Apply the following adjustments:
+- **testing**: Do NOT raise CONCERNS solely for missing or incomplete tests
+  unless the PR introduces new testable logic that is completely untested.
+  Test coverage gaps alone should NOT prevent a PASS verdict when the
+  functional implementation is correct.
+- **correctness**: This is the primary criterion — does the fix address the
+  original concerns?  Weight correctness heavily.
+- **completeness**: Evaluate whether the specific concerns from the prior
+  verification have been addressed.  Do not expand scope beyond what was asked.
+- At chain depth {depth}, focus strictly on whether THIS iteration resolves
+  its targeted concerns.  Avoid raising new concerns that were not part of
+  the original feedback.
+""".strip()
+
+# File path patterns considered infrastructure/platform rather than application
+INFRA_PATH_PATTERNS: tuple[str, ...] = (
+    ".github/",
+    "scripts/",
+    "docs/",
+    "templates/",
+    ".eslintrc",
+    ".prettierrc",
+    "pyproject.toml",
+    "setup.cfg",
+    "setup.py",
+    "Makefile",
+    "Dockerfile",
+    "docker-compose",
+    ".gitignore",
+    ".pre-commit-config",
+    "requirements",
+    "CLAUDE.md",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+)
+
+# Fraction of changed files that must be infrastructure to trigger relaxed mode
+INFRA_THRESHOLD = 0.6
 
 PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "pr_evaluation.md"
 REQUIRED_EVALUATION_AREAS = (
@@ -90,6 +218,16 @@ class EvaluationResult(BaseModel):
     used_llm: bool = False
     raw_content: str | None = None
     error: str | None = None
+    change_type: Literal["infrastructure", "application", "mixed"] | None = None
+
+
+class EvaluationPayload(BaseModel):
+    model_config = {"extra": "ignore"}
+    verdict: Literal["PASS", "CONCERNS", "FAIL"]
+    scores: EvaluationScores | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    concerns: list[str] = Field(default_factory=list)
+    summary: str | None = None
 
 
 def _ensure_prompt_rubric(prompt: str) -> str:
@@ -131,116 +269,26 @@ def _get_llm_client(
         Tuple of (client, provider_name) or None if no credentials available.
     """
     try:
-        from langchain_openai import ChatOpenAI
+        from tools.langchain_client import build_chat_client
     except ImportError:
         return None
 
-    github_token = os.environ.get("GITHUB_TOKEN")
-    openai_token = os.environ.get("OPENAI_API_KEY")
-    if not github_token and not openai_token:
+    resolved = build_chat_client(model=model, provider=provider)
+    if not resolved:
         return None
-
-    from tools.llm_provider import DEFAULT_MODEL, GITHUB_MODELS_BASE_URL
-
-    # Use the provided model or fall back to default
-    selected_model = model or DEFAULT_MODEL
-
-    # Explicit provider selection
-    if provider == "openai":
-        if not openai_token:
-            return None
-        return (
-            ChatOpenAI(
-                model=selected_model,
-                api_key=openai_token,
-                temperature=0.1,
-            ),
-            f"openai/{selected_model}",
-        )
-
-    if provider == "github-models":
-        if not github_token:
-            return None
-        return (
-            ChatOpenAI(
-                model=selected_model,
-                base_url=GITHUB_MODELS_BASE_URL,
-                api_key=github_token,
-                temperature=0.1,
-            ),
-            f"github-models/{selected_model}",
-        )
-
-    # Auto-select: If OPENAI_API_KEY is available and either a custom model is requested
-    # OR GITHUB_TOKEN is not available, prefer OpenAI for better model availability
-    if openai_token and (model or not github_token):
-        return (
-            ChatOpenAI(
-                model=selected_model,
-                api_key=openai_token,
-                temperature=0.1,
-            ),
-            f"openai/{selected_model}",
-        )
-
-    # Default: use GitHub Models with GITHUB_TOKEN
-    if github_token:
-        return (
-            ChatOpenAI(
-                model=selected_model,
-                base_url=GITHUB_MODELS_BASE_URL,
-                api_key=github_token,
-                temperature=0.1,
-            ),
-            f"github-models/{selected_model}",
-        )
+    return resolved.client, resolved.provider_label
 
 
 def _get_llm_clients(
     model1: str | None = None, model2: str | None = None
 ) -> list[tuple[object, str, str]]:
     try:
-        from langchain_openai import ChatOpenAI
+        from tools.langchain_client import build_chat_clients
     except ImportError:
         return []
 
-    github_token = os.environ.get("GITHUB_TOKEN")
-    openai_token = os.environ.get("OPENAI_API_KEY")
-    if not github_token and not openai_token:
-        return []
-
-    from tools.llm_provider import DEFAULT_MODEL, GITHUB_MODELS_BASE_URL
-
-    # Use provided models or fall back to DEFAULT_MODEL
-    first_model = model1 or DEFAULT_MODEL
-    second_model = model2 or model1 or DEFAULT_MODEL
-
-    clients: list[tuple[object, str, str]] = []
-    if github_token:
-        try:
-            client = ChatOpenAI(
-                model=first_model,
-                base_url=GITHUB_MODELS_BASE_URL,
-                api_key=github_token,
-                temperature=0.1,
-            )
-            clients.append((client, "github-models", first_model))
-        except Exception:
-            # GitHub Models client initialization failed (likely credential/permission issue)
-            # Skip this provider and continue with others
-            pass
-    if openai_token:
-        try:
-            client = ChatOpenAI(
-                model=second_model,
-                api_key=openai_token,
-                temperature=0.1,
-            )
-            clients.append((client, "openai", second_model))
-        except Exception:
-            # OpenAI client initialization failed
-            pass
-    return clients
+    clients = build_chat_clients(model1=model1, model2=model2)
+    return [(entry.client, entry.provider, entry.model) for entry in clients]
 
 
 @dataclass(frozen=True)
@@ -263,22 +311,114 @@ class ComparisonRunner:
 
     def run_single(self, client: object, provider: str, model: str) -> EvaluationResult:
         try:
-            response = client.invoke(self.prompt)
+            response = _invoke_llm(
+                client,
+                self.prompt,
+                operation="evaluate_pr_compare",
+                context=self.context,
+            )
         except Exception as exc:  # pragma: no cover - exercised in integration
             return _fallback_evaluation(
                 f"LLM invocation failed: {exc}", provider=provider, model=model
             )
 
         content = getattr(response, "content", None) or str(response)
-        result = _parse_llm_response(content, provider)
+        result = _parse_llm_response(content, provider, client=client)
         result.model = model
         return result
 
 
+def _classify_change_type(
+    diff: str | None,
+) -> Literal["infrastructure", "application", "mixed"]:
+    """Classify a PR's change type by scanning diff file paths.
+
+    Returns ``"infrastructure"`` when ≥ *INFRA_THRESHOLD* of changed files
+    match infrastructure path patterns, ``"application"`` when fewer than
+    (1 − INFRA_THRESHOLD) match, and ``"mixed"`` otherwise.
+    """
+    if not diff or not diff.strip():
+        return "application"  # default when no diff available
+
+    # Extract file paths from unified diff headers: "diff --git a/path b/path"
+    # and "--- a/path" / "+++ b/path" lines
+    file_paths: set[str] = set()
+    for line in diff.splitlines():
+        if line.startswith("diff --git"):
+            parts = line.split()
+            if len(parts) >= 4:
+                # "diff --git a/foo b/foo" → "foo"
+                path = parts[2].removeprefix("a/")
+                file_paths.add(path)
+        elif line.startswith("+++ b/") or line.startswith("--- a/"):
+            path = line[6:]  # strip "+++ b/" or "--- a/"
+            if path and path != "/dev/null":
+                file_paths.add(path)
+
+    if not file_paths:
+        return "application"
+
+    infra_count = sum(
+        1
+        for fp in file_paths
+        if any(fp.startswith(pat) or fp.endswith(pat) for pat in INFRA_PATH_PATTERNS)
+    )
+    ratio = infra_count / len(file_paths)
+    LOGGER.debug(
+        "Change-type classification: %d/%d files are infrastructure (%.0f%%)",
+        infra_count,
+        len(file_paths),
+        ratio * 100,
+    )
+
+    if ratio >= INFRA_THRESHOLD:
+        return "infrastructure"
+    if ratio <= (1 - INFRA_THRESHOLD):
+        return "application"
+    return "mixed"
+
+
+def _get_chain_depth() -> int:
+    """Read follow-up chain depth from environment.
+
+    Set by the verifier context builder when the linked issue contains a
+    ``<!-- follow-up-depth: N -->`` marker injected by agents-verify-to-new-pr.
+    """
+    raw = os.environ.get("CHAIN_DEPTH", "0")
+    try:
+        return max(0, int(raw))
+    except (ValueError, TypeError):
+        return 0
+
+
 def _prepare_prompt(context: str, diff: str | None) -> str:
-    prompt = _load_prompt()
     diff_block = diff.strip() if diff and diff.strip() else "(diff unavailable)"
     context_block = context.strip() if context and context.strip() else "(context unavailable)"
+
+    change_type = _classify_change_type(diff)
+
+    if change_type == "infrastructure":
+        if PROMPT_PATH.is_file():
+            # Custom prompt file exists — append the lightweight addendum
+            LOGGER.info("Infrastructure PR detected; appending infra guidance to custom prompt")
+            prompt = _load_prompt()
+            prompt = prompt.rstrip() + "\n\n" + INFRA_PROMPT_ADDENDUM + "\n"
+        else:
+            # No custom prompt — use the full infrastructure-specific prompt
+            LOGGER.info("Using infrastructure-relaxed evaluation prompt")
+            prompt = _ensure_prompt_rubric(PR_EVALUATION_PROMPT_INFRA)
+    else:
+        prompt = _load_prompt()
+
+    # Append chain-depth guidance for follow-up iterations
+    chain_depth = _get_chain_depth()
+    if chain_depth > 0:
+        LOGGER.info(
+            "Follow-up chain depth %d detected; appending depth-aware guidance",
+            chain_depth,
+        )
+        prompt = prompt.rstrip() + "\n\n" + CHAIN_DEPTH_ADDENDUM.format(depth=chain_depth) + "\n"
+
     return prompt.format(context=context_block, diff=diff_block)
 
 
@@ -295,6 +435,85 @@ def _extract_pr_metadata(context: str) -> tuple[int | None, str | None]:
         if match:
             return int(match.group("number")), None
     return None, None
+
+
+def _resolve_run_id() -> str:
+    return os.environ.get("GITHUB_RUN_ID") or os.environ.get("RUN_ID") or "unknown"
+
+
+def _resolve_repo() -> str:
+    return os.environ.get("GITHUB_REPOSITORY") or "unknown"
+
+
+def _resolve_issue_or_pr_number(
+    *, pr_number: int | None = None, issue_number: int | None = None
+) -> str:
+    if pr_number is not None:
+        return str(pr_number)
+    env_pr = os.environ.get("PR_NUMBER")
+    if env_pr and env_pr.isdigit():
+        return env_pr
+    if issue_number is not None:
+        return str(issue_number)
+    env_issue = os.environ.get("ISSUE_NUMBER")
+    if env_issue and env_issue.isdigit():
+        return env_issue
+    return "unknown"
+
+
+def _build_llm_config(
+    *,
+    operation: str,
+    context: str | None = None,
+    pr_number: int | None = None,
+    issue_number: int | None = None,
+) -> dict[str, object]:
+    if pr_number is None and context:
+        pr_number, _ = _extract_pr_metadata(context)
+    repo = _resolve_repo()
+    run_id = _resolve_run_id()
+    issue_or_pr = _resolve_issue_or_pr_number(pr_number=pr_number, issue_number=issue_number)
+    metadata = {
+        "repo": repo,
+        "run_id": run_id,
+        "issue_or_pr_number": issue_or_pr,
+        "operation": operation,
+        "pr_number": str(pr_number) if pr_number is not None else None,
+        "issue_number": str(issue_number) if issue_number is not None else None,
+    }
+    tags = [
+        "workflows-agents",
+        f"operation:{operation}",
+        f"repo:{repo}",
+        f"issue_or_pr:{issue_or_pr}",
+        f"run_id:{run_id}",
+    ]
+    return {"metadata": metadata, "tags": tags}
+
+
+def _invoke_llm(
+    client: object,
+    prompt: str,
+    *,
+    operation: str,
+    context: str | None = None,
+    pr_number: int | None = None,
+    issue_number: int | None = None,
+) -> object:
+    config = _build_llm_config(
+        operation=operation,
+        context=context,
+        pr_number=pr_number,
+        issue_number=issue_number,
+    )
+    try:
+        return client.invoke(prompt, config=config)
+    except TypeError as exc:
+        LOGGER.warning(
+            "LLM invoke failed with config/metadata; using config/metadata fallback. Error: %s",
+            exc,
+        )
+        return client.invoke(prompt)
 
 
 def _format_scores(scores: EvaluationScores | None) -> list[str]:
@@ -379,20 +598,13 @@ def _create_followup_issue(
     if pr_number:
         title = f"LLM evaluation concerns for PR #{pr_number}"
 
-    payload = json.dumps({"title": title, "body": body, "labels": labels}).encode("utf-8")
-    request = urllib.request.Request(
-        f"https://api.github.com/repos/{repo}/issues",
-        data=payload,
-        method="POST",
-    )
-    request.add_header("Authorization", f"Bearer {token}")
-    request.add_header("Accept", "application/vnd.github+json")
-    request.add_header("Content-Type", "application/json")
-    request.add_header("X-GitHub-Api-Version", "2022-11-28")
+    try:
+        issue = api_client.create_issue(repo, token, title, body, labels)
+    except RuntimeError as exc:
+        print(f"pr_verifier: failed to create follow-up issue: {exc}", file=sys.stderr)
+        return None
 
-    with urllib.request.urlopen(request) as response:
-        data = json.loads(response.read().decode("utf-8"))
-    issue_number = data.get("number")
+    issue_number = issue.get("number")
     if isinstance(issue_number, int):
         return issue_number
     return None
@@ -413,56 +625,41 @@ def _fallback_evaluation(
     )
 
 
-def _extract_json_block(text: str) -> str | None:
-    match = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    match = re.search(r"(\{.*\})", text, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    return None
+def _parse_llm_response(
+    content: str, provider: str, *, client: object | None = None
+) -> EvaluationResult:
+    parsed = parse_structured_output(
+        content,
+        EvaluationPayload,
+        repair=(build_repair_callback(client) if client is not None else None),
+        max_repair_attempts=1,
+    )
+    if parsed.payload is None:
+        if parsed.error_stage == "repair_validation":
+            error = f"Failed to parse JSON response after repair: {parsed.error_detail}"
+        else:
+            error = f"Failed to parse JSON response: {parsed.error_detail}"
+        return EvaluationResult(
+            verdict="CONCERNS",
+            scores=None,
+            concerns=[],
+            summary=None,
+            provider_used=provider,
+            used_llm=True,
+            raw_content=content,
+            error=error,
+        )
 
-
-def _parse_verdict(text: str) -> Literal["PASS", "CONCERNS", "FAIL"]:
-    match = re.search(r"\b(PASS|CONCERNS|FAIL)\b", text, re.IGNORECASE)
-    if match:
-        return match.group(1).upper()  # type: ignore[return-value]
-    return "CONCERNS"
-
-
-def _parse_llm_response(content: str, provider: str) -> EvaluationResult:
-    json_block = _extract_json_block(content)
-    if json_block:
-        try:
-            payload = json.loads(json_block)
-            return EvaluationResult.model_validate(
-                {
-                    **payload,
-                    "provider_used": provider,
-                    "used_llm": True,
-                    "raw_content": content,
-                }
-            )
-        except (json.JSONDecodeError, ValidationError, TypeError) as exc:
-            return EvaluationResult(
-                verdict=_parse_verdict(content),
-                scores=None,
-                concerns=[],
-                summary=content,
-                provider_used=provider,
-                used_llm=True,
-                raw_content=content,
-                error=f"Failed to parse JSON response: {exc}",
-            )
-
+    payload = parsed.payload
     return EvaluationResult(
-        verdict=_parse_verdict(content),
-        scores=None,
-        concerns=[],
-        summary=content,
+        verdict=payload.verdict,
+        scores=payload.scores,
+        confidence=payload.confidence,
+        concerns=payload.concerns,
+        summary=payload.summary,
         provider_used=provider,
         used_llm=True,
-        raw_content=content,
+        raw_content=parsed.raw_content or content,
     )
 
 
@@ -499,8 +696,16 @@ def evaluate_pr(
 
     client, provider_name = resolved
     prompt = _prepare_prompt(context, diff)
+    change_type = _classify_change_type(diff)
+    pr_number, _ = _extract_pr_metadata(context)
     try:
-        response = client.invoke(prompt)
+        response = _invoke_llm(
+            client,
+            prompt,
+            operation="evaluate_pr",
+            context=context,
+            pr_number=pr_number,
+        )
     except Exception as exc:  # pragma: no cover - exercised in integration
         # If auth error and not explicitly requesting a provider, try fallback
         if _is_auth_error(exc) and provider is None:
@@ -509,9 +714,17 @@ def evaluate_pr(
             if fallback_resolved is not None:
                 fallback_client, fallback_provider_name = fallback_resolved
                 try:
-                    response = fallback_client.invoke(prompt)
+                    response = _invoke_llm(
+                        fallback_client,
+                        prompt,
+                        operation="evaluate_pr_fallback",
+                        context=context,
+                        pr_number=pr_number,
+                    )
                     content = getattr(response, "content", None) or str(response)
-                    result = _parse_llm_response(content, fallback_provider_name)
+                    result = _parse_llm_response(
+                        content, fallback_provider_name, client=fallback_client
+                    )
                     # Add note about fallback
                     if result.summary:
                         result = EvaluationResult(
@@ -524,28 +737,42 @@ def evaluate_pr(
                             used_llm=result.used_llm,
                             error=f"Primary provider ({provider_name}) failed, used fallback",
                             raw_content=result.raw_content,
+                            change_type=change_type,
                         )
+                    else:
+                        result.change_type = change_type
                     return result
                 except Exception as fallback_exc:
-                    return _fallback_evaluation(
+                    result = _fallback_evaluation(
                         f"Primary ({provider_name}): {exc}; "
                         f"Fallback ({fallback_provider_name}): {fallback_exc}"
                     )
-        return _fallback_evaluation(f"LLM invocation failed: {exc}")
+                    result.change_type = change_type
+                    return result
+        result = _fallback_evaluation(f"LLM invocation failed: {exc}")
+        result.change_type = change_type
+        return result
 
     content = getattr(response, "content", None) or str(response)
-    return _parse_llm_response(content, provider_name)
+    result = _parse_llm_response(content, provider_name, client=client)
+    result.change_type = change_type
+    return result
 
 
 def evaluate_pr_multiple(
     context: str, diff: str | None = None, model1: str | None = None, model2: str | None = None
 ) -> list[EvaluationResult]:
+    change_type = _classify_change_type(diff)
     runner = ComparisonRunner.from_environment(context, diff, model1, model2)
     if not runner.clients:
-        return [_fallback_evaluation("LLM client unavailable (missing credentials or dependency).")]
+        result = _fallback_evaluation("LLM client unavailable (missing credentials or dependency).")
+        result.change_type = change_type
+        return [result]
     results: list[EvaluationResult] = []
     for client, provider, model in runner.clients:
-        results.append(runner.run_single(client, provider, model))
+        result = runner.run_single(client, provider, model)
+        result.change_type = change_type
+        results.append(result)
     return results
 
 

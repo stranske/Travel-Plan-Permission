@@ -6,7 +6,7 @@ import os
 from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from .models import TripPlan
 
 
-class ValidationSeverity(str, Enum):
+class ValidationSeverity(StrEnum):
     """Severity for validation results."""
 
     ERROR = "error"
@@ -149,7 +149,10 @@ class BudgetLimitRule(ValidationRule):
         return {ExpenseCategory(key): Decimal(str(limit)) for key, limit in value.items()}
 
     def evaluate(
-        self, plan: TripPlan, *, reference_date: date | None = None  # noqa: ARG002
+        self,
+        plan: TripPlan,
+        *,
+        reference_date: date | None = None,  # noqa: ARG002
     ) -> list[ValidationResult]:
         results: list[ValidationResult] = []
         if self.trip_limit is not None and plan.estimated_cost > self.trip_limit:
@@ -183,7 +186,10 @@ class DurationLimitRule(ValidationRule):
     )
 
     def evaluate(
-        self, plan: TripPlan, *, reference_date: date | None = None  # noqa: ARG002
+        self,
+        plan: TripPlan,
+        *,
+        reference_date: date | None = None,  # noqa: ARG002
     ) -> list[ValidationResult]:
         duration = plan.duration_days()
         if duration > self.max_consecutive_days:
@@ -215,7 +221,10 @@ class ProviderApprovalRule(ValidationRule):
     )
 
     def evaluate(
-        self, plan: TripPlan, *, reference_date: date | None = None  # noqa: ARG002
+        self,
+        plan: TripPlan,
+        *,
+        reference_date: date | None = None,  # noqa: ARG002
     ) -> list[ValidationResult]:
         registry = ProviderRegistry.from_file(self.providers_path)
         destination = plan.destination
