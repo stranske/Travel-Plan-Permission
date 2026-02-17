@@ -17,6 +17,27 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+ChatPromptTemplate: Any | None = None
+
+
+def _resolve_chat_prompt_template() -> Any | None:
+    """Resolve ChatPromptTemplate without caching across calls.
+
+    Tests patch the module-level ``ChatPromptTemplate`` symbol; prefer that when
+    set. Otherwise import from ``langchain_core.prompts``.
+    """
+
+    if ChatPromptTemplate is not None:
+        return ChatPromptTemplate
+
+    try:  # pragma: no cover - exercised indirectly
+        from langchain_core.prompts import ChatPromptTemplate as imported
+    except ImportError:  # pragma: no cover - handled by caller
+        return None
+
+    return imported
+
+
 AGENT_CAPABILITY_CHECK_PROMPT = """
 Analyze these tasks and acceptance criteria for agent compatibility.
 
@@ -60,9 +81,11 @@ class CapabilityCheckResult:
     recommendation: str
     human_actions_needed: list[str]
     provider_used: str | None = None
+    langsmith_trace_id: str | None = None
+    langsmith_trace_url: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "actionable_tasks": self.actionable_tasks,
             "partial_tasks": self.partial_tasks,
             "blocked_tasks": self.blocked_tasks,
@@ -70,6 +93,11 @@ class CapabilityCheckResult:
             "human_actions_needed": self.human_actions_needed,
             "provider_used": self.provider_used,
         }
+        if self.langsmith_trace_id:
+            result["langsmith_trace_id"] = self.langsmith_trace_id
+        if self.langsmith_trace_url:
+            result["langsmith_trace_url"] = self.langsmith_trace_url
+        return result
 
 
 def _get_llm_client() -> tuple[object, str] | None:
@@ -82,6 +110,50 @@ def _get_llm_client() -> tuple[object, str] | None:
     if not resolved:
         return None
     return resolved.client, resolved.provider
+
+
+def _build_llm_config(
+    *,
+    operation: str,
+    issue_number: int | None = None,
+) -> dict[str, object]:
+    """Build LangSmith metadata/tags for LLM call."""
+    import os
+
+    try:
+        from tools.llm_provider import build_langsmith_metadata
+
+        return build_langsmith_metadata(
+            operation=operation,
+            issue_number=issue_number,
+        )
+    except ImportError:
+        pass
+
+    # Inline fallback when tools.llm_provider is unavailable
+    repo = os.environ.get("GITHUB_REPOSITORY", "unknown")
+    run_id = os.environ.get("GITHUB_RUN_ID") or os.environ.get("RUN_ID") or "unknown"
+    env_issue = os.environ.get("ISSUE_NUMBER", "")
+    issue_or_pr = (
+        str(issue_number)
+        if issue_number is not None
+        else env_issue if env_issue.isdigit() else "unknown"
+    )
+    metadata = {
+        "repo": repo,
+        "run_id": run_id,
+        "issue_or_pr_number": issue_or_pr,
+        "operation": operation,
+        "issue_number": str(issue_number) if issue_number is not None else None,
+    }
+    tags = [
+        "workflows-agents",
+        f"operation:{operation}",
+        f"repo:{repo}",
+        f"issue_or_pr:{issue_or_pr}",
+        f"run_id:{run_id}",
+    ]
+    return {"metadata": metadata, "tags": tags}
 
 
 def _prepare_prompt_values(tasks: list[str], acceptance: str) -> dict[str, str]:
@@ -124,7 +196,12 @@ def _coerce_dict_list(value: Any, required_keys: set[str]) -> list[dict[str, str
     return normalized
 
 
-def _normalize_result(payload: dict[str, Any], provider_used: str | None) -> CapabilityCheckResult:
+def _normalize_result(
+    payload: dict[str, Any],
+    provider_used: str | None,
+    trace_id: str | None = None,
+    trace_url: str | None = None,
+) -> CapabilityCheckResult:
     actionable = _coerce_list(payload.get("actionable_tasks"))
     partial = _coerce_dict_list(payload.get("partial_tasks"), {"task", "limitation"})
     blocked = _coerce_dict_list(
@@ -142,6 +219,8 @@ def _normalize_result(payload: dict[str, Any], provider_used: str | None) -> Cap
         recommendation=recommendation,
         human_actions_needed=human_actions,
         provider_used=provider_used,
+        langsmith_trace_id=trace_id,
+        langsmith_trace_url=trace_url,
     )
 
 
@@ -278,16 +357,42 @@ def classify_capabilities(tasks: list[str] | str, acceptance: str) -> Capability
         return _fallback_classify(normalized_tasks, acceptance, "LLM provider unavailable")
 
     client, provider_name = client_info
-    try:
-        from langchain_core.prompts import ChatPromptTemplate
-    except ImportError:
+    template_cls = _resolve_chat_prompt_template()
+    if template_cls is None:
         result = _fallback_classify(normalized_tasks, acceptance, "langchain-core not installed")
         result.provider_used = provider_name
         return result
 
-    template = ChatPromptTemplate.from_template(AGENT_CAPABILITY_CHECK_PROMPT)
+    import os
+
+    issue_num = None
+    env_issue = os.environ.get("ISSUE_NUMBER", "")
+    if env_issue.isdigit():
+        issue_num = int(env_issue)
+
+    template = template_cls.from_template(AGENT_CAPABILITY_CHECK_PROMPT)
     chain = template | client
-    response = chain.invoke(_prepare_prompt_values(normalized_tasks, acceptance))
+
+    # Invoke with trace capture
+    config = _build_llm_config(operation="capability_check", issue_number=issue_num)
+    try:
+        response = chain.invoke(_prepare_prompt_values(normalized_tasks, acceptance), config=config)
+    except TypeError:
+        # Fallback if config not supported
+        response = chain.invoke(_prepare_prompt_values(normalized_tasks, acceptance))
+
+    # Extract trace info
+    trace_id = None
+    trace_url = None
+    try:
+        from tools.llm_provider import derive_langsmith_trace_url, extract_trace_id
+
+        trace_id = extract_trace_id(response)
+        if trace_id:
+            trace_url = derive_langsmith_trace_url(trace_id)
+    except ImportError:
+        pass
+
     content = getattr(response, "content", None) or str(response)
     payload = _extract_json_payload(content)
     if not payload:
@@ -295,15 +400,19 @@ def classify_capabilities(tasks: list[str] | str, acceptance: str) -> Capability
             normalized_tasks, acceptance, "LLM response missing JSON payload"
         )
         result.provider_used = provider_name
+        result.langsmith_trace_id = trace_id
+        result.langsmith_trace_url = trace_url
         return result
     try:
         data = json.loads(payload)
     except json.JSONDecodeError:
         result = _fallback_classify(normalized_tasks, acceptance, "LLM response JSON parse failed")
         result.provider_used = provider_name
+        result.langsmith_trace_id = trace_id
+        result.langsmith_trace_url = trace_url
         return result
 
-    return _normalize_result(data, provider_name)
+    return _normalize_result(data, provider_name, trace_id=trace_id, trace_url=trace_url)
 
 
 def _strip_checkbox(line: str) -> str:
