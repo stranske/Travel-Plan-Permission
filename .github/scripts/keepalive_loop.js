@@ -1882,6 +1882,8 @@ async function evaluateKeepaliveLoop({ github: rawGithub, context, core, payload
     let requestedAgentKeys = [];
     let hasAgentLabel = false;
 
+    const nonRoutingAgentKeys = new Set(['needs-attention', 'rate-limited', 'retry']);
+
     try {
       const { loadAgentRegistry } = require('./agent_registry.js');
       const registry = loadAgentRegistry();
@@ -1889,34 +1891,43 @@ async function evaluateKeepaliveLoop({ github: rawGithub, context, core, payload
         Object.keys(registry.agents || {}).map((key) => normalise(String(key || '')).toLowerCase()),
       );
       validAgentKeys.add('auto');
-      const nonRoutingAgentKeys = new Set(['needs-attention', 'rate-limited', 'retry']);
 
+      const normalizedAgentLabels = labelObjects
+        .map((label) => ({
+          label,
+          normalized: normalise(label.name).toLowerCase(),
+        }))
+        .filter(({ normalized }) => normalized.startsWith(agentPrefix));
+
+      const routingEntries = normalizedAgentLabels
+        .map(({ label, normalized }) => ({
+          label,
+          key: normalized.slice(agentPrefix.length),
+        }))
+        .filter(({ key }) => key && !nonRoutingAgentKeys.has(key));
+
+      const registryEntries = routingEntries.filter(({ key }) => validAgentKeys.has(key));
+      const entriesForRouting = registryEntries.length > 0 ? registryEntries : routingEntries;
+
+      routingLabelCandidates = entriesForRouting.map(({ label }) => label);
+      requestedAgentKeys = Array.from(
+        new Set(entriesForRouting.map(({ key }) => key).filter(Boolean)),
+      );
+    } catch (error) {
       routingLabelCandidates = labelObjects.filter((label) => {
         const normalized = normalise(label.name).toLowerCase();
         if (!normalized.startsWith(agentPrefix)) {
           return false;
         }
         const key = normalized.slice(agentPrefix.length);
-        if (!key || nonRoutingAgentKeys.has(key)) {
-          return false;
-        }
-        return true;
+        return key && !nonRoutingAgentKeys.has(key);
       });
-
-      requestedAgentKeys = Array.from(
-        new Set(
-          routingLabelCandidates
-            .map((label) => normalise(label.name).toLowerCase().slice(agentPrefix.length))
-            .filter(Boolean),
-        ),
-      );
-    } catch (error) {
-      routingLabelCandidates = labelObjects;
       requestedAgentKeys = Array.from(
         new Set(
           labels
             .filter((label) => label.startsWith(agentPrefix))
-            .map((label) => label.slice(agentPrefix.length)),
+            .map((label) => label.slice(agentPrefix.length))
+            .filter((key) => key && !nonRoutingAgentKeys.has(key)),
         ),
       );
     }
