@@ -74,7 +74,9 @@ class TestThirdPartyFlagging:
     def test_reimbursable_total_excludes_third_party(self) -> None:
         """Report totals exclude third-party paid receipts."""
 
-        sponsored_receipt = _build_receipt(paid_by_third_party=True, file_reference="sponsor.pdf")
+        sponsored_receipt = _build_receipt(
+            paid_by_third_party=True, file_reference="sponsor.pdf"
+        )
         sponsored_expense = ExpenseItem(
             category=ExpenseCategory.CONFERENCE_FEES,
             description="Conference pass",

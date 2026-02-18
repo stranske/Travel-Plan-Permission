@@ -67,7 +67,9 @@ class PolicyCheckResult(BaseModel):
     issues: list[PolicyIssue] = Field(
         default_factory=list, description="Policy issues raised by the check"
     )
-    policy_version: str = Field(..., description="Deterministic policy version identifier")
+    policy_version: str = Field(
+        ..., description="Deterministic policy version identifier"
+    )
 
 
 class ReconciliationResult(BaseModel):
@@ -78,7 +80,9 @@ class ReconciliationResult(BaseModel):
     planned_total: Decimal = Field(..., description="Estimated trip total")
     actual_total: Decimal = Field(..., description="Actual reconciled spend")
     variance: Decimal = Field(..., description="Actual minus planned spend variance")
-    status: ReconciliationStatus = Field(..., description="Budget reconciliation status")
+    status: ReconciliationStatus = Field(
+        ..., description="Budget reconciliation status"
+    )
     receipt_count: int = Field(..., ge=0, description="Number of receipts")
     receipts_by_type: dict[str, int] = Field(
         default_factory=dict, description="Receipt counts by file type"
@@ -138,7 +142,9 @@ def _default_template_path(template_file: str | None = None) -> Path:
         if candidate.exists():
             return candidate
     try:
-        resource = resources.files("travel_plan_permission").joinpath("templates", template_name)
+        resource = resources.files("travel_plan_permission").joinpath(
+            "templates", template_name
+        )
     except ModuleNotFoundError:
         resource = None
     if resource is not None and resource.is_file():
@@ -160,7 +166,9 @@ def _default_template_bytes(template_file: str | None = None) -> bytes:
         if candidate.exists():
             return candidate.read_bytes()
     try:
-        resource = resources.files("travel_plan_permission").joinpath("templates", template_name)
+        resource = resources.files("travel_plan_permission").joinpath(
+            "templates", template_name
+        )
     except ModuleNotFoundError:
         resource = None
     if resource is not None and resource.is_file():
@@ -190,7 +198,9 @@ def _plan_field_values(
         fields.update(canonical_plan.model_dump())
     fields.update(
         {
-            "traveler_name": canonical_plan.traveler_name if canonical_plan else plan.traveler_name,
+            "traveler_name": (
+                canonical_plan.traveler_name if canonical_plan else plan.traveler_name
+            ),
             "business_purpose": (
                 canonical_plan.business_purpose if canonical_plan else plan.purpose
             ),
@@ -201,8 +211,12 @@ def _plan_field_values(
             ),
             "city_state": city_state,
             "destination_zip": zip_code,
-            "depart_date": canonical_plan.depart_date if canonical_plan else plan.departure_date,
-            "return_date": canonical_plan.return_date if canonical_plan else plan.return_date,
+            "depart_date": (
+                canonical_plan.depart_date if canonical_plan else plan.departure_date
+            ),
+            "return_date": (
+                canonical_plan.return_date if canonical_plan else plan.return_date
+            ),
             "event_registration_cost": (
                 canonical_plan.event_registration_cost
                 if canonical_plan and canonical_plan.event_registration_cost is not None
@@ -387,7 +401,9 @@ def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
         not result.passed and result.severity == Severity.BLOCKING for result in results
     )
     status: PolicyCheckStatus = "fail" if has_blocking else "pass"
-    return PolicyCheckResult(status=status, issues=issues, policy_version=_policy_version(engine))
+    return PolicyCheckResult(
+        status=status, issues=issues, policy_version=_policy_version(engine)
+    )
 
 
 def list_allowed_vendors(plan: TripPlan) -> list[str]:
@@ -399,7 +415,9 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
     providers = {
         provider.name
         for provider_type in ProviderType
-        for provider in registry.lookup(provider_type, destination, reference_date=reference_date)
+        for provider in registry.lookup(
+            provider_type, destination, reference_date=reference_date
+        )
     }
     return sorted(providers, key=str.lower)
 
@@ -520,14 +538,18 @@ def fill_travel_spreadsheet(
 
     output_path = Path(output_path)
     output_path.write_bytes(
-        render_travel_spreadsheet_bytes(plan, canonical_plan=canonical_plan, report=report)
+        render_travel_spreadsheet_bytes(
+            plan, canonical_plan=canonical_plan, report=report
+        )
     )
     return output_path
 
 
 def _expense_from_receipt(receipt: Receipt) -> ExpenseItem:
     explanation = (
-        "Third-party payment recorded on receipt." if receipt.paid_by_third_party else None
+        "Third-party payment recorded on receipt."
+        if receipt.paid_by_third_party
+        else None
     )
     return ExpenseItem(
         category=ExpenseCategory.OTHER,

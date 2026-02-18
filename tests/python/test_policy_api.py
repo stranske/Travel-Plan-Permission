@@ -117,7 +117,9 @@ def test_check_trip_plan_triggers_fare_comparison_when_inputs_present(
                     receipt_attached=True,
                 )
             ],
-            "third_party_payments": [{"description": "Sponsor covered ticket", "itemized": True}],
+            "third_party_payments": [
+                {"description": "Sponsor covered ticket", "itemized": True}
+            ],
         }
     )
 
@@ -129,7 +131,9 @@ def test_check_trip_plan_triggers_fare_comparison_when_inputs_present(
 def test_check_trip_plan_reports_pass_when_no_rules(
     trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: PolicyEngine([]))
+    monkeypatch.setattr(
+        PolicyEngine, "from_file", lambda *_args, **_kwargs: PolicyEngine([])
+    )
 
     result = check_trip_plan(trip_plan)
 

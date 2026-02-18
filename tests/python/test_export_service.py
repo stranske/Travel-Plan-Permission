@@ -48,7 +48,9 @@ class TestExportService:
         """CSV export should be UTF-8 with expected header order."""
         service = ExportService()
         now = datetime(2025, 1, 20, 10, 0, tzinfo=UTC)
-        filename, content = service.to_csv([_sample_report()], batch_id="batch-1", now=now)
+        filename, content = service.to_csv(
+            [_sample_report()], batch_id="batch-1", now=now
+        )
 
         assert filename == "expense_export_2025-01-20_batch-1.csv"
         header = content.splitlines()[0]
@@ -76,7 +78,9 @@ class TestExportService:
         """Excel export should format amount as currency and set clickable hyperlinks."""
         service = ExportService()
         now = datetime(2025, 3, 5, 12, 0, tzinfo=UTC)
-        filename, content = service.to_excel([_sample_report()], batch_id="batch-3", now=now)
+        filename, content = service.to_excel(
+            [_sample_report()], batch_id="batch-3", now=now
+        )
 
         assert filename == "expense_export_2025-03-05_batch-3.xlsx"
         workbook = load_workbook(BytesIO(content))

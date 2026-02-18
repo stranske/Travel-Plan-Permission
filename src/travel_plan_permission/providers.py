@@ -75,14 +75,18 @@ class Provider(BaseModel):
         if not self.destinations:
             return True
         destination_lower = destination.lower()
-        return any(keyword.lower() in destination_lower for keyword in self.destinations)
+        return any(
+            keyword.lower() in destination_lower for keyword in self.destinations
+        )
 
 
 class ProviderChange(BaseModel):
     """Audit entry for changes to the provider list."""
 
     version: str = Field(..., description="Version identifier for the change")
-    change_date: date = Field(..., alias="date", description="Date the change was approved")
+    change_date: date = Field(
+        ..., alias="date", description="Date the change was approved"
+    )
     description: str = Field(..., description="Summary of the change")
     approver: str = Field(..., description="Person or role who approved the change")
 
@@ -179,7 +183,9 @@ class ProviderRegistry(BaseModel):
 
         approved_names = {
             provider.name
-            for provider in self.lookup(provider_type, destination, reference_date=reference_date)
+            for provider in self.lookup(
+                provider_type, destination, reference_date=reference_date
+            )
         }
         return provider_name in approved_names
 

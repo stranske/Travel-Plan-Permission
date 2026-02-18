@@ -15,7 +15,9 @@ from travel_plan_permission.orchestration import graph as orchestration_graph
 
 def _fixture_trip_input() -> tuple[TripPlan, CanonicalTripPlan | None]:
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_minimal.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "sample_trip_plan_minimal.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
@@ -66,7 +68,9 @@ def test_policy_graph_records_missing_policy_inputs(tmp_path: Path) -> None:
     assert missing
     rule_ids = {entry.get("rule_id") for entry in missing}
     assert "advance_booking" in rule_ids
-    advance_booking = next(entry for entry in missing if entry.get("rule_id") == "advance_booking")
+    advance_booking = next(
+        entry for entry in missing if entry.get("rule_id") == "advance_booking"
+    )
     assert "booking_date" in advance_booking.get("missing_fields", [])
     assert isinstance(advance_booking.get("missing_fields"), list)
     assert advance_booking.get("message", "").startswith("Missing required inputs:")

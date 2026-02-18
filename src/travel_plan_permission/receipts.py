@@ -21,8 +21,12 @@ class Receipt(BaseModel):
     total: Decimal = Field(..., ge=0, description="Total amount shown on the receipt")
     date: dt_date = Field(..., description="Transaction date on the receipt")
     vendor: str = Field(..., description="Merchant associated with the receipt")
-    file_reference: str = Field(..., description="Storage reference for the receipt file")
-    file_size_bytes: int = Field(..., ge=0, description="Size of the uploaded receipt in bytes")
+    file_reference: str = Field(
+        ..., description="Storage reference for the receipt file"
+    )
+    file_size_bytes: int = Field(
+        ..., ge=0, description="Size of the uploaded receipt in bytes"
+    )
     paid_by_third_party: bool = Field(
         default=False, description="Whether a third party paid the receipt"
     )
@@ -38,7 +42,9 @@ class Receipt(BaseModel):
         normalized_ext = ".jpeg" if ext == ".jpg" else ext
         if normalized_ext not in ALLOWED_RECEIPT_TYPES:
             allowed = ", ".join(sorted(ALLOWED_RECEIPT_TYPES))
-            raise ValueError(f"Unsupported receipt type '{ext}'. Allowed types: {allowed}")
+            raise ValueError(
+                f"Unsupported receipt type '{ext}'. Allowed types: {allowed}"
+            )
         return value
 
     @field_validator("file_size_bytes")
@@ -82,7 +88,9 @@ class ReceiptExtractionResult(BaseModel):
     date: dt_date | None = Field(
         default=None, description="Parsed transaction date from the receipt text"
     )
-    vendor: str | None = Field(default=None, description="Parsed vendor from the receipt text")
+    vendor: str | None = Field(
+        default=None, description="Parsed vendor from the receipt text"
+    )
 
 
 class ReceiptProcessor:
@@ -92,7 +100,9 @@ class ReceiptProcessor:
         r"(?:total|total due|amount due|balance due|grand total)[^0-9]*([0-9]+(?:[.,][0-9]{2})?)",
         re.IGNORECASE,
     )
-    DATE_PATTERN = re.compile(r"(\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", re.IGNORECASE)
+    DATE_PATTERN = re.compile(
+        r"(\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", re.IGNORECASE
+    )
 
     @staticmethod
     def extract_from_text(text: str) -> ReceiptExtractionResult:
@@ -101,7 +111,9 @@ class ReceiptProcessor:
         total = ReceiptProcessor._parse_total(text)
         parsed_date = ReceiptProcessor._parse_date(text)
         vendor = ReceiptProcessor._parse_vendor(text)
-        return ReceiptExtractionResult(text=text, total=total, date=parsed_date, vendor=vendor)
+        return ReceiptExtractionResult(
+            text=text, total=total, date=parsed_date, vendor=vendor
+        )
 
     @staticmethod
     def extract_from_image(image_path: str) -> ReceiptExtractionResult:

@@ -11,7 +11,9 @@ from travel_plan_permission.orchestration import run_policy_graph
 
 def _fixture_trip_input() -> tuple[TripPlan, CanonicalTripPlan | None]:
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_minimal.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "sample_trip_plan_minimal.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)

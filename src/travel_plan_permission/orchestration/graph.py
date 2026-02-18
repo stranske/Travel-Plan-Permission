@@ -123,7 +123,9 @@ class TripState(BaseModel):
         return value  # type: ignore[return-value]
 
     @field_serializer("policy_missing_inputs", mode="plain")
-    def _serialize_policy_missing_inputs(self, value: object) -> list[dict[str, object]]:
+    def _serialize_policy_missing_inputs(
+        self, value: object
+    ) -> list[dict[str, object]]:
         if isinstance(value, list):
             serialized: list[dict[str, object]] = []
             for entry in value:
@@ -219,7 +221,11 @@ def _serialize_unfilled_mapping_report(
     def serialize_entries(entries: Sequence[Any]) -> list[dict[str, object]]:
         serialized: list[dict[str, object]] = []
         for entry in entries:
-            if hasattr(entry, "field") and hasattr(entry, "cell") and hasattr(entry, "reason"):
+            if (
+                hasattr(entry, "field")
+                and hasattr(entry, "cell")
+                and hasattr(entry, "reason")
+            ):
                 serialized.append(
                     {
                         "field": entry.field,
@@ -303,7 +309,9 @@ def run_policy_graph(
     state = TripState(
         plan_json=plan.model_dump(mode="json"),
         canonical_plan=(
-            canonical_plan.model_dump(mode="json") if canonical_plan is not None else None
+            canonical_plan.model_dump(mode="json")
+            if canonical_plan is not None
+            else None
         ),
         spreadsheet_path=spreadsheet_path,
     )

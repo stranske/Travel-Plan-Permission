@@ -130,7 +130,10 @@ def canonical_trip_plan_to_model(plan: CanonicalTripPlan) -> TripPlan:
     _add_cost(breakdown, ExpenseCategory.CONFERENCE_FEES, plan.event_registration_cost)
 
     airfare = None
-    if plan.flight_pref_outbound and plan.flight_pref_outbound.roundtrip_cost is not None:
+    if (
+        plan.flight_pref_outbound
+        and plan.flight_pref_outbound.roundtrip_cost is not None
+    ):
         airfare = plan.flight_pref_outbound.roundtrip_cost
     elif plan.lowest_cost_roundtrip is not None:
         airfare = plan.lowest_cost_roundtrip
@@ -138,7 +141,11 @@ def canonical_trip_plan_to_model(plan: CanonicalTripPlan) -> TripPlan:
 
     _add_cost(breakdown, ExpenseCategory.GROUND_TRANSPORT, plan.parking_estimate)
 
-    if plan.hotel and plan.hotel.nightly_rate is not None and plan.hotel.nights is not None:
+    if (
+        plan.hotel
+        and plan.hotel.nightly_rate is not None
+        and plan.hotel.nights is not None
+    ):
         lodging_total = plan.hotel.nightly_rate * Decimal(plan.hotel.nights)
         _add_cost(breakdown, ExpenseCategory.LODGING, lodging_total)
 

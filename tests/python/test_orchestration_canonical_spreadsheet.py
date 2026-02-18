@@ -8,7 +8,9 @@ from travel_plan_permission.orchestration import run_policy_graph
 
 
 def test_policy_graph_retains_canonical_fields(tmp_path: Path) -> None:
-    fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_rich.json"
+    fixture_path = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_rich.json"
+    )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
     assert trip_input.canonical is not None
@@ -35,7 +37,9 @@ def test_policy_graph_retains_canonical_fields(tmp_path: Path) -> None:
 
 def test_policy_graph_state_is_json_serializable(tmp_path: Path) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "canonical_trip_plan_realistic.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)

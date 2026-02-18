@@ -83,7 +83,9 @@ class TestAdvanceBookingRule:
 
         results = rule.evaluate(plan, reference_date=date(2025, 5, 10))
 
-        assert results and results[0].message.startswith("Trips must be booked at least 14")
+        assert results and results[0].message.startswith(
+            "Trips must be booked at least 14"
+        )
 
     def test_passes_when_notice_is_sufficient(self) -> None:
         rule = AdvanceBookingRule(

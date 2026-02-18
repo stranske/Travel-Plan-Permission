@@ -189,7 +189,9 @@ def test_fill_travel_spreadsheet_sets_dropdown_checkbox_and_formula(
         version="ITIN-2025.1",
         cells={"traveler_name": "A1"},
         dropdowns={"transportation_mode": {"cell": "B1"}},
-        checkboxes={"department": {"cell": "C1", "true_value": "Y", "false_value": "N"}},
+        checkboxes={
+            "department": {"cell": "C1", "true_value": "Y", "false_value": "N"}
+        },
         formulas={"total": {"cell": "D1", "formula": "=1+1"}},
         metadata={},
     )
@@ -263,7 +265,13 @@ def test_fill_travel_spreadsheet_reports_unfilled_mappings(
             "event_registration_cost": "A3",
         },
         dropdowns={"ground_transport_pref": {"cell": "B1", "options": ["rental car"]}},
-        checkboxes={"hotel.conference_hotel": {"cell": "C1", "true_value": "X", "false_value": ""}},
+        checkboxes={
+            "hotel.conference_hotel": {
+                "cell": "C1",
+                "true_value": "X",
+                "false_value": "",
+            }
+        },
         formulas={},
         metadata={},
     )

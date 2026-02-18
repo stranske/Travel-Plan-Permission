@@ -15,7 +15,9 @@ def test_cli_success_creates_spreadsheet(tmp_path, capsys) -> None:
     input_path = tmp_path / "plan.json"
     output_path = tmp_path / "output.xlsx"
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_minimal.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "sample_trip_plan_minimal.json"
     )
     input_path.write_text(fixture_path.read_text(encoding="utf-8"), encoding="utf-8")
 

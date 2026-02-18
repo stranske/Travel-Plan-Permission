@@ -52,7 +52,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     all_matches = {
-        label: find_occurrences(WORKFLOWS_DIR, pattern) for label, pattern in PATTERNS.items()
+        label: find_occurrences(WORKFLOWS_DIR, pattern)
+        for label, pattern in PATTERNS.items()
     }
     printed = False
     for label, matches in all_matches.items():

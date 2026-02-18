@@ -222,7 +222,8 @@ def build_approval_packet(
 
     raw_costs = cost_breakdown or trip_plan.expense_breakdown
     costs = {
-        str(getattr(category, "value", category)): amount for category, amount in raw_costs.items()
+        str(getattr(category, "value", category)): amount
+        for category, amount in raw_costs.items()
     }
     if not costs and trip_plan.estimated_cost:
         costs["estimated_total"] = trip_plan.estimated_cost
