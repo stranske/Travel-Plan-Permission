@@ -343,7 +343,9 @@ def _build_llm_config(
     repo = os.environ.get("GITHUB_REPOSITORY", "unknown")
     run_id = os.environ.get("GITHUB_RUN_ID") or os.environ.get("RUN_ID") or "unknown"
     env_pr = os.environ.get("PR_NUMBER", "")
-    issue_or_pr = env_pr if env_pr.isdigit() else str(pr_number) if pr_number else "unknown"
+    issue_or_pr = (
+        env_pr if env_pr.isdigit() else str(pr_number) if pr_number else "unknown"
+    )
 
     metadata = {
         "repo": repo,

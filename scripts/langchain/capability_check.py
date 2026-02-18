@@ -388,7 +388,9 @@ def classify_capabilities(
     # Invoke with trace capture
     config = _build_llm_config(operation="capability_check", issue_number=issue_num)
     try:
-        response = chain.invoke(_prepare_prompt_values(normalized_tasks, acceptance), config=config)
+        response = chain.invoke(
+            _prepare_prompt_values(normalized_tasks, acceptance), config=config
+        )
     except TypeError:
         # Fallback if config not supported
         response = chain.invoke(_prepare_prompt_values(normalized_tasks, acceptance))
@@ -426,7 +428,9 @@ def classify_capabilities(
         result.langsmith_trace_url = trace_url
         return result
 
-    return _normalize_result(data, provider_name, trace_id=trace_id, trace_url=trace_url)
+    return _normalize_result(
+        data, provider_name, trace_id=trace_id, trace_url=trace_url
+    )
 
 
 def _strip_checkbox(line: str) -> str:
