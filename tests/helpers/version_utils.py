@@ -43,7 +43,9 @@ def get_package_version(package: str) -> Version:
     return Version(version_str)
 
 
-def get_declared_version_range(package: str, pyproject_path: Path | None = None) -> SpecifierSet:
+def get_declared_version_range(
+    package: str, pyproject_path: Path | None = None
+) -> SpecifierSet:
     """Extract declared version range from pyproject.toml.
 
     Args:
@@ -75,7 +77,9 @@ def get_declared_version_range(package: str, pyproject_path: Path | None = None)
             return _parse_version_spec(dep)
 
     # Search in optional-dependencies
-    for group_deps in pyproject.get("project", {}).get("optional-dependencies", {}).values():
+    for group_deps in (
+        pyproject.get("project", {}).get("optional-dependencies", {}).values()
+    ):
         for dep in group_deps:
             if _is_matching_dependency(dep, package):
                 return _parse_version_spec(dep)
@@ -84,7 +88,9 @@ def get_declared_version_range(package: str, pyproject_path: Path | None = None)
     return SpecifierSet()
 
 
-def assert_version_in_declared_range(package: str, pyproject_path: Path | None = None) -> None:
+def assert_version_in_declared_range(
+    package: str, pyproject_path: Path | None = None
+) -> None:
     """Assert that installed version satisfies declared range in pyproject.toml.
 
     This is the recommended way to test version compatibility. It ensures
@@ -144,7 +150,9 @@ def assert_all_dependencies_within_ranges(
 
     # Collect all dependency specifications
     all_deps = list(pyproject.get("project", {}).get("dependencies", []))
-    for group_deps in pyproject.get("project", {}).get("optional-dependencies", {}).values():
+    for group_deps in (
+        pyproject.get("project", {}).get("optional-dependencies", {}).values()
+    ):
         all_deps.extend(group_deps)
 
     failures = []
@@ -155,7 +163,9 @@ def assert_all_dependencies_within_ranges(
             declared = _parse_version_spec(dep_spec)
 
             if declared and installed not in declared:
-                failures.append(f"{package_name}: installed {installed} not in declared {declared}")
+                failures.append(
+                    f"{package_name}: installed {installed} not in declared {declared}"
+                )
         except importlib.metadata.PackageNotFoundError:
             # Optional dependency not installed - skip
             pass

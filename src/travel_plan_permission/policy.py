@@ -114,7 +114,9 @@ class AdvanceBookingRule(PolicyRule):
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.booking_date is None or context.departure_date is None:
-            return self._result(True, "Advance booking check skipped due to missing dates")
+            return self._result(
+                True, "Advance booking check skipped due to missing dates"
+            )
 
         days_notice = (context.departure_date - context.booking_date).days
         if days_notice < self.days_required:
@@ -140,7 +142,9 @@ class FareComparisonRule(PolicyRule):
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.selected_fare is None or context.lowest_fare is None:
-            return self._result(True, "Fare comparison skipped due to missing fare data")
+            return self._result(
+                True, "Fare comparison skipped due to missing fare data"
+            )
 
         overage = context.selected_fare - context.lowest_fare
         if overage > self.max_over_lowest:
@@ -151,12 +155,12 @@ class FareComparisonRule(PolicyRule):
                     " allowable threshold."
                 ),
             )
-        return self._result(True, f"Fare within {self.max_over_lowest} of lowest available.")
+        return self._result(
+            True, f"Fare within {self.max_over_lowest} of lowest available."
+        )
 
     def message(self) -> str:  # pragma: no cover - static template
-        return (
-            f"Selected fare must be within {self.max_over_lowest} of the lowest available option."
-        )
+        return f"Selected fare must be within {self.max_over_lowest} of the lowest available option."
 
 
 class CabinClassRule(PolicyRule):
@@ -171,7 +175,9 @@ class CabinClassRule(PolicyRule):
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.cabin_class is None or context.flight_duration_hours is None:
-            return self._result(True, "Cabin class check skipped due to missing flight details")
+            return self._result(
+                True, "Cabin class check skipped due to missing flight details"
+            )
 
         cabin = context.cabin_class.lower()
         duration = context.flight_duration_hours
@@ -204,7 +210,9 @@ class FareEvidenceRule(PolicyRule):
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.fare_evidence_attached:
             return self._result(True, "Fare evidence attached")
-        return self._result(False, "Screenshot or fare evidence must be attached to the request.")
+        return self._result(
+            False, "Screenshot or fare evidence must be attached to the request."
+        )
 
     def message(self) -> str:  # pragma: no cover - static template
         return "Fare evidence (e.g., screenshot) is required."
@@ -270,7 +278,9 @@ class LocalOvernightRule(PolicyRule):
         if not context.overnight_stay:
             return self._result(True, "No overnight stay requested")
         if context.distance_from_office_miles is None:
-            return self._result(True, "Local overnight check skipped due to missing distance data")
+            return self._result(
+                True, "Local overnight check skipped due to missing distance data"
+            )
         if context.distance_from_office_miles < self.min_distance_miles:
             return self._result(
                 False,
@@ -282,7 +292,9 @@ class LocalOvernightRule(PolicyRule):
         )
 
     def message(self) -> str:  # pragma: no cover - static template
-        return f"Overnight stays under {self.min_distance_miles} miles require a waiver."
+        return (
+            f"Overnight stays under {self.min_distance_miles} miles require a waiver."
+        )
 
 
 class MealPerDiemRule(PolicyRule):
@@ -342,13 +354,17 @@ class ThirdPartyPaidRule(PolicyRule):
                     False,
                     f"Third-party payment '{description}' must be itemized and excluded from reimbursement.",
                 )
-        return self._result(True, "Third-party payments are properly itemized or none provided.")
+        return self._result(
+            True, "Third-party payments are properly itemized or none provided."
+        )
 
     def message(self) -> str:  # pragma: no cover - static template
         return "Third-party paid expenses must be itemized and excluded."
 
 
-def _load_rule_config(config: dict[str, Any], key: str, default: dict[str, Any]) -> dict[str, Any]:
+def _load_rule_config(
+    config: dict[str, Any], key: str, default: dict[str, Any]
+) -> dict[str, Any]:
     rules_cfg: dict[str, Any] = config.get("rules", {}) or {}
     rule_cfg: dict[str, Any] = rules_cfg.get(key, {}) or {}
     merged = default.copy()

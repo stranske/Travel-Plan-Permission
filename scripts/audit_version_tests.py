@@ -200,7 +200,9 @@ def generate_fix_suggestions(findings: list[Finding], repo_path: Path) -> None:
 
         print("\nRecommended approach:")
         print("  1. Import version utilities:")
-        print("     from tests.helpers.version_utils import assert_version_in_declared_range")
+        print(
+            "     from tests.helpers.version_utils import assert_version_in_declared_range"
+        )
         print("\n  2. Replace hardcoded assertions with dynamic checks:")
         print("     # Before:")
         print("     assert version == (2, 3)")

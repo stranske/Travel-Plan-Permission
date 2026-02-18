@@ -9,7 +9,9 @@ from travel_plan_permission.policy_lite import RuleDiagnostic
 
 def test_trip_state_coerces_plans_to_json(tmp_path: Path) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "canonical_trip_plan_realistic.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
@@ -29,7 +31,9 @@ def test_trip_state_coerces_plans_to_json(tmp_path: Path) -> None:
 
 def test_trip_state_coerces_dict_plans_to_json(tmp_path: Path) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "canonical_trip_plan_realistic.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
@@ -49,7 +53,9 @@ def test_trip_state_coerces_dict_plans_to_json(tmp_path: Path) -> None:
 
 def test_trip_state_serializes_assigned_models(tmp_path: Path) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "canonical_trip_plan_realistic.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
@@ -58,7 +64,9 @@ def test_trip_state_serializes_assigned_models(tmp_path: Path) -> None:
     state = TripState(
         plan_json=trip_input.plan.model_dump(mode="json"),
         canonical_plan=(
-            trip_input.canonical.model_dump(mode="json") if trip_input.canonical else None
+            trip_input.canonical.model_dump(mode="json")
+            if trip_input.canonical
+            else None
         ),
         spreadsheet_path=spreadsheet_path,
     )
@@ -73,7 +81,9 @@ def test_trip_state_serializes_assigned_models(tmp_path: Path) -> None:
 
 def test_trip_state_coerces_assigned_spreadsheet_path(tmp_path: Path) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "canonical_trip_plan_realistic.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
@@ -82,7 +92,9 @@ def test_trip_state_coerces_assigned_spreadsheet_path(tmp_path: Path) -> None:
     state = TripState(
         plan_json=trip_input.plan.model_dump(mode="json"),
         canonical_plan=(
-            trip_input.canonical.model_dump(mode="json") if trip_input.canonical else None
+            trip_input.canonical.model_dump(mode="json")
+            if trip_input.canonical
+            else None
         ),
         spreadsheet_path=str(spreadsheet_path),
     )
@@ -95,7 +107,9 @@ def test_trip_state_coerces_assigned_spreadsheet_path(tmp_path: Path) -> None:
 
 def test_trip_state_coerces_assigned_policy_result(tmp_path: Path) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "canonical_trip_plan_realistic.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
@@ -104,7 +118,9 @@ def test_trip_state_coerces_assigned_policy_result(tmp_path: Path) -> None:
     state = TripState(
         plan_json=trip_input.plan.model_dump(mode="json"),
         canonical_plan=(
-            trip_input.canonical.model_dump(mode="json") if trip_input.canonical else None
+            trip_input.canonical.model_dump(mode="json")
+            if trip_input.canonical
+            else None
         ),
         spreadsheet_path=str(spreadsheet_path),
     )
@@ -119,7 +135,9 @@ def test_trip_state_coerces_assigned_policy_result(tmp_path: Path) -> None:
 
 def test_trip_state_coerces_assigned_policy_missing_inputs(tmp_path: Path) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "canonical_trip_plan_realistic.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
@@ -128,7 +146,9 @@ def test_trip_state_coerces_assigned_policy_missing_inputs(tmp_path: Path) -> No
     state = TripState(
         plan_json=trip_input.plan.model_dump(mode="json"),
         canonical_plan=(
-            trip_input.canonical.model_dump(mode="json") if trip_input.canonical else None
+            trip_input.canonical.model_dump(mode="json")
+            if trip_input.canonical
+            else None
         ),
         spreadsheet_path=str(spreadsheet_path),
     )
@@ -153,7 +173,9 @@ def test_trip_state_coerces_assigned_policy_missing_inputs(tmp_path: Path) -> No
 
 def test_trip_state_coerces_assigned_unfilled_mapping_report(tmp_path: Path) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "canonical_trip_plan_realistic.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
@@ -162,7 +184,9 @@ def test_trip_state_coerces_assigned_unfilled_mapping_report(tmp_path: Path) -> 
     state = TripState(
         plan_json=trip_input.plan.model_dump(mode="json"),
         canonical_plan=(
-            trip_input.canonical.model_dump(mode="json") if trip_input.canonical else None
+            trip_input.canonical.model_dump(mode="json")
+            if trip_input.canonical
+            else None
         ),
         spreadsheet_path=str(spreadsheet_path),
     )
@@ -195,7 +219,9 @@ def test_trip_state_coerces_assigned_unfilled_mapping_report(tmp_path: Path) -> 
 
 def test_trip_state_accepts_dict_unfilled_mapping_report(tmp_path: Path) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "canonical_trip_plan_realistic.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
@@ -204,7 +230,9 @@ def test_trip_state_accepts_dict_unfilled_mapping_report(tmp_path: Path) -> None
     state = TripState(
         plan_json=trip_input.plan.model_dump(mode="json"),
         canonical_plan=(
-            trip_input.canonical.model_dump(mode="json") if trip_input.canonical else None
+            trip_input.canonical.model_dump(mode="json")
+            if trip_input.canonical
+            else None
         ),
         spreadsheet_path=str(spreadsheet_path),
     )

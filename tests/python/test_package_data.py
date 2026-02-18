@@ -2,7 +2,9 @@ from importlib import resources
 
 
 def test_mapping_resource_exists() -> None:
-    mapping = resources.files("travel_plan_permission").joinpath("config", "excel_mappings.yaml")
+    mapping = resources.files("travel_plan_permission").joinpath(
+        "config", "excel_mappings.yaml"
+    )
     assert mapping.is_file()
     assert "templates" in mapping.read_text(encoding="utf-8")
 

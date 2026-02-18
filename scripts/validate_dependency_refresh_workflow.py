@@ -29,7 +29,9 @@ def find_workflow_issues(content: str) -> list[str]:
     if PIP_COMPILE_PATTERN.search(content):
         issues.append("Found pip-compile usage; expected uv pip compile.")
     if REQUIREMENTS_DEV_PATTERN.search(content):
-        issues.append("Found requirements-dev.lock usage; expected single requirements.lock.")
+        issues.append(
+            "Found requirements-dev.lock usage; expected single requirements.lock."
+        )
     if EXPECTED_COMPILE_COMMAND not in content:
         issues.append("Expected uv pip compile command with extras is missing.")
     if not VERIFY_SNIPPET_PATTERN.search(content):
@@ -59,7 +61,9 @@ def main(argv: list[str] | None = None) -> int:
     content = args.workflow.read_text(encoding="utf-8")
     issues = find_workflow_issues(content)
     if not issues:
-        print("Dependency refresh workflow looks aligned with uv pip compile expectations.")
+        print(
+            "Dependency refresh workflow looks aligned with uv pip compile expectations."
+        )
         return 0
 
     print("Dependency refresh workflow issues detected:")

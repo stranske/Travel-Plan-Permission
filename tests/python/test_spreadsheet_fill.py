@@ -14,7 +14,10 @@ from travel_plan_permission import (
     fill_travel_spreadsheet,
     render_travel_spreadsheet_bytes,
 )
-from travel_plan_permission.canonical import CanonicalTripPlan, canonical_trip_plan_to_model
+from travel_plan_permission.canonical import (
+    CanonicalTripPlan,
+    canonical_trip_plan_to_model,
+)
 from travel_plan_permission.mapping import TemplateMapping
 
 
@@ -232,7 +235,9 @@ def test_fill_travel_spreadsheet_uses_template_metadata(tmp_path, monkeypatch) -
     )
 
     monkeypatch.setattr(policy_api, "load_template_mapping", lambda: mapping)
-    monkeypatch.setattr(policy_api, "_default_template_bytes", fake_default_template_bytes)
+    monkeypatch.setattr(
+        policy_api, "_default_template_bytes", fake_default_template_bytes
+    )
 
     fill_travel_spreadsheet(plan, output_path)
 
@@ -241,7 +246,9 @@ def test_fill_travel_spreadsheet_uses_template_metadata(tmp_path, monkeypatch) -
 
 def test_fill_travel_spreadsheet_uses_canonical_fields(tmp_path) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_minimal.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "sample_trip_plan_minimal.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     canonical_plan = CanonicalTripPlan.model_validate(payload)
@@ -261,8 +268,12 @@ def test_fill_travel_spreadsheet_uses_canonical_fields(tmp_path) -> None:
     workbook.close()
 
 
-def test_fill_travel_spreadsheet_populates_flight_and_hotel_preferences(tmp_path) -> None:
-    fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_rich.json"
+def test_fill_travel_spreadsheet_populates_flight_and_hotel_preferences(
+    tmp_path,
+) -> None:
+    fixture_path = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_rich.json"
+    )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     canonical_plan = CanonicalTripPlan.model_validate(payload)
     trip_plan = canonical_trip_plan_to_model(canonical_plan)

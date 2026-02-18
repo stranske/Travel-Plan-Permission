@@ -65,7 +65,9 @@ class ValidationSnapshot(BaseModel):
         default=None,
         description="Chain hash of the previous snapshot for tamper evidence",
     )
-    snapshot_hash: str | None = Field(default=None, description="Digest of this snapshot's content")
+    snapshot_hash: str | None = Field(
+        default=None, description="Digest of this snapshot's content"
+    )
     chain_hash: str | None = Field(
         default=None,
         description=(
@@ -217,7 +219,9 @@ def compare_results(
     for code, rechecked_result in rechecked_map.items():
         if code in original_map:
             continue
-        changed.append(ValidationDelta(rule_code=code, original=None, rechecked=rechecked_result))
+        changed.append(
+            ValidationDelta(rule_code=code, original=None, rechecked=rechecked_result)
+        )
 
     return ValidationComparison(changed=changed, unchanged=unchanged)
 

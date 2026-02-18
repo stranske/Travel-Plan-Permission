@@ -25,7 +25,9 @@ def _package_mapping_resource() -> resources.abc.Traversable | None:
 
 def _package_template_resource(template_file: str) -> resources.abc.Traversable | None:
     try:
-        resource = resources.files("travel_plan_permission").joinpath("templates", template_file)
+        resource = resources.files("travel_plan_permission").joinpath(
+            "templates", template_file
+        )
     except ModuleNotFoundError:
         return None
     return resource if resource.is_file() else None
@@ -84,7 +86,9 @@ def load_template_mapping(
 
     if version not in templates:
         available = ", ".join(sorted(templates)) or "none"
-        raise ValueError(f"Template version '{version}' not found; available versions: {available}")
+        raise ValueError(
+            f"Template version '{version}' not found; available versions: {available}"
+        )
 
     payload = templates[version]
     metadata = payload.get("metadata") or {}

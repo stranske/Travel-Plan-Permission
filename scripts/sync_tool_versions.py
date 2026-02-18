@@ -123,7 +123,9 @@ def ensure_pyproject(
         expected_parts = expected.split(".")[:2]
 
         if current_parts != expected_parts:
-            mismatches[cfg.package_name] = f"pyproject has {current}, pin file has {expected}"
+            mismatches[cfg.package_name] = (
+                f"pyproject has {current}, pin file has {expected}"
+            )
             if apply:
                 replacement = _format_entry(cfg.pyproject_format, expected)
                 updated_content = cfg.pyproject_pattern.sub(
