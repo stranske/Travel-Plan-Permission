@@ -120,14 +120,16 @@ class ReceiptProcessor:
         """Perform OCR on an image using pytesseract when available."""
 
         try:
-            import pytesseract  # type: ignore[import-not-found]
-            from PIL import Image  # type: ignore[import-not-found,import-untyped,unused-ignore]
+            import importlib
+
+            pytesseract = importlib.import_module("pytesseract")
+            pil_image_module = importlib.import_module("PIL.Image")
         except ImportError as exc:  # pragma: no cover - optional dependency
             raise ImportError(
                 "pytesseract and Pillow are required for image extraction; install them to enable OCR."
             ) from exc
 
-        text = pytesseract.image_to_string(Image.open(image_path))
+        text = pytesseract.image_to_string(pil_image_module.open(image_path))
         return ReceiptProcessor.extract_from_text(text)
 
     @staticmethod
