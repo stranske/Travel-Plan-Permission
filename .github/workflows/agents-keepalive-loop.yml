@@ -228,7 +228,6 @@ jobs:
           INPUT_PR_NUMBER: ${{ github.event.inputs.pr_number || '' }}
           HAS_CODEX_AUTH: ${{ secrets.CODEX_AUTH_JSON != '' }}
           HAS_CLAUDE_AUTH: ${{ secrets.CLAUDE_AUTH_JSON != '' }}
-          HAS_CLAUDE_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
           INPUT_FORCE_RETRY: >-
             ${{ steps.retry_label.outputs.force_retry ||
                 (github.event_name == 'pull_request' &&
@@ -423,7 +422,7 @@ jobs:
           agent_auth_ok=false
           case "$AGENT_TYPE" in
             claude)
-              if [ "$HAS_CLAUDE_AUTH" = "true" ]; then
+              if [ "$HAS_CLAUDE_AUTH" = "true" ] || [ "$HAS_CLAUDE_OAUTH" = "true" ]; then
                 agent_auth_ok=true
               fi
               ;;
@@ -437,9 +436,7 @@ jobs:
             [ "$HAS_APP_ID" = "true" ] && agent_auth_ok=true
           fi
           if [ "$agent_auth_ok" != "true" ]; then
-            msg="Missing credentials for '$AGENT_TYPE'."
-            msg="$msg Set *_AUTH_JSON or App."
-            echo "::error::$msg"
+            echo "::error::Missing credentials for agent '$AGENT_TYPE'. Set CLAUDE_CODE_OAUTH_TOKEN (preferred), CLAUDE_AUTH_JSON, or configure KEEPALIVE/WORKFLOWS_APP credentials."
             echo "secrets_ok=false" >> "$GITHUB_OUTPUT"
             exit 1
           fi
