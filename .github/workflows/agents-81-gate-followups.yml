@@ -211,6 +211,7 @@ jobs:
         env:
           HAS_CODEX_AUTH: ${{ secrets.CODEX_AUTH_JSON != '' }}
           HAS_CLAUDE_AUTH: ${{ secrets.CLAUDE_AUTH_JSON != '' }}
+          HAS_CLAUDE_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
           HAS_APP_ID: >-
             ${{ secrets.KEEPALIVE_APP_ID != '' ||
                 secrets.WORKFLOWS_APP_ID != '' }}
@@ -220,6 +221,7 @@ jobs:
         run: |
           echo "CODEX_AUTH_JSON present: $HAS_CODEX_AUTH"
           echo "CLAUDE_AUTH_JSON present: $HAS_CLAUDE_AUTH"
+          echo "CLAUDE_CODE_OAUTH_TOKEN present: $HAS_CLAUDE_OAUTH"
           echo "KEEPALIVE_APP or WORKFLOWS_APP present: $HAS_APP_ID"
           echo "WORKFLOWS_APP_PRIVATE_KEY present: $HAS_APP_KEY"
           HAS_ANY="false"

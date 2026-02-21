@@ -228,6 +228,7 @@ jobs:
           INPUT_PR_NUMBER: ${{ github.event.inputs.pr_number || '' }}
           HAS_CODEX_AUTH: ${{ secrets.CODEX_AUTH_JSON != '' }}
           HAS_CLAUDE_AUTH: ${{ secrets.CLAUDE_AUTH_JSON != '' }}
+          HAS_CLAUDE_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
           INPUT_FORCE_RETRY: >-
             ${{ steps.retry_label.outputs.force_retry ||
                 (github.event_name == 'pull_request' &&
@@ -404,6 +405,7 @@ jobs:
         env:
           HAS_CODEX_AUTH: ${{ secrets.CODEX_AUTH_JSON != '' }}
           HAS_CLAUDE_AUTH: ${{ secrets.CLAUDE_AUTH_JSON != '' }}
+          HAS_CLAUDE_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
           AGENT_TYPE: ${{ needs.evaluate.outputs.agent_type || 'codex' }}
           HAS_APP_ID: >-
             ${{ secrets.KEEPALIVE_APP_ID != '' ||
@@ -415,6 +417,7 @@ jobs:
           echo "Requested agent: $AGENT_TYPE"
           echo "CODEX_AUTH_JSON present: $HAS_CODEX_AUTH"
           echo "CLAUDE_AUTH_JSON present: $HAS_CLAUDE_AUTH"
+          echo "CLAUDE_CODE_OAUTH_TOKEN present: $HAS_CLAUDE_OAUTH"
           echo "KEEPALIVE_APP or WORKFLOWS_APP present: $HAS_APP_ID"
           echo "WORKFLOWS_APP_PRIVATE_KEY present: $HAS_APP_KEY"
           agent_auth_ok=false
