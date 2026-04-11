@@ -10,6 +10,9 @@ def test_public_api_imports() -> None:
     travel_plan_permission = importlib.import_module("travel_plan_permission")
 
     from travel_plan_permission import (
+        PlannerProposalOperationResponse,
+        PlannerProposalStatusRequest,
+        PlannerProposalSubmissionRequest,
         PolicyCheckResult,
         PolicyCheckStatus,
         PolicyIssue,
@@ -21,11 +24,16 @@ def test_public_api_imports() -> None:
         check_trip_plan,
         fill_travel_spreadsheet,
         list_allowed_vendors,
+        poll_execution_status,
         reconcile,
         render_travel_spreadsheet_bytes,
+        submit_proposal,
     )
 
     required_exports = {
+        "PlannerProposalOperationResponse",
+        "PlannerProposalStatusRequest",
+        "PlannerProposalSubmissionRequest",
         "PolicyCheckResult",
         "PolicyCheckStatus",
         "PolicyIssue",
@@ -38,7 +46,9 @@ def test_public_api_imports() -> None:
         "fill_travel_spreadsheet",
         "render_travel_spreadsheet_bytes",
         "list_allowed_vendors",
+        "poll_execution_status",
         "reconcile",
+        "submit_proposal",
         "__version__",
     }
     assert required_exports.issubset(set(travel_plan_permission.__all__))
@@ -49,6 +59,11 @@ def test_public_api_imports() -> None:
     assert reconcile is not None
     assert fill_travel_spreadsheet is not None
     assert render_travel_spreadsheet_bytes is not None
+    assert submit_proposal is not None
+    assert poll_execution_status is not None
+    assert PlannerProposalSubmissionRequest is not None
+    assert PlannerProposalStatusRequest is not None
+    assert PlannerProposalOperationResponse is not None
     assert PolicyCheckResult is not None
     assert PolicyCheckStatus is not None
     assert PolicyIssue is not None

@@ -119,6 +119,77 @@ Example JSON structure for the planner-facing snapshot contract:
 }
 ```
 
+### PlannerProposalSubmissionRequest (input)
+
+Example JSON structure for planner proposal submission:
+
+```json
+{
+  "trip_id": "TRIP-1001",
+  "proposal_id": "proposal-123",
+  "proposal_version": "proposal-v1",
+  "payload": {
+    "selected_options": ["flight-1", "hotel-3"],
+    "submission_mode": "queue"
+  },
+  "request_id": "req-submit-001",
+  "correlation_id": {
+    "value": "corr-submit-001",
+    "issued_by": "trip-planner"
+  },
+  "transport_pattern": "deferred",
+  "organization_id": "org-acme",
+  "submitted_at": "2026-04-11T12:30:00Z",
+  "service_available": true
+}
+```
+
+### PlannerProposalOperationResponse (output)
+
+Example JSON structure for proposal submission or status polling:
+
+```json
+{
+  "operation": "submit_proposal",
+  "submission_status": "pending",
+  "request_id": "req-submit-001",
+  "correlation_id": {
+    "value": "corr-submit-001",
+    "issued_by": "trip-planner"
+  },
+  "transport_pattern": "deferred",
+  "execution_status": {
+    "state": "deferred",
+    "terminal": false,
+    "summary": "Proposal queued for evaluation.",
+    "external_status": "202 Accepted",
+    "poll_after_seconds": 30,
+    "updated_at": "2026-04-11T12:30:00Z"
+  },
+  "result_payload": {
+    "trip_id": "TRIP-1001",
+    "proposal_id": "proposal-123",
+    "proposal_version": "proposal-v1",
+    "execution_id": "exec-10c6fb4730f2",
+    "queue_state": "waiting_for_policy_engine",
+    "result_endpoint": "GET /api/planner/executions/exec-10c6fb4730f2/evaluation-result",
+    "organization_id": "org-acme",
+    "submitted_payload_keys": ["selected_options", "submission_mode"]
+  },
+  "error": null,
+  "retry": {
+    "attempt": 0,
+    "max_attempts": 5,
+    "retryable": true,
+    "backoff_seconds": 30,
+    "next_retry_at": "2026-04-11T12:30:30Z",
+    "reason": "Await planner-side evaluation completion before retrying."
+  },
+  "received_at": "2026-04-11T12:30:00Z",
+  "status_endpoint": "GET /api/planner/proposals/proposal-123/executions/exec-10c6fb4730f2"
+}
+```
+
 ## Functions
 
 ### check_trip_plan
@@ -267,6 +338,96 @@ request = PlannerPolicySnapshotRequest(
 )
 snapshot = get_policy_snapshot(plan, request)
 assert snapshot.freshness == "stale"
+```
+
+### submit_proposal
+
+**Signature**
+
+```python
+def submit_proposal(
+    plan: TripPlan,
+    request: PlannerProposalSubmissionRequest,
+) -> PlannerProposalOperationResponse:
+    ...
+```
+
+**Description**
+
+Builds the planner-facing submission contract for proposal execution. The
+response mirrors the downstream `trip-planner` transport vocabulary:
+correlation IDs, execution IDs, retry guidance, and stable status/result
+endpoints are all emitted in a single deterministic envelope.
+
+**Submission states**
+
+- `pending`: the proposal was accepted and queued or is still running.
+- `succeeded`: the current trip state already reflects a completed execution.
+- `failed`: the proposal is in a rejected state and needs planner remediation.
+- `unavailable`: the planner-facing transport seam is unavailable; retry later.
+
+**Example**
+
+```python
+from datetime import UTC, datetime
+
+from travel_plan_permission.policy_api import (
+    PlannerProposalSubmissionRequest,
+    submit_proposal,
+)
+
+request = PlannerProposalSubmissionRequest(
+    trip_id=plan.trip_id,
+    proposal_id="proposal-123",
+    proposal_version="proposal-v1",
+    payload={"selected_options": ["flight-1", "hotel-3"]},
+    submitted_at=datetime(2026, 4, 11, 12, 30, tzinfo=UTC),
+)
+
+response = submit_proposal(plan, request)
+print(response.submission_status)
+print(response.result_payload["execution_id"])
+```
+
+### poll_execution_status
+
+**Signature**
+
+```python
+def poll_execution_status(
+    plan: TripPlan,
+    request: PlannerProposalStatusRequest,
+) -> PlannerProposalOperationResponse:
+    ...
+```
+
+**Description**
+
+Returns the stable planner-facing execution-status contract for a previously
+submitted proposal. Polling uses the deterministic execution ID and preserves
+the same correlation semantics as the submission call so `trip-planner` can
+persist and replay the lane cleanly.
+
+**Example**
+
+```python
+from datetime import UTC, datetime
+
+from travel_plan_permission.policy_api import (
+    PlannerProposalStatusRequest,
+    poll_execution_status,
+)
+
+status_request = PlannerProposalStatusRequest(
+    trip_id=plan.trip_id,
+    proposal_id="proposal-123",
+    proposal_version="proposal-v1",
+    execution_id=response.result_payload["execution_id"],
+    requested_at=datetime(2026, 4, 11, 12, 31, tzinfo=UTC),
+)
+
+status = poll_execution_status(plan, status_request)
+print(status.execution_status.state if status.execution_status else "unavailable")
 ```
 
 Invalidated snapshot:

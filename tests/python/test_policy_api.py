@@ -9,7 +9,10 @@ import pytest
 from travel_plan_permission import (
     ExpenseCategory,
     ExpenseItem,
+    PlannerCorrelationId,
     PlannerPolicySnapshotRequest,
+    PlannerProposalStatusRequest,
+    PlannerProposalSubmissionRequest,
     PolicyCheckResult,
     PolicyContext,
     PolicyEngine,
@@ -22,7 +25,9 @@ from travel_plan_permission import (
     check_trip_plan,
     get_policy_snapshot,
     list_allowed_vendors,
+    poll_execution_status,
     reconcile,
+    submit_proposal,
 )
 
 
@@ -518,3 +523,162 @@ def test_get_policy_snapshot_etag_changes_when_plan_changes(
     changed = get_policy_snapshot(changed_plan, request)
 
     assert original.versioning.etag != changed.versioning.etag
+
+
+def test_submit_proposal_returns_pending_contract(trip_plan: TripPlan) -> None:
+    request = PlannerProposalSubmissionRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-123",
+        proposal_version="proposal-v1",
+        payload={"selected_options": ["flight-1", "hotel-3"]},
+        submitted_at=datetime(2026, 4, 11, 12, 30, tzinfo=UTC),
+    )
+
+    response = submit_proposal(trip_plan, request)
+
+    assert response.operation == "submit_proposal"
+    assert response.submission_status == "pending"
+    assert response.execution_status is not None
+    assert response.execution_status.state == "deferred"
+    assert response.execution_status.terminal is False
+    assert response.retry is not None
+    assert response.status_endpoint is not None
+    assert response.result_payload["proposal_id"] == request.proposal_id
+    assert response.result_payload["submitted_payload_keys"] == ["selected_options"]
+
+
+def test_submit_proposal_returns_succeeded_contract_for_approved_trip(
+    trip_plan: TripPlan,
+) -> None:
+    approved_plan = trip_plan.model_copy(update={"status": "approved"})
+    request = PlannerProposalSubmissionRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-123",
+        proposal_version="proposal-v2",
+        transport_pattern="sync",
+        submitted_at=datetime(2026, 4, 11, 12, 35, tzinfo=UTC),
+    )
+
+    response = submit_proposal(approved_plan, request)
+
+    assert response.submission_status == "succeeded"
+    assert response.execution_status is not None
+    assert response.execution_status.state == "succeeded"
+    assert response.execution_status.terminal is True
+    assert response.retry is None
+    assert response.result_payload["queue_state"] == "completed"
+
+
+def test_submit_proposal_returns_failed_contract_for_rejected_trip(
+    trip_plan: TripPlan,
+) -> None:
+    rejected_plan = trip_plan.model_copy(update={"status": "rejected"})
+    request = PlannerProposalSubmissionRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-123",
+        proposal_version="proposal-v3",
+        submitted_at=datetime(2026, 4, 11, 12, 40, tzinfo=UTC),
+    )
+
+    response = submit_proposal(rejected_plan, request)
+
+    assert response.submission_status == "failed"
+    assert response.execution_status is not None
+    assert response.execution_status.state == "failed"
+    assert response.error is not None
+    assert response.error.code == "proposal_rejected"
+    assert response.retry is None
+
+
+def test_submit_proposal_returns_unavailable_contract_when_service_down(
+    trip_plan: TripPlan,
+) -> None:
+    request = PlannerProposalSubmissionRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-123",
+        proposal_version="proposal-v4",
+        service_available=False,
+        submitted_at=datetime(2026, 4, 11, 12, 45, tzinfo=UTC),
+    )
+
+    response = submit_proposal(trip_plan, request)
+
+    assert response.submission_status == "unavailable"
+    assert response.execution_status is None
+    assert response.error is not None
+    assert response.error.category == "availability"
+    assert response.retry is not None
+    assert response.retry.retryable is True
+
+
+def test_poll_execution_status_returns_running_contract_for_async_trip(
+    trip_plan: TripPlan,
+) -> None:
+    submit_request = PlannerProposalSubmissionRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-123",
+        proposal_version="proposal-v5",
+        transport_pattern="async",
+        submitted_at=datetime(2026, 4, 11, 12, 49, tzinfo=UTC),
+    )
+    submit_response = submit_proposal(trip_plan, submit_request)
+    request = PlannerProposalStatusRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-123",
+        proposal_version="proposal-v5",
+        execution_id=str(submit_response.result_payload["execution_id"]),
+        transport_pattern="async",
+        requested_at=datetime(2026, 4, 11, 12, 50, tzinfo=UTC),
+    )
+
+    response = poll_execution_status(trip_plan, request)
+
+    assert response.operation == "poll_execution_status"
+    assert response.submission_status == "pending"
+    assert response.execution_status is not None
+    assert response.execution_status.state == "running"
+    assert response.retry is not None
+    assert response.result_payload["result_endpoint"].endswith(
+        f"/{submit_response.result_payload['execution_id']}/evaluation-result"
+    )
+
+
+def test_poll_execution_status_preserves_supplied_correlation_id(
+    trip_plan: TripPlan,
+) -> None:
+    submit_request = PlannerProposalSubmissionRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-abc",
+        proposal_version="proposal-v6",
+    )
+    submit_response = submit_proposal(trip_plan, submit_request)
+    request = PlannerProposalStatusRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-abc",
+        proposal_version="proposal-v6",
+        execution_id=str(submit_response.result_payload["execution_id"]),
+        correlation_id=PlannerCorrelationId(value="corr-custom-123"),
+        requested_at=datetime(2026, 4, 11, 12, 55, tzinfo=UTC),
+    )
+
+    response = poll_execution_status(trip_plan, request)
+
+    assert response.correlation_id.value == "corr-custom-123"
+
+
+def test_poll_execution_status_rejects_mismatched_execution_id(
+    trip_plan: TripPlan,
+) -> None:
+    request = PlannerProposalStatusRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-bad",
+        proposal_version="proposal-v7",
+        execution_id="exec-wrong",
+        requested_at=datetime(2026, 4, 11, 13, 0, tzinfo=UTC),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="PlannerProposalStatusRequest.execution_id does not match",
+    ):
+        poll_execution_status(trip_plan, request)
