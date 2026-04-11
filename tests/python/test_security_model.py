@@ -6,6 +6,7 @@ from travel_plan_permission.security import (
     API_ENDPOINT_PERMISSIONS,
     DEFAULT_ROLES,
     DEFAULT_SSO_PLANS,
+    PLANNER_POLICY_SNAPSHOT_ENDPOINT,
     AuditEventType,
     AuditLog,
     Permission,
@@ -29,6 +30,7 @@ def test_roles_and_permissions_matrix() -> None:
     assert Permission.EXPORT in DEFAULT_ROLES[RoleName.FINANCE_ADMIN].permissions
     assert Permission.CONFIGURE in DEFAULT_ROLES[RoleName.POLICY_ADMIN].permissions
     assert set(Permission) == DEFAULT_ROLES[RoleName.SYSTEM_ADMIN].permissions
+    assert PLANNER_POLICY_SNAPSHOT_ENDPOINT in API_ENDPOINT_PERMISSIONS
     assert "POST /api/approvals/:id/decision" in API_ENDPOINT_PERMISSIONS
 
 

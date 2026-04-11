@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import re
 import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from hashlib import sha256
 from importlib import resources
 from io import BytesIO
 from pathlib import Path
@@ -25,18 +27,32 @@ from .policy import PolicyContext, PolicyEngine, PolicyResult, Severity
 from .policy_versioning import PolicyVersion
 from .providers import ProviderRegistry, ProviderType
 from .receipts import Receipt, summarize_receipts
+from .security import PLANNER_POLICY_SNAPSHOT_ENDPOINT
 
 PolicyIssueSeverity = Literal["info", "warning", "error"]
 PolicyCheckStatus = Literal["pass", "fail"]
 ReconciliationStatus = Literal["under_budget", "on_budget", "over_budget"]
+PolicySnapshotFreshness = Literal["current", "stale", "invalidated"]
 PolicyIssueContextValue = str | int | float | bool | None
+_PLANNER_POLICY_CONTRACT_VERSION = "2026-04-11"
+_PLANNER_POLICY_TTL = timedelta(hours=24)
+_DOCUMENTATION_RULE_IDS = frozenset(
+    {"fare_evidence", "hotel_comparison", "third_party_paid"}
+)
 
 __all__ = [
     "PolicyIssueSeverity",
     "PolicyCheckStatus",
+    "PolicySnapshotFreshness",
     "ReconciliationStatus",
     "PolicyIssue",
     "PolicyCheckResult",
+    "PlannerPolicySnapshotRequest",
+    "PlannerPolicyRequirement",
+    "PlannerApprovalTrigger",
+    "PlannerAuthContract",
+    "PlannerVersionContract",
+    "PlannerPolicySnapshot",
     "ReconciliationResult",
     "UnfilledMappingEntry",
     "UnfilledMappingReport",
@@ -44,6 +60,7 @@ __all__ = [
     "Receipt",
     "check_trip_plan",
     "fill_travel_spreadsheet",
+    "get_policy_snapshot",
     "list_allowed_vendors",
     "reconcile",
 ]
@@ -69,6 +86,114 @@ class PolicyCheckResult(BaseModel):
     )
     policy_version: str = Field(
         ..., description="Deterministic policy version identifier"
+    )
+
+
+class PlannerPolicySnapshotRequest(BaseModel):
+    """Planner-facing request envelope for policy snapshot fetch."""
+
+    trip_id: str = Field(..., description="Trip identifier for the snapshot request")
+    requested_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the planner requested the snapshot",
+    )
+    snapshot_generated_at: datetime | None = Field(
+        default=None,
+        description="Previous snapshot timestamp when re-evaluating freshness",
+    )
+    known_policy_version: str | None = Field(
+        default=None,
+        description="Policy version already cached by the planner, if any",
+    )
+    invalidate_reason: str | None = Field(
+        default=None,
+        description="Explicit invalidation reason when the cached snapshot is unusable",
+    )
+
+
+class PlannerPolicyRequirement(BaseModel):
+    """Planner-facing requirement line item for booking or documentation rules."""
+
+    code: str = Field(..., description="Stable rule identifier")
+    summary: str = Field(..., description="Human-readable planner guidance")
+    severity: PolicyIssueSeverity = Field(..., description="Planner-facing severity")
+
+
+class PlannerApprovalTrigger(BaseModel):
+    """Reason the planner should surface approval or waiver handling."""
+
+    code: str = Field(..., description="Stable trigger identifier")
+    summary: str = Field(..., description="Human-readable trigger summary")
+    blocking: bool = Field(..., description="Whether the trigger blocks submission")
+    source: Literal["policy_rule", "exception_request"] = Field(
+        ..., description="Origin of the trigger"
+    )
+
+
+class PlannerAuthContract(BaseModel):
+    """Authentication contract for the planner-facing policy snapshot seam."""
+
+    endpoint: str = Field(..., description="Stable planner-facing endpoint identifier")
+    required_permission: str = Field(
+        ..., description="Permission required to read the snapshot"
+    )
+    auth_scheme: str = Field(..., description="Authentication scheme to use")
+    supported_sso: list[str] = Field(
+        default_factory=list,
+        description="Supported SSO providers for bearer token acquisition",
+    )
+
+
+class PlannerVersionContract(BaseModel):
+    """Versioning metadata needed by the planner cache and transport layer."""
+
+    contract_version: str = Field(..., description="Version of the snapshot contract")
+    policy_version: str = Field(..., description="Deterministic policy version hash")
+    planner_known_policy_version: str | None = Field(
+        default=None,
+        description="Policy version supplied by the planner cache, if any",
+    )
+    compatible_with_planner_cache: bool = Field(
+        ..., description="Whether the planner cache matches the current policy version"
+    )
+    etag: str = Field(..., description="Stable cache validator for the snapshot")
+
+
+class PlannerPolicySnapshot(BaseModel):
+    """Planner-facing snapshot response for policy metadata and runtime gating."""
+
+    trip_id: str = Field(..., description="Trip identifier")
+    freshness: PolicySnapshotFreshness = Field(
+        ..., description="Freshness state for the snapshot payload"
+    )
+    generated_at: datetime = Field(..., description="When this snapshot was generated")
+    expires_at: datetime = Field(..., description="When the snapshot becomes stale")
+    invalidated_at: datetime | None = Field(
+        default=None, description="When the snapshot was explicitly invalidated"
+    )
+    invalidation_reason: str | None = Field(
+        default=None, description="Why the snapshot is invalidated"
+    )
+    policy_status: PolicyCheckStatus = Field(
+        ..., description="Current blocking-policy pass/fail status"
+    )
+    booking_requirements: list[PlannerPolicyRequirement] = Field(
+        default_factory=list,
+        description="Booking-time requirements the planner should surface",
+    )
+    documentation_rules: list[PlannerPolicyRequirement] = Field(
+        default_factory=list,
+        description="Documentation rules the planner should enforce or request",
+    )
+    approval_triggers: list[PlannerApprovalTrigger] = Field(
+        default_factory=list,
+        description="Current triggers that require approval or a waiver workflow",
+    )
+    auth: PlannerAuthContract = Field(
+        ..., description="Authentication guidance for this transport seam"
+    )
+    versioning: PlannerVersionContract = Field(
+        ..., description="Versioning metadata for caching and compatibility"
     )
 
 
@@ -387,6 +512,142 @@ def _issue_from_result(result: PolicyResult) -> PolicyIssue:
         message=result.message,
         severity=_issue_severity(result),
         context={"rule_id": result.rule_id, "severity": result.severity},
+    )
+
+
+def _planner_requirement(rule: dict[str, object]) -> PlannerPolicyRequirement:
+    severity = str(rule.get("severity", Severity.INFO))
+    return PlannerPolicyRequirement(
+        code=str(rule["rule_id"]),
+        summary=str(rule.get("description", "")),
+        severity=(
+            "error"
+            if severity == Severity.BLOCKING
+            else "warning" if severity == Severity.ADVISORY else "info"
+        ),
+    )
+
+
+def _planner_freshness(
+    request: PlannerPolicySnapshotRequest,
+    *,
+    generated_at: datetime,
+    now: datetime,
+) -> tuple[PolicySnapshotFreshness, datetime | None]:
+    if request.invalidate_reason:
+        return "invalidated", now
+    if now > generated_at + _PLANNER_POLICY_TTL:
+        return "stale", None
+    return "current", None
+
+
+def _coerce_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _planner_snapshot_etag(plan: TripPlan, *, policy_version: str) -> str:
+    plan_payload = json.dumps(
+        plan.model_dump(mode="json"),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    plan_revision = sha256(plan_payload.encode("utf-8")).hexdigest()[:12]
+    return (
+        f"{plan.trip_id}:{policy_version}:{_PLANNER_POLICY_CONTRACT_VERSION}:"
+        f"{plan_revision}"
+    )
+
+
+def get_policy_snapshot(
+    plan: TripPlan,
+    request: PlannerPolicySnapshotRequest | None = None,
+) -> PlannerPolicySnapshot:
+    """Build a planner-facing policy snapshot contract for a single trip."""
+
+    request = request or PlannerPolicySnapshotRequest(trip_id=plan.trip_id)
+    if request.trip_id != plan.trip_id:
+        raise ValueError(
+            "PlannerPolicySnapshotRequest.trip_id does not match plan.trip_id: "
+            f"{request.trip_id!r} != {plan.trip_id!r}"
+        )
+    now = _coerce_utc(request.requested_at)
+    freshness_generated_at = _coerce_utc(request.snapshot_generated_at or now)
+    generated_at = now
+    freshness, invalidated_at = _planner_freshness(
+        request,
+        generated_at=freshness_generated_at,
+        now=now,
+    )
+
+    engine = PolicyEngine.from_file()
+    context = _context_from_plan(plan)
+    results = engine.validate(context)
+    policy_version = _policy_version(engine)
+    has_blocking = any(
+        not result.passed and result.severity == Severity.BLOCKING for result in results
+    )
+    rule_metadata = engine.describe_rules()
+
+    booking_requirements = [
+        _planner_requirement(rule)
+        for rule in rule_metadata
+        if str(rule["rule_id"]) not in _DOCUMENTATION_RULE_IDS
+    ]
+    documentation_rules = [
+        _planner_requirement(rule)
+        for rule in rule_metadata
+        if str(rule["rule_id"]) in _DOCUMENTATION_RULE_IDS
+    ]
+    approval_triggers = [
+        PlannerApprovalTrigger(
+            code=result.rule_id,
+            summary=result.message,
+            blocking=result.severity == Severity.BLOCKING,
+            source="policy_rule",
+        )
+        for result in results
+        if not result.passed
+    ]
+    approval_triggers.extend(
+        PlannerApprovalTrigger(
+            code=exception_request.type.value,
+            summary=(
+                f"Exception request for {exception_request.type.value.replace('_', ' ')} "
+                f"is {exception_request.status.value}"
+            ),
+            blocking=exception_request.status.value != "approved",
+            source="exception_request",
+        )
+        for exception_request in plan.exception_requests
+    )
+
+    return PlannerPolicySnapshot(
+        trip_id=plan.trip_id,
+        freshness=freshness,
+        generated_at=generated_at,
+        expires_at=generated_at + _PLANNER_POLICY_TTL,
+        invalidated_at=invalidated_at,
+        invalidation_reason=request.invalidate_reason,
+        policy_status="fail" if has_blocking else "pass",
+        booking_requirements=booking_requirements,
+        documentation_rules=documentation_rules,
+        approval_triggers=approval_triggers,
+        auth=PlannerAuthContract(
+            endpoint=PLANNER_POLICY_SNAPSHOT_ENDPOINT,
+            required_permission="view",
+            auth_scheme="Bearer token with SSO-backed access token",
+            supported_sso=["azure_ad", "okta", "google"],
+        ),
+        versioning=PlannerVersionContract(
+            contract_version=_PLANNER_POLICY_CONTRACT_VERSION,
+            policy_version=policy_version,
+            planner_known_policy_version=request.known_policy_version,
+            compatible_with_planner_cache=request.known_policy_version
+            in (None, policy_version),
+            etag=_planner_snapshot_etag(plan, policy_version=policy_version),
+        ),
     )
 
 
