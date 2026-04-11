@@ -643,6 +643,36 @@ def test_poll_execution_status_returns_running_contract_for_async_trip(
     )
 
 
+def test_poll_execution_status_returns_unavailable_contract_when_service_down(
+    trip_plan: TripPlan,
+) -> None:
+    submit_request = PlannerProposalSubmissionRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-unavailable",
+        proposal_version="proposal-v5b",
+    )
+    submit_response = submit_proposal(trip_plan, submit_request)
+    request = PlannerProposalStatusRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-unavailable",
+        proposal_version="proposal-v5b",
+        execution_id=str(submit_response.result_payload["execution_id"]),
+        service_available=False,
+        requested_at=datetime(2026, 4, 11, 12, 52, tzinfo=UTC),
+    )
+
+    response = poll_execution_status(trip_plan, request)
+
+    assert response.operation == "poll_execution_status"
+    assert response.submission_status == "unavailable"
+    assert response.execution_status is None
+    assert response.error is not None
+    assert response.error.category == "availability"
+    assert response.retry is not None
+    assert response.retry.retryable is True
+    assert response.retry.next_retry_at is not None
+
+
 def test_poll_execution_status_preserves_supplied_correlation_id(
     trip_plan: TripPlan,
 ) -> None:
