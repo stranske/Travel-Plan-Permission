@@ -1,0 +1,24 @@
+{
+  "trip_id": "TRIP-1001",
+  "proposal_id": "proposal-123",
+  "proposal_version": "proposal-v1",
+  "execution_id": "exec-10c6fb4730f2",
+  "request_id": "req-eval-001",
+  "correlation_id": {
+    "value": "corr-submit-001",
+    "issued_by": "trip-planner"
+  },
+  "outcome": "compliant",
+  "result_endpoint": "GET /api/planner/executions/exec-10c6fb4730f2/evaluation-result",
+  "status_endpoint": "GET /api/planner/proposals/proposal-123/executions/exec-10c6fb4730f2",
+  "policy_result": {
+    "status": "pass",
+    "issues": [],
+    "policy_version": "b6a28d5d9a30e4f6f7710c7d4cdcaef1c45df3449500f12d822d29fc2bc4dd39"
+  },
+  "blocking_issues": [],
+  "preferred_alternatives": [],
+  "exception_requirements": [],
+  "reoptimization_guidance": [],
+  "generated_at": "2026-04-11T12:31:00Z"
+}

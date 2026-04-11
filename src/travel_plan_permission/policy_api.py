@@ -22,12 +22,20 @@ from pydantic import BaseModel, Field
 
 from .canonical import CanonicalTripPlan
 from .mapping import TemplateMapping, load_template_mapping
-from .models import ExpenseCategory, ExpenseItem, ExpenseReport, TripPlan, TripStatus
+from .models import (
+    ExceptionRequest,
+    ExpenseCategory,
+    ExpenseItem,
+    ExpenseReport,
+    TripPlan,
+    TripStatus,
+)
 from .policy import PolicyContext, PolicyEngine, PolicyResult, Severity
 from .policy_versioning import PolicyVersion
-from .providers import ProviderRegistry, ProviderType
+from .providers import ProviderRegistry, ProviderType, provider_type_for_category
 from .receipts import Receipt, summarize_receipts
 from .security import (
+    PLANNER_EVALUATION_RESULT_ENDPOINT,
     PLANNER_EXECUTION_STATUS_ENDPOINT,
     PLANNER_POLICY_SNAPSHOT_ENDPOINT,
 )
@@ -36,9 +44,18 @@ PolicyIssueSeverity = Literal["info", "warning", "error"]
 PolicyCheckStatus = Literal["pass", "fail"]
 ReconciliationStatus = Literal["under_budget", "on_budget", "over_budget"]
 PolicySnapshotFreshness = Literal["current", "stale", "invalidated"]
-PlannerOperationType = Literal["submit_proposal", "poll_execution_status"]
+PlannerOperationType = Literal[
+    "submit_proposal",
+    "poll_execution_status",
+    "get_evaluation_result",
+]
 PlannerProposalStatus = Literal["pending", "succeeded", "failed", "unavailable"]
 PlannerTransportPattern = Literal["sync", "async", "deferred"]
+PlannerEvaluationOutcome = Literal[
+    "compliant",
+    "non_compliant",
+    "exception_required",
+]
 PlannerExecutionState = Literal[
     "accepted",
     "running",
@@ -62,6 +79,7 @@ __all__ = [
     "PlannerOperationType",
     "PlannerProposalStatus",
     "PlannerTransportPattern",
+    "PlannerEvaluationOutcome",
     "PlannerExecutionState",
     "ReconciliationStatus",
     "PolicyIssue",
@@ -78,7 +96,13 @@ __all__ = [
     "PlannerProposalExecutionStatus",
     "PlannerProposalSubmissionRequest",
     "PlannerProposalStatusRequest",
+    "PlannerProposalEvaluationRequest",
     "PlannerProposalOperationResponse",
+    "PlannerBlockingIssue",
+    "PlannerPreferredAlternative",
+    "PlannerExceptionRequirement",
+    "PlannerReoptimizationGuidance",
+    "PlannerProposalEvaluationResult",
     "ReconciliationResult",
     "UnfilledMappingEntry",
     "UnfilledMappingReport",
@@ -86,6 +110,7 @@ __all__ = [
     "Receipt",
     "check_trip_plan",
     "fill_travel_spreadsheet",
+    "get_evaluation_result",
     "get_policy_snapshot",
     "list_allowed_vendors",
     "poll_execution_status",
@@ -365,6 +390,111 @@ class PlannerProposalOperationResponse(BaseModel):
     status_endpoint: str | None = Field(
         default=None, description="Stable endpoint for follow-up status checks"
     )
+
+
+class PlannerProposalEvaluationRequest(BaseModel):
+    """Planner-facing request for a deterministic evaluation result payload."""
+
+    trip_id: str = Field(..., description="Trip identifier linked to the execution")
+    proposal_id: str = Field(..., description="Stable planner proposal identifier")
+    proposal_version: str = Field(..., description="Planner proposal version identifier")
+    execution_id: str = Field(..., description="Execution identifier returned on submit")
+    request_id: str | None = Field(
+        default=None, description="Optional caller-supplied evaluation request identifier"
+    )
+    correlation_id: PlannerCorrelationId | None = Field(
+        default=None, description="Optional caller-supplied correlation identifier"
+    )
+    requested_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the planner requested the evaluation result",
+    )
+
+
+class PlannerBlockingIssue(BaseModel):
+    """Blocking issue detail the planner should surface directly to the user."""
+
+    code: str = Field(..., description="Stable blocking issue code")
+    message: str = Field(..., description="Human-readable blocking issue summary")
+    field_path: str | None = Field(
+        default=None, description="Relevant planner field or payload path"
+    )
+    resolution: str = Field(..., description="Deterministic next step for remediation")
+
+
+class PlannerPreferredAlternative(BaseModel):
+    """Preferred alternative surfaced when the current proposal is non-compliant."""
+
+    category: str = Field(..., description="Alternative category such as airfare")
+    title: str = Field(..., description="Human-readable alternative label")
+    rationale: str = Field(..., description="Why the alternative is preferred")
+    suggested_value: str | None = Field(
+        default=None, description="Suggested machine-readable replacement value"
+    )
+
+
+class PlannerExceptionRequirement(BaseModel):
+    """Exception workflow requirement the planner must track or display."""
+
+    type: str = Field(..., description="Stable exception type identifier")
+    status: str = Field(..., description="Current exception workflow status")
+    approval_level: str | None = Field(
+        default=None, description="Current approval level required for the exception"
+    )
+    summary: str = Field(..., description="Human-readable exception workflow summary")
+
+
+class PlannerReoptimizationGuidance(BaseModel):
+    """Structured reoptimization guidance for planner follow-up flows."""
+
+    code: str = Field(..., description="Stable reoptimization guidance code")
+    summary: str = Field(..., description="Human-readable guidance summary")
+    actions: list[str] = Field(
+        default_factory=list,
+        description="Deterministic follow-up actions for the planner",
+    )
+
+
+class PlannerProposalEvaluationResult(BaseModel):
+    """Planner-facing evaluation result contract for a proposal execution."""
+
+    trip_id: str = Field(..., description="Trip identifier linked to the execution")
+    proposal_id: str = Field(..., description="Stable planner proposal identifier")
+    proposal_version: str = Field(..., description="Planner proposal version identifier")
+    execution_id: str = Field(..., description="Execution identifier returned on submit")
+    request_id: str = Field(..., description="Stable evaluation request identifier")
+    correlation_id: PlannerCorrelationId = Field(
+        ..., description="Correlation identifier shared across proposal operations"
+    )
+    outcome: PlannerEvaluationOutcome = Field(
+        ..., description="Planner-facing evaluation outcome"
+    )
+    result_endpoint: str = Field(
+        ..., description="Stable endpoint for re-fetching this evaluation result"
+    )
+    status_endpoint: str = Field(
+        ..., description="Stable endpoint for the execution status linkage"
+    )
+    policy_result: PolicyCheckResult = Field(
+        ..., description="Underlying policy evaluation snapshot for this proposal"
+    )
+    blocking_issues: list[PlannerBlockingIssue] = Field(
+        default_factory=list,
+        description="Blocking issues that must be resolved before success",
+    )
+    preferred_alternatives: list[PlannerPreferredAlternative] = Field(
+        default_factory=list,
+        description="Preferred alternatives surfaced for non-compliant results",
+    )
+    exception_requirements: list[PlannerExceptionRequirement] = Field(
+        default_factory=list,
+        description="Exception workflow requirements that remain in flight",
+    )
+    reoptimization_guidance: list[PlannerReoptimizationGuidance] = Field(
+        default_factory=list,
+        description="Deterministic follow-up guidance for the planner runtime",
+    )
+    generated_at: datetime = Field(..., description="When this result payload was generated")
 
 
 class ReconciliationResult(BaseModel):
@@ -779,7 +909,7 @@ def _proposal_status_endpoint(*, proposal_id: str, execution_id: str) -> str:
 
 
 def _result_endpoint(*, execution_id: str) -> str:
-    return f"GET /api/planner/executions/{execution_id}/evaluation-result"
+    return PLANNER_EVALUATION_RESULT_ENDPOINT.replace(":execution_id", execution_id)
 
 
 def _proposal_result_payload(
@@ -939,6 +1069,169 @@ def _proposal_response_for_plan(
         received_at=event_time,
         status_endpoint=status_endpoint,
     )
+
+
+def _blocking_issues(policy_result: PolicyCheckResult) -> list[PlannerBlockingIssue]:
+    field_paths = {
+        "fare_comparison": "selected_fare",
+        "fare_evidence": "fare_evidence_attached",
+        "hotel_comparison": "comparable_hotels",
+        "third_party_paid": "third_party_payments",
+    }
+    resolutions = {
+        "fare_comparison": "Choose a fare that meets the lowest-fare guidance or request an exception.",
+        "fare_evidence": "Attach fare evidence before resubmitting the proposal.",
+        "hotel_comparison": "Capture comparable hotel rates before resubmitting the proposal.",
+        "third_party_paid": "Itemize third-party-paid amounts before resubmitting the proposal.",
+    }
+    return [
+        PlannerBlockingIssue(
+            code=issue.code,
+            message=issue.message,
+            field_path=field_paths.get(issue.code),
+            resolution=resolutions.get(
+                issue.code,
+                "Update the proposal so the planner-facing policy rules pass.",
+            ),
+        )
+        for issue in policy_result.issues
+        if issue.severity == "error"
+    ]
+
+
+def _preferred_alternatives(plan: TripPlan) -> list[PlannerPreferredAlternative]:
+    alternatives: list[PlannerPreferredAlternative] = []
+    airfare_provider = plan.selected_providers.get(ExpenseCategory.AIRFARE)
+    if (
+        plan.selected_fare is not None
+        and plan.lowest_fare is not None
+        and plan.selected_fare > plan.lowest_fare
+    ):
+        provider_text = airfare_provider or "approved airfare option"
+        alternatives.append(
+            PlannerPreferredAlternative(
+                category="airfare",
+                title="Use the lower comparable airfare",
+                rationale=(
+                    f"Current airfare from {provider_text} exceeds the lowest comparable fare."
+                ),
+                suggested_value=str(plan.lowest_fare),
+            )
+        )
+    if plan.comparable_hotels:
+        lowest_hotel = min(plan.comparable_hotels)
+        alternatives.append(
+            PlannerPreferredAlternative(
+                category="lodging",
+                title="Use the lowest documented comparable hotel",
+                rationale="The planner should favor the documented lower lodging alternative when available.",
+                suggested_value=str(lowest_hotel),
+            )
+        )
+    airfare_provider_type = provider_type_for_category(ExpenseCategory.AIRFARE.value)
+    allowed_vendors = (
+        _allowed_vendors_for_type(plan, airfare_provider_type)
+        if airfare_provider_type is not None
+        else []
+    )
+    airfare_allowed = [vendor for vendor in allowed_vendors if vendor != airfare_provider]
+    if airfare_provider and airfare_allowed:
+        alternatives.append(
+            PlannerPreferredAlternative(
+                category="provider",
+                title="Use an approved contracted provider",
+                rationale="A contracted provider is available for this route and should be preferred.",
+                suggested_value=airfare_allowed[0],
+            )
+        )
+    return alternatives
+
+
+def _exception_requirements(
+    exception_requests: Sequence[ExceptionRequest],
+) -> list[PlannerExceptionRequirement]:
+    requirements: list[PlannerExceptionRequirement] = []
+    for request in exception_requests:
+        if request.status.value == "approved":
+            continue
+        requirements.append(
+            PlannerExceptionRequirement(
+                type=request.type.value,
+                status=request.status.value,
+                approval_level=(
+                    request.approval_level.value if request.approval_level is not None else None
+                ),
+                summary=(
+                    f"{request.type.value.replace('_', ' ')} exception is "
+                    f"{request.status.value.replace('_', ' ')}."
+                ),
+            )
+        )
+    return requirements
+
+
+def _reoptimization_guidance(
+    *,
+    blocking_issues: Sequence[PlannerBlockingIssue],
+    preferred_alternatives: Sequence[PlannerPreferredAlternative],
+    exception_requirements: Sequence[PlannerExceptionRequirement],
+) -> list[PlannerReoptimizationGuidance]:
+    guidance: list[PlannerReoptimizationGuidance] = []
+    issue_codes = {issue.code for issue in blocking_issues}
+    if "fare_comparison" in issue_codes:
+        guidance.append(
+            PlannerReoptimizationGuidance(
+                code="lower_trip_cost",
+                summary="Reprice airfare and keep the selected fare within the lowest-fare threshold.",
+                actions=[
+                    "Refresh available airfare options.",
+                    "Choose a fare that matches or improves on the lowest comparable fare.",
+                ],
+            )
+        )
+    if "fare_evidence" in issue_codes:
+        guidance.append(
+            PlannerReoptimizationGuidance(
+                code="attach_fare_evidence",
+                summary="Attach the supporting fare comparison before requesting evaluation again.",
+                actions=[
+                    "Upload the fare comparison artifact.",
+                    "Persist the artifact reference in the proposal payload.",
+                ],
+            )
+        )
+    if preferred_alternatives:
+        guidance.append(
+            PlannerReoptimizationGuidance(
+                code="apply_preferred_alternative",
+                summary="Apply one of the published preferred alternatives before retrying evaluation.",
+                actions=[alternative.title for alternative in preferred_alternatives],
+            )
+        )
+    if exception_requirements:
+        guidance.append(
+            PlannerReoptimizationGuidance(
+                code="route_exception_workflow",
+                summary="Keep the proposal linked to an active exception workflow until approval completes.",
+                actions=[requirement.summary for requirement in exception_requirements],
+            )
+        )
+    return guidance
+
+
+def _evaluation_outcome(
+    *,
+    plan: TripPlan,
+    policy_result: PolicyCheckResult,
+    exception_requirements: Sequence[PlannerExceptionRequirement],
+) -> PlannerEvaluationOutcome:
+    if exception_requirements:
+        return "exception_required"
+    if plan.status == TripStatus.REJECTED or any(
+        issue.severity == "error" for issue in policy_result.issues
+    ):
+        return "non_compliant"
+    return "compliant"
 
 
 def get_policy_snapshot(
@@ -1128,6 +1421,78 @@ def poll_execution_status(
     )
 
 
+def get_evaluation_result(
+    plan: TripPlan,
+    request: PlannerProposalEvaluationRequest,
+) -> PlannerProposalEvaluationResult:
+    """Build the planner-facing evaluation-result contract for a proposal execution."""
+
+    if request.trip_id != plan.trip_id:
+        raise ValueError(
+            "PlannerProposalEvaluationRequest.trip_id does not match plan.trip_id: "
+            f"{request.trip_id!r} != {plan.trip_id!r}"
+        )
+
+    expected_execution_id = _proposal_execution_id(
+        trip_id=request.trip_id,
+        proposal_id=request.proposal_id,
+        proposal_version=request.proposal_version,
+    )
+    if request.execution_id != expected_execution_id:
+        raise ValueError(
+            "PlannerProposalEvaluationRequest.execution_id does not match the stable "
+            "execution identifier for this trip/proposal/version: "
+            f"{request.execution_id!r} != {expected_execution_id!r}"
+        )
+
+    requested_at = _coerce_utc(request.requested_at)
+    request_id = _proposal_request_id(
+        "get_evaluation_result",
+        trip_id=request.trip_id,
+        proposal_id=request.proposal_id,
+        proposal_version=request.proposal_version,
+        provided=request.request_id,
+    )
+    correlation_id = _proposal_correlation_id(
+        trip_id=request.trip_id,
+        proposal_id=request.proposal_id,
+        proposal_version=request.proposal_version,
+        provided=request.correlation_id,
+    )
+    policy_result = check_trip_plan(plan)
+    blocking_issues = _blocking_issues(policy_result)
+    preferred_alternatives = _preferred_alternatives(plan)
+    exception_requirements = _exception_requirements(plan.exception_requests)
+    return PlannerProposalEvaluationResult(
+        trip_id=request.trip_id,
+        proposal_id=request.proposal_id,
+        proposal_version=request.proposal_version,
+        execution_id=request.execution_id,
+        request_id=request_id,
+        correlation_id=correlation_id,
+        outcome=_evaluation_outcome(
+            plan=plan,
+            policy_result=policy_result,
+            exception_requirements=exception_requirements,
+        ),
+        result_endpoint=_result_endpoint(execution_id=request.execution_id),
+        status_endpoint=_proposal_status_endpoint(
+            proposal_id=request.proposal_id,
+            execution_id=request.execution_id,
+        ),
+        policy_result=policy_result,
+        blocking_issues=blocking_issues,
+        preferred_alternatives=preferred_alternatives,
+        exception_requirements=exception_requirements,
+        reoptimization_guidance=_reoptimization_guidance(
+            blocking_issues=blocking_issues,
+            preferred_alternatives=preferred_alternatives,
+            exception_requirements=exception_requirements,
+        ),
+        generated_at=requested_at,
+    )
+
+
 def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
     """Evaluate a trip plan using the policy-lite engine."""
 
@@ -1153,6 +1518,21 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
     providers = {
         provider.name
         for provider_type in ProviderType
+        for provider in registry.lookup(
+            provider_type, destination, reference_date=reference_date
+        )
+    }
+    return sorted(providers, key=str.lower)
+
+
+def _allowed_vendors_for_type(plan: TripPlan, provider_type: ProviderType) -> list[str]:
+    """Return approved vendors for one provider category."""
+
+    registry = ProviderRegistry.from_file()
+    destination = plan.destination
+    reference_date = plan.departure_date
+    providers = {
+        provider.name
         for provider in registry.lookup(
             provider_type, destination, reference_date=reference_date
         )
