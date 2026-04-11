@@ -2,13 +2,14 @@
 
 This document describes the stable policy API surface in
 `src/travel_plan_permission/policy_api.py` for use by the LangGraph
-orchestration layer.
+orchestration layer and planner-facing integrations.
 
 ## Data Models
 
 ### TripPlan (input)
 
-Example JSON structure (matches `TripPlan` in `src/travel_plan_permission/models.py`):
+Example JSON structure (matches `TripPlan` in
+`src/travel_plan_permission/models.py`):
 
 ```json
 {
@@ -68,16 +69,30 @@ Example JSON structure (matches `PolicyCheckResult` in
 }
 ```
 
-### PlannerPolicySnapshot (output)
+### PlannerPolicySnapshotRequest (input)
 
-Example JSON structure for the planner-facing snapshot contract:
+Example JSON structure for planner-facing policy snapshot fetches:
 
 ```json
 {
-  "trip_id": "TRIP-1001",
+  "trip_id": "TRIP-PLANNER-2001",
+  "requested_at": "2026-04-11T05:05:00Z",
+  "snapshot_generated_at": "2026-04-11T04:30:00Z",
+  "known_policy_version": "d7a6d25a",
+  "invalidate_reason": null
+}
+```
+
+### PlannerPolicySnapshot (output)
+
+Example JSON structure for the planner-facing policy snapshot contract:
+
+```json
+{
+  "trip_id": "TRIP-PLANNER-2001",
   "freshness": "current",
-  "generated_at": "2026-04-11T12:00:00Z",
-  "expires_at": "2026-04-12T12:00:00Z",
+  "generated_at": "2026-04-11T05:05:00Z",
+  "expires_at": "2026-04-12T05:05:00Z",
   "invalidated_at": null,
   "invalidation_reason": null,
   "policy_status": "fail",
@@ -91,7 +106,7 @@ Example JSON structure for the planner-facing snapshot contract:
   "documentation_rules": [
     {
       "code": "fare_evidence",
-      "summary": "Fare evidence (e.g., screenshot) is required.",
+      "summary": "Screenshot or fare evidence must be attached to the request.",
       "severity": "error"
     }
   ],
@@ -112,9 +127,9 @@ Example JSON structure for the planner-facing snapshot contract:
   "versioning": {
     "contract_version": "2026-04-11",
     "policy_version": "d7a6d25a",
-    "planner_known_policy_version": null,
+    "planner_known_policy_version": "d7a6d25a",
     "compatible_with_planner_cache": true,
-    "etag": "TRIP-1001:d7a6d25a:2026-04-11:5f2e7c1a9b3d"
+    "etag": "TRIP-PLANNER-2001:d7a6d25a:2026-04-11:5f2e7c1a9b3d"
   }
 }
 ```
@@ -189,6 +204,9 @@ Example JSON structure for proposal submission or status polling:
   "status_endpoint": "GET /api/planner/proposals/proposal-123/executions/exec-10c6fb4730f2"
 }
 ```
+
+For the full planner-facing transport, versioning, and fixture contract, see
+[`docs/contracts/planner-integration.md`](./contracts/planner-integration.md).
 
 ## Functions
 
@@ -292,38 +310,53 @@ def get_policy_snapshot(
 
 **Description**
 
-Builds the planner-facing policy snapshot transport contract. The response is a
-narrow service seam for `trip-planner`: it exposes booking requirements,
-documentation rules, approval triggers, freshness state, auth guidance, and
-version metadata without requiring the planner to understand internal rule
+Returns a planner-facing snapshot contract built from the current policy,
+approval-rule, and provider-registry source of truth. The response packages
+booking requirements, documentation rules, approval triggers, auth guidance,
+and version metadata without requiring the planner to understand internal rule
 objects.
 
 **Freshness states**
 
-- `current`: snapshot still within the 24-hour TTL.
-- `stale`: snapshot TTL expired and should be refreshed before planner reuse.
-- `invalidated`: caller explicitly marked the cached snapshot unusable, such as
-  after a policy rotation or contract mismatch.
+- `current`: snapshot still within the 24-hour TTL
+- `stale`: snapshot TTL expired and should be refreshed before planner reuse
+- `invalidated`: the caller explicitly invalidated its cached snapshot
 
-`generated_at` reflects when the current response payload was built. If the
-planner provides `snapshot_generated_at`, it is used only to classify the
-caller’s cached copy as `current` or `stale`.
+**Authentication and versioning guidance for `trip-planner`**
 
-**Authentication and versioning**
-
-- The planner should call the seam as `GET /api/planner/policy-snapshot`.
+- Call the seam as `GET /api/planner/policy-snapshot`.
 - Access requires the `view` permission from the security model.
 - The expected auth scheme is a bearer token obtained through one of the
   configured SSO providers: `azure_ad`, `okta`, or `google`.
-- Cache the response by `versioning.etag` and invalidate the cache when
-  `planner_known_policy_version` does not match `policy_version`.
+- Cache the response by `versioning.etag` and invalidate local planner guidance
+  when `versioning.compatible_with_planner_cache` is `false`.
+- The canonical request/response examples for this seam live in
+  `tests/fixtures/planner_integration/`.
 
-**Examples**
+**Planner handshake**
 
-Current snapshot:
+1. Fetch a policy snapshot before presenting provider or documentation
+   constraints in the planner UI.
+2. Submit the proposal using the canonical `TripPlan` shape with
+   `status="submitted"` and planner-selected providers populated.
+3. Read proposal status back using the same `TripPlan` shape, including
+   `approval_history` and any current `validation_results`.
+4. Use `PolicyCheckResult` as the machine-readable evaluation response for
+   planner follow-up handling.
+
+**Example**
 
 ```python
-request = PlannerPolicySnapshotRequest(trip_id=plan.trip_id)
+from travel_plan_permission.policy_api import (
+    PlannerPolicySnapshotRequest,
+    get_policy_snapshot,
+)
+
+request = PlannerPolicySnapshotRequest(
+    trip_id=plan.trip_id,
+    known_policy_version="d7a6d25a",
+)
+
 snapshot = get_policy_snapshot(plan, request)
 assert snapshot.freshness == "current"
 ```
@@ -338,6 +371,18 @@ request = PlannerPolicySnapshotRequest(
 )
 snapshot = get_policy_snapshot(plan, request)
 assert snapshot.freshness == "stale"
+```
+
+Invalidated snapshot:
+
+```python
+request = PlannerPolicySnapshotRequest(
+    trip_id=plan.trip_id,
+    known_policy_version="outdated-version",
+    invalidate_reason="policy rules rotated after planner cache warmup",
+)
+snapshot = get_policy_snapshot(plan, request)
+assert snapshot.freshness == "invalidated"
 ```
 
 ### submit_proposal
@@ -428,18 +473,6 @@ status_request = PlannerProposalStatusRequest(
 
 status = poll_execution_status(plan, status_request)
 print(status.execution_status.state if status.execution_status else "unavailable")
-```
-
-Invalidated snapshot:
-
-```python
-request = PlannerPolicySnapshotRequest(
-    trip_id=plan.trip_id,
-    known_policy_version="outdated-version",
-    invalidate_reason="policy rules rotated after planner cache warmup",
-)
-snapshot = get_policy_snapshot(plan, request)
-assert snapshot.freshness == "invalidated"
 ```
 
 ### fill_travel_spreadsheet
@@ -577,11 +610,14 @@ Example output (JSON):
 ## Typical Usage Patterns
 
 ```python
+from datetime import date
 from pathlib import Path
 from travel_plan_permission.models import TripPlan
 from travel_plan_permission.policy_api import (
+    PlannerPolicySnapshotRequest,
     check_trip_plan,
     fill_travel_spreadsheet,
+    get_policy_snapshot,
     list_allowed_vendors,
     reconcile,
 )
@@ -599,6 +635,7 @@ plan = TripPlan(
 
 policy_result = check_trip_plan(plan)
 allowed_vendors = list_allowed_vendors(plan)
+snapshot = get_policy_snapshot(plan, PlannerPolicySnapshotRequest(trip_id=plan.trip_id))
 spreadsheet_path = fill_travel_spreadsheet(plan, Path("./request.xlsx"))
 reconciliation = reconcile(plan, [])
 ```
@@ -609,10 +646,14 @@ reconciliation = reconcile(plan, [])
   Advisory-only results are reported as `warning` severity issues.
 - `list_allowed_vendors` returns an empty list when the provider registry has no
   matching entries for the destination or date.
+- `get_policy_snapshot` returns `current`, `stale`, or `invalidated` based on
+  request freshness and explicit invalidation input.
+- `get_policy_snapshot` expects `trip-planner` to refresh when
+  `versioning.compatible_with_planner_cache` is `false`.
 - `fill_travel_spreadsheet` raises `FileNotFoundError` if the template cannot be
   located, and may raise `openpyxl` errors for malformed templates.
-- `fill_travel_spreadsheet` writes to the filesystem; ensure the output directory
-  exists and is writable to avoid `OSError` or permission errors.
+- `fill_travel_spreadsheet` writes to the filesystem; ensure the output
+  directory exists and is writable to avoid `OSError` or permission errors.
 - `reconcile` assumes receipts are valid; `Receipt` validation raises
   `ValueError` for unsupported file types or oversized uploads.
 - `reconcile` returns `under_budget`, `on_budget`, or `over_budget` based on the

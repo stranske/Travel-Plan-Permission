@@ -1,0 +1,48 @@
+{
+  "trip_id": "TRIP-PLANNER-2001",
+  "freshness": "current",
+  "generated_at": "2026-04-11T05:05:00Z",
+  "expires_at": "2026-04-12T05:05:00Z",
+  "invalidated_at": null,
+  "invalidation_reason": null,
+  "policy_status": "fail",
+  "booking_requirements": [
+    {
+      "code": "advance_booking",
+      "summary": "Bookings must be made 14 days before departure.",
+      "severity": "warning"
+    }
+  ],
+  "documentation_rules": [
+    {
+      "code": "fare_evidence",
+      "summary": "Screenshot or fare evidence must be attached to the request.",
+      "severity": "error"
+    }
+  ],
+  "approval_triggers": [
+    {
+      "code": "fare_evidence",
+      "summary": "Screenshot or fare evidence must be attached to the request.",
+      "blocking": true,
+      "source": "policy_rule"
+    }
+  ],
+  "auth": {
+    "endpoint": "GET /api/planner/policy-snapshot",
+    "required_permission": "view",
+    "auth_scheme": "Bearer token with SSO-backed access token",
+    "supported_sso": [
+      "azure_ad",
+      "okta",
+      "google"
+    ]
+  },
+  "versioning": {
+    "contract_version": "2026-04-11",
+    "policy_version": "d7a6d25a",
+    "planner_known_policy_version": "d7a6d25a",
+    "compatible_with_planner_cache": true,
+    "etag": "TRIP-PLANNER-2001:d7a6d25a:2026-04-11:5f2e7c1a9b3d"
+  }
+}
