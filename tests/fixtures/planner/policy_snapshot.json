@@ -1,0 +1,61 @@
+{
+  "snapshot_status": "current",
+  "planner_id": "trip-planner",
+  "planner_version": "2026.04.11",
+  "auth_scheme": "service_token",
+  "metadata": {
+    "policy_version": "b6a28d5d9a30e4f6f7710c7d4cdcaef1c45df3449500f12d822d29fc2bc4dd39",
+    "policy_version_label": "0.1.0",
+    "approval_rules_version": "1ce1cb4a37000674f5b4d13f58c8fd761f6c3e3572f117ee796c18891977e3f0",
+    "provider_registry_version": "2024.09",
+    "source_updated_at": "2026-04-11T05:00:00Z",
+    "generated_at": "2026-04-11T05:05:00Z",
+    "stale_at": "2026-05-11T05:00:00Z",
+    "invalidated_at": null,
+    "invalidation_reason": null
+  },
+  "policy_rules": [
+    {
+      "rule_id": "fare_evidence",
+      "severity": "blocking",
+      "description": "Fare evidence (for example a screenshot) is required."
+    }
+  ],
+  "booking_channel_requirements": [
+    {
+      "category": "airfare",
+      "requirement": "required",
+      "channel": "planner-policy-snapshot",
+      "approved_providers": [
+        "Blue Skies Airlines"
+      ],
+      "notes": "Use an approved contracted provider when one is available for this route."
+    },
+    {
+      "category": "lodging",
+      "requirement": "required",
+      "channel": "planner-policy-snapshot",
+      "approved_providers": [
+        "Downtown Suites"
+      ],
+      "notes": "Use an approved contracted provider when one is available for this route."
+    }
+  ],
+  "approval_triggers": [
+    {
+      "rule_name": "high_amount_flag",
+      "category": null,
+      "threshold": "5000",
+      "action": "require_approval",
+      "approver": "manager"
+    }
+  ],
+  "documentation_rules": [
+    {
+      "rule_id": "third_party_paid",
+      "requirement": "Document any third-party-paid travel component in the approval packet.",
+      "required_when": "Another organization or traveler pays for any booked segment.",
+      "severity": "warning"
+    }
+  ]
+}
