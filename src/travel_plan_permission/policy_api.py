@@ -30,7 +30,6 @@ from .receipts import Receipt, summarize_receipts
 from .security import (
     PLANNER_EXECUTION_STATUS_ENDPOINT,
     PLANNER_POLICY_SNAPSHOT_ENDPOINT,
-    PLANNER_PROPOSAL_SUBMISSION_ENDPOINT,
 )
 
 PolicyIssueSeverity = Literal["info", "warning", "error"]
