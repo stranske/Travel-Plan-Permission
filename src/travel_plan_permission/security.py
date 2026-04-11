@@ -74,6 +74,7 @@ DEFAULT_ROLES: dict[RoleName, Role] = {
 
 API_ENDPOINT_PERMISSIONS: dict[str, Permission] = {
     "GET /api/itineraries": Permission.VIEW,
+    "GET /api/planner/policy-snapshot": Permission.VIEW,
     "POST /api/itineraries": Permission.CREATE,
     "GET /api/itineraries/:id": Permission.VIEW,
     "POST /api/approvals/:id/decision": Permission.APPROVE,

@@ -68,6 +68,57 @@ Example JSON structure (matches `PolicyCheckResult` in
 }
 ```
 
+### PlannerPolicySnapshot (output)
+
+Example JSON structure for the planner-facing snapshot contract:
+
+```json
+{
+  "trip_id": "TRIP-1001",
+  "freshness": "current",
+  "generated_at": "2026-04-11T12:00:00Z",
+  "expires_at": "2026-04-12T12:00:00Z",
+  "invalidated_at": null,
+  "invalidation_reason": null,
+  "policy_status": "fail",
+  "booking_requirements": [
+    {
+      "code": "advance_booking",
+      "summary": "Bookings must be made 14 days before departure.",
+      "severity": "warning"
+    }
+  ],
+  "documentation_rules": [
+    {
+      "code": "fare_evidence",
+      "summary": "Fare evidence (e.g., screenshot) is required.",
+      "severity": "error"
+    }
+  ],
+  "approval_triggers": [
+    {
+      "code": "fare_evidence",
+      "summary": "Screenshot or fare evidence must be attached to the request.",
+      "blocking": true,
+      "source": "policy_rule"
+    }
+  ],
+  "auth": {
+    "endpoint": "GET /api/planner/policy-snapshot",
+    "required_permission": "view",
+    "auth_scheme": "Bearer token with SSO-backed access token",
+    "supported_sso": ["azure_ad", "okta", "google"]
+  },
+  "versioning": {
+    "contract_version": "2026-04-11",
+    "policy_version": "d7a6d25a",
+    "planner_known_policy_version": null,
+    "compatible_with_planner_cache": true,
+    "etag": "TRIP-1001:d7a6d25a:2026-04-11"
+  }
+}
+```
+
 ## Functions
 
 ### check_trip_plan
@@ -154,6 +205,76 @@ plan = TripPlan(
 
 vendors = list_allowed_vendors(plan)
 print(vendors)
+```
+
+### get_policy_snapshot
+
+**Signature**
+
+```python
+def get_policy_snapshot(
+    plan: TripPlan,
+    request: PlannerPolicySnapshotRequest | None = None,
+) -> PlannerPolicySnapshot:
+    ...
+```
+
+**Description**
+
+Builds the planner-facing policy snapshot transport contract. The response is a
+narrow service seam for `trip-planner`: it exposes booking requirements,
+documentation rules, approval triggers, freshness state, auth guidance, and
+version metadata without requiring the planner to understand internal rule
+objects.
+
+**Freshness states**
+
+- `current`: snapshot still within the 24-hour TTL.
+- `stale`: snapshot TTL expired and should be refreshed before planner reuse.
+- `invalidated`: caller explicitly marked the cached snapshot unusable, such as
+  after a policy rotation or contract mismatch.
+
+**Authentication and versioning**
+
+- The planner should call the seam as `GET /api/planner/policy-snapshot`.
+- Access requires the `view` permission from the security model.
+- The expected auth scheme is a bearer token obtained through one of the
+  configured SSO providers: `azure_ad`, `okta`, or `google`.
+- Cache the response by `versioning.etag` and invalidate the cache when
+  `planner_known_policy_version` does not match `policy_version`.
+
+**Examples**
+
+Current snapshot:
+
+```python
+request = PlannerPolicySnapshotRequest(trip_id=plan.trip_id)
+snapshot = get_policy_snapshot(plan, request)
+assert snapshot.freshness == "current"
+```
+
+Stale snapshot:
+
+```python
+request = PlannerPolicySnapshotRequest(
+    trip_id=plan.trip_id,
+    requested_at=datetime(2026, 4, 12, 12, 0, tzinfo=UTC),
+    snapshot_generated_at=datetime(2026, 4, 11, 11, 0, tzinfo=UTC),
+)
+snapshot = get_policy_snapshot(plan, request)
+assert snapshot.freshness == "stale"
+```
+
+Invalidated snapshot:
+
+```python
+request = PlannerPolicySnapshotRequest(
+    trip_id=plan.trip_id,
+    known_policy_version="outdated-version",
+    invalidate_reason="policy rules rotated after planner cache warmup",
+)
+snapshot = get_policy_snapshot(plan, request)
+assert snapshot.freshness == "invalidated"
 ```
 
 ### fill_travel_spreadsheet

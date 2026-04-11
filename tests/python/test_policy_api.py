@@ -1,6 +1,6 @@
 import shutil
 import subprocess
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -9,6 +9,7 @@ import pytest
 from travel_plan_permission import (
     ExpenseCategory,
     ExpenseItem,
+    PlannerPolicySnapshotRequest,
     PolicyCheckResult,
     PolicyContext,
     PolicyEngine,
@@ -19,6 +20,7 @@ from travel_plan_permission import (
     Severity,
     TripPlan,
     check_trip_plan,
+    get_policy_snapshot,
     list_allowed_vendors,
     reconcile,
 )
@@ -435,3 +437,54 @@ def test_policy_api_markdown_lint() -> None:
         check=True,
         cwd=root,
     )
+
+
+def test_get_policy_snapshot_returns_current_contract(trip_plan: TripPlan) -> None:
+    request = PlannerPolicySnapshotRequest(
+        trip_id=trip_plan.trip_id,
+        requested_at=datetime(2026, 4, 11, 12, 0, tzinfo=UTC),
+    )
+
+    snapshot = get_policy_snapshot(trip_plan, request)
+
+    assert snapshot.trip_id == trip_plan.trip_id
+    assert snapshot.freshness == "current"
+    assert snapshot.versioning.contract_version == "2026-04-11"
+    assert snapshot.auth.endpoint == "GET /api/planner/policy-snapshot"
+    assert any(rule.code == "fare_evidence" for rule in snapshot.documentation_rules)
+    assert any(
+        trigger.code == "fare_evidence" for trigger in snapshot.approval_triggers
+    )
+
+
+def test_get_policy_snapshot_reports_stale_cache(trip_plan: TripPlan) -> None:
+    request = PlannerPolicySnapshotRequest(
+        trip_id=trip_plan.trip_id,
+        requested_at=datetime(2026, 4, 12, 12, 0, tzinfo=UTC),
+        snapshot_generated_at=datetime(2026, 4, 11, 11, 0, tzinfo=UTC),
+    )
+
+    snapshot = get_policy_snapshot(trip_plan, request)
+
+    assert snapshot.freshness == "stale"
+    assert snapshot.generated_at == datetime(2026, 4, 11, 11, 0, tzinfo=UTC)
+    assert snapshot.expires_at == datetime(2026, 4, 12, 11, 0, tzinfo=UTC)
+
+
+def test_get_policy_snapshot_reports_explicit_invalidation(
+    trip_plan: TripPlan,
+) -> None:
+    request = PlannerPolicySnapshotRequest(
+        trip_id=trip_plan.trip_id,
+        requested_at=datetime(2026, 4, 11, 12, 0, tzinfo=UTC),
+        snapshot_generated_at=datetime(2026, 4, 11, 11, 0, tzinfo=UTC),
+        known_policy_version="outdated-version",
+        invalidate_reason="policy rules rotated after planner cache warmup",
+    )
+
+    snapshot = get_policy_snapshot(trip_plan, request)
+
+    assert snapshot.freshness == "invalidated"
+    assert snapshot.invalidation_reason == request.invalidate_reason
+    assert snapshot.invalidated_at == request.requested_at
+    assert snapshot.versioning.compatible_with_planner_cache is False

@@ -29,6 +29,7 @@ def test_roles_and_permissions_matrix() -> None:
     assert Permission.EXPORT in DEFAULT_ROLES[RoleName.FINANCE_ADMIN].permissions
     assert Permission.CONFIGURE in DEFAULT_ROLES[RoleName.POLICY_ADMIN].permissions
     assert set(Permission) == DEFAULT_ROLES[RoleName.SYSTEM_ADMIN].permissions
+    assert "GET /api/planner/policy-snapshot" in API_ENDPOINT_PERMISSIONS
     assert "POST /api/approvals/:id/decision" in API_ENDPOINT_PERMISSIONS
 
 
