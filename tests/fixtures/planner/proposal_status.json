@@ -1,0 +1,18 @@
+{
+  "proposal_id": "proposal-748-nyc",
+  "trip_id": "TRIP-748",
+  "planner_id": "trip-planner",
+  "planner_version": "2026.04.11",
+  "status": "evaluated",
+  "submitted_at": "2026-04-11T05:10:00Z",
+  "updated_at": "2026-04-11T05:11:30Z",
+  "policy_snapshot": {
+    "policy_version": "b6a28d5d9a30e4f6f7710c7d4cdcaef1c45df3449500f12d822d29fc2bc4dd39",
+    "approval_rules_version": "1ce1cb4a37000674f5b4d13f58c8fd761f6c3e3572f117ee796c18891977e3f0",
+    "provider_registry_version": "2024.09"
+  },
+  "status_url": "/api/planner/proposals/proposal-748-nyc",
+  "evaluation_result_url": "/api/planner/evaluations/eval-748-nyc",
+  "evaluation_id": "eval-748-nyc",
+  "evaluation_status": "non_compliant"
+}
