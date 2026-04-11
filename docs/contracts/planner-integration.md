@@ -127,14 +127,18 @@ with:
 
 ### 4. Consume policy evaluation results
 
-TPP returns a `PolicyCheckResult` whenever the planner needs the current policy
-decision for a proposal.
+TPP returns a `PlannerProposalEvaluationResult` whenever the planner needs the
+current policy decision for a proposal.
 
-- `status="pass"` means no blocking issues were raised.
-- `status="fail"` means one or more blocking issues must be surfaced to the
-  user or approval workflow.
-- `issues[].context.rule_id` should be treated as the stable machine-readable
-  join key for UI copy, analytics, or follow-up handling.
+- `outcome="compliant"` means the proposal is currently acceptable without more
+  planner-side remediation.
+- `outcome="non_compliant"` means one or more blocking issues or rejected
+  states still need planner action.
+- `outcome="exception_required"` means the proposal must stay linked to an
+  in-flight exception workflow before it can succeed.
+- `blocking_issues[].code` and `policy_result.issues[].context.rule_id` are the
+  stable machine-readable join keys for UI copy, analytics, or follow-up
+  handling.
 
 ## Example Fixtures
 
@@ -147,7 +151,9 @@ examples:
 | Policy snapshot response | `tests/fixtures/planner_integration/policy_snapshot_response.json` |
 | Proposal submission | `tests/fixtures/planner_integration/proposal_submission.json` |
 | Proposal status | `tests/fixtures/planner_integration/proposal_status.json` |
-| Evaluation result | `tests/fixtures/planner_integration/evaluation_result.json` |
+| Evaluation result (compliant) | `tests/fixtures/planner_integration/evaluation_result_compliant.json` |
+| Evaluation result (non-compliant) | `tests/fixtures/planner_integration/evaluation_result_non_compliant.json` |
+| Evaluation result (exception-required) | `tests/fixtures/planner_integration/evaluation_result_exception_required.json` |
 
 ## Change Management
 
