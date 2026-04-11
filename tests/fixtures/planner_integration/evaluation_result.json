@@ -1,0 +1,24 @@
+{
+  "status": "fail",
+  "issues": [
+    {
+      "code": "fare_comparison",
+      "message": "Selected fare exceeds the lowest comparable fare threshold.",
+      "severity": "error",
+      "context": {
+        "rule_id": "fare_comparison",
+        "severity": "blocking"
+      }
+    },
+    {
+      "code": "fare_evidence",
+      "message": "Attach fare evidence or a screenshot showing the compared fare.",
+      "severity": "error",
+      "context": {
+        "rule_id": "fare_evidence",
+        "severity": "blocking"
+      }
+    }
+  ],
+  "policy_version": "b6a28d5d9a30e4f6f7710c7d4cdcaef1c45df3449500f12d822d29fc2bc4dd39"
+}
