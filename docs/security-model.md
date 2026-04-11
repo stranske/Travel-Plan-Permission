@@ -26,6 +26,27 @@ Core permissions: `view`, `create`, `approve`, `export`, `configure`.
 | `POST /api/admin/roles` | `configure` |
 | `POST /api/admin/sso/validate` | `configure` |
 
+## Planner integration auth contract
+
+The current planner-facing integration seam uses a bearer-token read contract
+for `GET /api/planner/policy-snapshot`.
+
+When `trip-planner` calls TPP over a network boundary, it should send:
+
+- `Authorization: Bearer <TPP_ACCESS_TOKEN>`
+- a `trip_id` inside the snapshot request payload
+- `known_policy_version` when the planner is revalidating cached guidance
+
+The expected deployment config shape is:
+
+- `TPP_BASE_URL`
+- `TPP_ACCESS_TOKEN`
+- `TPP_OIDC_PROVIDER`
+
+The snapshot response advertises the currently supported SSO providers
+(`azure_ad`, `okta`, `google`) and the required `view` permission so planner
+runtime config can be checked against the published seam.
+
 ## Delegation
 
 Approvers can assign a backup approver for `approve` actions. The delegation contract is audit-logged and scoped to approval permissions so a backup can approve on behalf of the primary approver.

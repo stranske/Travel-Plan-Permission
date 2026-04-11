@@ -71,9 +71,18 @@ DEFAULT_ROLES: dict[RoleName, Role] = {
     ),
 }
 
+PLANNER_POLICY_SNAPSHOT_ENDPOINT = "GET /api/planner/policy-snapshot"
+PLANNER_PROPOSAL_SUBMISSION_ENDPOINT = "POST /api/planner/proposals"
+PLANNER_EXECUTION_STATUS_ENDPOINT = (
+    "GET /api/planner/proposals/:proposal_id/executions/:execution_id"
+)
+
 
 API_ENDPOINT_PERMISSIONS: dict[str, Permission] = {
     "GET /api/itineraries": Permission.VIEW,
+    PLANNER_POLICY_SNAPSHOT_ENDPOINT: Permission.VIEW,
+    PLANNER_PROPOSAL_SUBMISSION_ENDPOINT: Permission.CREATE,
+    PLANNER_EXECUTION_STATUS_ENDPOINT: Permission.VIEW,
     "POST /api/itineraries": Permission.CREATE,
     "GET /api/itineraries/:id": Permission.VIEW,
     "POST /api/approvals/:id/decision": Permission.APPROVE,
