@@ -32,7 +32,7 @@ from .models import (
 )
 from .policy import PolicyContext, PolicyEngine, PolicyResult, Severity
 from .policy_versioning import PolicyVersion
-from .providers import ProviderRegistry, ProviderType
+from .providers import ProviderRegistry, ProviderType, provider_type_for_category
 from .receipts import Receipt, summarize_receipts
 from .security import (
     PLANNER_EVALUATION_RESULT_ENDPOINT,
@@ -44,7 +44,11 @@ PolicyIssueSeverity = Literal["info", "warning", "error"]
 PolicyCheckStatus = Literal["pass", "fail"]
 ReconciliationStatus = Literal["under_budget", "on_budget", "over_budget"]
 PolicySnapshotFreshness = Literal["current", "stale", "invalidated"]
-PlannerOperationType = Literal["submit_proposal", "poll_execution_status"]
+PlannerOperationType = Literal[
+    "submit_proposal",
+    "poll_execution_status",
+    "get_evaluation_result",
+]
 PlannerProposalStatus = Literal["pending", "succeeded", "failed", "unavailable"]
 PlannerTransportPattern = Literal["sync", "async", "deferred"]
 PlannerEvaluationOutcome = Literal[
@@ -862,7 +866,7 @@ def _stable_operation_id(prefix: str, *parts: str) -> str:
 
 
 def _proposal_request_id(
-    operation: str,
+    operation: PlannerOperationType,
     *,
     trip_id: str,
     proposal_id: str,
@@ -1097,7 +1101,7 @@ def _blocking_issues(policy_result: PolicyCheckResult) -> list[PlannerBlockingIs
 
 def _preferred_alternatives(plan: TripPlan) -> list[PlannerPreferredAlternative]:
     alternatives: list[PlannerPreferredAlternative] = []
-    airfare_provider = plan.selected_providers.get("airfare")
+    airfare_provider = plan.selected_providers.get(ExpenseCategory.AIRFARE)
     if (
         plan.selected_fare is not None
         and plan.lowest_fare is not None
@@ -1124,7 +1128,12 @@ def _preferred_alternatives(plan: TripPlan) -> list[PlannerPreferredAlternative]
                 suggested_value=str(lowest_hotel),
             )
         )
-    allowed_vendors = list_allowed_vendors(plan)
+    airfare_provider_type = provider_type_for_category(ExpenseCategory.AIRFARE.value)
+    allowed_vendors = (
+        _allowed_vendors_for_type(plan, airfare_provider_type)
+        if airfare_provider_type is not None
+        else []
+    )
     airfare_allowed = [vendor for vendor in allowed_vendors if vendor != airfare_provider]
     if airfare_provider and airfare_allowed:
         alternatives.append(
@@ -1386,7 +1395,7 @@ def poll_execution_status(
 
     requested_at = _coerce_utc(request.requested_at)
     request_id = _proposal_request_id(
-        "get_evaluation_result",
+        "poll_execution_status",
         trip_id=request.trip_id,
         proposal_id=request.proposal_id,
         proposal_version=request.proposal_version,
@@ -1438,7 +1447,7 @@ def get_evaluation_result(
 
     requested_at = _coerce_utc(request.requested_at)
     request_id = _proposal_request_id(
-        "poll_execution_status",
+        "get_evaluation_result",
         trip_id=request.trip_id,
         proposal_id=request.proposal_id,
         proposal_version=request.proposal_version,
@@ -1509,6 +1518,21 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
     providers = {
         provider.name
         for provider_type in ProviderType
+        for provider in registry.lookup(
+            provider_type, destination, reference_date=reference_date
+        )
+    }
+    return sorted(providers, key=str.lower)
+
+
+def _allowed_vendors_for_type(plan: TripPlan, provider_type: ProviderType) -> list[str]:
+    """Return approved vendors for one provider category."""
+
+    registry = ProviderRegistry.from_file()
+    destination = plan.destination
+    reference_date = plan.departure_date
+    providers = {
+        provider.name
         for provider in registry.lookup(
             provider_type, destination, reference_date=reference_date
         )
