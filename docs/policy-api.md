@@ -114,7 +114,7 @@ Example JSON structure for the planner-facing snapshot contract:
     "policy_version": "d7a6d25a",
     "planner_known_policy_version": null,
     "compatible_with_planner_cache": true,
-    "etag": "TRIP-1001:d7a6d25a:2026-04-11"
+    "etag": "TRIP-1001:d7a6d25a:2026-04-11:5f2e7c1a9b3d"
   }
 }
 ```
@@ -233,6 +233,10 @@ objects.
 - `stale`: snapshot TTL expired and should be refreshed before planner reuse.
 - `invalidated`: caller explicitly marked the cached snapshot unusable, such as
   after a policy rotation or contract mismatch.
+
+`generated_at` reflects when the current response payload was built. If the
+planner provides `snapshot_generated_at`, it is used only to classify the
+caller’s cached copy as `current` or `stale`.
 
 **Authentication and versioning**
 

@@ -1,6 +1,6 @@
 import shutil
 import subprocess
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -467,8 +467,8 @@ def test_get_policy_snapshot_reports_stale_cache(trip_plan: TripPlan) -> None:
     snapshot = get_policy_snapshot(trip_plan, request)
 
     assert snapshot.freshness == "stale"
-    assert snapshot.generated_at == datetime(2026, 4, 11, 11, 0, tzinfo=UTC)
-    assert snapshot.expires_at == datetime(2026, 4, 12, 11, 0, tzinfo=UTC)
+    assert snapshot.generated_at == request.requested_at
+    assert snapshot.expires_at == request.requested_at + timedelta(hours=24)
 
 
 def test_get_policy_snapshot_reports_explicit_invalidation(
@@ -488,3 +488,33 @@ def test_get_policy_snapshot_reports_explicit_invalidation(
     assert snapshot.invalidation_reason == request.invalidate_reason
     assert snapshot.invalidated_at == request.requested_at
     assert snapshot.versioning.compatible_with_planner_cache is False
+
+
+def test_get_policy_snapshot_rejects_mismatched_trip_id(
+    trip_plan: TripPlan,
+) -> None:
+    request = PlannerPolicySnapshotRequest(
+        trip_id="TRIP-OTHER-999",
+        requested_at=datetime(2026, 4, 11, 12, 0, tzinfo=UTC),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="PlannerPolicySnapshotRequest.trip_id does not match plan.trip_id",
+    ):
+        get_policy_snapshot(trip_plan, request)
+
+
+def test_get_policy_snapshot_etag_changes_when_plan_changes(
+    trip_plan: TripPlan,
+) -> None:
+    request = PlannerPolicySnapshotRequest(
+        trip_id=trip_plan.trip_id,
+        requested_at=datetime(2026, 4, 11, 12, 0, tzinfo=UTC),
+    )
+    changed_plan = trip_plan.model_copy(update={"purpose": "Changed scope"})
+
+    original = get_policy_snapshot(trip_plan, request)
+    changed = get_policy_snapshot(changed_plan, request)
+
+    assert original.versioning.etag != changed.versioning.etag

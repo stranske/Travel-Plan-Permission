@@ -9,8 +9,10 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from hashlib import sha256
 from importlib import resources
 from io import BytesIO
+import json
 from pathlib import Path
 from typing import Literal
 
@@ -25,13 +27,13 @@ from .policy import PolicyContext, PolicyEngine, PolicyResult, Severity
 from .policy_versioning import PolicyVersion
 from .providers import ProviderRegistry, ProviderType
 from .receipts import Receipt, summarize_receipts
+from .security import PLANNER_POLICY_SNAPSHOT_ENDPOINT
 
 PolicyIssueSeverity = Literal["info", "warning", "error"]
 PolicyCheckStatus = Literal["pass", "fail"]
 ReconciliationStatus = Literal["under_budget", "on_budget", "over_budget"]
 PolicySnapshotFreshness = Literal["current", "stale", "invalidated"]
 PolicyIssueContextValue = str | int | float | bool | None
-_PLANNER_POLICY_ENDPOINT = "GET /api/planner/policy-snapshot"
 _PLANNER_POLICY_CONTRACT_VERSION = "2026-04-11"
 _PLANNER_POLICY_TTL = timedelta(hours=24)
 _DOCUMENTATION_RULE_IDS = frozenset(
@@ -545,6 +547,19 @@ def _coerce_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+def _planner_snapshot_etag(plan: TripPlan, *, policy_version: str) -> str:
+    plan_payload = json.dumps(
+        plan.model_dump(mode="json"),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    plan_revision = sha256(plan_payload.encode("utf-8")).hexdigest()[:12]
+    return (
+        f"{plan.trip_id}:{policy_version}:{_PLANNER_POLICY_CONTRACT_VERSION}:"
+        f"{plan_revision}"
+    )
+
+
 def get_policy_snapshot(
     plan: TripPlan,
     request: PlannerPolicySnapshotRequest | None = None,
@@ -552,11 +567,17 @@ def get_policy_snapshot(
     """Build a planner-facing policy snapshot contract for a single trip."""
 
     request = request or PlannerPolicySnapshotRequest(trip_id=plan.trip_id)
+    if request.trip_id != plan.trip_id:
+        raise ValueError(
+            "PlannerPolicySnapshotRequest.trip_id does not match plan.trip_id: "
+            f"{request.trip_id!r} != {plan.trip_id!r}"
+        )
     now = _coerce_utc(request.requested_at)
-    generated_at = _coerce_utc(request.snapshot_generated_at or now)
+    freshness_generated_at = _coerce_utc(request.snapshot_generated_at or now)
+    generated_at = now
     freshness, invalidated_at = _planner_freshness(
         request,
-        generated_at=generated_at,
+        generated_at=freshness_generated_at,
         now=now,
     )
 
@@ -614,7 +635,7 @@ def get_policy_snapshot(
         documentation_rules=documentation_rules,
         approval_triggers=approval_triggers,
         auth=PlannerAuthContract(
-            endpoint=_PLANNER_POLICY_ENDPOINT,
+            endpoint=PLANNER_POLICY_SNAPSHOT_ENDPOINT,
             required_permission="view",
             auth_scheme="Bearer token with SSO-backed access token",
             supported_sso=["azure_ad", "okta", "google"],
@@ -625,7 +646,7 @@ def get_policy_snapshot(
             planner_known_policy_version=request.known_policy_version,
             compatible_with_planner_cache=request.known_policy_version
             in (None, policy_version),
-            etag=f"{plan.trip_id}:{policy_version}:{_PLANNER_POLICY_CONTRACT_VERSION}",
+            etag=_planner_snapshot_etag(plan, policy_version=policy_version),
         ),
     )
 
