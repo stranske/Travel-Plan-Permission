@@ -7,7 +7,7 @@ from travel_plan_permission.models import TripPlan
 from travel_plan_permission.policy_api import (
     PlannerPolicySnapshot,
     PlannerPolicySnapshotRequest,
-    PolicyCheckResult,
+    PlannerProposalEvaluationResult,
 )
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "planner_integration"
@@ -31,7 +31,9 @@ def test_planner_contract_doc_references_all_supported_fixtures() -> None:
         "tests/fixtures/planner_integration/policy_snapshot_response.json",
         "tests/fixtures/planner_integration/proposal_submission.json",
         "tests/fixtures/planner_integration/proposal_status.json",
-        "tests/fixtures/planner_integration/evaluation_result.json",
+        "tests/fixtures/planner_integration/evaluation_result_compliant.json",
+        "tests/fixtures/planner_integration/evaluation_result_non_compliant.json",
+        "tests/fixtures/planner_integration/evaluation_result_exception_required.json",
     ]
     for expected_path in expected_paths:
         assert expected_path in contract_text
@@ -72,11 +74,31 @@ def test_proposal_status_fixture_matches_trip_plan_model() -> None:
     assert status_payload.approval_history[0].new_status.value == "approved"
 
 
-def test_evaluation_result_fixture_matches_policy_check_model() -> None:
-    evaluation = PolicyCheckResult.model_validate(_load_fixture("evaluation_result.json"))
+def test_compliant_evaluation_result_fixture_matches_model() -> None:
+    evaluation = PlannerProposalEvaluationResult.model_validate(
+        _load_fixture("evaluation_result_compliant.json")
+    )
 
-    assert evaluation.status == "fail"
-    assert {issue.code for issue in evaluation.issues} == {
+    assert evaluation.outcome == "compliant"
+    assert evaluation.policy_result.status == "pass"
+
+
+def test_non_compliant_evaluation_result_fixture_matches_model() -> None:
+    evaluation = PlannerProposalEvaluationResult.model_validate(
+        _load_fixture("evaluation_result_non_compliant.json")
+    )
+
+    assert evaluation.outcome == "non_compliant"
+    assert {issue.code for issue in evaluation.blocking_issues} == {
         "fare_comparison",
         "fare_evidence",
     }
+
+
+def test_exception_required_evaluation_result_fixture_matches_model() -> None:
+    evaluation = PlannerProposalEvaluationResult.model_validate(
+        _load_fixture("evaluation_result_exception_required.json")
+    )
+
+    assert evaluation.outcome == "exception_required"
+    assert evaluation.exception_requirements[0].type == "driving_vs_flying"

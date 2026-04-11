@@ -208,6 +208,70 @@ Example JSON structure for proposal submission or status polling:
 For the full planner-facing transport, versioning, and fixture contract, see
 [`docs/contracts/planner-integration.md`](./contracts/planner-integration.md).
 
+### PlannerProposalEvaluationResult (output)
+
+Example JSON structure for planner-facing evaluation results:
+
+```json
+{
+  "trip_id": "TRIP-1001",
+  "proposal_id": "proposal-123",
+  "proposal_version": "proposal-v1",
+  "execution_id": "exec-10c6fb4730f2",
+  "request_id": "req-eval-001",
+  "correlation_id": {
+    "value": "corr-submit-001",
+    "issued_by": "trip-planner"
+  },
+  "outcome": "non_compliant",
+  "result_endpoint": "GET /api/planner/executions/exec-10c6fb4730f2/evaluation-result",
+  "status_endpoint": "GET /api/planner/proposals/proposal-123/executions/exec-10c6fb4730f2",
+  "policy_result": {
+    "status": "fail",
+    "issues": [
+      {
+        "code": "fare_comparison",
+        "message": "Selected fare exceeds the lowest comparable fare threshold.",
+        "severity": "error",
+        "context": {
+          "rule_id": "fare_comparison",
+          "severity": "blocking"
+        }
+      }
+    ],
+    "policy_version": "b6a28d5d9a30e4f6f7710c7d4cdcaef1c45df3449500f12d822d29fc2bc4dd39"
+  },
+  "blocking_issues": [
+    {
+      "code": "fare_comparison",
+      "message": "Selected fare exceeds the lowest comparable fare threshold.",
+      "field_path": "selected_fare",
+      "resolution": "Choose a fare that meets the lowest-fare guidance or request an exception."
+    }
+  ],
+  "preferred_alternatives": [
+    {
+      "category": "airfare",
+      "title": "Use the lower comparable airfare",
+      "rationale": "Current airfare from Blue Skies Airlines exceeds the lowest comparable fare.",
+      "suggested_value": "300.00"
+    }
+  ],
+  "exception_requirements": [],
+  "reoptimization_guidance": [
+    {
+      "code": "lower_trip_cost",
+      "summary": "Reprice airfare and keep the selected fare within the lowest-fare threshold.",
+      "actions": [
+        "Refresh available airfare options.",
+        "Choose a fare that matches or improves on the lowest comparable fare."
+      ]
+    }
+  ],
+  "generated_at": "2026-04-11T12:31:00Z"
+}
+```
+
 ## Functions
 
 ### check_trip_plan
@@ -473,6 +537,49 @@ status_request = PlannerProposalStatusRequest(
 
 status = poll_execution_status(plan, status_request)
 print(status.execution_status.state if status.execution_status else "unavailable")
+```
+
+### get_evaluation_result
+
+**Signature**
+
+```python
+def get_evaluation_result(
+    plan: TripPlan,
+    request: PlannerProposalEvaluationRequest,
+) -> PlannerProposalEvaluationResult:
+    ...
+```
+
+**Description**
+
+Returns the planner-facing evaluation result payload keyed to the same stable
+proposal/execution linkage used by `submit_proposal` and
+`poll_execution_status`. The response distinguishes compliant,
+non-compliant, and exception-required outcomes while publishing blocking issue
+detail, preferred alternatives, and deterministic reoptimization guidance.
+
+**Example**
+
+```python
+from datetime import UTC, datetime
+
+from travel_plan_permission.policy_api import (
+    PlannerProposalEvaluationRequest,
+    get_evaluation_result,
+)
+
+evaluation_request = PlannerProposalEvaluationRequest(
+    trip_id=plan.trip_id,
+    proposal_id="proposal-123",
+    proposal_version="proposal-v1",
+    execution_id=response.result_payload["execution_id"],
+    requested_at=datetime(2026, 4, 11, 12, 31, tzinfo=UTC),
+)
+
+evaluation = get_evaluation_result(plan, evaluation_request)
+print(evaluation.outcome)
+print(evaluation.result_endpoint)
 ```
 
 ### fill_travel_spreadsheet
