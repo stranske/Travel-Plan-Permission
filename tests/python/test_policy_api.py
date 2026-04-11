@@ -6,11 +6,16 @@ from pathlib import Path
 
 import pytest
 
+import travel_plan_permission.policy_api as policy_api_module
 from travel_plan_permission import (
+    ExceptionRequest,
+    ExceptionType,
     ExpenseCategory,
     ExpenseItem,
     PlannerCorrelationId,
     PlannerPolicySnapshotRequest,
+    PlannerProposalEvaluationRequest,
+    PlannerProposalEvaluationResult,
     PlannerProposalStatusRequest,
     PlannerProposalSubmissionRequest,
     PolicyCheckResult,
@@ -23,6 +28,7 @@ from travel_plan_permission import (
     Severity,
     TripPlan,
     check_trip_plan,
+    get_evaluation_result,
     get_policy_snapshot,
     list_allowed_vendors,
     poll_execution_status,
@@ -682,3 +688,150 @@ def test_poll_execution_status_rejects_mismatched_execution_id(
         match="PlannerProposalStatusRequest.execution_id does not match",
     ):
         poll_execution_status(trip_plan, request)
+
+
+def test_get_evaluation_result_returns_non_compliant_contract(
+    trip_plan: TripPlan,
+) -> None:
+    plan = trip_plan.model_copy(
+        update={
+            "selected_fare": Decimal("650.00"),
+            "lowest_fare": Decimal("300.00"),
+            "fare_evidence_attached": False,
+            "comparable_hotels": [Decimal("140.00"), Decimal("165.00")],
+            "selected_providers": {"airfare": "Blue Skies Airlines"},
+        }
+    )
+    submit_response = submit_proposal(
+        plan,
+        PlannerProposalSubmissionRequest(
+            trip_id=plan.trip_id,
+            proposal_id="proposal-123",
+            proposal_version="proposal-v8",
+        ),
+    )
+    request = PlannerProposalEvaluationRequest(
+        trip_id=plan.trip_id,
+        proposal_id="proposal-123",
+        proposal_version="proposal-v8",
+        execution_id=str(submit_response.result_payload["execution_id"]),
+        requested_at=datetime(2026, 4, 11, 13, 5, tzinfo=UTC),
+    )
+
+    result = get_evaluation_result(plan, request)
+
+    assert isinstance(result, PlannerProposalEvaluationResult)
+    assert result.outcome == "non_compliant"
+    assert {issue.code for issue in result.blocking_issues} >= {
+        "fare_comparison",
+        "fare_evidence",
+    }
+    assert any(
+        alternative.category == "airfare"
+        and alternative.suggested_value == "300.00"
+        for alternative in result.preferred_alternatives
+    )
+    assert any(
+        guidance.code == "lower_trip_cost"
+        for guidance in result.reoptimization_guidance
+    )
+
+
+def test_get_evaluation_result_returns_compliant_contract(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        policy_api_module,
+        "check_trip_plan",
+        lambda _plan: PolicyCheckResult(status="pass", issues=[], policy_version="v1"),
+    )
+    submit_response = submit_proposal(
+        trip_plan,
+        PlannerProposalSubmissionRequest(
+            trip_id=trip_plan.trip_id,
+            proposal_id="proposal-123",
+            proposal_version="proposal-v9",
+        ),
+    )
+    request = PlannerProposalEvaluationRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-123",
+        proposal_version="proposal-v9",
+        execution_id=str(submit_response.result_payload["execution_id"]),
+        requested_at=datetime(2026, 4, 11, 13, 10, tzinfo=UTC),
+    )
+
+    result = get_evaluation_result(trip_plan, request)
+
+    assert result.outcome == "compliant"
+    assert result.blocking_issues == []
+    assert result.exception_requirements == []
+    assert result.reoptimization_guidance == []
+
+
+def test_get_evaluation_result_returns_exception_required_contract(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        policy_api_module,
+        "check_trip_plan",
+        lambda _plan: PolicyCheckResult(status="pass", issues=[], policy_version="v1"),
+    )
+    plan = trip_plan.model_copy(
+        update={
+            "exception_requests": [
+                ExceptionRequest(
+                    type=ExceptionType.DRIVING_VS_FLYING,
+                    justification=(
+                        "Driving keeps the traveler aligned with on-site equipment "
+                        "handoff timing and avoids an otherwise disconnected arrival."
+                    ),
+                    requestor="alex.rivera",
+                    amount=Decimal("180.00"),
+                )
+            ]
+        }
+    )
+    submit_response = submit_proposal(
+        plan,
+        PlannerProposalSubmissionRequest(
+            trip_id=plan.trip_id,
+            proposal_id="proposal-123",
+            proposal_version="proposal-v10",
+        ),
+    )
+    request = PlannerProposalEvaluationRequest(
+        trip_id=plan.trip_id,
+        proposal_id="proposal-123",
+        proposal_version="proposal-v10",
+        execution_id=str(submit_response.result_payload["execution_id"]),
+        requested_at=datetime(2026, 4, 11, 13, 15, tzinfo=UTC),
+    )
+
+    result = get_evaluation_result(plan, request)
+
+    assert result.outcome == "exception_required"
+    assert len(result.exception_requirements) == 1
+    assert result.exception_requirements[0].type == "driving_vs_flying"
+    assert any(
+        guidance.code == "route_exception_workflow"
+        for guidance in result.reoptimization_guidance
+    )
+
+
+def test_get_evaluation_result_rejects_mismatched_execution_id(
+    trip_plan: TripPlan,
+) -> None:
+    request = PlannerProposalEvaluationRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-bad",
+        proposal_version="proposal-v11",
+        execution_id="exec-wrong",
+        requested_at=datetime(2026, 4, 11, 13, 20, tzinfo=UTC),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="PlannerProposalEvaluationRequest.execution_id does not match",
+    ):
+        get_evaluation_result(trip_plan, request)

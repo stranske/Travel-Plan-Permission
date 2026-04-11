@@ -10,9 +10,16 @@ def test_public_api_imports() -> None:
     travel_plan_permission = importlib.import_module("travel_plan_permission")
 
     from travel_plan_permission import (
+        PlannerBlockingIssue,
+        PlannerEvaluationOutcome,
+        PlannerExceptionRequirement,
+        PlannerPreferredAlternative,
+        PlannerProposalEvaluationRequest,
+        PlannerProposalEvaluationResult,
         PlannerProposalOperationResponse,
         PlannerProposalStatusRequest,
         PlannerProposalSubmissionRequest,
+        PlannerReoptimizationGuidance,
         PolicyCheckResult,
         PolicyCheckStatus,
         PolicyIssue,
@@ -23,6 +30,7 @@ def test_public_api_imports() -> None:
         TripPlan,
         check_trip_plan,
         fill_travel_spreadsheet,
+        get_evaluation_result,
         list_allowed_vendors,
         poll_execution_status,
         reconcile,
@@ -31,9 +39,16 @@ def test_public_api_imports() -> None:
     )
 
     required_exports = {
+        "PlannerBlockingIssue",
+        "PlannerEvaluationOutcome",
+        "PlannerExceptionRequirement",
+        "PlannerPreferredAlternative",
+        "PlannerProposalEvaluationRequest",
+        "PlannerProposalEvaluationResult",
         "PlannerProposalOperationResponse",
         "PlannerProposalStatusRequest",
         "PlannerProposalSubmissionRequest",
+        "PlannerReoptimizationGuidance",
         "PolicyCheckResult",
         "PolicyCheckStatus",
         "PolicyIssue",
@@ -44,6 +59,7 @@ def test_public_api_imports() -> None:
         "TripPlan",
         "check_trip_plan",
         "fill_travel_spreadsheet",
+        "get_evaluation_result",
         "render_travel_spreadsheet_bytes",
         "list_allowed_vendors",
         "poll_execution_status",
@@ -58,12 +74,20 @@ def test_public_api_imports() -> None:
     assert list_allowed_vendors is not None
     assert reconcile is not None
     assert fill_travel_spreadsheet is not None
+    assert get_evaluation_result is not None
     assert render_travel_spreadsheet_bytes is not None
     assert submit_proposal is not None
     assert poll_execution_status is not None
+    assert PlannerProposalEvaluationRequest is not None
+    assert PlannerProposalEvaluationResult is not None
     assert PlannerProposalSubmissionRequest is not None
     assert PlannerProposalStatusRequest is not None
     assert PlannerProposalOperationResponse is not None
+    assert PlannerBlockingIssue is not None
+    assert PlannerPreferredAlternative is not None
+    assert PlannerExceptionRequirement is not None
+    assert PlannerReoptimizationGuidance is not None
+    assert PlannerEvaluationOutcome is not None
     assert PolicyCheckResult is not None
     assert PolicyCheckStatus is not None
     assert PolicyIssue is not None

@@ -1,0 +1,80 @@
+{
+  "trip_id": "TRIP-1001",
+  "proposal_id": "proposal-123",
+  "proposal_version": "proposal-v1",
+  "execution_id": "exec-10c6fb4730f2",
+  "request_id": "req-eval-002",
+  "correlation_id": {
+    "value": "corr-submit-001",
+    "issued_by": "trip-planner"
+  },
+  "outcome": "non_compliant",
+  "result_endpoint": "GET /api/planner/executions/exec-10c6fb4730f2/evaluation-result",
+  "status_endpoint": "GET /api/planner/proposals/proposal-123/executions/exec-10c6fb4730f2",
+  "policy_result": {
+    "status": "fail",
+    "issues": [
+      {
+        "code": "fare_comparison",
+        "message": "Selected fare exceeds the lowest comparable fare threshold.",
+        "severity": "error",
+        "context": {
+          "rule_id": "fare_comparison",
+          "severity": "blocking"
+        }
+      },
+      {
+        "code": "fare_evidence",
+        "message": "Attach fare evidence or a screenshot showing the compared fare.",
+        "severity": "error",
+        "context": {
+          "rule_id": "fare_evidence",
+          "severity": "blocking"
+        }
+      }
+    ],
+    "policy_version": "b6a28d5d9a30e4f6f7710c7d4cdcaef1c45df3449500f12d822d29fc2bc4dd39"
+  },
+  "blocking_issues": [
+    {
+      "code": "fare_comparison",
+      "message": "Selected fare exceeds the lowest comparable fare threshold.",
+      "field_path": "selected_fare",
+      "resolution": "Choose a fare that meets the lowest-fare guidance or request an exception."
+    },
+    {
+      "code": "fare_evidence",
+      "message": "Attach fare evidence or a screenshot showing the compared fare.",
+      "field_path": "fare_evidence_attached",
+      "resolution": "Attach fare evidence before resubmitting the proposal."
+    }
+  ],
+  "preferred_alternatives": [
+    {
+      "category": "airfare",
+      "title": "Use the lower comparable airfare",
+      "rationale": "Current airfare from Blue Skies Airlines exceeds the lowest comparable fare.",
+      "suggested_value": "300.00"
+    }
+  ],
+  "exception_requirements": [],
+  "reoptimization_guidance": [
+    {
+      "code": "lower_trip_cost",
+      "summary": "Reprice airfare and keep the selected fare within the lowest-fare threshold.",
+      "actions": [
+        "Refresh available airfare options.",
+        "Choose a fare that matches or improves on the lowest comparable fare."
+      ]
+    },
+    {
+      "code": "attach_fare_evidence",
+      "summary": "Attach the supporting fare comparison before requesting evaluation again.",
+      "actions": [
+        "Upload the fare comparison artifact.",
+        "Persist the artifact reference in the proposal payload."
+      ]
+    }
+  ],
+  "generated_at": "2026-04-11T12:31:00Z"
+}
