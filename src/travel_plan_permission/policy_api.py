@@ -22,17 +22,33 @@ from pydantic import BaseModel, Field
 
 from .canonical import CanonicalTripPlan
 from .mapping import TemplateMapping, load_template_mapping
-from .models import ExpenseCategory, ExpenseItem, ExpenseReport, TripPlan
+from .models import ExpenseCategory, ExpenseItem, ExpenseReport, TripPlan, TripStatus
 from .policy import PolicyContext, PolicyEngine, PolicyResult, Severity
 from .policy_versioning import PolicyVersion
 from .providers import ProviderRegistry, ProviderType
 from .receipts import Receipt, summarize_receipts
-from .security import PLANNER_POLICY_SNAPSHOT_ENDPOINT
+from .security import (
+    PLANNER_EXECUTION_STATUS_ENDPOINT,
+    PLANNER_POLICY_SNAPSHOT_ENDPOINT,
+    PLANNER_PROPOSAL_SUBMISSION_ENDPOINT,
+)
 
 PolicyIssueSeverity = Literal["info", "warning", "error"]
 PolicyCheckStatus = Literal["pass", "fail"]
 ReconciliationStatus = Literal["under_budget", "on_budget", "over_budget"]
 PolicySnapshotFreshness = Literal["current", "stale", "invalidated"]
+PlannerOperationType = Literal["submit_proposal", "poll_execution_status"]
+PlannerProposalStatus = Literal["pending", "succeeded", "failed", "unavailable"]
+PlannerTransportPattern = Literal["sync", "async", "deferred"]
+PlannerExecutionState = Literal[
+    "accepted",
+    "running",
+    "succeeded",
+    "failed",
+    "deferred",
+    "retry_scheduled",
+    "cancelled",
+]
 PolicyIssueContextValue = str | int | float | bool | None
 _PLANNER_POLICY_CONTRACT_VERSION = "2026-04-11"
 _PLANNER_POLICY_TTL = timedelta(hours=24)
@@ -44,6 +60,10 @@ __all__ = [
     "PolicyIssueSeverity",
     "PolicyCheckStatus",
     "PolicySnapshotFreshness",
+    "PlannerOperationType",
+    "PlannerProposalStatus",
+    "PlannerTransportPattern",
+    "PlannerExecutionState",
     "ReconciliationStatus",
     "PolicyIssue",
     "PolicyCheckResult",
@@ -53,6 +73,13 @@ __all__ = [
     "PlannerAuthContract",
     "PlannerVersionContract",
     "PlannerPolicySnapshot",
+    "PlannerCorrelationId",
+    "PlannerRetryMetadata",
+    "PlannerErrorRecord",
+    "PlannerProposalExecutionStatus",
+    "PlannerProposalSubmissionRequest",
+    "PlannerProposalStatusRequest",
+    "PlannerProposalOperationResponse",
     "ReconciliationResult",
     "UnfilledMappingEntry",
     "UnfilledMappingReport",
@@ -62,7 +89,9 @@ __all__ = [
     "fill_travel_spreadsheet",
     "get_policy_snapshot",
     "list_allowed_vendors",
+    "poll_execution_status",
     "reconcile",
+    "submit_proposal",
 ]
 
 
@@ -194,6 +223,148 @@ class PlannerPolicySnapshot(BaseModel):
     )
     versioning: PlannerVersionContract = Field(
         ..., description="Versioning metadata for caching and compatibility"
+    )
+
+
+class PlannerCorrelationId(BaseModel):
+    """Stable correlation identifier for planner-originated operations."""
+
+    value: str = Field(..., description="Correlation identifier value")
+    issued_by: str = Field(
+        default="trip-planner", description="System that minted the correlation ID"
+    )
+
+
+class PlannerRetryMetadata(BaseModel):
+    """Retry guidance for non-terminal planner-facing operations."""
+
+    attempt: int = Field(..., ge=0, description="Current attempt count")
+    max_attempts: int = Field(..., ge=1, description="Maximum retry attempts")
+    retryable: bool = Field(..., description="Whether another retry should be attempted")
+    backoff_seconds: float | None = Field(
+        default=None, ge=0, description="Suggested delay before retrying"
+    )
+    next_retry_at: datetime | None = Field(
+        default=None, description="Recommended timestamp for the next retry"
+    )
+    reason: str = Field(..., description="Human-readable retry reason")
+
+
+class PlannerErrorRecord(BaseModel):
+    """Structured error detail for failed or unavailable proposal work."""
+
+    code: str = Field(..., description="Stable error code")
+    message: str = Field(..., description="Human-readable error summary")
+    category: str = Field(..., description="Broad error category")
+    retryable: bool = Field(..., description="Whether retrying may succeed")
+    details: dict[str, object] = Field(
+        default_factory=dict, description="Additional structured error context"
+    )
+
+
+class PlannerProposalExecutionStatus(BaseModel):
+    """Execution status surfaced to the planner transport seam."""
+
+    state: PlannerExecutionState = Field(..., description="Current execution state")
+    terminal: bool = Field(..., description="Whether the execution has finished")
+    summary: str = Field(..., description="Human-readable execution summary")
+    external_status: str = Field(
+        ..., description="Transport or HTTP-style status summary"
+    )
+    poll_after_seconds: float | None = Field(
+        default=None, ge=0, description="Suggested poll interval for non-terminal states"
+    )
+    updated_at: datetime | None = Field(
+        default=None, description="When the execution state last changed"
+    )
+
+
+class PlannerProposalSubmissionRequest(BaseModel):
+    """Planner-facing submission request contract for proposal execution."""
+
+    trip_id: str = Field(..., description="Trip identifier linked to the proposal")
+    proposal_id: str = Field(..., description="Stable planner proposal identifier")
+    proposal_version: str = Field(..., description="Planner proposal version identifier")
+    payload: dict[str, object] = Field(
+        default_factory=dict, description="Planner proposal payload or envelope"
+    )
+    request_id: str | None = Field(
+        default=None, description="Optional caller-supplied request identifier"
+    )
+    correlation_id: PlannerCorrelationId | None = Field(
+        default=None, description="Optional caller-supplied correlation identifier"
+    )
+    transport_pattern: PlannerTransportPattern = Field(
+        default="deferred", description="Expected transport pattern for execution"
+    )
+    organization_id: str | None = Field(
+        default=None, description="Optional organization or tenant identifier"
+    )
+    submitted_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the planner submitted the proposal",
+    )
+    service_available: bool = Field(
+        default=True,
+        description="Whether the planner-facing submission seam is currently available",
+    )
+
+
+class PlannerProposalStatusRequest(BaseModel):
+    """Planner-facing polling request contract for proposal execution status."""
+
+    trip_id: str = Field(..., description="Trip identifier linked to the execution")
+    proposal_id: str = Field(..., description="Stable planner proposal identifier")
+    proposal_version: str = Field(..., description="Planner proposal version identifier")
+    execution_id: str = Field(..., description="Execution identifier returned on submit")
+    request_id: str | None = Field(
+        default=None, description="Optional caller-supplied poll request identifier"
+    )
+    correlation_id: PlannerCorrelationId | None = Field(
+        default=None, description="Optional caller-supplied correlation identifier"
+    )
+    transport_pattern: PlannerTransportPattern = Field(
+        default="deferred", description="Expected transport pattern for polling"
+    )
+    requested_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the planner polled the execution status",
+    )
+    service_available: bool = Field(
+        default=True,
+        description="Whether the planner-facing status seam is currently available",
+    )
+
+
+class PlannerProposalOperationResponse(BaseModel):
+    """Planner-facing response envelope for submission and polling operations."""
+
+    operation: PlannerOperationType = Field(..., description="Operation that produced the response")
+    submission_status: PlannerProposalStatus = Field(
+        ..., description="Planner-friendly lifecycle status for the submission"
+    )
+    request_id: str = Field(..., description="Stable request identifier")
+    correlation_id: PlannerCorrelationId = Field(
+        ..., description="Correlation identifier shared across related operations"
+    )
+    transport_pattern: PlannerTransportPattern = Field(
+        ..., description="Transport pattern used by the operation"
+    )
+    execution_status: PlannerProposalExecutionStatus | None = Field(
+        default=None, description="Execution-state detail when an execution exists"
+    )
+    result_payload: dict[str, object] = Field(
+        default_factory=dict, description="Structured linkage payload for the planner"
+    )
+    error: PlannerErrorRecord | None = Field(
+        default=None, description="Structured error detail when the operation failed"
+    )
+    retry: PlannerRetryMetadata | None = Field(
+        default=None, description="Retry guidance for non-terminal or unavailable states"
+    )
+    received_at: datetime = Field(..., description="When this response was produced")
+    status_endpoint: str | None = Field(
+        default=None, description="Stable endpoint for follow-up status checks"
     )
 
 
@@ -560,6 +731,217 @@ def _planner_snapshot_etag(plan: TripPlan, *, policy_version: str) -> str:
     )
 
 
+def _stable_operation_id(prefix: str, *parts: str) -> str:
+    seed = ":".join(parts)
+    return f"{prefix}-{sha256(seed.encode('utf-8')).hexdigest()[:12]}"
+
+
+def _proposal_request_id(
+    operation: PlannerOperationType,
+    *,
+    trip_id: str,
+    proposal_id: str,
+    proposal_version: str,
+    provided: str | None,
+) -> str:
+    if provided:
+        return provided
+    return _stable_operation_id(
+        "req", operation, trip_id, proposal_id, proposal_version
+    )
+
+
+def _proposal_correlation_id(
+    *,
+    trip_id: str,
+    proposal_id: str,
+    proposal_version: str,
+    provided: PlannerCorrelationId | None,
+) -> PlannerCorrelationId:
+    if provided is not None:
+        return provided
+    return PlannerCorrelationId(
+        value=_stable_operation_id("corr", trip_id, proposal_id, proposal_version)
+    )
+
+
+def _proposal_execution_id(
+    *, trip_id: str, proposal_id: str, proposal_version: str
+) -> str:
+    return _stable_operation_id("exec", trip_id, proposal_id, proposal_version)
+
+
+def _proposal_status_endpoint(*, proposal_id: str, execution_id: str) -> str:
+    return (
+        PLANNER_EXECUTION_STATUS_ENDPOINT.replace(":proposal_id", proposal_id).replace(
+            ":execution_id", execution_id
+        )
+    )
+
+
+def _result_endpoint(*, execution_id: str) -> str:
+    return f"GET /api/planner/executions/{execution_id}/evaluation-result"
+
+
+def _proposal_result_payload(
+    *,
+    trip_id: str,
+    proposal_id: str,
+    proposal_version: str,
+    execution_id: str,
+    queue_state: str,
+) -> dict[str, object]:
+    return {
+        "trip_id": trip_id,
+        "proposal_id": proposal_id,
+        "proposal_version": proposal_version,
+        "execution_id": execution_id,
+        "queue_state": queue_state,
+        "result_endpoint": _result_endpoint(execution_id=execution_id),
+    }
+
+
+def _proposal_response_for_plan(
+    *,
+    operation: PlannerOperationType,
+    plan: TripPlan,
+    trip_id: str,
+    proposal_id: str,
+    proposal_version: str,
+    transport_pattern: PlannerTransportPattern,
+    service_available: bool,
+    event_time: datetime,
+    request_id: str,
+    correlation_id: PlannerCorrelationId,
+    organization_id: str | None = None,
+) -> PlannerProposalOperationResponse:
+    execution_id = _proposal_execution_id(
+        trip_id=trip_id, proposal_id=proposal_id, proposal_version=proposal_version
+    )
+    status_endpoint = _proposal_status_endpoint(
+        proposal_id=proposal_id, execution_id=execution_id
+    )
+    base_payload = _proposal_result_payload(
+        trip_id=trip_id,
+        proposal_id=proposal_id,
+        proposal_version=proposal_version,
+        execution_id=execution_id,
+        queue_state="accepted",
+    )
+    if organization_id is not None:
+        base_payload["organization_id"] = organization_id
+
+    if not service_available:
+        return PlannerProposalOperationResponse(
+            operation=operation,
+            submission_status="unavailable",
+            request_id=request_id,
+            correlation_id=correlation_id,
+            transport_pattern=transport_pattern,
+            execution_status=None,
+            result_payload=base_payload | {"queue_state": "unavailable"},
+            error=PlannerErrorRecord(
+                code="planner_transport_unavailable",
+                message="Planner proposal transport is currently unavailable.",
+                category="availability",
+                retryable=True,
+                details={"status_endpoint": status_endpoint},
+            ),
+            retry=PlannerRetryMetadata(
+                attempt=0,
+                max_attempts=5,
+                retryable=True,
+                backoff_seconds=60,
+                next_retry_at=event_time + timedelta(seconds=60),
+                reason="Planner transport is unavailable; retry after service recovery.",
+            ),
+            received_at=event_time,
+            status_endpoint=status_endpoint,
+        )
+
+    if plan.status == TripStatus.REJECTED:
+        return PlannerProposalOperationResponse(
+            operation=operation,
+            submission_status="failed",
+            request_id=request_id,
+            correlation_id=correlation_id,
+            transport_pattern=transport_pattern,
+            execution_status=PlannerProposalExecutionStatus(
+                state="failed",
+                terminal=True,
+                summary="Proposal execution failed policy review.",
+                external_status="409 Conflict",
+                updated_at=event_time,
+            ),
+            result_payload=base_payload | {"queue_state": "rejected"},
+            error=PlannerErrorRecord(
+                code="proposal_rejected",
+                message="The proposal is currently in a rejected state and cannot proceed.",
+                category="policy",
+                retryable=False,
+                details={"trip_status": str(plan.status)},
+            ),
+            received_at=event_time,
+            status_endpoint=status_endpoint,
+        )
+
+    if plan.status in {TripStatus.APPROVED, TripStatus.COMPLETED}:
+        return PlannerProposalOperationResponse(
+            operation=operation,
+            submission_status="succeeded",
+            request_id=request_id,
+            correlation_id=correlation_id,
+            transport_pattern=transport_pattern,
+            execution_status=PlannerProposalExecutionStatus(
+                state="succeeded",
+                terminal=True,
+                summary="Proposal execution completed successfully.",
+                external_status="200 OK",
+                updated_at=event_time,
+            ),
+            result_payload=base_payload | {"queue_state": "completed"},
+            received_at=event_time,
+            status_endpoint=status_endpoint,
+        )
+
+    pending_state: PlannerExecutionState = (
+        "running" if transport_pattern == "async" else "deferred"
+    )
+    queue_state = (
+        "running"
+        if transport_pattern == "async"
+        else "waiting_for_policy_engine"
+    )
+    poll_after_seconds = 15.0 if transport_pattern == "async" else 30.0
+
+    return PlannerProposalOperationResponse(
+        operation=operation,
+        submission_status="pending",
+        request_id=request_id,
+        correlation_id=correlation_id,
+        transport_pattern=transport_pattern,
+        execution_status=PlannerProposalExecutionStatus(
+            state=pending_state,
+            terminal=False,
+            summary="Proposal queued for evaluation.",
+            external_status="202 Accepted",
+            poll_after_seconds=poll_after_seconds,
+            updated_at=event_time,
+        ),
+        result_payload=base_payload | {"queue_state": queue_state},
+        retry=PlannerRetryMetadata(
+            attempt=0,
+            max_attempts=5,
+            retryable=True,
+            backoff_seconds=poll_after_seconds,
+            next_retry_at=event_time + timedelta(seconds=poll_after_seconds),
+            reason="Await planner-side evaluation completion before retrying.",
+        ),
+        received_at=event_time,
+        status_endpoint=status_endpoint,
+    )
+
+
 def get_policy_snapshot(
     plan: TripPlan,
     request: PlannerPolicySnapshotRequest | None = None,
@@ -648,6 +1030,102 @@ def get_policy_snapshot(
             in (None, policy_version),
             etag=_planner_snapshot_etag(plan, policy_version=policy_version),
         ),
+    )
+
+
+def submit_proposal(
+    plan: TripPlan,
+    request: PlannerProposalSubmissionRequest,
+) -> PlannerProposalOperationResponse:
+    """Build a planner-facing submission response for a proposal execution."""
+
+    if request.trip_id != plan.trip_id:
+        raise ValueError(
+            "PlannerProposalSubmissionRequest.trip_id does not match plan.trip_id: "
+            f"{request.trip_id!r} != {plan.trip_id!r}"
+        )
+
+    submitted_at = _coerce_utc(request.submitted_at)
+    request_id = _proposal_request_id(
+        "submit_proposal",
+        trip_id=request.trip_id,
+        proposal_id=request.proposal_id,
+        proposal_version=request.proposal_version,
+        provided=request.request_id,
+    )
+    correlation_id = _proposal_correlation_id(
+        trip_id=request.trip_id,
+        proposal_id=request.proposal_id,
+        proposal_version=request.proposal_version,
+        provided=request.correlation_id,
+    )
+    response = _proposal_response_for_plan(
+        operation="submit_proposal",
+        plan=plan,
+        trip_id=request.trip_id,
+        proposal_id=request.proposal_id,
+        proposal_version=request.proposal_version,
+        transport_pattern=request.transport_pattern,
+        service_available=request.service_available,
+        event_time=submitted_at,
+        request_id=request_id,
+        correlation_id=correlation_id,
+        organization_id=request.organization_id,
+    )
+    if request.payload:
+        response.result_payload["submitted_payload_keys"] = sorted(request.payload.keys())
+    return response
+
+
+def poll_execution_status(
+    plan: TripPlan,
+    request: PlannerProposalStatusRequest,
+) -> PlannerProposalOperationResponse:
+    """Build a planner-facing status response for a submitted proposal."""
+
+    if request.trip_id != plan.trip_id:
+        raise ValueError(
+            "PlannerProposalStatusRequest.trip_id does not match plan.trip_id: "
+            f"{request.trip_id!r} != {plan.trip_id!r}"
+        )
+
+    expected_execution_id = _proposal_execution_id(
+        trip_id=request.trip_id,
+        proposal_id=request.proposal_id,
+        proposal_version=request.proposal_version,
+    )
+    if request.execution_id != expected_execution_id:
+        raise ValueError(
+            "PlannerProposalStatusRequest.execution_id does not match the stable "
+            "execution identifier for this trip/proposal/version: "
+            f"{request.execution_id!r} != {expected_execution_id!r}"
+        )
+
+    requested_at = _coerce_utc(request.requested_at)
+    request_id = _proposal_request_id(
+        "poll_execution_status",
+        trip_id=request.trip_id,
+        proposal_id=request.proposal_id,
+        proposal_version=request.proposal_version,
+        provided=request.request_id,
+    )
+    correlation_id = _proposal_correlation_id(
+        trip_id=request.trip_id,
+        proposal_id=request.proposal_id,
+        proposal_version=request.proposal_version,
+        provided=request.correlation_id,
+    )
+    return _proposal_response_for_plan(
+        operation="poll_execution_status",
+        plan=plan,
+        trip_id=request.trip_id,
+        proposal_id=request.proposal_id,
+        proposal_version=request.proposal_version,
+        transport_pattern=request.transport_pattern,
+        service_available=request.service_available,
+        event_time=requested_at,
+        request_id=request_id,
+        correlation_id=correlation_id,
     )
 
 
