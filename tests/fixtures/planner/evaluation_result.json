@@ -1,0 +1,35 @@
+{
+  "evaluation_id": "eval-748-nyc",
+  "proposal_id": "proposal-748-nyc",
+  "status": "non_compliant",
+  "approval_requirements": [
+    {
+      "role": "manager",
+      "reason": "Estimated cost exceeds the high-amount review threshold.",
+      "mandatory": true
+    }
+  ],
+  "failure_reasons": [
+    {
+      "code": "fare_evidence",
+      "message": "Fare comparison evidence was not attached to the proposal packet.",
+      "severity": "blocking",
+      "related_category": "airfare"
+    }
+  ],
+  "preferred_alternatives": [
+    {
+      "category": "airfare",
+      "summary": "Attach the compared nonstop and one-stop quotes to the proposal packet.",
+      "rationale": "The selected fare can stay if comparable evidence is documented.",
+      "comparable_ref": "airfare"
+    }
+  ],
+  "exception_guidance": [
+    "If the traveler cannot use the approved provider, document the route risk and request an exception."
+  ],
+  "notes": [
+    "Evaluation reused the planner snapshot version triplet from submission time."
+  ],
+  "compliance_score": 0.42
+}
