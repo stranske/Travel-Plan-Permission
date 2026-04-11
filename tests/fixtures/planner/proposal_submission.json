@@ -1,0 +1,96 @@
+{
+  "proposal_id": "proposal-748-nyc",
+  "trip_id": "TRIP-748",
+  "planner_id": "trip-planner",
+  "planner_version": "2026.04.11",
+  "submitted_at": "2026-04-11T05:10:00Z",
+  "auth": {
+    "scheme": "service_token",
+    "header_name": "Authorization",
+    "token_type": "Bearer"
+  },
+  "policy_snapshot": {
+    "snapshot_status": "current",
+    "policy_version": "b6a28d5d9a30e4f6f7710c7d4cdcaef1c45df3449500f12d822d29fc2bc4dd39",
+    "approval_rules_version": "1ce1cb4a37000674f5b4d13f58c8fd761f6c3e3572f117ee796c18891977e3f0",
+    "provider_registry_version": "2024.09",
+    "generated_at": "2026-04-11T05:05:00Z"
+  },
+  "proposal": {
+    "proposal_id": "proposal-748-nyc",
+    "trip_id": "TRIP-748",
+    "mode": "business",
+    "constraint_set_id": "policy-snapshot-b6a28d5d",
+    "traveler_context": {
+      "traveler_id": "traveler-001",
+      "employee_type": "employee",
+      "department": "finance",
+      "home_office": "Austin, TX"
+    },
+    "selected_options": [
+      {
+        "category": "airfare",
+        "option_id": "air-001",
+        "label": "Austin to New York nonstop",
+        "vendor": "Blue Skies Airlines",
+        "booking_channel": "planner-policy-snapshot",
+        "estimated_cost": {
+          "currency": "USD",
+          "minimum": 420.5,
+          "maximum": 420.5
+        },
+        "justification_refs": [
+          "justification-airfare"
+        ]
+      }
+    ],
+    "cost_summary": {
+      "currency": "USD",
+      "total_estimated_cost": 1450.5,
+      "category_estimates": {
+        "airfare": 420.5,
+        "lodging": 780.0,
+        "ground_transport": 250.0
+      },
+      "notes": [
+        "Planner produced comparable evidence before selecting the booked fare."
+      ]
+    },
+    "comparables": [
+      {
+        "category": "airfare",
+        "label": "One-stop alternative",
+        "vendor": "Blue Skies Airlines",
+        "booking_channel": "planner-policy-snapshot",
+        "estimated_cost": {
+          "currency": "USD",
+          "minimum": 389.0,
+          "maximum": 389.0
+        },
+        "notes": [
+          "Rejected due to late arrival before the client dinner."
+        ]
+      }
+    ],
+    "justifications": [
+      {
+        "category": "airfare",
+        "summary": "Nonstop arrival protects the first client meeting and keeps schedule risk low.",
+        "evidence": [
+          "Arrival is 2h 20m earlier than the cheapest option."
+        ]
+      }
+    ],
+    "booking_channel_summaries": [
+      {
+        "category": "airfare",
+        "selected_channel": "planner-policy-snapshot",
+        "approved": true,
+        "rationale": "Selected provider matches the approved contract for the travel window."
+      }
+    ],
+    "approval_notes": [
+      "Proposal generated from current policy snapshot."
+    ]
+  }
+}
