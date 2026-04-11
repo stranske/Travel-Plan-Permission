@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import tempfile
 from collections.abc import Sequence
@@ -12,7 +13,6 @@ from decimal import Decimal
 from hashlib import sha256
 from importlib import resources
 from io import BytesIO
-import json
 from pathlib import Path
 from typing import Literal
 
