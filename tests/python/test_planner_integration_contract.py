@@ -10,7 +10,6 @@ from travel_plan_permission.policy_api import (
     PolicyCheckResult,
 )
 
-
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "planner_integration"
 CONTRACT_DOC = Path(__file__).resolve().parents[2] / "docs" / "contracts" / "planner-integration.md"
 
