@@ -106,6 +106,7 @@ jobs:
           python_result="${PYTHON_RESULT:-skipped}"
           orchestration_result="${ORCHESTRATION_RESULT:-skipped}"
 
+          # Keep the gate mapping explicit so new result combinations stay auditable.
           case "${python_result}:${orchestration_result}" in
             failure:failure)
               state="failure"
