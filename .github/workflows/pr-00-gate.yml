@@ -71,6 +71,8 @@ jobs:
 
       - name: Run LangGraph orchestration tests
         run: |
+          # This job is intentionally scoped to the LangGraph execution path.
+          # Broader orchestration coverage stays in the main Python test suite.
           pytest tests/orchestration_graph_test.py tests/python/test_langgraph_orchestration.py -v
 
   summary:
@@ -106,53 +108,40 @@ jobs:
           state="success"
           description="All checks passed"
 
-          case "$python_result" in
-            success)
-              state="success"
-              description="Python CI passed"
-              ;;
-            failure)
-              state="failure"
-              description="Python CI failed"
-              ;;
-            cancelled)
-              state="error"
-              description="Python CI was cancelled"
-              ;;
-            skipped)
-              state="success"
-              description="Python CI skipped (no relevant changes)"
-              ;;
-            *)
-              state="pending"
-              description="Python CI status unknown"
-              ;;
-          esac
-
-          # Check orchestration result
-          case "$orchestration_result" in
-            failure)
-              state="failure"
-              description="Orchestration tests failed"
-              ;;
-            cancelled)
-              state="error"
-              description="Orchestration tests were cancelled"
-              ;;
-            skipped)
-              # Keep current state
-              ;;
-            success)
-              # Keep current state, update description if all passed
-              if [ "$state" = "success" ] && [ "$python_result" = "success" ]; then
-                description="All checks passed"
-              fi
-              ;;
-            *)
-              state="pending"
-              description="Orchestration tests status unknown"
-              ;;
-          esac
+          if [ "$python_result" = "failure" ] && [ "$orchestration_result" = "failure" ]; then
+            state="failure"
+            description="Python CI and orchestration tests failed"
+          elif [ "$python_result" = "failure" ]; then
+            state="failure"
+            description="Python CI failed"
+          elif [ "$orchestration_result" = "failure" ]; then
+            state="failure"
+            description="Orchestration tests failed"
+          elif [ "$python_result" = "cancelled" ] && [ "$orchestration_result" = "cancelled" ]; then
+            state="error"
+            description="Python CI and orchestration tests were cancelled"
+          elif [ "$python_result" = "cancelled" ]; then
+            state="error"
+            description="Python CI was cancelled"
+          elif [ "$orchestration_result" = "cancelled" ]; then
+            state="error"
+            description="Orchestration tests were cancelled"
+          elif [ "$python_result" = "success" ] && [ "$orchestration_result" = "success" ]; then
+            state="success"
+            description="All checks passed"
+          elif [ "$python_result" = "skipped" ] && [ "$orchestration_result" = "success" ]; then
+            state="success"
+            description="Orchestration tests passed (Python CI skipped)"
+          elif [ "$python_result" = "success" ] && [ "$orchestration_result" = "skipped" ]; then
+            state="success"
+            description="Python CI passed"
+          elif [ "$python_result" = "skipped" ] && [ "$orchestration_result" = "skipped" ]; then
+            state="success"
+            description="Python CI skipped (no relevant changes)"
+          else
+            state="pending"
+            description="Gate status pending"
+          fi
 
           echo "state=${state}" >> "$GITHUB_OUTPUT"
           echo "description=${description}" >> "$GITHUB_OUTPUT"
