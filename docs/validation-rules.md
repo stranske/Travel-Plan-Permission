@@ -34,7 +34,7 @@ Each validation result contains:
 - `severity` - One of: `error`, `warning`, `info`
 - `rule_name` - Name of the rule that produced the result
 - `blocking` - Whether the violation prevents submission
-- `is_blocking` - Property that returns `True` when `blocking=True` AND `severity=error`
+- `is_blocking` - Property that returns `True` when `blocking=True` AND `severity='error'`
 
 ### Available Rules
 
