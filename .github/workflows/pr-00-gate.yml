@@ -105,43 +105,53 @@ jobs:
 
           python_result="${PYTHON_RESULT:-skipped}"
           orchestration_result="${ORCHESTRATION_RESULT:-skipped}"
-          state="success"
-          description="All checks passed"
 
-          if [ "$python_result" = "failure" ] && [ "$orchestration_result" = "failure" ]; then
-            state="failure"
-            description="Python CI and orchestration tests failed"
-          elif [ "$python_result" = "failure" ]; then
-            state="failure"
-            description="Python CI failed"
-          elif [ "$orchestration_result" = "failure" ]; then
-            state="failure"
-            description="Orchestration tests failed"
-          elif [ "$python_result" = "cancelled" ] && [ "$orchestration_result" = "cancelled" ]; then
-            state="error"
-            description="Python CI and orchestration tests were cancelled"
-          elif [ "$python_result" = "cancelled" ]; then
-            state="error"
-            description="Python CI was cancelled"
-          elif [ "$orchestration_result" = "cancelled" ]; then
-            state="error"
-            description="Orchestration tests were cancelled"
-          elif [ "$python_result" = "success" ] && [ "$orchestration_result" = "success" ]; then
-            state="success"
-            description="All checks passed"
-          elif [ "$python_result" = "skipped" ] && [ "$orchestration_result" = "success" ]; then
-            state="success"
-            description="Orchestration tests passed (Python CI skipped)"
-          elif [ "$python_result" = "success" ] && [ "$orchestration_result" = "skipped" ]; then
-            state="success"
-            description="Python CI passed"
-          elif [ "$python_result" = "skipped" ] && [ "$orchestration_result" = "skipped" ]; then
-            state="success"
-            description="Python CI skipped (no relevant changes)"
-          else
-            state="pending"
-            description="Gate status pending"
-          fi
+          case "${python_result}:${orchestration_result}" in
+            failure:failure)
+              state="failure"
+              description="Python CI and orchestration tests failed"
+              ;;
+            failure:*)
+              state="failure"
+              description="Python CI failed"
+              ;;
+            *:failure)
+              state="failure"
+              description="Orchestration tests failed"
+              ;;
+            cancelled:cancelled)
+              state="error"
+              description="Python CI and orchestration tests were cancelled"
+              ;;
+            cancelled:*)
+              state="error"
+              description="Python CI was cancelled"
+              ;;
+            *:cancelled)
+              state="error"
+              description="Orchestration tests were cancelled"
+              ;;
+            success:success)
+              state="success"
+              description="All checks passed"
+              ;;
+            skipped:success)
+              state="success"
+              description="Orchestration tests passed (Python CI skipped)"
+              ;;
+            success:skipped)
+              state="success"
+              description="Python CI passed"
+              ;;
+            skipped:skipped)
+              state="success"
+              description="Python CI skipped (no relevant changes)"
+              ;;
+            *)
+              state="pending"
+              description="Gate status pending (python=${python_result}, orchestration=${orchestration_result})"
+              ;;
+          esac
 
           echo "state=${state}" >> "$GITHUB_OUTPUT"
           echo "description=${description}" >> "$GITHUB_OUTPUT"
