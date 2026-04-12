@@ -9,7 +9,7 @@ This record exists to make the PR #83 review-thread follow-up durable in reposit
 - Follow-up issue: [#758](https://github.com/stranske/Travel-Plan-Permission/issues/758) `Audit Follow-up: Issue #76 unresolved review comments on PR #83`
 - First follow-up PR: [#764](https://github.com/stranske/Travel-Plan-Permission/pull/764) `Resolve issue #758 review-thread follow-up`
 - First follow-up merge commit: `9dc694026a8f4e9b1bc4e57ea85b48a97d1ab730`
-- Verification run that still reported evidence debt: Actions run `24303440117` completed at `2026-04-12T09:26:39Z`
+- Verification run that still reported evidence debt: [Actions run `24303440117`](https://github.com/stranske/Travel-Plan-Permission/actions/runs/24303440117) completed at `2026-04-12T09:26:39Z`
 
 ## Review thread inventory
 
