@@ -71,6 +71,8 @@ jobs:
 
       - name: Run LangGraph orchestration tests
         run: |
+          # This job is intentionally scoped to the LangGraph execution path.
+          # Broader orchestration coverage stays in the main Python test suite.
           pytest tests/orchestration_graph_test.py tests/python/test_langgraph_orchestration.py -v
 
   summary:
@@ -103,54 +105,52 @@ jobs:
 
           python_result="${PYTHON_RESULT:-skipped}"
           orchestration_result="${ORCHESTRATION_RESULT:-skipped}"
-          state="success"
-          description="All checks passed"
 
-          case "$python_result" in
-            success)
-              state="success"
-              description="Python CI passed"
+          # Keep the gate mapping explicit so new result combinations stay auditable.
+          case "${python_result}:${orchestration_result}" in
+            failure:failure)
+              state="failure"
+              description="Python CI and orchestration tests failed"
               ;;
-            failure)
+            failure:*)
               state="failure"
               description="Python CI failed"
               ;;
-            cancelled)
+            *:failure)
+              state="failure"
+              description="Orchestration tests failed"
+              ;;
+            cancelled:cancelled)
+              state="error"
+              description="Python CI and orchestration tests were cancelled"
+              ;;
+            cancelled:*)
               state="error"
               description="Python CI was cancelled"
               ;;
-            skipped)
+            *:cancelled)
+              state="error"
+              description="Orchestration tests were cancelled"
+              ;;
+            success:success)
+              state="success"
+              description="All checks passed"
+              ;;
+            skipped:success)
+              state="success"
+              description="Orchestration tests passed (Python CI skipped)"
+              ;;
+            success:skipped)
+              state="success"
+              description="Python CI passed"
+              ;;
+            skipped:skipped)
               state="success"
               description="Python CI skipped (no relevant changes)"
               ;;
             *)
               state="pending"
-              description="Python CI status unknown"
-              ;;
-          esac
-
-          # Check orchestration result
-          case "$orchestration_result" in
-            failure)
-              state="failure"
-              description="Orchestration tests failed"
-              ;;
-            cancelled)
-              state="error"
-              description="Orchestration tests were cancelled"
-              ;;
-            skipped)
-              # Keep current state
-              ;;
-            success)
-              # Keep current state, update description if all passed
-              if [ "$state" = "success" ] && [ "$python_result" = "success" ]; then
-                description="All checks passed"
-              fi
-              ;;
-            *)
-              state="pending"
-              description="Orchestration tests status unknown"
+              description="Gate status pending (python=${python_result}, orchestration=${orchestration_result})"
               ;;
           esac
 
