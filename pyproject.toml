@@ -41,7 +41,7 @@ dev = [
 ]
 ocr = [
     "Pillow>=10.0.0",
-    "pytesseract>=0.3.10",
+    "pytesseract>=0.3.13",
 ]
 orchestration = [
     "langgraph>=0.2.0",
