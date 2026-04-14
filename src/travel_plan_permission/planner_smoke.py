@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import importlib.resources as resources
 import json
 import os
 import sys
 from dataclasses import dataclass
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 from urllib import error, request
@@ -19,9 +21,11 @@ from .policy_api import (
 )
 from .security import Permission
 
-_FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "planner_integration"
 _DEFAULT_TIMEOUT_SECONDS = 10.0
 _FIXTURE_DIR_ENV = "TPP_PLANNER_FIXTURES_DIR"
+_PACKAGED_FIXTURE_ROOT: Traversable = resources.files("travel_plan_permission").joinpath(
+    "fixtures", "planner_integration"
+)
 
 
 class PlannerSmokeError(RuntimeError):
@@ -74,19 +78,21 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _resolve_fixture_root(args: argparse.Namespace) -> Path:
+def _resolve_fixture_root(args: argparse.Namespace) -> Traversable | Path:
     configured_root = args.fixtures_dir or os.getenv(_FIXTURE_DIR_ENV)
-    fixture_root = Path(configured_root).expanduser() if configured_root else _FIXTURE_ROOT
+    fixture_root: Traversable | Path = (
+        Path(configured_root).expanduser() if configured_root else _PACKAGED_FIXTURE_ROOT
+    )
     if fixture_root.is_dir():
         return fixture_root
     raise PlannerSmokeError(
         "Planner smoke fixtures are unavailable. "
-        f"Expected {_FIXTURE_ROOT}, or set {_FIXTURE_DIR_ENV} / --fixtures-dir "
-        "when running outside a repo checkout."
+        f"Expected packaged fixtures under {_PACKAGED_FIXTURE_ROOT}, or set "
+        f"{_FIXTURE_DIR_ENV} / --fixtures-dir when running with external fixture data."
     )
 
 
-def _load_fixture(fixture_root: Path, name: str) -> dict[str, object]:
+def _load_fixture(fixture_root: Traversable | Path, name: str) -> dict[str, object]:
     fixture_path = fixture_root / name
     try:
         payload = json.loads(fixture_path.read_text(encoding="utf-8"))
@@ -230,7 +236,7 @@ def _validate_unauthorized_snapshot(
 def _validate_smoke_flow(
     base_url: str,
     *,
-    fixture_root: Path,
+    fixture_root: Traversable | Path,
     timeout: float,
     token: str,
 ) -> None:
