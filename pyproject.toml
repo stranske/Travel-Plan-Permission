@@ -53,6 +53,7 @@ orchestration = [
 [project.scripts]
 fill-spreadsheet = "travel_plan_permission.cli:main"
 orchestration-demo = "travel_plan_permission.orchestration.example:main"
+tpp-planner-token = "travel_plan_permission.planner_auth:main"
 tpp-planner-service = "travel_plan_permission.http_service:main"
 
 [build-system]

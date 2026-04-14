@@ -48,19 +48,27 @@ endpoint. The snapshot response itself publishes the auth contract:
 | Config | Required | Purpose |
 | --- | --- | --- |
 | `TPP_BASE_URL` | yes | Base URL for the TPP service |
-| `TPP_ACCESS_TOKEN` | yes | Bearer token presented to TPP |
 | `TPP_OIDC_PROVIDER` | yes | Identity provider name used to mint the bearer token |
+| `TPP_AUTH_MODE` | yes | Auth mode: `static-token` or `bootstrap-token` |
+| `TPP_ACCESS_TOKEN` | when `TPP_AUTH_MODE=static-token` | Fixed bearer token presented to TPP |
+| `TPP_BOOTSTRAP_SIGNING_SECRET` | when `TPP_AUTH_MODE=bootstrap-token` | Shared signing secret used to validate bounded bootstrap tokens |
+| `TPP_BOOTSTRAP_TOKEN_TTL_SECONDS` | no | Lifetime for locally minted bootstrap tokens |
 | `TPP_POLICY_SNAPSHOT_MAX_AGE_SECONDS` | no | Local cache TTL override for snapshot reuse |
 
 ### Expected request metadata
 
 When calling the planner snapshot seam, `trip-planner` should send:
 
-- `Authorization: Bearer <TPP_ACCESS_TOKEN>`
+- `Authorization: Bearer <planner bearer token>`
 - the `trip_id` in the request payload
 - `known_policy_version` when a cached snapshot already exists
 - `snapshot_generated_at` when the planner is re-checking a previously cached
   payload for freshness
+
+For local or preview live testing, TPP can mint a bounded bootstrap token with
+`tpp-planner-token`. The token is short-lived and still carries explicit
+planner permissions (`view`, `create`) so endpoint authorization is exercised
+instead of bypassed.
 
 TPP returns the auth guidance for the seam inside `snapshot.auth`, so the
 planner can compare its runtime config to the server-advertised contract.

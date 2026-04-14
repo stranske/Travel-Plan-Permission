@@ -208,6 +208,11 @@ Example JSON structure for proposal submission or status polling:
 For the full planner-facing transport, versioning, and fixture contract, see
 [`docs/contracts/planner-integration.md`](./contracts/planner-integration.md).
 
+For live HTTP testing, the runtime must also supply
+`TPP_ACCESS_TOKEN_SUBJECT` and `TPP_ACCESS_TOKEN_ROLE` alongside the bearer
+token so the service can authorize planner endpoints through the published
+permission model.
+
 ### PlannerProposalEvaluationResult (output)
 
 Example JSON structure for planner-facing evaluation results:
@@ -390,8 +395,13 @@ objects.
 
 - Call the seam as `GET /api/planner/policy-snapshot`.
 - Access requires the `view` permission from the security model.
-- The expected auth scheme is a bearer token obtained through one of the
-  configured SSO providers: `azure_ad`, `okta`, or `google`.
+- The expected auth scheme is a bearer token validated against one of the
+  configured auth modes:
+  - `static-token` using `TPP_ACCESS_TOKEN`
+  - `bootstrap-token` using short-lived tokens minted by
+    `tpp-planner-token` and validated against
+    `TPP_BOOTSTRAP_SIGNING_SECRET`
+- The configured provider must still be one of `azure_ad`, `okta`, or `google`.
 - Cache the response by `versioning.etag` and invalidate local planner guidance
   when `versioning.compatible_with_planner_cache` is `false`.
 - The canonical request/response examples for this seam live in

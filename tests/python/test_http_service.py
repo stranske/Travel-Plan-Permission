@@ -5,8 +5,14 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from travel_plan_permission.http_service import PlannerProposalStore, create_app
+from travel_plan_permission.http_service import (
+    PlannerProposalStore,
+    create_app,
+    main,
+)
+from travel_plan_permission.planner_auth import mint_bootstrap_token
 from travel_plan_permission.policy_api import PlannerProposalOperationResponse
+from travel_plan_permission.security import Permission
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "planner_integration"
 AUTH_HEADER = {"Authorization": "Bearer dev-token"}
@@ -18,14 +24,24 @@ def _load_fixture(name: str) -> dict[str, object]:
 
 def _set_runtime_env(monkeypatch, *, provider: str = "google") -> None:
     monkeypatch.setenv("TPP_BASE_URL", "http://127.0.0.1:8000")
-    monkeypatch.setenv("TPP_ACCESS_TOKEN", "dev-token")
     monkeypatch.setenv("TPP_OIDC_PROVIDER", provider)
+    monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
+    monkeypatch.setenv("TPP_ACCESS_TOKEN", "dev-token")
+
+
+def _set_bootstrap_runtime_env(monkeypatch, *, provider: str = "google") -> None:
+    monkeypatch.setenv("TPP_BASE_URL", "http://127.0.0.1:8000")
+    monkeypatch.setenv("TPP_OIDC_PROVIDER", provider)
+    monkeypatch.setenv("TPP_AUTH_MODE", "bootstrap-token")
+    monkeypatch.setenv("TPP_BOOTSTRAP_SIGNING_SECRET", "bootstrap-secret-123")
 
 
 def test_readyz_reports_missing_runtime_config(monkeypatch) -> None:
     monkeypatch.delenv("TPP_BASE_URL", raising=False)
     monkeypatch.delenv("TPP_ACCESS_TOKEN", raising=False)
     monkeypatch.delenv("TPP_OIDC_PROVIDER", raising=False)
+    monkeypatch.delenv("TPP_AUTH_MODE", raising=False)
+    monkeypatch.delenv("TPP_BOOTSTRAP_SIGNING_SECRET", raising=False)
 
     client = TestClient(create_app())
 
@@ -36,9 +52,10 @@ def test_readyz_reports_missing_runtime_config(monkeypatch) -> None:
     assert payload["status"] == "misconfigured"
     assert payload["config"]["missing_config"] == [
         "TPP_BASE_URL",
-        "TPP_ACCESS_TOKEN",
         "TPP_OIDC_PROVIDER",
+        "TPP_AUTH_MODE",
     ]
+    assert payload["config"]["invalid_config"] == []
 
 
 def test_snapshot_route_returns_planner_contract(monkeypatch) -> None:
@@ -116,7 +133,8 @@ def test_readyz_reports_invalid_oidc_provider(monkeypatch) -> None:
     assert response.status_code == 503
     payload = response.json()
     assert payload["status"] == "misconfigured"
-    assert payload["config"]["missing_config"] == ["TPP_OIDC_PROVIDER"]
+    assert payload["config"]["missing_config"] == []
+    assert payload["config"]["invalid_config"] == ["TPP_OIDC_PROVIDER"]
 
 
 def test_planner_routes_require_bearer_token(monkeypatch) -> None:
@@ -141,6 +159,69 @@ def test_planner_routes_require_bearer_token(monkeypatch) -> None:
     assert missing.json()["detail"] == "Missing bearer token."
     assert invalid.status_code == 403
     assert invalid.json()["detail"] == "Invalid bearer token."
+
+
+def test_bootstrap_token_allows_planner_routes(monkeypatch) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    client = TestClient(create_app())
+    trip_plan = _load_fixture("proposal_submission.json")
+    snapshot_request = _load_fixture("policy_snapshot_request.json")
+    token = mint_bootstrap_token(
+        subject="trip-planner-preview",
+        permissions=(Permission.VIEW, Permission.CREATE),
+        provider="google",
+        secret="bootstrap-secret-123",
+        expires_in_seconds=600,
+    )
+
+    response = client.request(
+        "GET",
+        "/api/planner/policy-snapshot",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"trip_plan": trip_plan, "request": snapshot_request},
+    )
+
+    assert response.status_code == 200
+
+
+def test_bootstrap_token_rejects_missing_create_permission(monkeypatch) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    client = TestClient(create_app())
+    trip_plan = _load_fixture("proposal_submission.json")
+    token = mint_bootstrap_token(
+        subject="trip-planner-preview",
+        permissions=(Permission.VIEW,),
+        provider="google",
+        secret="bootstrap-secret-123",
+        expires_in_seconds=600,
+    )
+    request_payload = {
+        "trip_id": trip_plan["trip_id"],
+        "proposal_id": "proposal-123",
+        "proposal_version": "proposal-v1",
+        "payload": {"selected_options": ["flight-1", "hotel-3"]},
+    }
+
+    response = client.post(
+        "/api/planner/proposals",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"trip_plan": trip_plan, "request": request_payload},
+    )
+
+    assert response.status_code == 403
+    assert "does not grant 'create'" in response.json()["detail"]
+
+
+def test_main_fails_fast_when_runtime_is_misconfigured(monkeypatch, capsys) -> None:
+    monkeypatch.delenv("TPP_BASE_URL", raising=False)
+    monkeypatch.delenv("TPP_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("TPP_OIDC_PROVIDER", raising=False)
+    monkeypatch.delenv("TPP_AUTH_MODE", raising=False)
+    monkeypatch.delenv("TPP_BOOTSTRAP_SIGNING_SECRET", raising=False)
+
+    exit_code = main([])
+    assert exit_code == 1
+    assert "missing:" in capsys.readouterr().err
 
 
 def test_snapshot_route_returns_bad_request_for_contract_mismatch(monkeypatch) -> None:
