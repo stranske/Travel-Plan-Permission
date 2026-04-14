@@ -4,13 +4,21 @@ import contextlib
 import socket
 import threading
 import time
+from collections.abc import Iterator
+from pathlib import Path
 
+import pytest
 import uvicorn
 
 from travel_plan_permission.planner_smoke import main
 
 
-def _set_static_runtime_env(monkeypatch, *, base_url: str, provider: str = "google") -> None:
+def _set_static_runtime_env(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    base_url: str,
+    provider: str = "google",
+) -> None:
     monkeypatch.setenv("TPP_BASE_URL", base_url)
     monkeypatch.setenv("TPP_OIDC_PROVIDER", provider)
     monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
@@ -19,7 +27,7 @@ def _set_static_runtime_env(monkeypatch, *, base_url: str, provider: str = "goog
 
 
 @contextlib.contextmanager
-def _run_live_service(port: int) -> str:
+def _run_live_service(port: int) -> Iterator[str]:
     base_url = f"http://127.0.0.1:{port}"
     config = uvicorn.Config(
         "travel_plan_permission.http_service:create_app",
@@ -50,7 +58,11 @@ def _run_live_service(port: int) -> str:
         thread.join(timeout=10)
 
 
-def test_planner_smoke_main_succeeds_against_live_service(monkeypatch, capsys, unused_tcp_port: int) -> None:
+def test_planner_smoke_main_succeeds_against_live_service(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    unused_tcp_port: int,
+) -> None:
     with _run_live_service(unused_tcp_port) as base_url:
         _set_static_runtime_env(monkeypatch, base_url=base_url)
 
@@ -62,7 +74,11 @@ def test_planner_smoke_main_succeeds_against_live_service(monkeypatch, capsys, u
     assert "unauthorized probe" in captured.out
 
 
-def test_planner_smoke_fails_when_service_is_not_ready(monkeypatch, capsys, unused_tcp_port: int) -> None:
+def test_planner_smoke_fails_when_service_is_not_ready(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    unused_tcp_port: int,
+) -> None:
     with _run_live_service(unused_tcp_port) as base_url:
         _set_static_runtime_env(monkeypatch, base_url=base_url, provider="github")
 
@@ -73,7 +89,10 @@ def test_planner_smoke_fails_when_service_is_not_ready(monkeypatch, capsys, unus
     assert "Planner service is not ready" in captured.err
 
 
-def test_planner_smoke_requires_base_url(monkeypatch, capsys) -> None:
+def test_planner_smoke_requires_base_url(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     monkeypatch.delenv("TPP_BASE_URL", raising=False)
     monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
     monkeypatch.setenv("TPP_ACCESS_TOKEN", "dev-token")
@@ -86,7 +105,11 @@ def test_planner_smoke_requires_base_url(monkeypatch, capsys) -> None:
     assert "Planner smoke needs a service URL" in captured.err
 
 
-def test_planner_smoke_requires_repo_checkout_or_fixtures_override(monkeypatch, capsys, tmp_path) -> None:
+def test_planner_smoke_requires_repo_checkout_or_fixtures_override(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
     monkeypatch.setenv("TPP_BASE_URL", "http://127.0.0.1:9999")
     monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
     monkeypatch.setenv("TPP_ACCESS_TOKEN", "dev-token")

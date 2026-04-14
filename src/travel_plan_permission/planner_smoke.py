@@ -145,7 +145,7 @@ def _resolve_token(
     args: argparse.Namespace,
     config: PlannerAuthConfig,
 ) -> str:
-    if args.token:
+    if isinstance(args.token, str) and args.token:
         return args.token
 
     if config.auth_mode == PlannerAuthMode.STATIC_TOKEN:
