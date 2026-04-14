@@ -1,7 +1,7 @@
 # Planner Live-Test Runbook
 
-This is the source-of-truth operator path for running the planner-facing Travel
-Plan Permission service and exercising the live HTTP planner handshake.
+This is the source-of-truth operator runbook for running the planner-facing
+Travel Plan Permission service and exercising the live HTTP planner handshake.
 
 Use it when you need to:
 
@@ -36,14 +36,16 @@ If they are not on your shell `PATH`, run them via `uv run <command>`.
 
 Set the planner-facing base URL and auth contract before starting the service:
 
-| Variable | Required | Notes |
-| --- | --- | --- |
-| `TPP_BASE_URL` | yes | Base URL that callers use for the live service |
-| `TPP_OIDC_PROVIDER` | yes | Must be `azure_ad`, `okta`, or `google` |
-| `TPP_AUTH_MODE` | yes | `static-token` or `bootstrap-token` |
-| `TPP_ACCESS_TOKEN` | for `static-token` | Fixed bearer token for simple local or preview tests |
-| `TPP_BOOTSTRAP_SIGNING_SECRET` | for `bootstrap-token` | Shared secret for bounded bootstrap tokens |
-| `TPP_BOOTSTRAP_TOKEN_TTL_SECONDS` | optional | Defaults to `900` seconds |
+- `TPP_BASE_URL` is required and sets the base URL callers use for the live
+  service.
+- `TPP_OIDC_PROVIDER` is required and must be `azure_ad`, `okta`, or `google`.
+- `TPP_AUTH_MODE` is required and must be `static-token` or
+  `bootstrap-token`.
+- `TPP_ACCESS_TOKEN` is required only for `static-token` mode and provides the
+  fixed bearer token for simple local or preview tests.
+- `TPP_BOOTSTRAP_SIGNING_SECRET` is required only for `bootstrap-token` mode
+  and provides the shared secret for bounded bootstrap tokens.
+- `TPP_BOOTSTRAP_TOKEN_TTL_SECONDS` is optional and defaults to `900` seconds.
 
 ## Blessed Local Path
 
@@ -133,7 +135,7 @@ tpp-planner-smoke --fixtures-dir path/to/planner-fixtures
 
 The same override also works through `TPP_PLANNER_FIXTURES_DIR`.
 
-## Preview Or Remote Base URLs
+## Preview or remote base URLs
 
 For preview or shared environments, point the same commands at the deployed base
 URL instead of localhost:

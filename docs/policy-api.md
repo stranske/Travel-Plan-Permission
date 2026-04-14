@@ -4,8 +4,8 @@ This document describes the stable policy API surface in
 `src/travel_plan_permission/policy_api.py` for use by the LangGraph
 orchestration layer and planner-facing integrations.
 
-For the operator-facing live service path, environment bootstrap, and blessed
-smoke workflow, see the
+For the operator-facing live-test procedure for these endpoints, including
+environment bootstrap and the blessed smoke workflow, see the
 [`Planner Live-Test Runbook`](./planner-live-test-runbook.md).
 
 ## Data Models
