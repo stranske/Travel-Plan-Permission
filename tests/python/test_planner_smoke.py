@@ -18,16 +18,8 @@ def _set_static_runtime_env(monkeypatch, *, base_url: str, provider: str = "goog
     monkeypatch.delenv("TPP_BOOTSTRAP_SIGNING_SECRET", raising=False)
 
 
-def _pick_free_port() -> int:
-    with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
-        sock.bind(("127.0.0.1", 0))
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return int(sock.getsockname()[1])
-
-
 @contextlib.contextmanager
-def _run_live_service() -> str:
-    port = _pick_free_port()
+def _run_live_service(port: int) -> str:
     base_url = f"http://127.0.0.1:{port}"
     config = uvicorn.Config(
         "travel_plan_permission.http_service:create_app",
@@ -58,8 +50,8 @@ def _run_live_service() -> str:
         thread.join(timeout=10)
 
 
-def test_planner_smoke_main_succeeds_against_live_service(monkeypatch, capsys) -> None:
-    with _run_live_service() as base_url:
+def test_planner_smoke_main_succeeds_against_live_service(monkeypatch, capsys, unused_tcp_port: int) -> None:
+    with _run_live_service(unused_tcp_port) as base_url:
         _set_static_runtime_env(monkeypatch, base_url=base_url)
 
         exit_code = main([])
@@ -70,8 +62,8 @@ def test_planner_smoke_main_succeeds_against_live_service(monkeypatch, capsys) -
     assert "unauthorized probe" in captured.out
 
 
-def test_planner_smoke_fails_when_service_is_not_ready(monkeypatch, capsys) -> None:
-    with _run_live_service() as base_url:
+def test_planner_smoke_fails_when_service_is_not_ready(monkeypatch, capsys, unused_tcp_port: int) -> None:
+    with _run_live_service(unused_tcp_port) as base_url:
         _set_static_runtime_env(monkeypatch, base_url=base_url, provider="github")
 
         exit_code = main([])
@@ -92,3 +84,17 @@ def test_planner_smoke_requires_base_url(monkeypatch, capsys) -> None:
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "Planner smoke needs a service URL" in captured.err
+
+
+def test_planner_smoke_requires_repo_checkout_or_fixtures_override(monkeypatch, capsys, tmp_path) -> None:
+    monkeypatch.setenv("TPP_BASE_URL", "http://127.0.0.1:9999")
+    monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
+    monkeypatch.setenv("TPP_ACCESS_TOKEN", "dev-token")
+    monkeypatch.setenv("TPP_OIDC_PROVIDER", "google")
+    monkeypatch.setenv("TPP_PLANNER_FIXTURES_DIR", str(tmp_path / "missing-fixtures"))
+
+    exit_code = main([])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Planner smoke fixtures are unavailable" in captured.err

@@ -21,6 +21,7 @@ from .security import Permission
 
 _FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "planner_integration"
 _DEFAULT_TIMEOUT_SECONDS = 10.0
+_FIXTURE_DIR_ENV = "TPP_PLANNER_FIXTURES_DIR"
 
 
 class PlannerSmokeError(RuntimeError):
@@ -62,11 +63,31 @@ def _build_parser() -> argparse.ArgumentParser:
         default=_DEFAULT_TIMEOUT_SECONDS,
         help="Per-request timeout in seconds.",
     )
+    parser.add_argument(
+        "--fixtures-dir",
+        default=None,
+        help=(
+            "Directory containing planner integration JSON fixtures. "
+            f"Defaults to ${_FIXTURE_DIR_ENV} or the repo checkout fixtures."
+        ),
+    )
     return parser
 
 
-def _load_fixture(name: str) -> dict[str, object]:
-    fixture_path = _FIXTURE_ROOT / name
+def _resolve_fixture_root(args: argparse.Namespace) -> Path:
+    configured_root = args.fixtures_dir or os.getenv(_FIXTURE_DIR_ENV)
+    fixture_root = Path(configured_root).expanduser() if configured_root else _FIXTURE_ROOT
+    if fixture_root.is_dir():
+        return fixture_root
+    raise PlannerSmokeError(
+        "Planner smoke fixtures are unavailable. "
+        f"Expected {_FIXTURE_ROOT}, or set {_FIXTURE_DIR_ENV} / --fixtures-dir "
+        "when running outside a repo checkout."
+    )
+
+
+def _load_fixture(fixture_root: Path, name: str) -> dict[str, object]:
+    fixture_path = fixture_root / name
     try:
         payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
@@ -206,9 +227,15 @@ def _validate_unauthorized_snapshot(
     print("unauthorized probe: service rejects missing bearer token")
 
 
-def _validate_smoke_flow(base_url: str, *, timeout: float, token: str) -> None:
-    trip_plan = _load_fixture("proposal_submission.json")
-    snapshot_request = _load_fixture("policy_snapshot_request.json")
+def _validate_smoke_flow(
+    base_url: str,
+    *,
+    fixture_root: Path,
+    timeout: float,
+    token: str,
+) -> None:
+    trip_plan = _load_fixture(fixture_root, "proposal_submission.json")
+    snapshot_request = _load_fixture(fixture_root, "policy_snapshot_request.json")
     headers = {"Authorization": f"Bearer {token}"}
 
     _validate_readyz(base_url, timeout=timeout)
@@ -306,8 +333,14 @@ def main(argv: list[str] | None = None) -> int:
     config = PlannerAuthConfig.from_env()
     try:
         base_url = _resolve_base_url(args, config)
+        fixture_root = _resolve_fixture_root(args)
         token = _resolve_token(args, config)
-        _validate_smoke_flow(base_url, timeout=args.timeout, token=token)
+        _validate_smoke_flow(
+            base_url,
+            fixture_root=fixture_root,
+            timeout=args.timeout,
+            token=token,
+        )
     except PlannerSmokeError as exc:
         print(str(exc), file=sys.stderr)
         return 1
