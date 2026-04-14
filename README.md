@@ -74,6 +74,18 @@ Use the emitted value as `Authorization: Bearer <token>` when calling planner
 routes. `TPP_AUTH_MODE="static-token"` plus `TPP_ACCESS_TOKEN` remains
 available for simple fixed-token environments.
 
+Run the repo-native live smoke command against a running service with:
+
+```bash
+tpp-planner-smoke
+```
+
+The command reuses the repo-owned planner fixtures, verifies that `/readyz`
+reports a healthy runtime, confirms the service rejects an unauthenticated
+snapshot request, and then exercises the full HTTP handshake over the live
+socket: policy snapshot, proposal submission, execution-status readback, and
+evaluation-result retrieval.
+
 ## Documentation
 
 - [Policy API](docs/policy-api.md)
