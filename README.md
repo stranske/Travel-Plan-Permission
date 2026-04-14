@@ -52,18 +52,27 @@ Run the planner-facing HTTP adapter locally:
 
 ```bash
 export TPP_BASE_URL="http://127.0.0.1:8000"
-export TPP_ACCESS_TOKEN="dev-token"
-export TPP_ACCESS_TOKEN_SUBJECT="planner-preview"
-export TPP_ACCESS_TOKEN_ROLE="traveler"
 export TPP_OIDC_PROVIDER="google"
+export TPP_AUTH_MODE="bootstrap-token"
+export TPP_BOOTSTRAP_SIGNING_SECRET="replace-with-a-local-preview-secret"
 tpp-planner-service --host 127.0.0.1 --port 8000
 ```
 
 Use `GET /healthz` for a basic liveness check and `GET /readyz` to verify that
 the required planner-facing runtime configuration is present before exercising
-the planner routes. The startup command now fails fast unless the bounded
-bootstrap auth contract is complete: base URL, bearer token, token subject,
-token role, and supported OIDC provider must all be configured.
+the planner routes. The startup command now fails fast unless the planner auth
+contract is complete: base URL, supported OIDC provider, and an explicit auth
+mode with its matching token configuration must all be present.
+
+For bounded local or preview testing, mint a short-lived planner token with:
+
+```bash
+tpp-planner-token --subject trip-planner-local
+```
+
+Use the emitted value as `Authorization: Bearer <token>` when calling planner
+routes. `TPP_AUTH_MODE="static-token"` plus `TPP_ACCESS_TOKEN` remains
+available for simple fixed-token environments.
 
 ## Documentation
 

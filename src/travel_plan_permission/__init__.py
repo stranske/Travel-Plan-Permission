@@ -32,6 +32,12 @@ from .models import (
     build_exception_dashboard,
     determine_exception_approval_level,
 )
+from .planner_auth import (
+    PlannerAuthConfig,
+    PlannerAuthContext,
+    PlannerAuthMode,
+    mint_bootstrap_token,
+)
 from .policy import (
     AdvanceBookingRule,
     CabinClassRule,
@@ -212,6 +218,9 @@ __all__ = [
     "PlannerExecutionState",
     "PlannerOperationType",
     "PlannerApprovalTrigger",
+    "PlannerAuthConfig",
+    "PlannerAuthContext",
+    "PlannerAuthMode",
     "PlannerAuthContract",
     "PlannerBlockingIssue",
     "PlannerPolicyRequirement",
@@ -284,6 +293,7 @@ __all__ = [
     "RoleChangeState",
     "RoleName",
     "snapshot_from_plan",
+    "mint_bootstrap_token",
     "__version__",
 ]
 __version__ = "0.1.0"

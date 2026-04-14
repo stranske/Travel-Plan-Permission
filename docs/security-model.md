@@ -28,22 +28,38 @@ Core permissions: `view`, `create`, `approve`, `export`, `configure`.
 
 ## Planner integration auth contract
 
-The current planner-facing integration seam uses a bearer-token read contract
-for `GET /api/planner/policy-snapshot`.
+The current planner-facing integration seam uses a bearer-token contract for
+the planner HTTP surface. The service now requires an explicit auth mode so
+startup and readiness can fail deterministically before the service claims it is
+ready for planner traffic.
 
 When `trip-planner` calls TPP over a network boundary, it should send:
 
-- `Authorization: Bearer <TPP_ACCESS_TOKEN>`
+- `Authorization: Bearer <planner bearer token>`
 - a `trip_id` inside the snapshot request payload
 - `known_policy_version` when the planner is revalidating cached guidance
 
 The expected deployment config shape is:
 
 - `TPP_BASE_URL`
-- `TPP_ACCESS_TOKEN`
-- `TPP_ACCESS_TOKEN_SUBJECT`
-- `TPP_ACCESS_TOKEN_ROLE`
 - `TPP_OIDC_PROVIDER`
+- `TPP_AUTH_MODE`
+- `TPP_ACCESS_TOKEN` when `TPP_AUTH_MODE=static-token`
+- `TPP_BOOTSTRAP_SIGNING_SECRET` when `TPP_AUTH_MODE=bootstrap-token`
+- `TPP_BOOTSTRAP_TOKEN_TTL_SECONDS` optionally bounds local or preview bootstrap tokens
+
+### Supported auth modes
+
+- `static-token` keeps the existing fixed bearer-token model and is suitable for
+  simple environments where the caller and service share one secret.
+- `bootstrap-token` is the preferred local or preview mode. Operators mint a
+  short-lived token with `tpp-planner-token`, and the service validates its
+  signature, provider, expiry, and required endpoint permission.
+
+The planner-facing endpoints currently require:
+
+- `view` for policy snapshot, execution status, and evaluation-result reads
+- `create` for proposal submission
 
 The snapshot response advertises the currently supported SSO providers
 (`azure_ad`, `okta`, `google`) and the required `view` permission so planner
