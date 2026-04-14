@@ -31,11 +31,10 @@ Fixture files for each flow live under
 `tests/python/test_planner_integration_contract.py`.
 
 For live service validation, this repo also exposes the repo-native smoke
-command `tpp-planner-smoke`. By default, it loads packaged fixtures from
-`src/travel_plan_permission/fixtures/...` (unless explicitly overridden) to
-exercise the HTTP handshake against a running TPP instance, checks `/readyz`
-before proceeding, and verifies that unauthenticated snapshot access is
-rejected before running the authorized planner flow.
+command `tpp-planner-smoke`. It uses those same fixtures to exercise the HTTP
+handshake against a running TPP instance, checks `/readyz` before proceeding,
+and verifies that unauthenticated snapshot access is rejected before running
+the authorized planner flow.
 
 ## Transport Authentication
 
