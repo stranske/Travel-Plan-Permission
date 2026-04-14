@@ -27,7 +27,12 @@ def _set_static_runtime_env(
 
 
 @contextlib.contextmanager
-def _run_live_service(port: int) -> Iterator[str]:
+def _run_live_service() -> Iterator[str]:
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_socket.bind(("127.0.0.1", 0))
+    server_socket.listen(2048)
+    port = int(server_socket.getsockname()[1])
     base_url = f"http://127.0.0.1:{port}"
     config = uvicorn.Config(
         "travel_plan_permission.http_service:create_app",
@@ -37,7 +42,7 @@ def _run_live_service(port: int) -> Iterator[str]:
         log_level="warning",
     )
     server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True)
+    thread = threading.Thread(target=server.run, kwargs={"sockets": [server_socket]}, daemon=True)
     thread.start()
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
@@ -56,14 +61,14 @@ def _run_live_service(port: int) -> Iterator[str]:
     finally:
         server.should_exit = True
         thread.join(timeout=10)
+        server_socket.close()
 
 
 def test_planner_smoke_main_succeeds_against_live_service(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    unused_tcp_port: int,
 ) -> None:
-    with _run_live_service(unused_tcp_port) as base_url:
+    with _run_live_service() as base_url:
         _set_static_runtime_env(monkeypatch, base_url=base_url)
 
         exit_code = main([])
@@ -77,9 +82,8 @@ def test_planner_smoke_main_succeeds_against_live_service(
 def test_planner_smoke_fails_when_service_is_not_ready(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    unused_tcp_port: int,
 ) -> None:
-    with _run_live_service(unused_tcp_port) as base_url:
+    with _run_live_service() as base_url:
         _set_static_runtime_env(monkeypatch, base_url=base_url, provider="github")
 
         exit_code = main([])
