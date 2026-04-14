@@ -32,6 +32,8 @@ from .models import (
     build_exception_dashboard,
     determine_exception_approval_level,
 )
+from .planner_service import PlannerServiceStore, create_app
+from .planner_service import app as planner_service_app
 from .policy import (
     AdvanceBookingRule,
     CabinClassRule,
@@ -229,6 +231,7 @@ __all__ = [
     "PlannerRetryMetadata",
     "PlannerTransportPattern",
     "PlannerVersionContract",
+    "PlannerServiceStore",
     "PolicyVersion",
     "PolicyMigrationPlan",
     "PolicyMigrationPlanner",
@@ -277,6 +280,8 @@ __all__ = [
     "ValidationRule",
     "ValidationSeverity",
     "compare_results",
+    "create_app",
+    "planner_service_app",
     "required_field_gaps",
     "policy_version_hash",
     "Role",

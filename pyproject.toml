@@ -17,11 +17,13 @@ classifiers = [
 ]
 
 dependencies = [
+    "fastapi>=0.115.0",
     "pydantic>=2.0",
     "pyyaml>=6.0.2",
     "openpyxl>=3.1.5",
     "jinja2>=3.1.4",
     "reportlab>=4.2.5",
+    "uvicorn>=0.30.0",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +32,7 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff==0.15.1",
     "black==26.1.0",
+    "httpx>=0.28.0",
     "mypy>=1.19.1",
     "types-PyYAML>=6.0.12",
     "numpy>=1.24.0",
@@ -50,6 +53,7 @@ orchestration = [
 [project.scripts]
 fill-spreadsheet = "travel_plan_permission.cli:main"
 orchestration-demo = "travel_plan_permission.orchestration.example:main"
+tpp-planner-service = "travel_plan_permission.planner_service:main"
 
 [build-system]
 requires = []
@@ -63,7 +67,7 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-travel_plan_permission = ["config/*.yaml", "templates/*.xlsx"]
+travel_plan_permission = ["config/*.json", "config/*.yaml", "templates/*.xlsx"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

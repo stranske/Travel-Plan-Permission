@@ -46,6 +46,29 @@ To see usage information, run:
 fill-spreadsheet --help
 ```
 
+## Planner Service Runtime
+
+Start the planner-facing HTTP service locally with:
+
+```bash
+tpp-planner-service
+```
+
+The service exposes a thin HTTP wrapper around the planner-facing contract
+helpers in `travel_plan_permission.policy_api`:
+
+- `GET /healthz`
+- `GET /readyz`
+- `GET /api/planner/policy-snapshot`
+- `POST /api/planner/proposals`
+- `GET /api/planner/proposals/{proposal_id}/executions/{execution_id}`
+- `GET /api/planner/executions/{execution_id}/evaluation-result`
+
+`/readyz` returns `503` until `TPP_BASE_URL`, `TPP_ACCESS_TOKEN`, and
+`TPP_OIDC_PROVIDER` are present in the environment. For local live testing, the
+service also boots with a seeded demo trip `TRIP-PLANNER-2001` that matches the
+planner integration fixtures under `tests/fixtures/planner_integration/`.
+
 ## Documentation
 
 - [Policy API](docs/policy-api.md)
