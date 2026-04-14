@@ -5,7 +5,12 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from travel_plan_permission.http_service import PlannerProposalStore, create_app
+from travel_plan_permission.http_service import (
+    PlannerProposalStore,
+    PlannerRuntimeConfigError,
+    create_app,
+    main,
+)
 from travel_plan_permission.policy_api import PlannerProposalOperationResponse
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "planner_integration"
@@ -19,6 +24,8 @@ def _load_fixture(name: str) -> dict[str, object]:
 def _set_runtime_env(monkeypatch, *, provider: str = "google") -> None:
     monkeypatch.setenv("TPP_BASE_URL", "http://127.0.0.1:8000")
     monkeypatch.setenv("TPP_ACCESS_TOKEN", "dev-token")
+    monkeypatch.setenv("TPP_ACCESS_TOKEN_SUBJECT", "planner-preview")
+    monkeypatch.setenv("TPP_ACCESS_TOKEN_ROLE", "traveler")
     monkeypatch.setenv("TPP_OIDC_PROVIDER", provider)
 
 
@@ -37,8 +44,11 @@ def test_readyz_reports_missing_runtime_config(monkeypatch) -> None:
     assert payload["config"]["missing_config"] == [
         "TPP_BASE_URL",
         "TPP_ACCESS_TOKEN",
+        "TPP_ACCESS_TOKEN_ROLE",
+        "TPP_ACCESS_TOKEN_SUBJECT",
         "TPP_OIDC_PROVIDER",
     ]
+    assert payload["config"]["invalid_config"] == []
 
 
 def test_snapshot_route_returns_planner_contract(monkeypatch) -> None:
@@ -116,7 +126,8 @@ def test_readyz_reports_invalid_oidc_provider(monkeypatch) -> None:
     assert response.status_code == 503
     payload = response.json()
     assert payload["status"] == "misconfigured"
-    assert payload["config"]["missing_config"] == ["TPP_OIDC_PROVIDER"]
+    assert payload["config"]["missing_config"] == []
+    assert payload["config"]["invalid_config"] == ["TPP_OIDC_PROVIDER"]
 
 
 def test_planner_routes_require_bearer_token(monkeypatch) -> None:
@@ -141,6 +152,51 @@ def test_planner_routes_require_bearer_token(monkeypatch) -> None:
     assert missing.json()["detail"] == "Missing bearer token."
     assert invalid.status_code == 403
     assert invalid.json()["detail"] == "Invalid bearer token."
+
+
+def test_planner_routes_reject_insufficient_bootstrap_role(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    monkeypatch.setenv("TPP_ACCESS_TOKEN_ROLE", "policy_admin")
+
+    client = TestClient(create_app())
+    trip_plan = _load_fixture("proposal_submission.json")
+    request_payload = {
+        "trip_id": trip_plan["trip_id"],
+        "proposal_id": "proposal-123",
+        "proposal_version": "proposal-v1",
+        "payload": {"selected_options": ["flight-1", "hotel-3"]},
+    }
+
+    response = client.post(
+        "/api/planner/proposals",
+        headers=AUTH_HEADER,
+        json={"trip_plan": trip_plan, "request": request_payload},
+    )
+
+    assert response.status_code == 403
+    assert (
+        response.json()["detail"]
+        == "Configured bearer token is not authorized for this endpoint."
+    )
+
+
+def test_main_fails_fast_when_runtime_is_misconfigured(monkeypatch) -> None:
+    monkeypatch.delenv("TPP_BASE_URL", raising=False)
+    monkeypatch.delenv("TPP_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("TPP_ACCESS_TOKEN_ROLE", raising=False)
+    monkeypatch.delenv("TPP_ACCESS_TOKEN_SUBJECT", raising=False)
+    monkeypatch.delenv("TPP_OIDC_PROVIDER", raising=False)
+
+    try:
+        main([])
+    except PlannerRuntimeConfigError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("Expected PlannerRuntimeConfigError")
+
+    assert "missing:" in message
+    assert "TPP_ACCESS_TOKEN_ROLE" in message
+    assert "TPP_ACCESS_TOKEN_SUBJECT" in message
 
 
 def test_snapshot_route_returns_bad_request_for_contract_mismatch(monkeypatch) -> None:

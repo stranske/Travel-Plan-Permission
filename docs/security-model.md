@@ -41,11 +41,19 @@ The expected deployment config shape is:
 
 - `TPP_BASE_URL`
 - `TPP_ACCESS_TOKEN`
+- `TPP_ACCESS_TOKEN_SUBJECT`
+- `TPP_ACCESS_TOKEN_ROLE`
 - `TPP_OIDC_PROVIDER`
 
 The snapshot response advertises the currently supported SSO providers
 (`azure_ad`, `okta`, `google`) and the required `view` permission so planner
 runtime config can be checked against the published seam.
+
+For local and preview live tests, `TPP_ACCESS_TOKEN` is a bounded bootstrap
+credential, not an auth bypass. Startup fails unless the token is paired with a
+subject and one of the modeled roles, and planner-facing routes still
+authorize that role against the endpoint permission map before serving the
+request.
 
 ## Delegation
 

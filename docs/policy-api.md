@@ -208,6 +208,11 @@ Example JSON structure for proposal submission or status polling:
 For the full planner-facing transport, versioning, and fixture contract, see
 [`docs/contracts/planner-integration.md`](./contracts/planner-integration.md).
 
+For live HTTP testing, the runtime must also supply
+`TPP_ACCESS_TOKEN_SUBJECT` and `TPP_ACCESS_TOKEN_ROLE` alongside the bearer
+token so the service can authorize planner endpoints through the published
+permission model.
+
 ### PlannerProposalEvaluationResult (output)
 
 Example JSON structure for planner-facing evaluation results:

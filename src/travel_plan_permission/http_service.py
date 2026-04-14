@@ -25,14 +25,29 @@ from .policy_api import (
     poll_execution_status,
     submit_proposal,
 )
+from .security import (
+    PLANNER_EVALUATION_RESULT_ENDPOINT,
+    PLANNER_EXECUTION_STATUS_ENDPOINT,
+    PLANNER_POLICY_SNAPSHOT_ENDPOINT,
+    PLANNER_PROPOSAL_SUBMISSION_ENDPOINT,
+    RoleName,
+    SecurityModel,
+)
 
 _REQUIRED_PLANNER_ENV_VARS = (
     "TPP_BASE_URL",
     "TPP_ACCESS_TOKEN",
+    "TPP_ACCESS_TOKEN_ROLE",
+    "TPP_ACCESS_TOKEN_SUBJECT",
     "TPP_OIDC_PROVIDER",
 )
 _SUPPORTED_OIDC_PROVIDERS = ("azure_ad", "okta", "google")
+_SUPPORTED_BOOTSTRAP_ROLES = tuple(role.value for role in RoleName)
 _OPTIONAL_SNAPSHOT_BODY = Body(default=None)
+
+
+class PlannerRuntimeConfigError(RuntimeError):
+    """Raised when the planner-facing HTTP runtime is misconfigured."""
 
 
 class PlannerRuntimeConfig(BaseModel):
@@ -40,44 +55,89 @@ class PlannerRuntimeConfig(BaseModel):
 
     base_url: str | None = Field(default=None)
     oidc_provider: str | None = Field(default=None)
+    access_token_role: str | None = Field(default=None)
+    access_token_subject: str | None = Field(default=None)
     access_token_configured: bool = Field(default=False)
     missing_config: list[str] = Field(default_factory=list)
+    invalid_config: list[str] = Field(default_factory=list)
 
     @classmethod
     def from_env(cls) -> PlannerRuntimeConfig:
         base_url = os.getenv("TPP_BASE_URL")
         access_token = os.getenv("TPP_ACCESS_TOKEN")
+        access_token_role = os.getenv("TPP_ACCESS_TOKEN_ROLE")
+        access_token_subject = os.getenv("TPP_ACCESS_TOKEN_SUBJECT")
         oidc_provider = os.getenv("TPP_OIDC_PROVIDER")
         missing = [
             env_var for env_var in _REQUIRED_PLANNER_ENV_VARS if not os.getenv(env_var)
         ]
+        invalid: list[str] = []
         if (
             oidc_provider
             and oidc_provider not in _SUPPORTED_OIDC_PROVIDERS
             and "TPP_OIDC_PROVIDER" not in missing
         ):
-            missing.append("TPP_OIDC_PROVIDER")
+            invalid.append("TPP_OIDC_PROVIDER")
+        if (
+            access_token_role
+            and access_token_role not in _SUPPORTED_BOOTSTRAP_ROLES
+            and "TPP_ACCESS_TOKEN_ROLE" not in missing
+        ):
+            invalid.append("TPP_ACCESS_TOKEN_ROLE")
         return cls(
             base_url=base_url,
             oidc_provider=oidc_provider,
+            access_token_role=access_token_role,
+            access_token_subject=access_token_subject,
             access_token_configured=bool(access_token),
             missing_config=missing,
+            invalid_config=invalid,
         )
 
     @property
     def is_ready(self) -> bool:
         """Return whether the required planner-facing config is present."""
 
-        return not self.missing_config
+        return not self.missing_config and not self.invalid_config
+
+    def ensure_valid(self) -> None:
+        """Raise a runtime error when the planner-facing config is not usable."""
+
+        if self.is_ready:
+            return
+        problems: list[str] = []
+        if self.missing_config:
+            problems.append("missing: " + ", ".join(sorted(self.missing_config)))
+        if self.invalid_config:
+            problems.append("invalid: " + ", ".join(sorted(self.invalid_config)))
+        supported_roles = ", ".join(_SUPPORTED_BOOTSTRAP_ROLES)
+        supported_providers = ", ".join(_SUPPORTED_OIDC_PROVIDERS)
+        raise PlannerRuntimeConfigError(
+            "Planner HTTP service runtime is misconfigured ("
+            + "; ".join(problems)
+            + f"). Supported TPP_ACCESS_TOKEN_ROLE values: {supported_roles}. "
+            + f"Supported TPP_OIDC_PROVIDER values: {supported_providers}."
+        )
 
 
-def _require_bearer_token(authorization: str | None) -> None:
-    expected = os.getenv("TPP_ACCESS_TOKEN")
-    if not expected:
+def _runtime_config_or_503() -> PlannerRuntimeConfig:
+    config = PlannerRuntimeConfig.from_env()
+    if not config.is_ready:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Planner access token is not configured.",
+            detail={
+                "message": "Planner runtime auth/config is not ready.",
+                "missing_config": config.missing_config,
+                "invalid_config": config.invalid_config,
+            },
         )
+    return config
+
+
+def _require_bearer_token(authorization: str | None, *, endpoint: str) -> None:
+    config = _runtime_config_or_503()
+    expected = os.getenv("TPP_ACCESS_TOKEN")
+    assert expected is not None
     if authorization is None or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -87,6 +147,17 @@ def _require_bearer_token(authorization: str | None) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid bearer token.",
+        )
+    assert config.access_token_subject is not None
+    assert config.access_token_role is not None
+    if not SecurityModel().authorize(
+        config.access_token_subject,
+        RoleName(config.access_token_role),
+        endpoint,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Configured bearer token is not authorized for this endpoint.",
         )
 
 
@@ -247,7 +318,10 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         request_body: PlannerPolicySnapshotHttpRequest | None = _OPTIONAL_SNAPSHOT_BODY,
         authorization: str | None = Header(default=None),
     ) -> PlannerPolicySnapshot:
-        _require_bearer_token(authorization)
+        _require_bearer_token(
+            authorization,
+            endpoint=PLANNER_POLICY_SNAPSHOT_ENDPOINT,
+        )
         trip_plan: TripPlan | None = None
         snapshot_request: PlannerPolicySnapshotRequest | None = None
 
@@ -291,7 +365,10 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         payload: PlannerProposalSubmissionHttpRequest,
         authorization: str | None = Header(default=None),
     ) -> PlannerProposalOperationResponse:
-        _require_bearer_token(authorization)
+        _require_bearer_token(
+            authorization,
+            endpoint=PLANNER_PROPOSAL_SUBMISSION_ENDPOINT,
+        )
         try:
             planner_response = submit_proposal(payload.trip_plan, payload.request)
         except ValueError as exc:
@@ -315,7 +392,10 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         execution_id: str,
         authorization: str | None = Header(default=None),
     ) -> PlannerProposalOperationResponse:
-        _require_bearer_token(authorization)
+        _require_bearer_token(
+            authorization,
+            endpoint=PLANNER_EXECUTION_STATUS_ENDPOINT,
+        )
         stored = proposal_store.lookup_submission(execution_id)
         if stored is None:
             raise HTTPException(
@@ -350,7 +430,10 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         execution_id: str,
         authorization: str | None = Header(default=None),
     ) -> PlannerProposalEvaluationResult:
-        _require_bearer_token(authorization)
+        _require_bearer_token(
+            authorization,
+            endpoint=PLANNER_EVALUATION_RESULT_ENDPOINT,
+        )
         stored = proposal_store.lookup_submission(execution_id)
         if stored is None:
             raise HTTPException(
@@ -394,9 +477,9 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = _build_parser()
     args = parser.parse_args(argv)
+    PlannerRuntimeConfig.from_env().ensure_valid()
     uvicorn.run(
-        "travel_plan_permission.http_service:create_app",
-        factory=True,
+        create_app(),
         host=args.host,
         port=args.port,
         reload=args.reload,

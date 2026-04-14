@@ -48,7 +48,9 @@ endpoint. The snapshot response itself publishes the auth contract:
 | Config | Required | Purpose |
 | --- | --- | --- |
 | `TPP_BASE_URL` | yes | Base URL for the TPP service |
-| `TPP_ACCESS_TOKEN` | yes | Bearer token presented to TPP |
+| `TPP_ACCESS_TOKEN` | yes | Bounded bootstrap bearer token presented to TPP for local/preview live tests |
+| `TPP_ACCESS_TOKEN_SUBJECT` | yes | Subject identity bound to the bootstrap token for endpoint authorization |
+| `TPP_ACCESS_TOKEN_ROLE` | yes | Role granted to the bootstrap token subject (`traveler`, `approver`, `finance_admin`, `policy_admin`, `system_admin`) |
 | `TPP_OIDC_PROVIDER` | yes | Identity provider name used to mint the bearer token |
 | `TPP_POLICY_SNAPSHOT_MAX_AGE_SECONDS` | no | Local cache TTL override for snapshot reuse |
 
@@ -61,6 +63,12 @@ When calling the planner snapshot seam, `trip-planner` should send:
 - `known_policy_version` when a cached snapshot already exists
 - `snapshot_generated_at` when the planner is re-checking a previously cached
   payload for freshness
+
+For local and preview live testing, the service treats `TPP_ACCESS_TOKEN` as a
+bounded bootstrap credential. Startup fails fast unless the token is paired
+with a configured subject and role, and each planner-facing endpoint still runs
+through the published endpoint permission map instead of bypassing
+authorization.
 
 TPP returns the auth guidance for the seam inside `snapshot.auth`, so the
 planner can compare its runtime config to the server-advertised contract.
