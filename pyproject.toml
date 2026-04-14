@@ -17,15 +17,18 @@ classifiers = [
 ]
 
 dependencies = [
+    "fastapi>=0.115.0",
     "pydantic>=2.0",
     "pyyaml>=6.0.2",
     "openpyxl>=3.1.5",
     "jinja2>=3.1.4",
     "reportlab>=4.4.10",
+    "uvicorn[standard]>=0.32.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff==0.15.1",
@@ -50,6 +53,7 @@ orchestration = [
 [project.scripts]
 fill-spreadsheet = "travel_plan_permission.cli:main"
 orchestration-demo = "travel_plan_permission.orchestration.example:main"
+tpp-planner-service = "travel_plan_permission.http_service:main"
 
 [build-system]
 requires = []

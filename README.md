@@ -46,6 +46,21 @@ To see usage information, run:
 fill-spreadsheet --help
 ```
 
+## Planner HTTP Service
+
+Run the planner-facing HTTP adapter locally:
+
+```bash
+export TPP_BASE_URL="http://127.0.0.1:8000"
+export TPP_ACCESS_TOKEN="dev-token"
+export TPP_OIDC_PROVIDER="google"
+tpp-planner-service --host 127.0.0.1 --port 8000
+```
+
+Use `GET /healthz` for a basic liveness check and `GET /readyz` to verify that
+the required planner-facing runtime configuration is present before exercising
+the planner routes.
+
 ## Documentation
 
 - [Policy API](docs/policy-api.md)
