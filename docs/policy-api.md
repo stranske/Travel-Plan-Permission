@@ -4,6 +4,10 @@ This document describes the stable policy API surface in
 `src/travel_plan_permission/policy_api.py` for use by the LangGraph
 orchestration layer and planner-facing integrations.
 
+For the operator-facing live service path, environment bootstrap, and blessed
+smoke workflow, see the
+[`Planner Live-Test Runbook`](./planner-live-test-runbook.md).
+
 ## Data Models
 
 ### TripPlan (input)
@@ -406,6 +410,8 @@ objects.
   when `versioning.compatible_with_planner_cache` is `false`.
 - The canonical request/response examples for this seam live in
   `tests/fixtures/planner_integration/`.
+- The source-of-truth live operator path for these endpoints lives in
+  [`docs/planner-live-test-runbook.md`](./planner-live-test-runbook.md).
 
 **Planner handshake**
 

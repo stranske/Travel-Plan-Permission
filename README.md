@@ -48,6 +48,9 @@ fill-spreadsheet --help
 
 ## Planner HTTP Service
 
+For the full local or preview live-test path, use the
+[`Planner Live-Test Runbook`](docs/planner-live-test-runbook.md).
+
 Run the planner-facing HTTP adapter locally:
 
 ```bash
@@ -88,7 +91,9 @@ evaluation-result retrieval.
 
 ## Documentation
 
+- [Planner Live-Test Runbook](docs/planner-live-test-runbook.md)
 - [Policy API](docs/policy-api.md)
+- [Planner Integration Contract](docs/contracts/planner-integration.md)
 - [LangGraph Quickstart](docs/langgraph_quickstart.md)
 
 ## Contributing

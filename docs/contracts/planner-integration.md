@@ -17,6 +17,10 @@ This document defines the planner-facing integration seam between
 The goal is to let `trip-planner` integrate without relying on undocumented
 headers, hidden cache rules, or ad hoc payload interpretation.
 
+For the operator-facing startup, auth bootstrap, and smoke-test procedure that
+drives this contract over a live HTTP service, see the
+[`Planner Live-Test Runbook`](../planner-live-test-runbook.md).
+
 ## Supported Flows
 
 The current first-pass contract supports these planner-facing flows:
