@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -268,7 +269,6 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
 
     @app.get("/api/planner/policy-snapshot", response_model=PlannerPolicySnapshot)
     def policy_snapshot(
-        response: Response,
         trip_id: str | None = Query(default=None),
         request_body: PlannerPolicySnapshotHttpRequest | None = _OPTIONAL_SNAPSHOT_BODY,
         authorization: str | None = Header(default=None),
@@ -301,9 +301,6 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         snapshot_request = snapshot_request or PlannerPolicySnapshotRequest(
             trip_id=trip_plan.trip_id
         )
-        readiness = _readiness_response()
-        if readiness.status != "ready":
-            response.headers["x-tpp-readiness"] = "misconfigured"
         try:
             return get_policy_snapshot(trip_plan, snapshot_request)
         except ValueError as exc:
@@ -432,7 +429,11 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = _build_parser()
     args = parser.parse_args(argv)
-    PlannerRuntimeConfig.from_env().ensure_valid()
+    try:
+        PlannerRuntimeConfig.from_env().ensure_valid()
+    except PlannerRuntimeConfigError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     uvicorn.run(
         "travel_plan_permission.http_service:create_app",
         factory=True,

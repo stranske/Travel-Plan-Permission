@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 
 from travel_plan_permission.http_service import (
     PlannerProposalStore,
-    PlannerRuntimeConfigError,
     create_app,
     main,
 )
@@ -213,22 +212,16 @@ def test_bootstrap_token_rejects_missing_create_permission(monkeypatch) -> None:
     assert "does not grant 'create'" in response.json()["detail"]
 
 
-def test_main_fails_fast_when_runtime_is_misconfigured(monkeypatch) -> None:
+def test_main_fails_fast_when_runtime_is_misconfigured(monkeypatch, capsys) -> None:
     monkeypatch.delenv("TPP_BASE_URL", raising=False)
     monkeypatch.delenv("TPP_ACCESS_TOKEN", raising=False)
     monkeypatch.delenv("TPP_OIDC_PROVIDER", raising=False)
     monkeypatch.delenv("TPP_AUTH_MODE", raising=False)
     monkeypatch.delenv("TPP_BOOTSTRAP_SIGNING_SECRET", raising=False)
 
-    try:
-        main([])
-    except PlannerRuntimeConfigError as exc:
-        message = str(exc)
-    else:
-        raise AssertionError("Expected PlannerRuntimeConfigError")
-
-    assert "missing:" in message
-    assert "TPP_AUTH_MODE" in message
+    exit_code = main([])
+    assert exit_code == 1
+    assert "missing:" in capsys.readouterr().err
 
 
 def test_snapshot_route_returns_bad_request_for_contract_mismatch(monkeypatch) -> None:
