@@ -69,7 +69,11 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-travel_plan_permission = ["config/*.yaml", "templates/*.xlsx"]
+travel_plan_permission = [
+    "config/*.yaml",
+    "templates/*.xlsx",
+    "fixtures/planner_integration/*.json",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

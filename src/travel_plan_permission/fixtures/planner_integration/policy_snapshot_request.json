@@ -1,0 +1,7 @@
+{
+  "trip_id": "TRIP-PLANNER-2001",
+  "requested_at": "2026-04-11T05:05:00Z",
+  "snapshot_generated_at": "2026-04-11T04:30:00Z",
+  "known_policy_version": "d7a6d25a",
+  "invalidate_reason": null
+}

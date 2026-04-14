@@ -32,35 +32,37 @@ def _run_live_service() -> Iterator[str]:
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind(("127.0.0.1", 0))
     server_socket.listen(2048)
-    port = int(server_socket.getsockname()[1])
-    base_url = f"http://127.0.0.1:{port}"
-    config = uvicorn.Config(
-        "travel_plan_permission.http_service:create_app",
-        factory=True,
-        host="127.0.0.1",
-        port=port,
-        log_level="warning",
-    )
-    server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, kwargs={"sockets": [server_socket]}, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-            probe.settimeout(0.25)
-            if probe.connect_ex(("127.0.0.1", port)) == 0:
-                break
-        time.sleep(0.05)
-    else:
-        server.should_exit = True
-        thread.join(timeout=10)
-        raise RuntimeError("Live planner HTTP service failed to start in time.")
-
+    server: uvicorn.Server | None = None
+    thread: threading.Thread | None = None
     try:
+        port = int(server_socket.getsockname()[1])
+        base_url = f"http://127.0.0.1:{port}"
+        config = uvicorn.Config(
+            "travel_plan_permission.http_service:create_app",
+            factory=True,
+            host="127.0.0.1",
+            port=port,
+            log_level="warning",
+        )
+        server = uvicorn.Server(config)
+        thread = threading.Thread(target=server.run, kwargs={"sockets": [server_socket]}, daemon=True)
+        thread.start()
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.settimeout(0.25)
+                if probe.connect_ex(("127.0.0.1", port)) == 0:
+                    break
+            time.sleep(0.05)
+        else:
+            raise RuntimeError("Live planner HTTP service failed to start in time.")
+
         yield base_url
     finally:
-        server.should_exit = True
-        thread.join(timeout=10)
+        if server is not None:
+            server.should_exit = True
+        if thread is not None:
+            thread.join(timeout=10)
         server_socket.close()
 
 
@@ -109,7 +111,7 @@ def test_planner_smoke_requires_base_url(
     assert "Planner smoke needs a service URL" in captured.err
 
 
-def test_planner_smoke_requires_repo_checkout_or_fixtures_override(
+def test_planner_smoke_fails_when_fixture_override_is_missing(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,

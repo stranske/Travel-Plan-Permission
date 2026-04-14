@@ -1,0 +1,47 @@
+{
+  "trip_id": "TRIP-PLANNER-2001",
+  "traveler_name": "Jordan Lee",
+  "traveler_role": "Program Manager",
+  "department": "Operations",
+  "destination": "Chicago, IL 60601",
+  "origin_city": "Austin, TX",
+  "destination_city": "Chicago, IL",
+  "departure_date": "2026-05-20",
+  "return_date": "2026-05-22",
+  "purpose": "Planner integration rehearsal",
+  "transportation_mode": "air",
+  "expected_costs": {
+    "airfare": 420.5,
+    "lodging": 610.0,
+    "meals": 160.0
+  },
+  "funding_source": "OPS-INT",
+  "estimated_cost": 1190.5,
+  "status": "submitted",
+  "expense_breakdown": {
+    "airfare": 420.5,
+    "lodging": 610.0,
+    "meals": 160.0
+  },
+  "selected_fare": 420.5,
+  "lowest_fare": 399.0,
+  "cabin_class": "economy",
+  "flight_duration_hours": 2.8,
+  "fare_evidence_attached": true,
+  "driving_cost": 280.0,
+  "flight_cost": 420.5,
+  "comparable_hotels": [
+    590.0,
+    610.0
+  ],
+  "overnight_stay": true,
+  "meals_provided": false,
+  "meal_per_diem_requested": true,
+  "selected_providers": {
+    "airfare": "Blue Skies Airlines",
+    "lodging": "Loop Business Hotel"
+  },
+  "validation_results": [],
+  "approval_history": [],
+  "exception_requests": []
+}
