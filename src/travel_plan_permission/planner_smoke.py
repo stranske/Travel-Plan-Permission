@@ -72,7 +72,8 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Directory containing planner integration JSON fixtures. "
-            f"Defaults to ${_FIXTURE_DIR_ENV} or the repo checkout fixtures."
+            f"Defaults to ${_FIXTURE_DIR_ENV} or the packaged fixtures under "
+            "travel_plan_permission/fixtures/planner_integration."
         ),
     )
     return parser
@@ -93,7 +94,7 @@ def _resolve_fixture_root(args: argparse.Namespace) -> Traversable | Path:
 
 
 def _load_fixture(fixture_root: Traversable | Path, name: str) -> dict[str, object]:
-    fixture_path = fixture_root / name
+    fixture_path = fixture_root.joinpath(name)
     try:
         payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:

@@ -43,20 +43,20 @@ def _run_live_service() -> Iterator[str]:
     )
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, kwargs={"sockets": [server_socket]}, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-            probe.settimeout(0.25)
-            if probe.connect_ex(("127.0.0.1", port)) == 0:
-                break
-        time.sleep(0.05)
-    else:
-        server.should_exit = True
-        thread.join(timeout=10)
-        raise RuntimeError("Live planner HTTP service failed to start in time.")
-
     try:
+        thread.start()
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.settimeout(0.25)
+                if probe.connect_ex(("127.0.0.1", port)) == 0:
+                    break
+            time.sleep(0.05)
+        else:
+            server.should_exit = True
+            thread.join(timeout=10)
+            raise RuntimeError("Live planner HTTP service failed to start in time.")
+
         yield base_url
     finally:
         server.should_exit = True
@@ -109,7 +109,7 @@ def test_planner_smoke_requires_base_url(
     assert "Planner smoke needs a service URL" in captured.err
 
 
-def test_planner_smoke_requires_repo_checkout_or_fixtures_override(
+def test_planner_smoke_requires_fixture_override_when_packaged_fixtures_are_missing(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
