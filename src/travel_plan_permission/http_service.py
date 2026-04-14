@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 import uvicorn
-from fastapi import Body, FastAPI, HTTPException, Query, Response, status
+from fastapi import Body, FastAPI, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from .models import TripPlan
@@ -31,6 +31,7 @@ _REQUIRED_PLANNER_ENV_VARS = (
     "TPP_ACCESS_TOKEN",
     "TPP_OIDC_PROVIDER",
 )
+_SUPPORTED_OIDC_PROVIDERS = ("azure_ad", "okta", "google")
 _OPTIONAL_SNAPSHOT_BODY = Body(default=None)
 
 
@@ -48,14 +49,14 @@ class PlannerRuntimeConfig(BaseModel):
         access_token = os.getenv("TPP_ACCESS_TOKEN")
         oidc_provider = os.getenv("TPP_OIDC_PROVIDER")
         missing = [
-            env_var
-            for env_var, value in (
-                ("TPP_BASE_URL", base_url),
-                ("TPP_ACCESS_TOKEN", access_token),
-                ("TPP_OIDC_PROVIDER", oidc_provider),
-            )
-            if not value
+            env_var for env_var in _REQUIRED_PLANNER_ENV_VARS if not os.getenv(env_var)
         ]
+        if (
+            oidc_provider
+            and oidc_provider not in _SUPPORTED_OIDC_PROVIDERS
+            and "TPP_OIDC_PROVIDER" not in missing
+        ):
+            missing.append("TPP_OIDC_PROVIDER")
         return cls(
             base_url=base_url,
             oidc_provider=oidc_provider,
@@ -68,6 +69,25 @@ class PlannerRuntimeConfig(BaseModel):
         """Return whether the required planner-facing config is present."""
 
         return not self.missing_config
+
+
+def _require_bearer_token(authorization: str | None) -> None:
+    expected = os.getenv("TPP_ACCESS_TOKEN")
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Planner access token is not configured.",
+        )
+    if authorization is None or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing bearer token.",
+        )
+    if authorization.removeprefix("Bearer ").strip() != expected:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid bearer token.",
+        )
 
 
 class PlannerReadinessResponse(BaseModel):
@@ -133,7 +153,9 @@ class PlannerProposalStore:
         self.remember_plan(trip_plan)
         execution_id = response.result_payload.get("execution_id")
         if not isinstance(execution_id, str):
-            return
+            raise ValueError(
+                "Planner proposal response missing required string execution_id"
+            )
         self.proposals_by_execution_id[execution_id] = StoredProposal(
             trip_plan=trip_plan.model_copy(deep=True),
             request=request.model_copy(deep=True),
@@ -223,7 +245,9 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         response: Response,
         trip_id: str | None = Query(default=None),
         request_body: PlannerPolicySnapshotHttpRequest | None = _OPTIONAL_SNAPSHOT_BODY,
+        authorization: str | None = Header(default=None),
     ) -> PlannerPolicySnapshot:
+        _require_bearer_token(authorization)
         trip_plan: TripPlan | None = None
         snapshot_request: PlannerPolicySnapshotRequest | None = None
 
@@ -251,7 +275,13 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         readiness = _readiness_response()
         if readiness.status != "ready":
             response.headers["x-tpp-readiness"] = "misconfigured"
-        return get_policy_snapshot(trip_plan, snapshot_request)
+        try:
+            return get_policy_snapshot(trip_plan, snapshot_request)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
 
     @app.post(
         "/api/planner/proposals",
@@ -259,8 +289,16 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     )
     def proposal_submission(
         payload: PlannerProposalSubmissionHttpRequest,
+        authorization: str | None = Header(default=None),
     ) -> PlannerProposalOperationResponse:
-        planner_response = submit_proposal(payload.trip_plan, payload.request)
+        _require_bearer_token(authorization)
+        try:
+            planner_response = submit_proposal(payload.trip_plan, payload.request)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
         proposal_store.record_submission(
             payload.trip_plan,
             payload.request,
@@ -275,7 +313,9 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     def proposal_status(
         proposal_id: str,
         execution_id: str,
+        authorization: str | None = Header(default=None),
     ) -> PlannerProposalOperationResponse:
+        _require_bearer_token(authorization)
         stored = proposal_store.lookup_submission(execution_id)
         if stored is None:
             raise HTTPException(
@@ -294,13 +334,23 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             proposal_id=proposal_id,
             execution_id=execution_id,
         )
-        return poll_execution_status(stored.trip_plan, status_request)
+        try:
+            return poll_execution_status(stored.trip_plan, status_request)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
 
     @app.get(
         "/api/planner/executions/{execution_id}/evaluation-result",
         response_model=PlannerProposalEvaluationResult,
     )
-    def evaluation_result(execution_id: str) -> PlannerProposalEvaluationResult:
+    def evaluation_result(
+        execution_id: str,
+        authorization: str | None = Header(default=None),
+    ) -> PlannerProposalEvaluationResult:
+        _require_bearer_token(authorization)
         stored = proposal_store.lookup_submission(execution_id)
         if stored is None:
             raise HTTPException(
@@ -308,7 +358,13 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 detail=f"No stored proposal found for execution_id '{execution_id}'.",
             )
         evaluation_request = _evaluation_request(stored, execution_id=execution_id)
-        return get_evaluation_result(stored.trip_plan, evaluation_request)
+        try:
+            return get_evaluation_result(stored.trip_plan, evaluation_request)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
 
     return app
 
