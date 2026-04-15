@@ -18,9 +18,25 @@ Each snapshot is stored as a compact JSON document (`<trip_id>/<timestamp>.json`
 
 - Snapshots are written whenever an approval decision is recorded (approved, rejected, flagged, or overridden) when a `ValidationSnapshotStore` is provided.
 - Captures include the exact validation results used for the decision; if they are missing, the policy validator is run automatically before writing the snapshot.
+- The portal admin runtime also records lightweight audit events for draft saves, manager-review submissions, manager decisions, exception requests and decisions, and artifact exports so the current request/review workflow can be inspected end to end from `/portal/admin`.
 
 ## Storage and integrity
 
 - Files are written immutably and chained by hash; any modification breaks the chain.
 - Snapshots are serialized with compact separators and rejected if they exceed 10KB to keep typical audit entries lightweight.
 - The comparison report (`compare_results`) highlights which rules changed between the original snapshot and a re-check under a new policy hash.
+
+## Shipped vs later audit scope
+
+Shipped now:
+
+- request draft + submission transitions
+- manager review history
+- exception workflow history
+- artifact export events from the current portal runtime
+
+Later hardening:
+
+- external append-only audit storage beyond the current runtime process
+- reimbursement settlement events from downstream accounting systems
+- retention and search controls for enterprise-scale audit archives

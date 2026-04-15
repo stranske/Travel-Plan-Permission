@@ -43,3 +43,13 @@ Use `build_exception_dashboard` to generate pattern summaries for dashboards:
 - `by_type`: counts by exception type
 - `by_requestor`: counts by requester
 - `by_approver`: counts completed approvals by approver
+
+## Current portal workflow
+
+The current shipped portal/admin surface supports a bounded exception loop:
+
+- Travelers can attach an exception request from the draft review summary before or after submission.
+- Review-capable roles can inspect pending exceptions from `/portal/admin` and from the manager review detail page.
+- Approve-capable roles can record approve/reject decisions, and those actions are reflected in the runtime audit trail, including any supplied notes.
+
+This is intentionally narrower than a full enterprise exception-management platform. Bulk workflow routing, durable inboxes, and downstream reimbursement settlement handling remain later work.

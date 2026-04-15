@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Portal Admin Console</title>
+    <style>
+      :root {
+        --ink: #122432;
+        --muted: #5b7280;
+        --paper: rgba(255, 255, 255, 0.93);
+        --line: rgba(18, 36, 50, 0.14);
+        --shadow: 0 24px 64px rgba(18, 36, 50, 0.14);
+        --accent: #184d47;
+        --accent-soft: rgba(24, 77, 71, 0.12);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+        background:
+          radial-gradient(circle at top right, rgba(24, 77, 71, 0.12), transparent 32%),
+          linear-gradient(135deg, #f8f1e8 0%, #dfe9ef 100%);
+      }
+      main { max-width: 1240px; margin: 0 auto; padding: 36px 18px 72px; }
+      .layout { display: grid; gap: 20px; grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr); }
+      .panel, .card {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+      }
+      .panel { padding: 24px; }
+      .card { padding: 18px; }
+      h1, h2, h3, p { margin: 0; }
+      p { color: var(--muted); line-height: 1.52; }
+      .stack, .list { display: grid; gap: 16px; }
+      .topbar, .actions, .meta { display: flex; gap: 12px; flex-wrap: wrap; }
+      .topbar { justify-content: space-between; align-items: center; margin-bottom: 20px; }
+      .badge, .link, button {
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 999px; padding: 10px 14px; text-decoration: none;
+      }
+      .badge { background: var(--accent-soft); color: var(--accent); font: 600 0.82rem/1 ui-monospace, Menlo, monospace; }
+      .link, button { border: 1px solid var(--line); background: white; color: var(--ink); font: 700 0.92rem/1 inherit; }
+      button.primary { background: var(--ink); color: white; }
+      .meta { color: var(--muted); font-size: 0.92rem; }
+      code { font-family: ui-monospace, Menlo, monospace; }
+      label { display: grid; gap: 8px; }
+      select, input, textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 14px;
+        font: inherit;
+      }
+      textarea { min-height: 90px; resize: vertical; }
+      ul { margin: 10px 0 0; padding-left: 18px; color: var(--muted); }
+      li + li { margin-top: 8px; }
+      @media (max-width: 980px) {
+        .layout { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="topbar">
+        <div>
+          <h1>Portal admin console</h1>
+          <p style="margin-top: 10px;">Current runtime posture, role-view review actions, exception decisions, and audit history.</p>
+        </div>
+        <div class="actions">
+          <a class="link" href="/portal">Portal home</a>
+          <a class="link" href="/portal/manager/reviews?actor_role={{ role_view.role.value }}">Review queue</a>
+        </div>
+      </div>
+
+      <div class="layout">
+        <aside class="stack">
+          <section class="panel">
+            <h2>Role view simulation</h2>
+            <form method="get" action="/portal/admin" style="margin-top: 16px;">
+              <div class="stack">
+                <label>
+                  <span>Simulated role</span>
+                  <select name="actor_role">
+                    {% for role in available_roles %}
+                      <option value="{{ role.value }}" {% if role == role_view.role %}selected{% endif %}>{{ role.value }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <div class="actions">
+                  <button type="submit">Change role view</button>
+                </div>
+              </div>
+            </form>
+            <div class="meta" style="margin-top: 16px;">
+              <span class="badge">{{ role_view.role.value }}</span>
+              {% for permission in role_view.permissions %}
+                <span><code>{{ permission.value }}</code></span>
+              {% endfor %}
+            </div>
+            <p style="margin-top: 12px;">
+              Authenticated token permissions:
+              {% for permission in actor_permissions %}
+                <code>{{ permission.value }}</code>{% if not loop.last %}, {% endif %}
+              {% else %}
+                <code>none</code>
+              {% endfor %}.
+            </p>
+          </section>
+
+          <section class="panel">
+            <h2>Auth/runtime posture</h2>
+            <ul>
+              <li>Auth mode: <code>{{ runtime_config.auth_mode or "unconfigured" }}</code></li>
+              <li>OIDC provider: <code>{{ runtime_config.oidc_provider or "unconfigured" }}</code></li>
+              <li>Access token configured: <strong>{{ runtime_config.access_token_configured }}</strong></li>
+              <li>Bootstrap secret configured: <strong>{{ runtime_config.bootstrap_secret_configured }}</strong></li>
+            </ul>
+          </section>
+        </aside>
+
+        <section class="stack">
+          <section class="panel">
+            <h2>Manager review queue</h2>
+            <div class="list" style="margin-top: 16px;">
+              {% for review in reviews %}
+                <article class="card">
+                  <div class="topbar">
+                    <div>
+                      <h3>{{ review.trip_plan.traveler_name }} to {{ review.trip_plan.destination }}</h3>
+                      <p style="margin-top: 8px;">{{ review.trip_plan.purpose }}</p>
+                    </div>
+                    <span class="badge">{{ review.status.value }}</span>
+                  </div>
+                  <div class="meta">
+                    <span>Draft {{ review.draft_id }}</span>
+                    <span>Trip {{ review.trip_plan.trip_id }}</span>
+                  </div>
+                  <div class="actions" style="margin-top: 14px;">
+                    <a class="link" href="/portal/manager/reviews/{{ review.review_id }}?actor_role={{ role_view.role.value }}">Open review detail</a>
+                    {% if role_can_approve %}
+                      <span class="badge">approval actions enabled</span>
+                    {% else %}
+                      <span class="badge">read-only</span>
+                    {% endif %}
+                  </div>
+                </article>
+              {% else %}
+                <article class="card">
+                  <h3>No manager reviews yet</h3>
+                </article>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>Exception review queue</h2>
+            <div class="list" style="margin-top: 16px;">
+              {% for entry in exception_entries %}
+                <article class="card">
+                  <div class="topbar">
+                    <div>
+                      <h3>{{ entry.request.type.value }}</h3>
+                      <p style="margin-top: 8px;">{{ entry.traveler_name or "Unknown traveler" }}{% if entry.destination %} to {{ entry.destination }}{% endif %}</p>
+                    </div>
+                    <span class="badge">{{ entry.request.status.value }}</span>
+                  </div>
+                  <div class="meta">
+                    <span>Draft {{ entry.draft_id }}</span>
+                    {% if entry.review_id %}<span>Review {{ entry.review_id }}</span>{% endif %}
+                    {% if entry.request.approval_level %}<span>{{ entry.request.approval_level.value }}</span>{% endif %}
+                  </div>
+                  <p style="margin-top: 10px;">{{ entry.request.justification }}</p>
+                  {% if role_can_approve and entry.request.status.value == "pending" %}
+                    <form method="post" action="/portal/admin/exceptions/{{ entry.draft_id }}/{{ entry.exception_index }}/decision?actor_role={{ role_view.role.value }}" style="margin-top: 14px;">
+                      <div class="stack">
+                        <label>
+                          <span>Actor ID</span>
+                          <input name="actor_id" value="admin-1" />
+                        </label>
+                        <label>
+                          <span>Decision</span>
+                          <select name="decision">
+                            <option value="approve">approve</option>
+                            <option value="reject">reject</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span>Notes</span>
+                          <textarea name="notes" placeholder="Summarize the exception disposition."></textarea>
+                        </label>
+                        <div class="actions">
+                          <button class="primary" type="submit">Save exception decision</button>
+                        </div>
+                      </div>
+                    </form>
+                  {% endif %}
+                </article>
+              {% else %}
+                <article class="card">
+                  <h3>No exception requests yet</h3>
+                </article>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>Audit history</h2>
+            <ul>
+              {% for event in audit_events %}
+                <li>{{ event.timestamp.isoformat() }}: {{ event.event_type.value }} · {{ event.outcome }} by {{ event.actor }}{% if event.subject %} on {{ event.subject }}{% endif %}</li>
+              {% else %}
+                <li>No audit events recorded yet.</li>
+              {% endfor %}
+            </ul>
+          </section>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

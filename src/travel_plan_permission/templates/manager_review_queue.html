@@ -53,8 +53,15 @@
           <div>
             <h1>Manager review queue</h1>
             <p style="margin-top: 10px;">Submitted browser requests stay here with policy posture and decision history until a manager acts.</p>
+            <p style="margin-top: 10px;">
+              Role view simulation: <strong>{{ role_view.role.value }}</strong>, showing
+              {% for permission in role_view.permissions %}<code>{{ permission.value }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
+            </p>
           </div>
-          <a class="link" href="/portal">Portal home</a>
+          <div class="row">
+            <a class="link" href="/portal/admin?actor_role={{ role_view.role.value }}">Admin console</a>
+            <a class="link" href="/portal">Portal home</a>
+          </div>
         </div>
 
         {% if reviews %}
