@@ -71,6 +71,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 travel_plan_permission = [
     "config/*.yaml",
+    "templates/*.html",
     "templates/*.xlsx",
     "fixtures/planner_integration/*.json",
 ]

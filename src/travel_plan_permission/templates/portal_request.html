@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Travel Request Portal</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f3efe8;
+        --panel: #fffdf9;
+        --panel-alt: #f8f4ee;
+        --ink: #22211f;
+        --muted: #6b6258;
+        --accent: #0c5c57;
+        --accent-soft: #dff1ef;
+        --warning: #7d4e00;
+        --warning-soft: #ffefcf;
+        --danger: #a2271b;
+        --danger-soft: #f8dad6;
+        --border: #d8cbbd;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top, #ffffff 0%, var(--bg) 55%);
+        color: var(--ink);
+        font-family: Georgia, "Times New Roman", serif;
+      }
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 2rem 1rem 3rem;
+      }
+      .masthead {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: end;
+        margin-bottom: 1rem;
+      }
+      .masthead a {
+        color: var(--accent);
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.9fr);
+        gap: 1rem;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        box-shadow: 0 12px 32px rgba(35, 29, 18, 0.08);
+        padding: 1.25rem;
+      }
+      .panel.alt {
+        background: var(--panel-alt);
+      }
+      .stack {
+        display: grid;
+        gap: 1rem;
+      }
+      .field-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.9rem;
+      }
+      .field {
+        display: grid;
+        gap: 0.35rem;
+      }
+      .field.full {
+        grid-column: 1 / -1;
+      }
+      label {
+        font-size: 0.95rem;
+        font-weight: 700;
+      }
+      input,
+      textarea,
+      select {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 0.7rem 0.8rem;
+        font: inherit;
+        background: white;
+      }
+      textarea {
+        min-height: 5rem;
+        resize: vertical;
+      }
+      .hint {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .actions {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+      }
+      button,
+      .button-link {
+        appearance: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 0.8rem 1.15rem;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      button.primary,
+      .button-link.primary {
+        background: var(--accent);
+        color: white;
+      }
+      .button-link.secondary {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      .callout {
+        border-radius: 16px;
+        padding: 0.95rem 1rem;
+      }
+      .callout.warning {
+        background: var(--warning-soft);
+        color: var(--warning);
+      }
+      .callout.danger {
+        background: var(--danger-soft);
+        color: var(--danger);
+      }
+      .callout.success {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      ul {
+        margin: 0.6rem 0 0;
+        padding-left: 1.2rem;
+      }
+      dl {
+        margin: 0;
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 0.4rem 0.75rem;
+      }
+      dt {
+        font-weight: 700;
+      }
+      .artifact-list,
+      .question-list,
+      .issue-list {
+        display: grid;
+        gap: 0.8rem;
+      }
+      .artifact,
+      .question,
+      .issue {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 0.8rem;
+        background: white;
+      }
+      .status-pill {
+        display: inline-block;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 0.9rem;
+      }
+      @media (max-width: 900px) {
+        .layout,
+        .field-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="masthead">
+        <div>
+          <p class="hint">Workflow Lite Portal</p>
+          <h1>Travel request submission shell</h1>
+        </div>
+        <a href="{{ request.url_for('portal_home') }}">Portal home</a>
+      </div>
+
+      <div class="layout">
+        <section class="panel">
+          <h2>Request draft</h2>
+          <p class="hint">
+            Complete the canonical travel fields that already back the package,
+            then review policy readiness before submit.
+          </p>
+
+          <form method="post" action="{{ request.url_for('portal_request_review') }}">
+            <div class="field-grid">
+              <div class="field">
+                <label for="traveler_name">Traveler name</label>
+                <input id="traveler_name" name="traveler_name" value="{{ answers.get('traveler_name', '') }}" required />
+              </div>
+              <div class="field">
+                <label for="cost_center">Cost center</label>
+                <input id="cost_center" name="cost_center" value="{{ answers.get('cost_center', '') }}" />
+              </div>
+              <div class="field full">
+                <label for="business_purpose">Business purpose</label>
+                <textarea id="business_purpose" name="business_purpose" required>{{ answers.get('business_purpose', '') }}</textarea>
+              </div>
+              <div class="field">
+                <label for="city_state">Destination city/state</label>
+                <input id="city_state" name="city_state" value="{{ answers.get('city_state', '') }}" required />
+              </div>
+              <div class="field">
+                <label for="destination_zip">Destination ZIP</label>
+                <input id="destination_zip" name="destination_zip" value="{{ answers.get('destination_zip', '') }}" required />
+              </div>
+              <div class="field">
+                <label for="depart_date">Departure date</label>
+                <input id="depart_date" type="date" name="depart_date" value="{{ answers.get('depart_date', '') }}" required />
+              </div>
+              <div class="field">
+                <label for="return_date">Return date</label>
+                <input id="return_date" type="date" name="return_date" value="{{ answers.get('return_date', '') }}" required />
+              </div>
+              <div class="field">
+                <label for="event_registration_cost">Registration cost</label>
+                <input id="event_registration_cost" name="event_registration_cost" value="{{ answers.get('event_registration_cost', '') }}" />
+              </div>
+              <div class="field">
+                <label for="parking_estimate">Parking estimate</label>
+                <input id="parking_estimate" name="parking_estimate" value="{{ answers.get('parking_estimate', '') }}" />
+              </div>
+              <div class="field">
+                <label for="ground_transport_pref">Ground transport</label>
+                <select id="ground_transport_pref" name="ground_transport_pref">
+                  <option value="">Select one</option>
+                  {% for option in ground_transport_options %}
+                  <option value="{{ option }}" {% if answers.get('ground_transport_pref') == option %}selected{% endif %}>{{ option }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="field">
+                <label for="lowest_cost_roundtrip">Lowest roundtrip fare</label>
+                <input id="lowest_cost_roundtrip" name="lowest_cost_roundtrip" value="{{ answers.get('lowest_cost_roundtrip', '') }}" />
+              </div>
+              <div class="field">
+                <label for="flight_pref_outbound.carrier_flight">Outbound flight</label>
+                <input id="flight_pref_outbound.carrier_flight" name="flight_pref_outbound.carrier_flight" value="{{ answers.get('flight_pref_outbound.carrier_flight', '') }}" />
+              </div>
+              <div class="field">
+                <label for="flight_pref_outbound.roundtrip_cost">Chosen fare</label>
+                <input id="flight_pref_outbound.roundtrip_cost" name="flight_pref_outbound.roundtrip_cost" value="{{ answers.get('flight_pref_outbound.roundtrip_cost', '') }}" />
+              </div>
+              <div class="field">
+                <label for="flight_pref_outbound.depart_time">Outbound depart</label>
+                <input id="flight_pref_outbound.depart_time" name="flight_pref_outbound.depart_time" value="{{ answers.get('flight_pref_outbound.depart_time', '') }}" />
+              </div>
+              <div class="field">
+                <label for="flight_pref_outbound.arrive_time">Outbound arrive</label>
+                <input id="flight_pref_outbound.arrive_time" name="flight_pref_outbound.arrive_time" value="{{ answers.get('flight_pref_outbound.arrive_time', '') }}" />
+              </div>
+              <div class="field">
+                <label for="flight_pref_return.carrier_flight">Return flight</label>
+                <input id="flight_pref_return.carrier_flight" name="flight_pref_return.carrier_flight" value="{{ answers.get('flight_pref_return.carrier_flight', '') }}" />
+              </div>
+              <div class="field">
+                <label for="flight_pref_return.depart_time">Return depart</label>
+                <input id="flight_pref_return.depart_time" name="flight_pref_return.depart_time" value="{{ answers.get('flight_pref_return.depart_time', '') }}" />
+              </div>
+              <div class="field">
+                <label for="flight_pref_return.arrive_time">Return arrive</label>
+                <input id="flight_pref_return.arrive_time" name="flight_pref_return.arrive_time" value="{{ answers.get('flight_pref_return.arrive_time', '') }}" />
+              </div>
+              <div class="field">
+                <label for="hotel.name">Hotel name</label>
+                <input id="hotel.name" name="hotel.name" value="{{ answers.get('hotel.name', '') }}" />
+              </div>
+              <div class="field">
+                <label for="hotel.address">Hotel address</label>
+                <input id="hotel.address" name="hotel.address" value="{{ answers.get('hotel.address', '') }}" />
+              </div>
+              <div class="field">
+                <label for="hotel.city_state">Hotel city/state</label>
+                <input id="hotel.city_state" name="hotel.city_state" value="{{ answers.get('hotel.city_state', '') }}" />
+              </div>
+              <div class="field">
+                <label for="hotel.nightly_rate">Nightly rate</label>
+                <input id="hotel.nightly_rate" name="hotel.nightly_rate" value="{{ answers.get('hotel.nightly_rate', '') }}" />
+              </div>
+              <div class="field">
+                <label for="hotel.nights">Nights</label>
+                <input id="hotel.nights" name="hotel.nights" value="{{ answers.get('hotel.nights', '') }}" />
+              </div>
+              <div class="field">
+                <label for="hotel.conference_hotel">Conference hotel</label>
+                <select id="hotel.conference_hotel" name="hotel.conference_hotel">
+                  <option value="">Select one</option>
+                  <option value="true" {% if answers.get('hotel.conference_hotel') is sameas true %}selected{% endif %}>Yes</option>
+                  <option value="false" {% if answers.get('hotel.conference_hotel') is sameas false %}selected{% endif %}>No</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="hotel.price_compare_notes">Hotel comparison notes</label>
+                <textarea id="hotel.price_compare_notes" name="hotel.price_compare_notes">{{ answers.get('hotel.price_compare_notes', '') }}</textarea>
+              </div>
+              <div class="field">
+                <label for="comparable_hotels[0].name">Comparable hotel</label>
+                <input id="comparable_hotels[0].name" name="comparable_hotels[0].name" value="{{ answers.get('comparable_hotels[0].name', '') }}" />
+              </div>
+              <div class="field">
+                <label for="comparable_hotels[0].nightly_rate">Comparable rate</label>
+                <input id="comparable_hotels[0].nightly_rate" name="comparable_hotels[0].nightly_rate" value="{{ answers.get('comparable_hotels[0].nightly_rate', '') }}" />
+              </div>
+              <div class="field full">
+                <label for="notes">Notes</label>
+                <textarea id="notes" name="notes">{{ answers.get('notes', '') }}</textarea>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="primary" type="submit">Review request</button>
+              {% if review %}
+              <a class="button-link secondary" href="{{ request.url_for('portal_request_detail', draft_id=review.draft_id) }}">Permalink to this draft</a>
+              {% endif %}
+            </div>
+          </form>
+        </section>
+
+        <aside class="stack">
+          <section class="panel alt">
+            <h2>Review</h2>
+            {% if review is none %}
+            <p class="hint">Draft a request to see readiness, artifacts, and submit controls.</p>
+            {% else %}
+            <dl>
+              <dt>Draft</dt>
+              <dd>{{ review.draft_id }}</dd>
+              <dt>Status</dt>
+              <dd>
+                {% if review.missing_fields %}
+                <span class="status-pill">Needs input</span>
+                {% elif review.validation_errors %}
+                <span class="status-pill">Fix field formats</span>
+                {% elif review.trip_plan %}
+                <span class="status-pill">Ready for submit</span>
+                {% endif %}
+              </dd>
+              {% if review.trip_plan %}
+              <dt>Trip ID</dt>
+              <dd>{{ review.trip_plan.trip_id }}</dd>
+              {% endif %}
+            </dl>
+            {% endif %}
+          </section>
+
+          {% if review and review.missing_fields %}
+          <section class="panel callout warning">
+            <strong>Missing required inputs</strong>
+            <ul>
+              {% for field_name in review.missing_fields %}
+              <li>{{ field_name }}</li>
+              {% endfor %}
+            </ul>
+          </section>
+          {% endif %}
+
+          {% if review and review.validation_errors %}
+          <section class="panel callout danger">
+            <strong>Canonical validation errors</strong>
+            <ul>
+              {% for error in review.validation_errors %}
+              <li>{{ error }}</li>
+              {% endfor %}
+            </ul>
+          </section>
+          {% endif %}
+
+          {% if review and review.next_questions %}
+          <section class="panel">
+            <h2>Next intake questions</h2>
+            <div class="question-list">
+              {% for question in review.next_questions %}
+              <div class="question">
+                <strong>{{ question.prompt }}</strong>
+                <div class="hint">Fields: {{ question.fields }}</div>
+              </div>
+              {% endfor %}
+            </div>
+          </section>
+          {% endif %}
+
+          {% if review and review.policy_snapshot %}
+          <section class="panel">
+            <h2>Policy readiness</h2>
+            <p>
+              <strong>Status:</strong> {{ review.policy_snapshot.policy_status }}
+            </p>
+            <p>
+              <strong>Policy version:</strong>
+              {{ review.policy_snapshot.versioning.policy_version[:12] }}
+            </p>
+            {% if review.policy_result and review.policy_result.issues %}
+            <div class="issue-list">
+              {% for issue in review.policy_result.issues %}
+              <div class="issue">
+                <strong>{{ issue.code }}</strong>
+                <div>{{ issue.message }}</div>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="hint">No blocking or advisory issues from the current policy snapshot.</p>
+            {% endif %}
+          </section>
+
+          <section class="panel">
+            <h2>Generated artifacts</h2>
+            <div class="artifact-list">
+              {% for artifact_name, artifact in review.artifacts.items() %}
+              <div class="artifact">
+                <strong>{{ artifact.filename }}</strong>
+                <div class="hint">{{ artifact.media_type }} · {{ artifact.content|length }} bytes</div>
+                <a href="{{ request.url_for('portal_artifact', draft_id=review.draft_id, artifact_name=artifact_name) }}">Download</a>
+              </div>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>Submit request</h2>
+            <form method="post" action="{{ request.url_for('portal_submit_request', draft_id=review.draft_id) }}">
+              <button class="primary" type="submit">Submit through proposal seam</button>
+            </form>
+            {% if review.submission_response %}
+            <div class="callout success" style="margin-top: 1rem;">
+              <strong>Submitted.</strong>
+              Request {{ review.submission_response.request_id }} is now
+              {{ review.submission_response.submission_status }}.
+            </div>
+            {% endif %}
+          </section>
+          {% endif %}
+        </aside>
+      </div>
+    </main>
+  </body>
+</html>

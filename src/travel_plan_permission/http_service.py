@@ -6,11 +6,18 @@ import argparse
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs
+from uuid import uuid4
 
 import uvicorn
-from fastapi import Body, FastAPI, Header, HTTPException, Query, Response, status
-from pydantic import BaseModel, Field
+from fastapi import Body, FastAPI, Header, HTTPException, Query, Request, Response, status
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field, ValidationError
 
+from .canonical import CanonicalTripPlan, canonical_trip_plan_to_model
 from .models import TripPlan
 from .planner_auth import PlannerAuthConfig, authenticate_request
 from .policy_api import (
@@ -21,14 +28,110 @@ from .policy_api import (
     PlannerProposalOperationResponse,
     PlannerProposalStatusRequest,
     PlannerProposalSubmissionRequest,
+    check_trip_plan,
     get_evaluation_result,
     get_policy_snapshot,
     poll_execution_status,
+    render_travel_spreadsheet_bytes,
     submit_proposal,
 )
+from .prompt_flow import build_output_bundle, generate_questions, required_field_gaps
 from .security import Permission
 
 _OPTIONAL_SNAPSHOT_BODY = Body(default=None)
+_TEMPLATES = Jinja2Templates(
+    directory=str(Path(__file__).resolve().parent / "templates")
+)
+_PORTAL_FIELDS: tuple[str, ...] = (
+    "traveler_name",
+    "business_purpose",
+    "cost_center",
+    "destination_zip",
+    "city_state",
+    "depart_date",
+    "return_date",
+    "event_registration_cost",
+    "flight_pref_outbound.carrier_flight",
+    "flight_pref_outbound.depart_time",
+    "flight_pref_outbound.arrive_time",
+    "flight_pref_outbound.roundtrip_cost",
+    "flight_pref_return.carrier_flight",
+    "flight_pref_return.depart_time",
+    "flight_pref_return.arrive_time",
+    "lowest_cost_roundtrip",
+    "parking_estimate",
+    "hotel.name",
+    "hotel.address",
+    "hotel.city_state",
+    "hotel.nightly_rate",
+    "hotel.nights",
+    "hotel.conference_hotel",
+    "hotel.price_compare_notes",
+    "comparable_hotels[0].name",
+    "comparable_hotels[0].nightly_rate",
+    "ground_transport_pref",
+    "notes",
+)
+_PORTAL_OPTIONAL_FIELDS = {
+    "cost_center",
+    "event_registration_cost",
+    "flight_pref_outbound.carrier_flight",
+    "flight_pref_outbound.depart_time",
+    "flight_pref_outbound.arrive_time",
+    "flight_pref_outbound.roundtrip_cost",
+    "flight_pref_return.carrier_flight",
+    "flight_pref_return.depart_time",
+    "flight_pref_return.arrive_time",
+    "lowest_cost_roundtrip",
+    "parking_estimate",
+    "hotel.name",
+    "hotel.address",
+    "hotel.city_state",
+    "hotel.nightly_rate",
+    "hotel.nights",
+    "hotel.conference_hotel",
+    "hotel.price_compare_notes",
+    "comparable_hotels[0].name",
+    "comparable_hotels[0].nightly_rate",
+    "ground_transport_pref",
+    "notes",
+}
+_PORTAL_BOOLEAN_FIELDS = {"hotel.conference_hotel"}
+
+
+@dataclass(frozen=True)
+class PortalDraft:
+    """Stored portal draft answers for request review and submission."""
+
+    draft_id: str
+    answers: dict[str, object]
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class PortalArtifact:
+    """Generated portal artifact metadata and payload."""
+
+    filename: str
+    content: bytes
+    media_type: str
+
+
+@dataclass(frozen=True)
+class PortalReviewState:
+    """Computed portal review context derived from a draft."""
+
+    draft_id: str
+    answers: dict[str, object]
+    missing_fields: list[str]
+    next_questions: list[dict[str, object]]
+    validation_errors: list[str]
+    canonical_payload: dict[str, object] | None
+    trip_plan: TripPlan | None
+    policy_snapshot: PlannerPolicySnapshot | None
+    policy_result: Any | None
+    artifacts: dict[str, PortalArtifact]
+    submission_response: PlannerProposalOperationResponse | None = None
 
 
 class PlannerRuntimeConfigError(RuntimeError):
@@ -155,6 +258,7 @@ class PlannerProposalStore:
 
     plans_by_trip_id: dict[str, TripPlan] = field(default_factory=dict)
     proposals_by_execution_id: dict[str, StoredProposal] = field(default_factory=dict)
+    portal_drafts_by_id: dict[str, PortalDraft] = field(default_factory=dict)
 
     def remember_plan(self, trip_plan: TripPlan) -> None:
         """Store the latest planner trip payload by trip identifier."""
@@ -201,6 +305,29 @@ class PlannerProposalStore:
             response=stored.response.model_copy(deep=True),
         )
 
+    def save_portal_draft(self, answers: dict[str, object]) -> PortalDraft:
+        """Persist portal answers so a review route can be revisited."""
+
+        draft = PortalDraft(
+            draft_id=uuid4().hex[:12],
+            answers=dict(answers),
+            updated_at=datetime.now(UTC),
+        )
+        self.portal_drafts_by_id[draft.draft_id] = draft
+        return draft
+
+    def lookup_portal_draft(self, draft_id: str) -> PortalDraft | None:
+        """Return a previously stored portal draft by identifier."""
+
+        draft = self.portal_drafts_by_id.get(draft_id)
+        if draft is None:
+            return None
+        return PortalDraft(
+            draft_id=draft.draft_id,
+            answers=dict(draft.answers),
+            updated_at=draft.updated_at,
+        )
+
 
 def _readiness_response() -> PlannerReadinessResponse:
     config = PlannerRuntimeConfig.from_env()
@@ -242,6 +369,192 @@ def _evaluation_request(
     )
 
 
+def _normalize_portal_value(field_name: str, raw_value: str) -> object | None:
+    value = raw_value.strip()
+    if not value:
+        return None
+    if field_name in _PORTAL_BOOLEAN_FIELDS:
+        normalized = value.casefold()
+        if normalized in {"true", "yes", "on", "1"}:
+            return True
+        if normalized in {"false", "no", "off", "0"}:
+            return False
+    return value
+
+
+def _portal_answers_from_form(request: Request) -> dict[str, object]:
+    answers: dict[str, object] = {}
+    for field_name in _PORTAL_FIELDS:
+        raw_value = request.query_params.get(field_name)
+        if raw_value is None:
+            continue
+        normalized = _normalize_portal_value(field_name, raw_value)
+        if normalized is None:
+            continue
+        answers[field_name] = normalized
+    return answers
+
+
+def _portal_answers_from_encoded_body(body: bytes) -> dict[str, object]:
+    answers: dict[str, object] = {}
+    parsed = parse_qs(body.decode("utf-8"), keep_blank_values=False)
+    for field_name in _PORTAL_FIELDS:
+        values = parsed.get(field_name)
+        if not values:
+            continue
+        normalized = _normalize_portal_value(field_name, values[-1])
+        if normalized is None:
+            continue
+        answers[field_name] = normalized
+    return answers
+
+
+def _canonical_payload_from_answers(answers: dict[str, object]) -> dict[str, object]:
+    payload: dict[str, object] = {"type": "trip"}
+    for field_name in _PORTAL_FIELDS:
+        value = answers.get(field_name)
+        if value is None:
+            continue
+        segments = field_name.split(".")
+        current: dict[str, object] = payload
+        for index, segment in enumerate(segments):
+            is_last = index == len(segments) - 1
+            if "[" in segment and segment.endswith("]"):
+                container_name, item_index_text = segment[:-1].split("[", 1)
+                item_index = int(item_index_text)
+                existing = current.get(container_name)
+                if not isinstance(existing, list):
+                    existing = []
+                    current[container_name] = existing
+                while len(existing) <= item_index:
+                    existing.append({})
+                if is_last:
+                    existing[item_index] = value
+                    continue
+                next_value = existing[item_index]
+                if not isinstance(next_value, dict):
+                    next_value = {}
+                    existing[item_index] = next_value
+                current = next_value
+                continue
+            if is_last:
+                current[segment] = value
+            else:
+                next_value = current.get(segment)
+                if not isinstance(next_value, dict):
+                    next_value = {}
+                    current[segment] = next_value
+                current = next_value
+    return payload
+
+
+def _review_validation_errors(exc: ValidationError) -> list[str]:
+    errors: list[str] = []
+    for error in exc.errors():
+        location = ".".join(str(part) for part in error["loc"])
+        errors.append(f"{location}: {error['msg']}")
+    return errors
+
+
+def _portal_artifacts(
+    *,
+    canonical: CanonicalTripPlan,
+    plan: TripPlan,
+    answers: dict[str, object],
+) -> dict[str, PortalArtifact]:
+    itinerary_excel = render_travel_spreadsheet_bytes(plan, canonical_plan=canonical)
+    bundle = build_output_bundle(itinerary_excel=itinerary_excel, answers=answers)
+    summary_payload = bundle["summary_pdf"]
+    assert isinstance(summary_payload, dict)
+    return {
+        "itinerary": PortalArtifact(
+            filename=str(bundle["itinerary_excel"]["filename"]),
+            content=itinerary_excel,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+        "summary": PortalArtifact(
+            filename=str(summary_payload["filename"]),
+            content=bytes(summary_payload["content"]),
+            media_type=str(summary_payload["mime_type"]),
+        ),
+    }
+
+
+def _portal_review_state(
+    draft_id: str,
+    answers: dict[str, object],
+    *,
+    submission_response: PlannerProposalOperationResponse | None = None,
+) -> PortalReviewState:
+    missing_fields = required_field_gaps(answers)
+    next_questions = [
+        {
+            "prompt": question.prompt,
+            "fields": ", ".join(question.fields),
+            "kind": question.kind,
+        }
+        for question in generate_questions(answers, max_questions=4)
+    ]
+    validation_errors: list[str] = []
+    canonical_payload: dict[str, object] | None = None
+    trip_plan: TripPlan | None = None
+    policy_snapshot: PlannerPolicySnapshot | None = None
+    policy_result: Any | None = None
+    artifacts: dict[str, PortalArtifact] = {}
+
+    if not missing_fields:
+        canonical_payload = _canonical_payload_from_answers(answers)
+        try:
+            canonical = CanonicalTripPlan.model_validate(canonical_payload)
+        except ValidationError as exc:
+            validation_errors = _review_validation_errors(exc)
+        else:
+            trip_plan = canonical_trip_plan_to_model(canonical)
+            policy_snapshot = get_policy_snapshot(
+                trip_plan,
+                PlannerPolicySnapshotRequest(trip_id=trip_plan.trip_id),
+            )
+            policy_result = check_trip_plan(trip_plan)
+            artifacts = _portal_artifacts(
+                canonical=canonical,
+                plan=trip_plan,
+                answers=answers,
+            )
+
+    return PortalReviewState(
+        draft_id=draft_id,
+        answers=answers,
+        missing_fields=missing_fields,
+        next_questions=next_questions,
+        validation_errors=validation_errors,
+        canonical_payload=canonical_payload,
+        trip_plan=trip_plan,
+        policy_snapshot=policy_snapshot,
+        policy_result=policy_result,
+        artifacts=artifacts,
+        submission_response=submission_response,
+    )
+
+
+def _portal_template_context(
+    request: Request,
+    review: PortalReviewState | None = None,
+) -> dict[str, object]:
+    answers = review.answers if review is not None else {}
+    return {
+        "request": request,
+        "answers": answers,
+        "review": review,
+        "ground_transport_options": (
+            "rideshare/taxi",
+            "rental car",
+            "public transit",
+            "personal vehicle",
+        ),
+        "optional_fields": _PORTAL_OPTIONAL_FIELDS,
+    }
+
+
 def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     """Create the planner-facing ASGI application."""
 
@@ -255,6 +568,121 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/portal", response_class=HTMLResponse)
+    def portal_home(request: Request) -> HTMLResponse:
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="portal_home.html",
+            context={"service_ready": _readiness_response().status == "ready"},
+        )
+
+    @app.get("/portal/requests/new", response_class=HTMLResponse)
+    def portal_request_form(request: Request) -> HTMLResponse:
+        answers = _portal_answers_from_form(request)
+        review = (
+            _portal_review_state(draft_id="preview", answers=answers) if answers else None
+        )
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="portal_request.html",
+            context=_portal_template_context(request, review),
+        )
+
+    @app.post("/portal/requests/review")
+    async def portal_request_review(request: Request) -> RedirectResponse:
+        answers = _portal_answers_from_encoded_body(await request.body())
+        draft = proposal_store.save_portal_draft(answers)
+        return RedirectResponse(
+            url=request.url_for("portal_request_detail", draft_id=draft.draft_id),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    @app.get("/portal/requests/{draft_id}", response_class=HTMLResponse, name="portal_request_detail")
+    def portal_request_detail(request: Request, draft_id: str) -> HTMLResponse:
+        draft = proposal_store.lookup_portal_draft(draft_id)
+        if draft is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No portal draft found for '{draft_id}'.",
+            )
+        review = _portal_review_state(draft.draft_id, draft.answers)
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="portal_request.html",
+            context=_portal_template_context(request, review),
+        )
+
+    @app.post("/portal/requests/{draft_id}/submit", response_class=HTMLResponse)
+    def portal_submit_request(request: Request, draft_id: str) -> HTMLResponse:
+        draft = proposal_store.lookup_portal_draft(draft_id)
+        if draft is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No portal draft found for '{draft_id}'.",
+            )
+        review = _portal_review_state(draft.draft_id, draft.answers)
+        if (
+            review.trip_plan is None
+            or review.missing_fields
+            or review.validation_errors
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Complete the request review before submitting the portal draft.",
+            )
+        submission_request = PlannerProposalSubmissionRequest(
+            trip_id=review.trip_plan.trip_id,
+            proposal_id=f"{review.trip_plan.trip_id.lower()}-portal-request",
+            proposal_version="portal-v1",
+            payload={
+                "channel": "workflow-portal",
+                "draft_id": draft_id,
+                "review_surface": "browser",
+            },
+        )
+        submission_response = submit_proposal(review.trip_plan, submission_request)
+        proposal_store.record_submission(
+            review.trip_plan,
+            submission_request,
+            submission_response,
+        )
+        review = _portal_review_state(
+            draft.draft_id,
+            draft.answers,
+            submission_response=submission_response,
+        )
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="portal_request.html",
+            context=_portal_template_context(request, review),
+        )
+
+    @app.get("/portal/requests/{draft_id}/artifacts/{artifact_name}")
+    def portal_artifact(
+        draft_id: str,
+        artifact_name: str,
+    ) -> Response:
+        draft = proposal_store.lookup_portal_draft(draft_id)
+        if draft is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No portal draft found for '{draft_id}'.",
+            )
+        review = _portal_review_state(draft.draft_id, draft.answers)
+        artifact = review.artifacts.get(artifact_name)
+        if artifact is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No artifact named '{artifact_name}' for draft '{draft_id}'.",
+            )
+        return Response(
+            content=artifact.content,
+            media_type=artifact.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
+            },
+        )
 
     @app.get(
         "/readyz",

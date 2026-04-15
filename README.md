@@ -67,6 +67,15 @@ the planner routes. The startup command now fails fast unless the planner auth
 contract is complete: base URL, supported OIDC provider, and an explicit auth
 mode with its matching token configuration must all be present.
 
+The same runtime now also exposes a minimal browser-facing workflow portal:
+
+- Open `http://127.0.0.1:8000/portal` for the portal home.
+- Use `http://127.0.0.1:8000/portal/requests/new` to draft and review a travel
+  request through the canonical form fields.
+- The review screen reuses the repo's canonical conversion, policy snapshot,
+  and spreadsheet/export seams before submitting through the existing proposal
+  contract.
+
 For bounded local or preview testing, mint a short-lived planner token with:
 
 ```bash

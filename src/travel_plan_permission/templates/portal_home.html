@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Travel Request Portal</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4efe6;
+        --card: #fffdf9;
+        --ink: #1e1d1a;
+        --muted: #625c52;
+        --accent: #a2461a;
+        --accent-soft: #f8d5c5;
+        --border: #d7c8b9;
+      }
+      body {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        background: linear-gradient(180deg, #f8f2ea 0%, var(--bg) 100%);
+        color: var(--ink);
+      }
+      main {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 3rem 1.5rem 4rem;
+      }
+      .hero,
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        box-shadow: 0 16px 40px rgba(37, 27, 15, 0.08);
+      }
+      .hero {
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+      }
+      .card {
+        padding: 1.5rem;
+      }
+      h1,
+      h2 {
+        margin-top: 0;
+      }
+      .badge {
+        display: inline-block;
+        padding: 0.3rem 0.65rem;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 0.9rem;
+        margin-bottom: 0.75rem;
+      }
+      a.button {
+        display: inline-block;
+        margin-top: 1rem;
+        padding: 0.85rem 1.2rem;
+        border-radius: 999px;
+        background: var(--accent);
+        color: white;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      ul {
+        padding-left: 1.2rem;
+      }
+      code {
+        font-size: 0.95em;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <div class="badge">Workflow Lite Portal</div>
+        <h1>Travel request intake without fixtures</h1>
+        <p>
+          Start a request in the browser, inspect policy readiness, and submit
+          it through the same runtime seams the planner adapter already uses.
+        </p>
+        <a class="button" href="{{ request.url_for('portal_request_form') }}">
+          Start a new request
+        </a>
+      </section>
+      <section class="card">
+        <h2>What this shell does</h2>
+        <ul>
+          <li>Captures canonical trip inputs in a lightweight server-rendered form.</li>
+          <li>Surfaces missing required fields and next intake questions.</li>
+          <li>Shows policy-lite readiness plus generated spreadsheet and summary artifacts.</li>
+          <li>Submits the reviewed request through the existing proposal seam.</li>
+        </ul>
+        <p>
+          Planner runtime ready:
+          <strong>{{ "yes" if service_ready else "no" }}</strong>
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
