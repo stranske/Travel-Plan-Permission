@@ -742,6 +742,7 @@ def _portal_template_context(
     review: PortalReviewState | None = None,
     *,
     exceptions: list[ExceptionRequest] | None = None,
+    error_message: str | None = None,
 ) -> dict[str, object]:
     answers = review.answers if review is not None else {}
     return {
@@ -757,6 +758,7 @@ def _portal_template_context(
             "personal vehicle",
         ),
         "optional_fields": _PORTAL_OPTIONAL_FIELDS,
+        "error_message": error_message,
     }
 
 
@@ -933,13 +935,29 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
 
         supporting_doc = parsed.get("supporting_doc", [""])[-1].strip()
         amount_text = parsed.get("amount", [""])[-1].strip()
+        review = portal_review_state(
+            draft.draft_id,
+            draft.answers,
+            required_fields=_PORTAL_REQUIRED_FIELDS,
+            canonical_payload_builder=_canonical_payload_from_answers,
+            manager_review=proposal_store.lookup_manager_review_for_draft(draft.draft_id),
+        )
+        if review.artifacts and not draft.cached_artifacts:
+            proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
         try:
             parsed_amount = Decimal(amount_text) if amount_text else None
         except InvalidOperation as exc:
-            raise HTTPException(
+            return _TEMPLATES.TemplateResponse(
+                request=request,
+                name="review_summary.html",
+                context=_portal_template_context(
+                    request,
+                    review,
+                    exceptions=proposal_store.list_exception_requests(draft_id),
+                    error_message="Amount must be a valid non-negative decimal value.",
+                ),
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Amount must be a valid non-negative decimal value.",
-            ) from exc
+            )
         try:
             exception_request = ExceptionRequest(
                 type=exception_type,
@@ -949,10 +967,20 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 supporting_docs=[supporting_doc] if supporting_doc else [],
             )
         except ValidationError as exc:
-            raise HTTPException(
+            messages = "; ".join(
+                error["msg"] for error in exc.errors() if error.get("msg")
+            )
+            return _TEMPLATES.TemplateResponse(
+                request=request,
+                name="review_summary.html",
+                context=_portal_template_context(
+                    request,
+                    review,
+                    exceptions=proposal_store.list_exception_requests(draft_id),
+                    error_message=messages or "Provide a valid exception request.",
+                ),
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(exc),
-            ) from exc
+            )
         proposal_store.create_exception_request(draft_id, exception_request)
         return RedirectResponse(
             url=request.url_for("portal_review_detail", draft_id=draft_id),

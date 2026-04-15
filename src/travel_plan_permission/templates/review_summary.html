@@ -114,6 +114,12 @@
             Capture an exception request before approval when the current policy posture needs a
             documented override.
           </p>
+          {% if error_message %}
+            <div class="callout" style="margin-top: 16px;">
+              <h3>Exception request error</h3>
+              <p style="margin-top: 10px;">{{ error_message }}</p>
+            </div>
+          {% endif %}
           {% if exceptions %}
             <div class="callout" style="margin-top: 16px;">
               <h3>Current exception requests</h3>

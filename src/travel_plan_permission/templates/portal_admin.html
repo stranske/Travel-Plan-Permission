@@ -79,11 +79,11 @@
       <div class="layout">
         <aside class="stack">
           <section class="panel">
-            <h2>Role permissions (view as)</h2>
+            <h2>Role view simulation</h2>
             <form method="get" action="/portal/admin" style="margin-top: 16px;">
               <div class="stack">
                 <label>
-                  <span>Viewer role</span>
+                  <span>Simulated role</span>
                   <select name="actor_role">
                     {% for role in available_roles %}
                       <option value="{{ role.value }}" {% if role == role_view.role %}selected{% endif %}>{{ role.value }}</option>

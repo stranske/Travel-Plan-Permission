@@ -733,7 +733,7 @@ def test_portal_admin_console_surfaces_permissions_runtime_and_audit_history(
 
     assert console.status_code == 200
     assert "Portal admin console" in console.text
-    assert "Role permissions (view as)" in console.text
+    assert "Role view simulation" in console.text
     assert "finance_admin" in console.text
     assert "static-token" in console.text
     assert "advance_booking" in console.text
@@ -867,7 +867,9 @@ def test_portal_submit_exception_request_returns_400_for_invalid_payload(
     monkeypatch,
 ) -> None:
     _set_runtime_env(monkeypatch)
-    client = TestClient(create_app(PlannerProposalStore()))
+    client = TestClient(
+        create_app(PlannerProposalStore()), raise_server_exceptions=False
+    )
 
     review_response = client.post(
         "/portal/draft",
@@ -887,11 +889,12 @@ def test_portal_submit_exception_request_returns_400_for_invalid_payload(
             "amount": "-5",
             "justification": "too short",
         },
-        follow_redirects=False,
+        follow_redirects=True,
     )
 
     assert response.status_code == 400
-    assert "justification" in response.json()["detail"]
+    assert "Exception request error" in response.text
+    assert "greater than or equal to 0" in response.text
 
 
 def test_portal_exception_decision_returns_404_for_missing_request(monkeypatch) -> None:

@@ -102,7 +102,7 @@ Before rollout, share this model with the security review board for sign-off on 
 The portal now exposes a practical admin/runtime layer for the current product stage:
 
 - `/portal/admin` shows the active auth mode, the currently selected view-as role (`actor_role`), and the concrete permissions associated with that simulated role selection.
-- `/portal/manager/reviews` and `/portal/manager/reviews/{review_id}` expose role-aware review actions. Read-only roles can inspect review state, while approve-capable roles can record review and exception decisions.
+- `/portal/manager/reviews` and `/portal/manager/reviews/{review_id}` expose role-aware review actions. Read-only roles can inspect review state, while approve-capable roles can record review and exception decisions; the UI treats `actor_role` as a simulated role view rather than as the authenticated caller identity.
 - The admin views are intentionally lightweight and in-repo. They are not a full enterprise identity marketplace, SSO admin console, or policy-authoring studio.
 
 ## Later hardening work
