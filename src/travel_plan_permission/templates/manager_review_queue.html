@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manager Review Queue</title>
+    <style>
+      :root {
+        --ink: #102230;
+        --muted: #5d7482;
+        --paper: rgba(255, 255, 255, 0.92);
+        --line: rgba(16, 34, 48, 0.14);
+        --shadow: 0 24px 64px rgba(16, 34, 48, 0.14);
+        --accent: #184d47;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+        background:
+          radial-gradient(circle at top left, rgba(24, 77, 71, 0.12), transparent 32%),
+          linear-gradient(135deg, #f8f1e8 0%, #e1ebf1 100%);
+      }
+      main { max-width: 1100px; margin: 0 auto; padding: 40px 18px 72px; }
+      .panel {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 26px;
+        box-shadow: var(--shadow);
+        padding: 24px;
+      }
+      h1, h2, p { margin: 0; }
+      p { color: var(--muted); line-height: 1.5; }
+      .topbar, .row, .meta { display: flex; gap: 12px; }
+      .topbar, .row { justify-content: space-between; align-items: center; }
+      .list { margin-top: 20px; display: grid; gap: 16px; }
+      .card { border: 1px solid var(--line); border-radius: 18px; padding: 18px; background: rgba(255,255,255,0.8); }
+      .badge, .link {
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 999px; padding: 8px 12px; text-decoration: none;
+      }
+      .badge { background: rgba(24, 77, 71, 0.12); color: var(--accent); font: 600 0.82rem/1 ui-monospace, Menlo, monospace; }
+      .link { border: 1px solid var(--line); color: var(--ink); }
+      .meta { flex-wrap: wrap; margin-top: 10px; color: var(--muted); font-size: 0.92rem; }
+      .empty { margin-top: 18px; border: 1px dashed var(--line); border-radius: 18px; padding: 20px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel">
+        <div class="topbar">
+          <div>
+            <h1>Manager review queue</h1>
+            <p style="margin-top: 10px;">Submitted browser requests stay here with policy posture and decision history until a manager acts.</p>
+          </div>
+          <a class="link" href="/portal">Portal home</a>
+        </div>
+
+        {% if reviews %}
+          <div class="list">
+            {% for review in reviews %}
+              <article class="card">
+                <div class="row">
+                  <div>
+                    <h2>{{ review.trip_plan.traveler_name }} to {{ review.trip_plan.destination }}</h2>
+                    <p style="margin-top: 8px;">{{ review.trip_plan.purpose }}</p>
+                  </div>
+                  <span class="badge">{{ review.status }}</span>
+                </div>
+                <div class="meta">
+                  <span>Trip {{ review.trip_plan.trip_id }}</span>
+                  <span>Draft {{ review.draft_id }}</span>
+                  <span>Policy {{ review.policy_snapshot.policy_status }}</span>
+                  <span>{{ review.policy_snapshot.approval_triggers | length }} approval trigger(s)</span>
+                </div>
+                <div style="margin-top: 16px;">
+                  <a class="link" href="/portal/manager/reviews/{{ review.review_id }}">Open review details</a>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty">
+            <h2>No submitted manager reviews yet</h2>
+            <p style="margin-top: 10px;">Submit a browser request to seed the queue.</p>
+          </div>
+        {% endif %}
+      </section>
+    </main>
+  </body>
+</html>

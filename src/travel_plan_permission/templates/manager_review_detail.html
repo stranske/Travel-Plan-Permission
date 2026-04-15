@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manager Review Detail</title>
+    <style>
+      :root {
+        --ink: #122432;
+        --muted: #5b7280;
+        --paper: rgba(255, 255, 255, 0.93);
+        --line: rgba(18, 36, 50, 0.14);
+        --shadow: 0 24px 64px rgba(18, 36, 50, 0.14);
+        --accent: #7c3d16;
+        --accent-soft: rgba(124, 61, 22, 0.12);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+        background:
+          radial-gradient(circle at right top, rgba(124, 61, 22, 0.12), transparent 32%),
+          linear-gradient(135deg, #f8efe5 0%, #dee9f1 100%);
+      }
+      main { max-width: 1180px; margin: 0 auto; padding: 36px 18px 72px; }
+      .layout { display: grid; gap: 20px; grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr); }
+      .panel, .card {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+      }
+      .panel { padding: 24px; }
+      .card { padding: 18px; }
+      h1, h2, h3, p { margin: 0; }
+      p { color: var(--muted); line-height: 1.52; }
+      .topbar, .meta, .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+      .topbar { justify-content: space-between; align-items: center; margin-bottom: 20px; }
+      .badge, button, .link {
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 999px; padding: 10px 14px; text-decoration: none;
+      }
+      .badge { background: var(--accent-soft); color: var(--accent); font: 600 0.82rem/1 ui-monospace, Menlo, monospace; }
+      .link, button { border: 1px solid var(--line); background: white; color: var(--ink); font: 700 0.92rem/1 inherit; }
+      button.primary { background: var(--ink); color: white; }
+      .stack { display: grid; gap: 16px; }
+      .meta { margin-top: 12px; color: var(--muted); font-size: 0.92rem; }
+      .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+      .callout { border: 1px solid var(--line); border-radius: 18px; padding: 16px; background: rgba(255,255,255,0.78); }
+      ul { margin: 10px 0 0; padding-left: 18px; color: var(--muted); }
+      li + li { margin-top: 8px; }
+      label { display: grid; gap: 8px; }
+      input, textarea, select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 14px;
+        font: inherit;
+      }
+      textarea { min-height: 120px; resize: vertical; }
+      @media (max-width: 920px) {
+        .layout { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="topbar">
+        <div>
+          <h1>Manager review detail</h1>
+          <p style="margin-top: 10px;">Decision state, policy posture, and immutable approval history for one submitted request.</p>
+        </div>
+        <div class="actions">
+          <a class="link" href="/portal/manager/reviews">Review queue</a>
+          <a class="link" href="/portal/requests/{{ review.draft_id }}">Open draft review</a>
+        </div>
+      </div>
+
+      <div class="layout">
+        <section class="panel">
+          <span class="badge">{{ review.status }}</span>
+          <h2 style="margin-top: 14px;">{{ review.trip_plan.traveler_name }} to {{ review.trip_plan.destination }}</h2>
+          <p style="margin-top: 10px;">{{ review.trip_plan.purpose }}</p>
+          <div class="meta">
+            <span>Trip {{ review.trip_plan.trip_id }}</span>
+            <span>Submitted {{ review.submitted_at.isoformat() }}</span>
+            <span>Updated {{ review.updated_at.isoformat() }}</span>
+          </div>
+
+          <div class="grid" style="margin-top: 18px;">
+            <div class="card">
+              <h3>Current policy posture</h3>
+              <p style="margin-top: 10px;">Snapshot status: <strong>{{ review.policy_snapshot.policy_status }}</strong></p>
+              <ul>
+                {% for trigger in review.policy_snapshot.approval_triggers %}
+                  <li>{{ trigger.summary }}</li>
+                {% else %}
+                  <li>No approval triggers surfaced.</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Decision-ready notes</h3>
+              <ul>
+                {% for issue in review.policy_result.issues %}
+                  <li>{{ issue.code }}: {{ issue.message }}</li>
+                {% else %}
+                  <li>No current blocking policy issues.</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+
+          <div class="callout" style="margin-top: 18px;">
+            <h3>Approval history</h3>
+            <ul>
+              {% for event in review.trip_plan.approval_history %}
+                <li>{{ event.timestamp.isoformat() }}: {{ event.outcome.value }} by {{ event.approver_id }}{% if event.justification %} — {{ event.justification }}{% endif %}</li>
+              {% else %}
+                <li>No manager decision recorded yet.</li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          <div class="callout" style="margin-top: 18px;">
+            <h3>Workflow event log</h3>
+            <ul>
+              {% for event in review.history %}
+                <li>{{ event.timestamp.isoformat() }}: {{ event.event_type }} by {{ event.actor_id }}{% if event.rationale %} — {{ event.rationale }}{% endif %}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </section>
+
+        <aside class="stack">
+          <section class="panel">
+            <h2>Record manager decision</h2>
+            <p style="margin-top: 10px;">Capture the decision and rationale so the runtime retains the current approval state.</p>
+            {% if error_message %}
+              <div class="callout" style="margin-top: 16px;">
+                <h3>Decision error</h3>
+                <p style="margin-top: 10px;">{{ error_message }}</p>
+              </div>
+            {% endif %}
+            <form method="post" action="/portal/manager/reviews/{{ review.review_id }}/decision" style="margin-top: 16px;">
+              <div class="stack">
+                <label>
+                  <span>Manager actor ID</span>
+                  <input name="actor_id" value="manager-1" />
+                </label>
+                <label>
+                  <span>Decision</span>
+                  <select name="action">
+                    {% for action in review_actions %}
+                      <option value="{{ action.value }}">{{ action.value }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  <span>Rationale</span>
+                  <textarea name="rationale" placeholder="Summarize the decision context and next expectation."></textarea>
+                </label>
+                <div class="actions">
+                  <button class="primary" type="submit">Save manager decision</button>
+                </div>
+              </div>
+            </form>
+          </section>
+        </aside>
+      </div>
+    </main>
+  </body>
+</html>

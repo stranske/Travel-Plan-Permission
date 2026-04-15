@@ -454,6 +454,91 @@ def test_portal_draft_submission_redirects_without_authorization_header(
     assert "/portal/review/" in location
 
 
+def test_submission_creates_manager_review_queue_entry(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+
+    response = client.post(
+        "/portal/draft",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+    draft_match = re.search(
+        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
+    )
+    assert draft_match is not None
+    draft_id = draft_match.group(1)
+
+    submit = client.post(
+        f"/portal/review/{draft_id}/submit",
+        headers=AUTH_HEADER,
+        follow_redirects=True,
+    )
+
+    assert submit.status_code == 200
+    assert "Manager review lane" in submit.text
+    review = store.lookup_manager_review_for_draft(draft_id)
+    assert review is not None
+    queue = client.get("/portal/manager/reviews", headers=AUTH_HEADER)
+    detail = client.get(
+        f"/portal/manager/reviews/{review.review_id}",
+        headers=AUTH_HEADER,
+    )
+
+    assert queue.status_code == 200
+    assert review.trip_plan.traveler_name in queue.text
+    assert "pending_manager_review" in queue.text
+    assert detail.status_code == 200
+    assert "Current policy posture" in detail.text
+    assert "Workflow event log" in detail.text
+
+
+def test_manager_review_decision_updates_status_and_history(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+
+    response = client.post(
+        "/portal/draft",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+    draft_match = re.search(
+        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
+    )
+    assert draft_match is not None
+    draft_id = draft_match.group(1)
+
+    client.post(
+        f"/portal/review/{draft_id}/submit",
+        headers=AUTH_HEADER,
+        follow_redirects=True,
+    )
+    review = store.lookup_manager_review_for_draft(draft_id)
+    assert review is not None
+
+    decision = client.post(
+        f"/portal/manager/reviews/{review.review_id}/decision",
+        data={
+            "actor_id": "manager-17",
+            "action": "request_changes",
+            "rationale": "Need a clearer justification before approval.",
+        },
+        headers=AUTH_HEADER,
+        follow_redirects=True,
+    )
+
+    assert decision.status_code == 200
+    assert "changes_requested" in decision.text
+    assert "Need a clearer justification before approval." in decision.text
+    updated = store.lookup_manager_review(review.review_id)
+    assert updated is not None
+    assert updated.status.value == "changes_requested"
+    assert updated.trip_plan.approval_history[-1].outcome.value == "flagged"
+    assert updated.trip_plan.approval_history[-1].approver_id == "manager-17"
+
+
 def test_portal_artifact_downloads_use_cached_review_artifacts(monkeypatch) -> None:
     _set_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()))

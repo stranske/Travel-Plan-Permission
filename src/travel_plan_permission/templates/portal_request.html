@@ -456,6 +456,19 @@
             <section class="panel">
               <h2>Submission result</h2>
               <p style="margin-top: 10px;">The proposal submission seam accepted the browser draft.</p>
+              {% if review.manager_review %}
+                <div class="callout" style="margin: 16px 0;">
+                  <h3>Manager review lane</h3>
+                  <p>
+                    Current status:
+                    <strong>{{ review.manager_review.status }}</strong>
+                  </p>
+                  <div class="actions" style="margin-top: 12px;">
+                    <a class="button primary" href="/portal/manager/reviews/{{ review.manager_review.review_id }}">Open manager review</a>
+                    <a class="button secondary" href="/portal/manager/reviews">Open review queue</a>
+                  </div>
+                </div>
+              {% endif %}
               <pre>{{ review.submission_response.model_dump_json(indent=2) }}</pre>
             </section>
           {% endif %}
