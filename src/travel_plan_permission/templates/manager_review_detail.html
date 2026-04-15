@@ -168,6 +168,14 @@
               Role view simulation: <strong>{{ role_view.role.value }}</strong>, showing
               {% for permission in role_view.permissions %}<code>{{ permission.value }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
             </p>
+            <p style="margin-top: 10px;">
+              Authenticated token permissions:
+              {% for permission in actor_permissions %}
+                <code>{{ permission.value }}</code>{% if not loop.last %}, {% endif %}
+              {% else %}
+                <code>none</code>
+              {% endfor %}.
+            </p>
             {% if error_message %}
               <div class="callout" style="margin-top: 16px;">
                 <h3>Decision error</h3>

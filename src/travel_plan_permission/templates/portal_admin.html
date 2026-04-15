@@ -101,6 +101,14 @@
                 <span><code>{{ permission.value }}</code></span>
               {% endfor %}
             </div>
+            <p style="margin-top: 12px;">
+              Authenticated token permissions:
+              {% for permission in actor_permissions %}
+                <code>{{ permission.value }}</code>{% if not loop.last %}, {% endif %}
+              {% else %}
+                <code>none</code>
+              {% endfor %}.
+            </p>
           </section>
 
           <section class="panel">

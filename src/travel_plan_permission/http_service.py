@@ -27,7 +27,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 
 from .models import ExceptionRequest, ExceptionType, TripPlan
-from .planner_auth import PlannerAuthConfig, authenticate_request
+from .planner_auth import PlannerAuthConfig, PlannerAuthContext, authenticate_request
 from .policy_api import (
     PlannerPolicySnapshot,
     PlannerPolicySnapshotRequest,
@@ -256,7 +256,7 @@ def _authorize_request(
     authorization: str | None,
     *,
     required_permission: Permission,
-) -> None:
+) -> PlannerAuthContext:
     config = PlannerAuthConfig.from_env()
     if not config.is_ready:
         raise HTTPException(
@@ -264,7 +264,7 @@ def _authorize_request(
             detail="Planner auth config is not ready.",
         )
     try:
-        authenticate_request(
+        return authenticate_request(
             authorization,
             config=config,
             required_permission=required_permission,
@@ -767,12 +767,16 @@ def _manager_review_queue_context(
     reviews: list[ReviewRequest],
     *,
     role_view: RoleView,
+    auth_context: PlannerAuthContext,
 ) -> dict[str, object]:
     return {
         "request": request,
         "reviews": reviews,
         "role_view": role_view,
-        "role_can_approve": Permission.APPROVE in role_view.permissions,
+        "actor_permissions": tuple(
+            sorted(auth_context.permissions, key=lambda item: item.value)
+        ),
+        "role_can_approve": auth_context.can(Permission.APPROVE),
     }
 
 
@@ -781,6 +785,7 @@ def _manager_review_detail_context(
     review: ReviewRequest,
     *,
     role_view: RoleView,
+    auth_context: PlannerAuthContext,
     exceptions: list[ExceptionRequest] | None = None,
     audit_events: list[AuditLogEvent] | None = None,
     error_message: str | None = None,
@@ -789,7 +794,10 @@ def _manager_review_detail_context(
         "request": request,
         "review": review,
         "role_view": role_view,
-        "role_can_approve": Permission.APPROVE in role_view.permissions,
+        "actor_permissions": tuple(
+            sorted(auth_context.permissions, key=lambda item: item.value)
+        ),
+        "role_can_approve": auth_context.can(Permission.APPROVE),
         "exceptions": exceptions or [],
         "audit_events": audit_events or [],
         "error_message": error_message,
@@ -801,6 +809,7 @@ def _admin_dashboard_context(
     request: Request,
     *,
     role_view: RoleView,
+    auth_context: PlannerAuthContext,
     reviews: list[ReviewRequest],
     exception_entries: list[DraftExceptionEntry],
     audit_events: list[AuditLogEvent],
@@ -809,8 +818,11 @@ def _admin_dashboard_context(
     return {
         "request": request,
         "role_view": role_view,
-        "role_can_approve": Permission.APPROVE in role_view.permissions,
-        "role_can_configure": Permission.CONFIGURE in role_view.permissions,
+        "actor_permissions": tuple(
+            sorted(auth_context.permissions, key=lambda item: item.value)
+        ),
+        "role_can_approve": auth_context.can(Permission.APPROVE),
+        "role_can_configure": auth_context.can(Permission.CONFIGURE),
         "available_roles": tuple(RoleName),
         "reviews": reviews,
         "exception_entries": exception_entries,
@@ -1059,7 +1071,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         authorization: str | None = Header(default=None),
         actor_role: str | None = Query(default=RoleName.TRAVELER.value),
     ) -> HTMLResponse:
-        _authorize_request(
+        auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
         )
@@ -1071,6 +1083,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 request,
                 proposal_store.list_manager_reviews(),
                 role_view=role_view,
+                auth_context=auth_context,
             ),
         )
 
@@ -1085,7 +1098,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         authorization: str | None = Header(default=None),
         actor_role: str | None = Query(default=RoleName.TRAVELER.value),
     ) -> HTMLResponse:
-        _authorize_request(
+        auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
         )
@@ -1103,6 +1116,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 request,
                 review,
                 role_view=role_view,
+                auth_context=auth_context,
                 exceptions=proposal_store.list_exception_requests(review.draft_id),
                 audit_events=[
                     event
@@ -1119,7 +1133,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         authorization: str | None = Header(default=None),
         actor_role: str | None = Query(default=RoleName.TRAVELER.value),
     ) -> Response:
-        _authorize_request(
+        auth_context = _authorize_request(
             authorization,
             required_permission=Permission.APPROVE,
         )
@@ -1145,6 +1159,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                     request,
                     review,
                     role_view=role_view,
+                    auth_context=auth_context,
                     exceptions=proposal_store.list_exception_requests(review.draft_id),
                     audit_events=[
                         event
@@ -1172,6 +1187,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                     request,
                     refreshed,
                     role_view=role_view,
+                    auth_context=auth_context,
                     exceptions=proposal_store.list_exception_requests(refreshed.draft_id),
                     audit_events=[
                         event
@@ -1250,7 +1266,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         authorization: str | None = Header(default=None),
         actor_role: str | None = Query(default=RoleName.TRAVELER.value),
     ) -> HTMLResponse:
-        _authorize_request(
+        auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
         )
@@ -1261,6 +1277,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             context=_admin_dashboard_context(
                 request,
                 role_view=role_view,
+                auth_context=auth_context,
                 reviews=proposal_store.list_manager_reviews(),
                 exception_entries=proposal_store.list_exception_entries(),
                 audit_events=proposal_store.list_audit_events(),
