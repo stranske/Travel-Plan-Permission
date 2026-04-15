@@ -495,7 +495,7 @@ def test_submission_creates_manager_review_queue_entry(monkeypatch) -> None:
 
 
 def test_manager_review_decision_updates_status_and_history(monkeypatch) -> None:
-    _set_runtime_env(monkeypatch)
+    _set_bootstrap_runtime_env(monkeypatch)
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
@@ -510,22 +510,38 @@ def test_manager_review_decision_updates_status_and_history(monkeypatch) -> None
     assert draft_match is not None
     draft_id = draft_match.group(1)
 
+    traveler_token = mint_bootstrap_token(
+        subject="traveler",
+        permissions=(Permission.CREATE,),
+        provider="google",
+        secret="bootstrap-secret-123",
+        expires_in_seconds=600,
+    )
+
     client.post(
         f"/portal/review/{draft_id}/submit",
-        headers=AUTH_HEADER,
+        headers={"Authorization": f"Bearer {traveler_token}"},
         follow_redirects=True,
     )
     review = store.lookup_manager_review_for_draft(draft_id)
     assert review is not None
 
+    manager_token = mint_bootstrap_token(
+        subject="manager-reviewer",
+        permissions=(Permission.VIEW, Permission.APPROVE),
+        provider="google",
+        secret="bootstrap-secret-123",
+        expires_in_seconds=600,
+    )
+
     decision = client.post(
         f"/portal/manager/reviews/{review.review_id}/decision",
+        headers={"Authorization": f"Bearer {manager_token}"},
         data={
             "actor_id": "manager-17",
             "action": "request_changes",
             "rationale": "Need a clearer justification before approval.",
         },
-        headers=AUTH_HEADER,
         follow_redirects=True,
     )
 
@@ -537,6 +553,121 @@ def test_manager_review_decision_updates_status_and_history(monkeypatch) -> None
     assert updated.status.value == "changes_requested"
     assert updated.trip_plan.approval_history[-1].outcome.value == "flagged"
     assert updated.trip_plan.approval_history[-1].approver_id == "manager-17"
+
+
+def test_manager_review_routes_require_authorization(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+
+    response = client.post(
+        "/portal/requests/review",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+    draft_match = re.search(
+        r"/portal/requests/([^/]+)/artifacts/itinerary", response.text
+    )
+    assert draft_match is not None
+    draft_id = draft_match.group(1)
+    client.post(
+        f"/portal/requests/{draft_id}/submit",
+        headers=AUTH_HEADER,
+        follow_redirects=True,
+    )
+    review = store.lookup_manager_review_for_draft(draft_id)
+    assert review is not None
+
+    missing_queue = client.get("/portal/manager/reviews")
+    missing_detail = client.get(f"/portal/manager/reviews/{review.review_id}")
+    missing_decision = client.post(
+        f"/portal/manager/reviews/{review.review_id}/decision",
+        data={
+            "actor_id": "manager-17",
+            "action": "approve",
+            "rationale": "Looks good.",
+        },
+    )
+
+    assert missing_queue.status_code == 401
+    assert missing_detail.status_code == 401
+    assert missing_decision.status_code == 401
+
+
+def test_manager_review_decision_requires_approve_permission(monkeypatch) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+
+    response = client.post(
+        "/portal/requests/review",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+    draft_match = re.search(
+        r"/portal/requests/([^/]+)/artifacts/itinerary", response.text
+    )
+    assert draft_match is not None
+    draft_id = draft_match.group(1)
+    client.post(
+        f"/portal/requests/{draft_id}/submit",
+        headers={
+            "Authorization": "Bearer "
+            + mint_bootstrap_token(
+                subject="traveler",
+                permissions=(Permission.CREATE,),
+                provider="google",
+                secret="bootstrap-secret-123",
+                expires_in_seconds=600,
+            )
+        },
+        follow_redirects=True,
+    )
+    review = store.lookup_manager_review_for_draft(draft_id)
+    assert review is not None
+
+    viewer_token = mint_bootstrap_token(
+        subject="viewer-only",
+        permissions=(Permission.VIEW,),
+        provider="google",
+        secret="bootstrap-secret-123",
+        expires_in_seconds=600,
+    )
+    decision = client.post(
+        f"/portal/manager/reviews/{review.review_id}/decision",
+        headers={"Authorization": f"Bearer {viewer_token}"},
+        data={
+            "actor_id": "manager-17",
+            "action": "approve",
+            "rationale": "Looks good.",
+        },
+    )
+
+    assert decision.status_code == 403
+    assert "does not grant 'approve'" in decision.json()["detail"]
+
+
+def test_manager_review_store_returns_copies() -> None:
+    store = PlannerProposalStore()
+    fixture = _load_fixture("proposal_submission.json")
+    trip_plan = http_service.TripPlan.model_validate(fixture)
+    snapshot = http_service.get_policy_snapshot(trip_plan)
+    result = http_service.check_trip_plan(trip_plan)
+
+    created = store.manager_reviews.create_or_get(
+        draft_id="draft-123",
+        trip_plan=trip_plan,
+        policy_snapshot=snapshot,
+        policy_result=result,
+    )
+    created.trip_plan.traveler_name = "Mutated"
+
+    listed = store.manager_reviews.list_reviews()
+    listed[0].trip_plan.traveler_name = "Mutated Again"
+
+    lookup = store.lookup_manager_review(created.review_id)
+    assert lookup is not None
+    assert lookup.trip_plan.traveler_name == fixture["traveler_name"]
 
 
 def test_portal_artifact_downloads_use_cached_review_artifacts(monkeypatch) -> None:

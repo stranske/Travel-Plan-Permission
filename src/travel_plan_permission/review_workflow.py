@@ -152,6 +152,20 @@ class ReviewWorkflowStore:
     reviews_by_id: dict[str, ReviewRequest] = field(default_factory=dict)
     review_ids_by_draft_id: dict[str, str] = field(default_factory=dict)
 
+    @staticmethod
+    def _copy_review(review: ReviewRequest) -> ReviewRequest:
+        return ReviewRequest(
+            review_id=review.review_id,
+            draft_id=review.draft_id,
+            trip_plan=review.trip_plan.model_copy(deep=True),
+            policy_snapshot=review.policy_snapshot.model_copy(deep=True),
+            policy_result=review.policy_result.model_copy(deep=True),
+            status=review.status,
+            submitted_at=review.submitted_at,
+            updated_at=review.updated_at,
+            history=tuple(review.history),
+        )
+
     def create_or_get(
         self,
         *,
@@ -164,7 +178,7 @@ class ReviewWorkflowStore:
         if review_id is not None:
             review = self.reviews_by_id.get(review_id)
             if review is not None:
-                return review
+                return self._copy_review(review)
         review = create_review_request(
             draft_id=draft_id,
             trip_plan=trip_plan,
@@ -173,11 +187,11 @@ class ReviewWorkflowStore:
         )
         self.reviews_by_id[review.review_id] = review
         self.review_ids_by_draft_id[draft_id] = review.review_id
-        return review
+        return self._copy_review(review)
 
     def list_reviews(self) -> list[ReviewRequest]:
         return sorted(
-            self.reviews_by_id.values(),
+            (self._copy_review(review) for review in self.reviews_by_id.values()),
             key=lambda review: (review.updated_at, review.submitted_at),
             reverse=True,
         )
@@ -186,17 +200,7 @@ class ReviewWorkflowStore:
         review = self.reviews_by_id.get(review_id)
         if review is None:
             return None
-        return ReviewRequest(
-            review_id=review.review_id,
-            draft_id=review.draft_id,
-            trip_plan=review.trip_plan.model_copy(deep=True),
-            policy_snapshot=review.policy_snapshot.model_copy(deep=True),
-            policy_result=review.policy_result.model_copy(deep=True),
-            status=review.status,
-            submitted_at=review.submitted_at,
-            updated_at=review.updated_at,
-            history=tuple(review.history),
-        )
+        return self._copy_review(review)
 
     def lookup_by_draft(self, draft_id: str) -> ReviewRequest | None:
         review_id = self.review_ids_by_draft_id.get(draft_id)
@@ -222,4 +226,4 @@ class ReviewWorkflowStore:
             rationale=rationale,
         )
         self.reviews_by_id[review_id] = updated
-        return updated
+        return self._copy_review(updated)
