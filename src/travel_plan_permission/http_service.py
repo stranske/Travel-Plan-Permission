@@ -525,11 +525,13 @@ def _portal_artifacts(
 ) -> dict[str, PortalArtifact]:
     itinerary_excel = render_travel_spreadsheet_bytes(plan, canonical_plan=canonical)
     bundle = build_output_bundle(itinerary_excel=itinerary_excel, answers=answers)
+    itinerary_payload = bundle["itinerary_excel"]
     summary_payload = bundle["summary_pdf"]
+    assert isinstance(itinerary_payload, dict)
     assert isinstance(summary_payload, dict)
     return {
         "itinerary": PortalArtifact(
-            filename=str(bundle["itinerary_excel"]["filename"]),
+            filename=str(itinerary_payload["filename"]),
             content=itinerary_excel,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         ),
@@ -548,7 +550,7 @@ def _portal_review_state(
     submission_response: PlannerProposalOperationResponse | None = None,
 ) -> PortalReviewState:
     missing_fields = required_field_gaps(answers, required_fields=_PORTAL_REQUIRED_FIELDS)
-    next_questions = [
+    next_questions: list[dict[str, object]] = [
         {
             "prompt": question.prompt,
             "fields": ", ".join(question.fields),
