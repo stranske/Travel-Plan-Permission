@@ -1,0 +1,451 @@
+version: 1
+issue: 806
+base: main
+branch: codex/issue-806
+tasks:
+  - id: task-01
+    title: Register new portal routes for GET /portal/draft/new, POST /portal/draft,
+      and GET /portal/review/{draft_id} in the app router module
+    status: done
+    started_at: '2026-04-15T08:20:55Z'
+    finished_at: '2026-04-15T13:45:00Z'
+    commit: ''
+    notes:
+      - Route registration corrected in follow-up after earlier ledger-only bookkeeping commit.
+  - id: task-02
+    title: Remove all legacy /portal/requests/* route registrations from the app router
+      and route registration modules
+    status: done
+    started_at: '2026-04-15T13:40:00Z'
+    finished_at: '2026-04-15T13:45:00Z'
+    commit: ''
+    notes: []
+  - id: task-03
+    title: Verify that no active route registration exists for /portal/requests/*
+      endpoints after removal
+    status: done
+    started_at: '2026-04-15T13:40:00Z'
+    finished_at: '2026-04-15T13:45:00Z'
+    commit: ''
+    notes: []
+  - id: task-04
+    title: Implement required-field validation in the `POST /portal/draft` handler
+      by calling `prompt_flow.py` before any draft persistence call
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-05
+    title: Add logic to return HTTP 400 when `prompt_flow.py` reports missing fields,
+      rendering an HTML `<ul>` with one `<li>` per missing field
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-06
+    title: Ensure no draft persistence method is called when validation fails
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-07
+    title: Create templates/draft_entry.html template file with appropriate structure
+      for draft form entry
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-08
+    title: Create templates/validation_feedback.html template file with structure
+      for displaying validation errors in a ul/li format
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-09
+    title: Create templates/review_summary.html template file with structure for displaying
+      draft review information
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-10
+    title: Update GET /portal/draft/new handler to render templates/draft_entry.html
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-11
+    title: Update POST /portal/draft handler to render templates/validation_feedback.html
+      when validation fails
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-12
+    title: Update GET /portal/review/{draft_id} handler to render templates/review_summary.html
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-13
+    title: Update the `GET /portal/review/{draft_id}` handler to build review state
+      by calling integration points in `canonical.py` and `policy_api.py` without
+      inline canonicalization/policy evaluation logic
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-14
+    title: Verify that the existing `policy_api.py` contract is preserved for existing
+      callers and tests
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-15
+    title: Remove planner bearer-token authorization middleware/decorators from the
+      `POST /portal/draft` route
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-16
+    title: Update auth-related tests to verify `POST /portal/draft` accepts requests
+      without an `Authorization` header
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-17
+    title: Remove _portal_answers_from_form function if it has no remaining references
+      in the codebase
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-18
+    title: Replace all bare assert statements in _portal_artifacts with explicit runtime
+      exceptions
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-19
+    title: Add unit tests to verify that _portal_artifacts runtime exceptions fire
+      under python -O optimization mode
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-20
+    title: Update existing portal route tests to use new route names /portal/draft/new,
+      /portal/draft, and /portal/review/{draft_id}
+    status: done
+    started_at: '2026-04-15T13:40:00Z'
+    finished_at: '2026-04-15T13:45:00Z'
+    commit: ''
+    notes: []
+  - id: task-21
+    title: Remove all test references and assertions that rely on legacy /portal/requests/*
+      route names
+    status: done
+    started_at: '2026-04-15T13:40:00Z'
+    finished_at: '2026-04-15T13:45:00Z'
+    commit: ''
+    notes: []
+  - id: task-22
+    title: Add automated test verifying that missing-field submission to POST /portal/draft
+      returns HTTP 400 without redirect
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-23
+    title: Add automated test verifying that missing-field response contains a ul
+      element with li entries for each missing field
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-24
+    title: Add automated test verifying that successful POST /portal/draft submission
+      redirects to /portal/review/{draft_id}
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-25
+    title: Update docs/workflows.md to document the three portal endpoints GET /portal/draft/new,
+      POST /portal/draft, and GET /portal/review/{draft_id}
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-26
+    title: Update docs/plan.md to document HTTP 400 behavior for missing required
+      fields including the ul/li HTML structure
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-27
+    title: Update docs/plan.md to document that no draft is saved when required fields
+      are missing
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-28
+    title: Update docs/workflows.md to describe the existence of separate templates
+      for entry, validation feedback, and review states
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-29
+    title: Update docs/plan.md to describe the existence of separate templates for
+      entry, validation feedback, and review states
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-30
+    title: A `GET` request to `/portal/draft/new` returns HTTP 200 and is not a redirect
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-31
+    title: '`GET /portal/draft/new` renders `templates/draft_entry.html`'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-32
+    title: A `POST` request to `/portal/draft` with a valid form submission returns
+      an HTTP redirect to `/portal/review/{draft_id}` where `{draft_id}` is the created
+      draft identifier
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-33
+    title: A `GET` request to `/portal/review/{draft_id}` for an existing draft returns
+      HTTP 200
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-34
+    title: '`GET /portal/review/{draft_id}` renders `templates/review_summary.html`'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-35
+    title: No active portal route registration exists for legacy `/portal/requests/*`
+      endpoints
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-36
+    title: When required fields are missing, `POST /portal/draft` returns HTTP 400
+      and does not return a redirect status
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-37
+    title: For a submission missing required fields, the `POST /portal/draft` response
+      body contains exactly one `<li>` element for each missing field reported by
+      `prompt_flow.py`, wrapped inside a `<ul>` element
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-38
+    title: Invalid `POST /portal/draft` renders `templates/validation_feedback.html`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-39
+    title: When `prompt_flow.py` reports missing required fields, no draft persistence
+      method is called during `POST /portal/draft` handling
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-40
+    title: The `POST /portal/draft` handler invokes `prompt_flow.py` validation before
+      any call to draft persistence for every submission path
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-41
+    title: The codebase contains `templates/draft_entry.html`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-42
+    title: The codebase contains `templates/validation_feedback.html`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-43
+    title: The codebase contains `templates/review_summary.html`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-44
+    title: The review route handler contains no inline canonicalization or policy
+      evaluation logic and instead calls integration points in `canonical.py` and
+      `policy_api.py` to build the review state
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-45
+    title: Existing callers/tests for `policy_api.py` continue to use the same route/response
+      contract after the portal review integration change
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-46
+    title: A `POST /portal/draft` request without any `Authorization` header is processed
+      by the route handler and is not rejected with 401 or 403
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-47
+    title: The `POST /portal/draft` route is not decorated with, wrapped by, or registered
+      behind planner bearer-token authorization middleware
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-48
+    title: No function or symbol named `_portal_answers_from_form` remains referenced
+      anywhere in the application code
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-49
+    title: The `_portal_artifacts` implementation contains no bare `assert` statements
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-50
+    title: When an `_portal_artifacts` invariant/error condition is triggered, the
+      code raises an explicit runtime exception in both normal and optimized Python
+      execution modes
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-51
+    title: Portal route tests cover `GET /portal/draft/new`, `POST /portal/draft`,
+      and `GET /portal/review/{draft_id}` and do not rely on `/portal/requests/*`
+      route names
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-52
+    title: At least one automated test verifies missing-field submission to `POST
+      /portal/draft` returns HTTP 400, does not redirect, and includes a `<ul>` with
+      the expected missing-field entries
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-53
+    title: At least one automated test verifies a successful `POST /portal/draft`
+      submission redirects to `/portal/review/{draft_id}`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-54
+    title: '`docs/workflows.md` documents the portal endpoints `GET /portal/draft/new`,
+      `POST /portal/draft`, and `GET /portal/review/{draft_id}` exactly'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-55
+    title: '`docs/plan.md` documents that missing required fields on `POST /portal/draft`
+      produce HTTP 400 and an HTML response containing a `<ul>` with one entry per
+      missing field, and that no draft is saved in that case'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-56
+    title: Both `docs/workflows.md` and `docs/plan.md` explicitly describe the existence
+      of separate templates for entry, validation feedback, and review states
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
