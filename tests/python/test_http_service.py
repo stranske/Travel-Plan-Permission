@@ -393,8 +393,41 @@ def test_expense_portal_generates_exports_and_policy_warning() -> None:
 
     assert csv_export.status_code == 200
     assert b"date,vendor,amount,category,cost_center,receipt_link" in csv_export.content
+    assert f"{draft_id}.csv" in csv_export.headers["content-disposition"]
     assert excel_export.status_code == 200
     assert excel_export.content.startswith(b"PK")
+    assert f"{draft_id}.xlsx" in excel_export.headers["content-disposition"]
+
+
+def test_expense_portal_invalid_amount_returns_validation_error() -> None:
+    client = TestClient(create_app())
+    payload = _expense_form_payload()
+    payload["expense_amount"] = "not-a-decimal"
+
+    response = client.post("/portal/expenses/review", data=payload)
+
+    assert response.status_code == 400
+    assert "One or more currency amounts are not valid decimal values." in response.text
+
+
+def test_expense_portal_missing_approval_rules_returns_validation_error(
+    monkeypatch,
+) -> None:
+    client = TestClient(create_app())
+    payload = _expense_form_payload()
+
+    monkeypatch.setattr("travel_plan_permission.approval._default_rules_path", lambda: None)
+    monkeypatch.setattr(
+        "travel_plan_permission.approval._package_rules_resource", lambda: None
+    )
+
+    response = client.post("/portal/expenses/review", data=payload)
+
+    assert response.status_code == 400
+    assert (
+        "Approval rules configuration is unavailable; expense policy review cannot be completed."
+        in response.text
+    )
 
 
 def test_expense_portal_caches_artifacts_with_persisted_draft_id() -> None:

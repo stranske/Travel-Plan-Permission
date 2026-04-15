@@ -1001,14 +1001,21 @@ def _expense_review_state(
                 draft_id=draft_id,
                 expense_report=expense_report,
             )
-        except (InvalidOperation, ValueError, ValidationError) as exc:
-            if isinstance(exc, ValidationError):
-                validation_errors.extend(
-                    f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
-                    for error in exc.errors()
-                )
-            else:
-                validation_errors.append(str(exc))
+        except ValidationError as exc:
+            validation_errors.extend(
+                f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+                for error in exc.errors()
+            )
+        except FileNotFoundError:
+            validation_errors.append(
+                "Approval rules configuration is unavailable; expense policy review cannot be completed."
+            )
+        except InvalidOperation:
+            validation_errors.append(
+                "One or more currency amounts are not valid decimal values."
+            )
+        except ValueError as exc:
+            validation_errors.append(str(exc))
 
     return ExpensePortalReviewState(
         draft_id=draft_id,

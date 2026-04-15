@@ -9,6 +9,14 @@ def test_mapping_resource_exists() -> None:
     assert "templates" in mapping.read_text(encoding="utf-8")
 
 
+def test_approval_rules_resource_exists() -> None:
+    rules = resources.files("travel_plan_permission").joinpath(
+        "config", "approval_rules.yaml"
+    )
+    assert rules.is_file()
+    assert "default_under_100" in rules.read_text(encoding="utf-8")
+
+
 def test_template_resource_exists() -> None:
     template = resources.files("travel_plan_permission").joinpath(
         "templates", "travel_request_template.xlsx"

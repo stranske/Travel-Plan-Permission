@@ -6,6 +6,7 @@ import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib import resources
 from pathlib import Path
 
 import yaml
@@ -35,6 +36,16 @@ def _default_rules_path() -> Path | None:
     return None
 
 
+def _package_rules_resource() -> resources.abc.Traversable | None:
+    try:
+        resource = resources.files("travel_plan_permission").joinpath(
+            "config", "approval_rules.yaml"
+        )
+    except ModuleNotFoundError:
+        return None
+    return resource if resource.is_file() else None
+
+
 @dataclass
 class ApprovalEngine:
     """Evaluate expenses against configured approval rules."""
@@ -57,10 +68,13 @@ class ApprovalEngine:
 
         target_path = Path(path) if path is not None else _default_rules_path()
 
-        if target_path is None:
-            raise FileNotFoundError("No approval rules file found")
-
-        content = target_path.read_text(encoding="utf-8")
+        if target_path is None or not target_path.exists():
+            resource = _package_rules_resource()
+            if resource is None:
+                raise FileNotFoundError("No approval rules file found")
+            content = resource.read_text(encoding="utf-8")
+        else:
+            content = target_path.read_text(encoding="utf-8")
         return cls.from_yaml(content)
 
     @classmethod
