@@ -107,6 +107,10 @@ class AuditEventType(StrEnum):
     AUTHORIZATION = "authorization"
     ROLE_CHANGE = "role_change"
     DELEGATION = "delegation"
+    REQUEST = "request"
+    REVIEW = "review"
+    EXCEPTION = "exception"
+    EXPORT = "export"
 
 
 @dataclass

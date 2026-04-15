@@ -655,6 +655,157 @@ def test_manager_review_decision_requires_approve_permission(monkeypatch) -> Non
     assert "does not grant 'approve'" in decision.json()["detail"]
 
 
+def test_manager_review_detail_hides_decision_form_for_read_only_role(
+    monkeypatch,
+) -> None:
+    _set_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+
+    response = client.post(
+        "/portal/draft",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+    draft_match = re.search(
+        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
+    )
+    assert draft_match is not None
+    draft_id = draft_match.group(1)
+    client.post(
+        f"/portal/review/{draft_id}/submit",
+        headers=AUTH_HEADER,
+        follow_redirects=True,
+    )
+    review = store.lookup_manager_review_for_draft(draft_id)
+    assert review is not None
+
+    detail = client.get(
+        f"/portal/manager/reviews/{review.review_id}?actor_role=traveler",
+        headers=AUTH_HEADER,
+    )
+
+    assert detail.status_code == 200
+    assert "Read-only role" in detail.text
+    assert "Save manager decision" not in detail.text
+
+
+def test_portal_admin_console_surfaces_permissions_runtime_and_audit_history(
+    monkeypatch,
+) -> None:
+    _set_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+
+    review_response = client.post(
+        "/portal/draft",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+    draft_match = re.search(
+        r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text
+    )
+    assert draft_match is not None
+    draft_id = draft_match.group(1)
+    client.post(
+        f"/portal/review/{draft_id}/exceptions",
+        data={
+            "exception_type": "advance_booking",
+            "amount": "6000",
+            "justification": ("Need to lock in the only compliant conference fare. " * 2),
+            "supporting_doc": "docs/approval-workflow.md",
+        },
+        follow_redirects=False,
+    )
+    client.post(
+        f"/portal/review/{draft_id}/submit",
+        headers=AUTH_HEADER,
+        follow_redirects=True,
+    )
+    review = store.lookup_manager_review_for_draft(draft_id)
+    assert review is not None
+    client.get(f"/portal/review/{draft_id}/artifacts/summary")
+
+    console = client.get(
+        "/portal/admin?actor_role=finance_admin",
+        headers=AUTH_HEADER,
+    )
+
+    assert console.status_code == 200
+    assert "Portal admin console" in console.text
+    assert "finance_admin" in console.text
+    assert "static-token" in console.text
+    assert "advance_booking" in console.text
+    assert "artifact_downloaded" in console.text
+
+
+def test_exception_decision_updates_review_detail_and_audit_log(monkeypatch) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+
+    review_response = client.post(
+        "/portal/draft",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+    draft_match = re.search(
+        r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text
+    )
+    assert draft_match is not None
+    draft_id = draft_match.group(1)
+    client.post(
+        f"/portal/review/{draft_id}/exceptions",
+        data={
+            "exception_type": "advance_booking",
+            "amount": "6000",
+            "justification": ("Need to lock in the only compliant conference fare. " * 2),
+            "supporting_doc": "docs/approval-workflow.md",
+        },
+        follow_redirects=False,
+    )
+    client.post(
+        f"/portal/review/{draft_id}/submit",
+        headers={
+            "Authorization": "Bearer "
+            + mint_bootstrap_token(
+                subject="traveler",
+                permissions=(Permission.CREATE,),
+                provider="google",
+                secret="bootstrap-secret-123",
+                expires_in_seconds=600,
+            )
+        },
+        follow_redirects=True,
+    )
+    review = store.lookup_manager_review_for_draft(draft_id)
+    assert review is not None
+
+    decision = client.post(
+        f"/portal/admin/exceptions/{draft_id}/0/decision?actor_role=approver",
+        headers={
+            "Authorization": "Bearer "
+            + mint_bootstrap_token(
+                subject="approver-7",
+                permissions=(Permission.VIEW, Permission.APPROVE),
+                provider="google",
+                secret="bootstrap-secret-123",
+                expires_in_seconds=600,
+            )
+        },
+        data={
+            "actor_id": "approver-7",
+            "decision": "approve",
+            "notes": "Conference booking window requires the exception.",
+        },
+        follow_redirects=True,
+    )
+
+    assert decision.status_code == 200
+    assert "approved by approver-7" in decision.text
+    assert "exception · approved by approver-7" in decision.text
+
+
 def test_manager_review_store_returns_copies() -> None:
     store = PlannerProposalStore()
     fixture = _load_fixture("proposal_submission.json")

@@ -72,8 +72,9 @@
           <p style="margin-top: 10px;">Decision state, policy posture, and immutable approval history for one submitted request.</p>
         </div>
         <div class="actions">
-          <a class="link" href="/portal/manager/reviews">Review queue</a>
-          <a class="link" href="/portal/requests/{{ review.draft_id }}">Open draft review</a>
+          <a class="link" href="/portal/admin?actor_role={{ role_view.role.value }}">Admin console</a>
+          <a class="link" href="/portal/manager/reviews?actor_role={{ role_view.role.value }}">Review queue</a>
+          <a class="link" href="/portal/review/{{ review.draft_id }}">Open draft review</a>
         </div>
       </div>
 
@@ -86,6 +87,7 @@
             <span>Trip {{ review.trip_plan.trip_id }}</span>
             <span>Submitted {{ review.submitted_at.isoformat() }}</span>
             <span>Updated {{ review.updated_at.isoformat() }}</span>
+            <span>Viewer {{ role_view.role.value }}</span>
           </div>
 
           <div class="grid" style="margin-top: 18px;">
@@ -131,41 +133,112 @@
               {% endfor %}
             </ul>
           </div>
+
+          <div class="callout" style="margin-top: 18px;">
+            <h3>Exception workflow</h3>
+            <ul>
+              {% for item in exceptions %}
+                <li>
+                  {{ item.type.value }} · {{ item.status.value }}
+                  {% if item.approval_level %} · {{ item.approval_level.value }}{% endif %}
+                  {% if item.approval %} · {{ item.approval.approver_id }}{% endif %}
+                </li>
+              {% else %}
+                <li>No exception requests attached to this draft.</li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          <div class="callout" style="margin-top: 18px;">
+            <h3>Runtime audit trail</h3>
+            <ul>
+              {% for event in audit_events %}
+                <li>{{ event.timestamp.isoformat() }}: {{ event.event_type.value }} · {{ event.outcome }} by {{ event.actor }}{% if event.metadata %} — {{ event.metadata }}{% endif %}</li>
+              {% else %}
+                <li>No audit events recorded for this review yet.</li>
+              {% endfor %}
+            </ul>
+          </div>
         </section>
 
         <aside class="stack">
           <section class="panel">
             <h2>Record manager decision</h2>
-            <p style="margin-top: 10px;">Capture the decision and rationale so the runtime retains the current approval state.</p>
+            <p style="margin-top: 10px;">
+              Viewing as <strong>{{ role_view.role.value }}</strong> with
+              {% for permission in role_view.permissions %}<code>{{ permission.value }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
+            </p>
             {% if error_message %}
               <div class="callout" style="margin-top: 16px;">
                 <h3>Decision error</h3>
                 <p style="margin-top: 10px;">{{ error_message }}</p>
               </div>
             {% endif %}
-            <form method="post" action="/portal/manager/reviews/{{ review.review_id }}/decision" style="margin-top: 16px;">
-              <div class="stack">
-                <label>
-                  <span>Manager actor ID</span>
-                  <input name="actor_id" value="manager-1" />
-                </label>
-                <label>
-                  <span>Decision</span>
-                  <select name="action">
-                    {% for action in review_actions %}
-                      <option value="{{ action.value }}">{{ action.value }}</option>
-                    {% endfor %}
-                  </select>
-                </label>
-                <label>
-                  <span>Rationale</span>
-                  <textarea name="rationale" placeholder="Summarize the decision context and next expectation."></textarea>
-                </label>
-                <div class="actions">
-                  <button class="primary" type="submit">Save manager decision</button>
+            {% if role_can_approve %}
+              <form method="post" action="/portal/manager/reviews/{{ review.review_id }}/decision?actor_role={{ role_view.role.value }}" style="margin-top: 16px;">
+                <div class="stack">
+                  <label>
+                    <span>Manager actor ID</span>
+                    <input name="actor_id" value="manager-1" />
+                  </label>
+                  <label>
+                    <span>Decision</span>
+                    <select name="action">
+                      {% for action in review_actions %}
+                        <option value="{{ action.value }}">{{ action.value }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Rationale</span>
+                    <textarea name="rationale" placeholder="Summarize the decision context and next expectation."></textarea>
+                  </label>
+                  <div class="actions">
+                    <button class="primary" type="submit">Save manager decision</button>
+                  </div>
                 </div>
+              </form>
+            {% else %}
+              <div class="callout" style="margin-top: 16px;">
+                <h3>Read-only role</h3>
+                <p style="margin-top: 10px;">This role can inspect the review but cannot record approval actions.</p>
               </div>
-            </form>
+            {% endif %}
+
+            {% if exceptions %}
+              <div class="callout" style="margin-top: 18px;">
+                <h3>Exception decisions</h3>
+                {% for item in exceptions %}
+                  <div style="margin-top: 14px;">
+                    <p><strong>{{ item.type.value }}</strong> · {{ item.status.value }}</p>
+                    {% if role_can_approve and item.status.value == "pending" %}
+                      <form method="post" action="/portal/admin/exceptions/{{ review.draft_id }}/{{ loop.index0 }}/decision?actor_role={{ role_view.role.value }}" style="margin-top: 10px;">
+                        <div class="stack">
+                          <label>
+                            <span>Actor ID</span>
+                            <input name="actor_id" value="manager-1" />
+                          </label>
+                          <label>
+                            <span>Decision</span>
+                            <select name="decision">
+                              <option value="approve">approve</option>
+                              <option value="reject">reject</option>
+                            </select>
+                          </label>
+                          <label>
+                            <span>Notes</span>
+                            <textarea name="notes" placeholder="Summarize the exception decision."></textarea>
+                          </label>
+                          <div class="actions">
+                            <button class="primary" type="submit">Save exception decision</button>
+                          </div>
+                        </div>
+                      </form>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            {% endif %}
           </section>
         </aside>
       </div>

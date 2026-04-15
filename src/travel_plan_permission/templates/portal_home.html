@@ -121,6 +121,7 @@
         <div class="actions">
           <a class="button primary" href="/portal/draft/new">Start a new request</a>
           <a class="button secondary" href="/readyz">Check runtime readiness</a>
+          <a class="button secondary" href="/portal/admin">Open admin console</a>
         </div>
       </section>
 
@@ -146,6 +147,9 @@
             The portal shell is available without planner credentials; the lower-level planner
             API still follows the normal token requirements.
           </p>
+          {% if runtime_config.auth_mode %}
+            <p style="margin-top: 12px;">Auth mode: <strong>{{ runtime_config.auth_mode }}</strong></p>
+          {% endif %}
         </article>
       </section>
     </main>

@@ -107,6 +107,57 @@
         </section>
       {% endif %}
 
+      {% if review and review.canonical_payload %}
+        <section class="panel">
+          <h2>Policy exception workflow</h2>
+          <p style="margin-top: 10px;">
+            Capture an exception request before approval when the current policy posture needs a
+            documented override.
+          </p>
+          {% if exceptions %}
+            <div class="callout" style="margin-top: 16px;">
+              <h3>Current exception requests</h3>
+              <ul>
+                {% for item in exceptions %}
+                  <li>
+                    {{ item.type.value }} · {{ item.status.value }}
+                    {% if item.approval_level %} · {{ item.approval_level.value }}{% endif %}
+                    {% if item.approval %} · approved by {{ item.approval.approver_id }}{% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+          <form method="post" action="/portal/review/{{ review.draft_id }}/exceptions" style="margin-top: 16px;">
+            <div class="stack">
+              <label>
+                <span>Exception type</span>
+                <select name="exception_type">
+                  {% for exception_type in exception_types %}
+                    <option value="{{ exception_type.value }}">{{ exception_type.value }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                <span>Financial impact</span>
+                <input name="amount" type="number" step="0.01" placeholder="Optional amount" />
+              </label>
+              <label>
+                <span>Supporting doc reference</span>
+                <input name="supporting_doc" placeholder="Optional URL or file note" />
+              </label>
+              <label>
+                <span>Justification</span>
+                <textarea name="justification" placeholder="Explain why the traveler needs this exception."></textarea>
+              </label>
+              <div class="actions">
+                <button class="secondary" type="submit">Save exception request</button>
+              </div>
+            </div>
+          </form>
+        </section>
+      {% endif %}
+
       {% if review and review.artifacts %}
         <section class="panel">
           <h2>Generated artifacts</h2>
@@ -133,6 +184,12 @@
           <h2>Submission result</h2>
           <p style="margin-top: 10px;">The proposal submission seam accepted the browser draft.</p>
           <pre>{{ review.submission_response.model_dump_json(indent=2) }}</pre>
+          {% if review.manager_review %}
+            <div class="actions" style="margin-top: 16px;">
+              <a class="button primary" href="/portal/manager/reviews/{{ review.manager_review.review_id }}">Open manager review</a>
+              <a class="button secondary" href="/portal/admin">Open admin console</a>
+            </div>
+          {% endif %}
         </section>
       {% endif %}
     </aside>
