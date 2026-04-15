@@ -1001,7 +1001,7 @@ def _expense_review_state(
                 draft_id=draft_id,
                 expense_report=expense_report,
             )
-        except (ValueError, ValidationError) as exc:
+        except (InvalidOperation, ValueError, ValidationError) as exc:
             if isinstance(exc, ValidationError):
                 validation_errors.extend(
                     f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
@@ -1207,8 +1207,11 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
         draft = proposal_store.save_expense_draft(answers)
-        if review.artifacts:
-            proposal_store.cache_expense_artifacts(draft.draft_id, review.artifacts)
+        persisted_review = _expense_review_state(draft.draft_id, answers)
+        if persisted_review.artifacts:
+            proposal_store.cache_expense_artifacts(
+                draft.draft_id, persisted_review.artifacts
+            )
         return RedirectResponse(
             url=request.url_for("portal_expense_detail", draft_id=draft.draft_id),
             status_code=status.HTTP_303_SEE_OTHER,

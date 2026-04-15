@@ -397,6 +397,47 @@ def test_expense_portal_generates_exports_and_policy_warning() -> None:
     assert excel_export.content.startswith(b"PK")
 
 
+def test_expense_portal_caches_artifacts_with_persisted_draft_id() -> None:
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+
+    response = client.post(
+        "/portal/expenses/review",
+        data=_expense_form_payload(),
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    match = re.search(r"/portal/expenses/([^/]+)/artifacts/expense-csv", response.text)
+    assert match is not None
+    draft_id = match.group(1)
+
+    draft = store.lookup_expense_draft(draft_id)
+    assert draft is not None
+    assert draft_id in draft.cached_artifacts["expense-csv"].filename
+    assert draft_id in draft.cached_artifacts["expense-xlsx"].filename
+    assert "preview" not in draft.cached_artifacts["expense-csv"].filename.lower()
+    assert "preview" not in draft.cached_artifacts["expense-xlsx"].filename.lower()
+    assert b"EXP-PREVIEW" not in draft.cached_artifacts["expense-csv"].content
+
+
+def test_expense_portal_rejects_invalid_decimal_input_without_saving() -> None:
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+    payload = _expense_form_payload()
+    payload["expense_amount"] = "not-a-decimal"
+
+    response = client.post(
+        "/portal/expenses/review",
+        data=payload,
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 400
+    assert "not-a-decimal" in response.text
+    assert not store.expense_drafts_by_id
+
+
 def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
