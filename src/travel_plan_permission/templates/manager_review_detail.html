@@ -165,7 +165,7 @@
           <section class="panel">
             <h2>Record manager decision</h2>
             <p style="margin-top: 10px;">
-              Viewing as <strong>{{ role_view.role.value }}</strong> with
+              Role view simulation: <strong>{{ role_view.role.value }}</strong>, showing
               {% for permission in role_view.permissions %}<code>{{ permission.value }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
             </p>
             {% if error_message %}

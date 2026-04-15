@@ -6,8 +6,8 @@ import argparse
 import sys
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
 from urllib.parse import parse_qs
 from uuid import uuid4
 
@@ -24,9 +24,9 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
-from .models import ExceptionRequest, ExceptionStatus, ExceptionType, TripPlan
+from .models import ExceptionRequest, ExceptionType, TripPlan
 from .planner_auth import PlannerAuthConfig, authenticate_request
 from .policy_api import (
     PlannerPolicySnapshot,
@@ -49,7 +49,14 @@ from .portal_review import (
     portal_validation_state,
 )
 from .review_workflow import ReviewAction, ReviewRequest, ReviewWorkflowStore
-from .security import AuditEventType, AuditLogEvent, DEFAULT_ROLES, Permission, RoleName, SecurityModel
+from .security import (
+    DEFAULT_ROLES,
+    AuditEventType,
+    AuditLogEvent,
+    Permission,
+    RoleName,
+    SecurityModel,
+)
 
 __all__ = [
     "PlannerProposalStore",
@@ -393,6 +400,7 @@ class PlannerProposalStore:
                 key=lambda item: item[1].updated_at,
             )[0]
             del self.portal_drafts_by_id[oldest_draft_id]
+            self.exception_requests_by_draft_id.pop(oldest_draft_id, None)
         draft = PortalDraft(
             draft_id=uuid4().hex[:12],
             answers=dict(answers),
@@ -561,16 +569,19 @@ class PlannerProposalStore:
         else:
             target.reject()
             outcome = "rejected"
+        metadata: dict[str, object] = {
+            "exception_type": target.type.value,
+            "exception_index": exception_index,
+            "status": target.status.value,
+        }
+        if notes is not None:
+            metadata["notes"] = notes
         self.security.audit_log.record(
             event_type=AuditEventType.EXCEPTION,
             actor=actor_id,
             subject=draft_id,
             outcome=outcome,
-            metadata={
-                "exception_type": target.type.value,
-                "exception_index": exception_index,
-                "status": target.status.value,
-            },
+            metadata=metadata,
         )
         return _copy_exception_request(target)
 
@@ -922,13 +933,26 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
 
         supporting_doc = parsed.get("supporting_doc", [""])[-1].strip()
         amount_text = parsed.get("amount", [""])[-1].strip()
-        exception_request = ExceptionRequest(
-            type=exception_type,
-            justification=parsed.get("justification", [""])[-1].strip(),
-            requestor=str(draft.answers.get("traveler_name") or "portal-traveler"),
-            amount=amount_text or None,
-            supporting_docs=[supporting_doc] if supporting_doc else [],
-        )
+        try:
+            parsed_amount = Decimal(amount_text) if amount_text else None
+        except InvalidOperation as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Amount must be a valid non-negative decimal value.",
+            ) from exc
+        try:
+            exception_request = ExceptionRequest(
+                type=exception_type,
+                justification=parsed.get("justification", [""])[-1].strip(),
+                requestor=str(draft.answers.get("traveler_name") or "portal-traveler"),
+                amount=parsed_amount,
+                supporting_docs=[supporting_doc] if supporting_doc else [],
+            )
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
         proposal_store.create_exception_request(draft_id, exception_request)
         return RedirectResponse(
             url=request.url_for("portal_review_detail", draft_id=draft_id),
@@ -1157,13 +1181,19 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Actor ID is required for exception decisions.",
             )
-        proposal_store.decide_exception_request(
-            draft_id,
-            exception_index=exception_index,
-            actor_id=actor_id,
-            approved=parsed.get("decision", ["reject"])[-1].strip() == "approve",
-            notes=parsed.get("notes", [""])[-1].strip() or None,
-        )
+        try:
+            proposal_store.decide_exception_request(
+                draft_id,
+                exception_index=exception_index,
+                actor_id=actor_id,
+                approved=parsed.get("decision", ["reject"])[-1].strip() == "approve",
+                notes=parsed.get("notes", [""])[-1].strip() or None,
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Exception request not found.",
+            ) from exc
         review = proposal_store.lookup_manager_review_for_draft(draft_id)
         resolved_role = _resolve_role_view(actor_role).role.value
         if review is not None:
