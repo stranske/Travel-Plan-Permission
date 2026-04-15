@@ -34,6 +34,28 @@ def _set_bootstrap_runtime_env(monkeypatch, *, provider: str = "google") -> None
     monkeypatch.setenv("TPP_BOOTSTRAP_SIGNING_SECRET", "bootstrap-secret-123")
 
 
+def _approve_header(*, provider: str = "google") -> dict[str, str]:
+    token = mint_bootstrap_token(
+        subject="manager-reviewer",
+        permissions=(Permission.VIEW, Permission.APPROVE),
+        provider=provider,
+        secret="bootstrap-secret-123",
+        expires_in_seconds=600,
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _create_header(*, provider: str = "google") -> dict[str, str]:
+    token = mint_bootstrap_token(
+        subject="portal-submit",
+        permissions=(Permission.VIEW, Permission.CREATE),
+        provider=provider,
+        secret="bootstrap-secret-123",
+        expires_in_seconds=600,
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _portal_form_payload() -> dict[str, str]:
     return {
         "traveler_name": "Alex Rivera",
@@ -293,6 +315,7 @@ def test_portal_home_and_request_form_render() -> None:
 
     assert home.status_code == 200
     assert "Travel Request Portal" in home.text
+    assert "Open manager queue" in home.text
     assert form.status_code == 200
     assert "Draft a travel request through the real service runtime." in form.text
 
@@ -460,3 +483,63 @@ def test_portal_submit_requires_bearer_token(monkeypatch) -> None:
 
     assert submit.status_code == 401
     assert submit.json()["detail"] == "Missing bearer token."
+
+
+def test_portal_submission_creates_manager_review_queue_and_decision_flow(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    monkeypatch.setenv("TPP_REVIEW_STORE_PATH", str(tmp_path / "review-store"))
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    review_response = client.post(
+        "/portal/requests/review",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+    assert review_response.status_code == 200
+    draft_match = re.search(r"/portal/requests/([^/]+)/artifacts/itinerary", review_response.text)
+    assert draft_match is not None
+    draft_id = draft_match.group(1)
+
+    submit = client.post(
+        f"/portal/requests/{draft_id}/submit",
+        headers=_create_header(),
+        follow_redirects=True,
+    )
+    assert submit.status_code == 200
+    assert "Manager review queue" in submit.text
+
+    request_match = re.search(r"/portal/manager/reviews/([a-z0-9-]+)", submit.text)
+    assert request_match is not None
+    request_id = request_match.group(1)
+
+    queue = client.get("/portal/manager/reviews")
+    assert queue.status_code == 200
+    assert "pending_manager_review" in queue.text
+    assert "Regional partner summit" in queue.text
+
+    detail = client.get(f"/portal/manager/reviews/{request_id}")
+    assert detail.status_code == 200
+    assert "Record manager decision" in detail.text
+    assert "No manager decisions recorded yet." in detail.text
+
+    decision = client.post(
+        f"/portal/manager/reviews/{request_id}/decision",
+        headers=_approve_header(),
+        data={
+            "reviewer_id": "manager@example.edu",
+            "decision": "request_changes",
+            "rationale": "Need a short explanation for the hotel price delta.",
+        },
+        follow_redirects=True,
+    )
+    assert decision.status_code == 200
+    assert "changes_requested" in decision.text
+    assert "Need a short explanation for the hotel price delta." in decision.text
+
+    stored_record = Path(tmp_path / "review-store" / f"{request_id}.json")
+    assert stored_record.exists()
+    stored_payload = json.loads(stored_record.read_text(encoding="utf-8"))
+    assert stored_payload["status"] == "changes_requested"
+    assert stored_payload["history"][0]["decision"] == "request_changes"

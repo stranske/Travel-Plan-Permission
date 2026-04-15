@@ -457,6 +457,19 @@
               <h2>Submission result</h2>
               <p style="margin-top: 10px;">The proposal submission seam accepted the browser draft.</p>
               <pre>{{ review.submission_response.model_dump_json(indent=2) }}</pre>
+              {% if review.manager_review %}
+                <div class="callout" style="margin-top: 16px;">
+                  <h3>Manager review queue</h3>
+                  <p>
+                    Request <code>{{ review.manager_review.request_id }}</code> is now in the durable
+                    manager review queue with status <strong>{{ review.manager_review.status.value }}</strong>.
+                  </p>
+                  <div class="actions" style="margin-top: 14px;">
+                    <a class="button primary" href="/portal/manager/reviews/{{ review.manager_review.request_id }}">Open manager review</a>
+                    <a class="button secondary" href="/portal/manager/reviews">View queue</a>
+                  </div>
+                </div>
+              {% endif %}
             </section>
           {% endif %}
 

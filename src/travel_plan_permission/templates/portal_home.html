@@ -120,6 +120,7 @@
         </p>
         <div class="actions">
           <a class="button primary" href="/portal/requests/new">Start a new request</a>
+          <a class="button secondary" href="/portal/manager/reviews">Open manager queue</a>
           <a class="button secondary" href="/readyz">Check runtime readiness</a>
         </div>
       </section>
@@ -145,6 +146,17 @@
           <p style="margin-top: 12px;">
             The portal shell is available without planner credentials; the lower-level planner
             API still follows the normal token requirements.
+          </p>
+        </article>
+        <article class="panel">
+          <div class="eyebrow">Manager Workflow</div>
+          <h2>Durable review queue</h2>
+          <p>
+            <span class="status">{{ manager_review_count }} request{% if manager_review_count != 1 %}s{% endif %} tracked</span>
+          </p>
+          <p style="margin-top: 12px;">
+            Submitted portal requests now land in a persisted manager queue with rationale-backed
+            approve, request-changes, and reject actions.
           </p>
         </article>
       </section>

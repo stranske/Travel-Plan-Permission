@@ -36,6 +36,11 @@ from .policy_api import (
     submit_proposal,
 )
 from .prompt_flow import build_output_bundle, generate_questions, required_field_gaps
+from .review_workflow import (
+    ManagerReviewDecision,
+    ManagerReviewRecord,
+    ReviewWorkflowStore,
+)
 from .security import Permission
 
 _OPTIONAL_SNAPSHOT_BODY = Body(default=None)
@@ -170,6 +175,7 @@ class PortalReviewState:
     policy_result: Any | None
     artifacts: dict[str, PortalArtifact]
     submission_response: PlannerProposalOperationResponse | None = None
+    manager_review: ManagerReviewRecord | None = None
 
 
 class PlannerRuntimeConfigError(RuntimeError):
@@ -297,6 +303,7 @@ class PlannerProposalStore:
     plans_by_trip_id: dict[str, TripPlan] = field(default_factory=dict)
     proposals_by_execution_id: dict[str, StoredProposal] = field(default_factory=dict)
     portal_drafts_by_id: dict[str, PortalDraft] = field(default_factory=dict)
+    review_store: ReviewWorkflowStore = field(default_factory=ReviewWorkflowStore)
 
     def remember_plan(self, trip_plan: TripPlan) -> None:
         """Store the latest planner trip payload by trip identifier."""
@@ -387,6 +394,54 @@ class PlannerProposalStore:
             answers=dict(draft.answers),
             updated_at=draft.updated_at,
             cached_artifacts=dict(draft.cached_artifacts),
+        )
+
+    def create_manager_review(
+        self,
+        *,
+        draft_id: str,
+        portal_answers: dict[str, object],
+        trip_plan: TripPlan,
+        policy_snapshot: PlannerPolicySnapshot,
+        evaluation_result: PlannerProposalEvaluationResult,
+        submission_response: PlannerProposalOperationResponse,
+    ) -> ManagerReviewRecord:
+        """Persist a durable manager-review record for a submitted request."""
+
+        return self.review_store.create_record(
+            draft_id=draft_id,
+            portal_answers=portal_answers,
+            trip_plan=trip_plan,
+            policy_snapshot=policy_snapshot,
+            evaluation_result=evaluation_result,
+            submission_response=submission_response,
+        )
+
+    def lookup_manager_review(self, request_id: str) -> ManagerReviewRecord | None:
+        """Return a persisted manager-review record by identifier."""
+
+        return self.review_store.get_record(request_id)
+
+    def list_manager_reviews(self) -> list[ManagerReviewRecord]:
+        """Return the durable manager-review queue."""
+
+        return self.review_store.list_records()
+
+    def record_manager_review_decision(
+        self,
+        request_id: str,
+        *,
+        decision: ManagerReviewDecision,
+        reviewer_id: str,
+        rationale: str,
+    ) -> ManagerReviewRecord:
+        """Apply a manager decision to a persisted review record."""
+
+        return self.review_store.record_manager_decision(
+            request_id,
+            decision=decision,
+            reviewer_id=reviewer_id,
+            rationale=rationale,
         )
 
 
@@ -548,6 +603,7 @@ def _portal_review_state(
     answers: dict[str, object],
     *,
     submission_response: PlannerProposalOperationResponse | None = None,
+    manager_review: ManagerReviewRecord | None = None,
 ) -> PortalReviewState:
     missing_fields = required_field_gaps(answers, required_fields=_PORTAL_REQUIRED_FIELDS)
     next_questions: list[dict[str, object]] = [
@@ -596,6 +652,7 @@ def _portal_review_state(
         policy_result=policy_result,
         artifacts=artifacts,
         submission_response=submission_response,
+        manager_review=manager_review,
     )
 
 
@@ -637,7 +694,11 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         return _TEMPLATES.TemplateResponse(
             request=request,
             name="portal_home.html",
-            context={"service_ready": _readiness_response().status == "ready"},
+            context={
+                "request": request,
+                "service_ready": _readiness_response().status == "ready",
+                "manager_review_count": len(proposal_store.list_manager_reviews()),
+            },
         )
 
     @app.get("/portal/requests/new", response_class=HTMLResponse)
@@ -714,15 +775,108 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             submission_request,
             submission_response,
         )
+        execution_id = str(submission_response.result_payload["execution_id"])
+        stored_submission = proposal_store.lookup_submission(execution_id)
+        assert stored_submission is not None
+        evaluation_result = get_evaluation_result(
+            stored_submission.trip_plan,
+            _evaluation_request(stored_submission, execution_id=execution_id),
+        )
+        manager_review = proposal_store.create_manager_review(
+            draft_id=draft_id,
+            portal_answers=draft.answers,
+            trip_plan=stored_submission.trip_plan,
+            policy_snapshot=review.policy_snapshot,
+            evaluation_result=evaluation_result,
+            submission_response=submission_response,
+        )
         review = _portal_review_state(
             draft.draft_id,
             draft.answers,
             submission_response=submission_response,
+            manager_review=manager_review,
         )
         return _TEMPLATES.TemplateResponse(
             request=request,
             name="portal_request.html",
             context=_portal_template_context(request, review),
+        )
+
+    @app.get("/portal/manager/reviews", response_class=HTMLResponse)
+    def portal_manager_review_queue(request: Request) -> HTMLResponse:
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="portal_manager_queue.html",
+            context={
+                "request": request,
+                "reviews": proposal_store.list_manager_reviews(),
+            },
+        )
+
+    @app.get(
+        "/portal/manager/reviews/{request_id}",
+        response_class=HTMLResponse,
+        name="portal_manager_review_detail",
+    )
+    def portal_manager_review_detail(request: Request, request_id: str) -> HTMLResponse:
+        review_record = proposal_store.lookup_manager_review(request_id)
+        if review_record is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No manager review found for '{request_id}'.",
+            )
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="portal_manager_review.html",
+            context={"request": request, "review_record": review_record},
+        )
+
+    @app.post("/portal/manager/reviews/{request_id}/decision")
+    async def portal_manager_review_decision(
+        request: Request,
+        request_id: str,
+        authorization: str | None = Header(default=None),
+    ) -> RedirectResponse:
+        _authorize_request(
+            authorization,
+            required_permission=Permission.APPROVE,
+        )
+        parsed = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
+        reviewer_id = parsed.get("reviewer_id", [""])[-1].strip()
+        rationale = parsed.get("rationale", [""])[-1].strip()
+        decision_raw = parsed.get("decision", [""])[-1].strip()
+        if not reviewer_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Manager reviewer_id is required.",
+            )
+        try:
+            decision = ManagerReviewDecision(decision_raw)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported manager decision '{decision_raw}'.",
+            ) from exc
+        try:
+            proposal_store.record_manager_review_decision(
+                request_id,
+                decision=decision,
+                reviewer_id=reviewer_id,
+                rationale=rationale,
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No manager review found for '{request_id}'.",
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+        return RedirectResponse(
+            url=request.url_for("portal_manager_review_detail", request_id=request_id),
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
     @app.get("/portal/requests/{draft_id}/artifacts/{artifact_name}")

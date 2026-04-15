@@ -69,3 +69,14 @@ Approval packets package the trip summary, policy status, cost breakdown, and a 
 - `TripPlan.record_approval_decision` enforces justification text for override outcomes.
 - Approval history entries are frozen Pydantic models and stored as tuples to prevent mutation.
 - PDFs include the justification column to preserve override rationale for auditing.
+
+## Manager review portal workflow
+
+The browser portal now promotes submitted drafts into a durable manager review queue:
+
+- Portal submit creates a persisted review record keyed by the planner execution id.
+- Review records keep the trip summary, policy snapshot, evaluation result, and decision history.
+- Managers work from `/portal/manager/reviews` and record `approve`, `request_changes`, or
+  `reject` decisions with rationale text.
+- Approved and rejected decisions also append immutable `TripPlan.approval_history` entries so
+  the queue state and trip audit trail stay aligned.

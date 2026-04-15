@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manager Review Detail</title>
+    <style>
+      :root {
+        --ink: #112431;
+        --muted: #5a6f7d;
+        --paper: rgba(255, 255, 255, 0.9);
+        --line: rgba(17, 36, 49, 0.12);
+        --accent: #0f685a;
+        --warn: #b25a24;
+        --shadow: 0 26px 62px rgba(17, 36, 49, 0.14);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        background:
+          radial-gradient(circle at top right, rgba(15, 104, 90, 0.12), transparent 30%),
+          linear-gradient(135deg, #eef1ea 0%, #dde8ef 100%);
+      }
+      main { max-width: 1200px; margin: 0 auto; padding: 32px 18px 72px; }
+      .topbar, .panel {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+      }
+      .topbar { padding: 24px; margin-bottom: 20px; display: grid; gap: 14px; }
+      .layout {
+        display: grid;
+        gap: 20px;
+        grid-template-columns: minmax(0, 1fr) minmax(320px, 0.85fr);
+      }
+      .panel { padding: 22px; }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: clamp(2.2rem, 3.8vw, 3.8rem); letter-spacing: -0.03em; }
+      h2 { font-size: 1.25rem; }
+      h3 {
+        font: 700 0.78rem/1 ui-monospace, "SFMono-Regular", Menlo, monospace;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      p, li { color: var(--muted); line-height: 1.55; }
+      ul { margin: 12px 0 0; padding-left: 18px; }
+      li + li { margin-top: 8px; }
+      .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+      .button, button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 12px 16px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        text-decoration: none;
+        background: white;
+        color: var(--ink);
+        font: 700 0.94rem/1 inherit;
+      }
+      button.primary { background: var(--ink); color: white; border-color: transparent; cursor: pointer; }
+      .badge {
+        display: inline-flex;
+        padding: 7px 12px;
+        border-radius: 999px;
+        background: rgba(15, 104, 90, 0.12);
+        color: var(--accent);
+        font: 600 0.8rem/1 ui-monospace, "SFMono-Regular", Menlo, monospace;
+      }
+      .badge.warn {
+        background: rgba(178, 90, 36, 0.14);
+        color: var(--warn);
+      }
+      .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+      .callout {
+        margin-top: 16px;
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.72);
+      }
+      form { display: grid; gap: 12px; margin-top: 14px; }
+      label { display: grid; gap: 6px; font-size: 0.95rem; }
+      input, textarea, select {
+        width: 100%;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        padding: 12px 14px;
+        font: inherit;
+      }
+      textarea { min-height: 120px; resize: vertical; }
+      pre {
+        margin: 0;
+        padding: 14px;
+        border-radius: 16px;
+        background: #122330;
+        color: #edf4f7;
+        overflow: auto;
+        font: 0.84rem/1.45 ui-monospace, "SFMono-Regular", Menlo, monospace;
+      }
+      @media (max-width: 920px) {
+        .layout { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="topbar">
+        <div class="actions">
+          <a class="button" href="/portal/manager/reviews">Back to queue</a>
+          <a class="button" href="/portal">Portal home</a>
+        </div>
+        <h1>{{ review_record.traveler_name }}</h1>
+        <p>{{ review_record.business_purpose }} for {{ review_record.destination }}.</p>
+        <div class="actions">
+          <span class="badge {% if review_record.status.value != 'pending_manager_review' %}warn{% endif %}">{{ review_record.status.value }}</span>
+          <span class="badge {% if review_record.policy_snapshot.policy_status == 'fail' %}warn{% endif %}">policy {{ review_record.policy_snapshot.policy_status }}</span>
+          <span class="badge {% if review_record.evaluation_result.outcome != 'compliant' %}warn{% endif %}">{{ review_record.evaluation_result.outcome }}</span>
+        </div>
+      </section>
+
+      <div class="layout">
+        <section class="panel">
+          <h2>Review summary</h2>
+          <div class="grid" style="margin-top: 16px;">
+            <div class="callout">
+              <h3>Trip</h3>
+              <p><strong>{{ review_record.trip_id }}</strong></p>
+              <p>Submitted {{ review_record.submitted_at.strftime("%Y-%m-%d %H:%M UTC") }}</p>
+            </div>
+            <div class="callout">
+              <h3>Approval triggers</h3>
+              <ul>
+                {% for trigger in review_record.policy_snapshot.approval_triggers %}
+                  <li>{{ trigger.summary }}</li>
+                {% else %}
+                  <li>No approval triggers surfaced.</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="callout">
+              <h3>Blocking issues</h3>
+              <ul>
+                {% for issue in review_record.evaluation_result.blocking_issues %}
+                  <li>{{ issue.message }}</li>
+                {% else %}
+                  <li>No blocking issues are currently open.</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="callout">
+              <h3>Exception workflow</h3>
+              <ul>
+                {% for requirement in review_record.evaluation_result.exception_requirements %}
+                  <li>{{ requirement.summary }}</li>
+                {% else %}
+                  <li>No exception approvals are waiting.</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+
+          <div class="callout">
+            <h3>Decision history</h3>
+            <ul>
+              {% for entry in review_record.history %}
+                <li>
+                  <strong>{{ entry.decision.value }}</strong> by {{ entry.reviewer_id }} on
+                  {{ entry.decided_at.strftime("%Y-%m-%d %H:%M UTC") }}: {{ entry.rationale }}
+                </li>
+              {% else %}
+                <li>No manager decisions recorded yet.</li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          <div class="callout">
+            <h3>Latest submission contract</h3>
+            <pre>{{ review_record.submission_response.model_dump_json(indent=2) }}</pre>
+          </div>
+        </section>
+
+        <aside class="panel">
+          <h2>Record manager decision</h2>
+          <p style="margin-top: 10px;">Use a bootstrap token with <code>approve</code> permission when posting this decision route.</p>
+          <form method="post" action="/portal/manager/reviews/{{ review_record.request_id }}/decision">
+            <label>
+              Reviewer ID
+              <input name="reviewer_id" type="text" value="manager@example.edu" required />
+            </label>
+            <label>
+              Decision
+              <select name="decision" required>
+                <option value="approve">Approve</option>
+                <option value="request_changes">Request changes</option>
+                <option value="reject">Reject</option>
+              </select>
+            </label>
+            <label>
+              Rationale
+              <textarea name="rationale" required>Reviewed current policy posture and request context.</textarea>
+            </label>
+            <button class="primary" type="submit">Record decision</button>
+          </form>
+
+          <div class="callout">
+            <h3>Approval history snapshot</h3>
+            <ul>
+              {% for event in review_record.trip_plan.approval_history %}
+                <li>{{ event.level }} {{ event.outcome.value }} by {{ event.approver_id }}</li>
+              {% else %}
+                <li>No approval-history entries yet.</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </body>
+</html>

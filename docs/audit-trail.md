@@ -18,6 +18,9 @@ Each snapshot is stored as a compact JSON document (`<trip_id>/<timestamp>.json`
 
 - Snapshots are written whenever an approval decision is recorded (approved, rejected, flagged, or overridden) when a `ValidationSnapshotStore` is provided.
 - Captures include the exact validation results used for the decision; if they are missing, the policy validator is run automatically before writing the snapshot.
+- Manager queue decisions also persist a separate file-backed review record containing the
+  manager rationale, queue status, and latest planner evaluation context so request review can be
+  resumed outside transient service memory.
 
 ## Storage and integrity
 

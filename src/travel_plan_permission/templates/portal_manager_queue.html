@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manager Review Queue</title>
+    <style>
+      :root {
+        --ink: #132532;
+        --muted: #5d7280;
+        --paper: rgba(255, 255, 255, 0.9);
+        --line: rgba(19, 37, 50, 0.12);
+        --accent: #0c6b5d;
+        --warn: #b25a24;
+        --bg: linear-gradient(140deg, #edf2ec 0%, #dce7ef 100%);
+        --shadow: 0 24px 58px rgba(19, 37, 50, 0.12);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        color: var(--ink);
+        background: var(--bg);
+      }
+      main { max-width: 1100px; margin: 0 auto; padding: 36px 18px 72px; }
+      a { color: inherit; }
+      .topbar, .card, table {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+      }
+      .topbar { padding: 24px; display: grid; gap: 12px; margin-bottom: 22px; }
+      .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 12px 16px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: white;
+        text-decoration: none;
+        font-weight: 700;
+      }
+      .button.primary { background: var(--ink); color: white; }
+      .card { padding: 0; overflow: hidden; }
+      table { width: 100%; border-collapse: collapse; overflow: hidden; }
+      th, td { padding: 16px 18px; text-align: left; vertical-align: top; }
+      th {
+        font: 600 0.78rem/1 ui-monospace, "SFMono-Regular", Menlo, monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+      }
+      tr + tr td { border-top: 1px solid var(--line); }
+      .badge {
+        display: inline-flex;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(12, 107, 93, 0.12);
+        color: var(--accent);
+        font: 600 0.78rem/1 ui-monospace, "SFMono-Regular", Menlo, monospace;
+      }
+      .badge.warn {
+        background: rgba(178, 90, 36, 0.14);
+        color: var(--warn);
+      }
+      .muted { color: var(--muted); }
+      h1, p { margin: 0; }
+      h1 { font-size: clamp(2rem, 3.5vw, 3.5rem); letter-spacing: -0.03em; }
+      p { line-height: 1.55; color: var(--muted); }
+      code {
+        font: 0.84rem/1.4 ui-monospace, "SFMono-Regular", Menlo, monospace;
+        color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="topbar">
+        <h1>Manager review queue</h1>
+        <p>Submitted travel requests now keep a durable approval queue with live policy posture and rationale-backed decision history.</p>
+        <div class="actions">
+          <a class="button primary" href="/portal/requests/new">Draft another request</a>
+          <a class="button" href="/portal">Back to portal home</a>
+        </div>
+      </section>
+
+      <section class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>Traveler</th>
+              <th>Trip</th>
+              <th>Status</th>
+              <th>Policy posture</th>
+              <th>Decision history</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for review in reviews %}
+              <tr>
+                <td>
+                  <a href="/portal/manager/reviews/{{ review.request_id }}"><strong>{{ review.traveler_name }}</strong></a>
+                  <div class="muted">{{ review.trip_id }}</div>
+                </td>
+                <td>
+                  <div>{{ review.business_purpose }}</div>
+                  <div class="muted">{{ review.destination }}</div>
+                </td>
+                <td>
+                  <span class="badge {% if review.status.value != 'pending_manager_review' %}warn{% endif %}">{{ review.status.value }}</span>
+                </td>
+                <td>
+                  <div>{{ review.evaluation_result.outcome }}</div>
+                  <div class="muted">{{ review.policy_snapshot.policy_status }}</div>
+                </td>
+                <td>
+                  <div>{{ review.history | length }} decision{% if review.history|length != 1 %}s{% endif %}</div>
+                  <div class="muted">Updated {{ review.updated_at.strftime("%Y-%m-%d %H:%M UTC") }}</div>
+                </td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="5">
+                  <p>No manager review requests are queued yet.</p>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>
