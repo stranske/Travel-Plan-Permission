@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Travel Request Portal{% endblock %}</title>
+    <style>
+      :root {
+        --ink: #0f2230;
+        --muted: #587080;
+        --paper: rgba(255, 255, 255, 0.9);
+        --line: rgba(15, 34, 48, 0.12);
+        --accent: #146356;
+        --accent-soft: rgba(20, 99, 86, 0.14);
+        --warn: #a74e1c;
+        --warn-soft: rgba(167, 78, 28, 0.13);
+        --shadow: 0 22px 58px rgba(15, 34, 48, 0.14);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        background:
+          radial-gradient(circle at right top, rgba(20, 99, 86, 0.13), transparent 30%),
+          linear-gradient(135deg, #f6f0e8 0%, #dfe9ef 100%);
+      }
+      main {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 32px 18px 72px;
+      }
+      a { color: inherit; }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+      .home-link {
+        text-decoration: none;
+        font: 600 0.85rem/1.1 ui-monospace, "SFMono-Regular", Menlo, monospace;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .layout {
+        display: grid;
+        gap: 20px;
+        grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+      }
+      .panel {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 26px;
+        box-shadow: var(--shadow);
+        padding: 24px;
+      }
+      h1, h2, h3 {
+        margin: 0;
+        letter-spacing: -0.03em;
+      }
+      h1 { font-size: clamp(2rem, 3vw, 3.6rem); line-height: 0.98; }
+      h2 { font-size: 1.3rem; }
+      h3 { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.08em; }
+      p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+      .intro {
+        display: grid;
+        gap: 14px;
+        margin-bottom: 24px;
+      }
+      .section-grid {
+        display: grid;
+        gap: 18px;
+      }
+      .section-card {
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 18px;
+        background: rgba(255, 255, 255, 0.74);
+      }
+      .fields {
+        margin-top: 14px;
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 0.95rem;
+      }
+      .label-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: baseline;
+      }
+      .optional {
+        font: 600 0.7rem/1 ui-monospace, "SFMono-Regular", Menlo, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      input, textarea, select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 14px;
+        font: inherit;
+        color: var(--ink);
+        background: rgba(255, 255, 255, 0.94);
+      }
+      textarea {
+        min-height: 110px;
+        resize: vertical;
+      }
+      .actions {
+        margin-top: 22px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      button, .button {
+        border: 0;
+        border-radius: 999px;
+        padding: 14px 18px;
+        font: 700 0.95rem/1 inherit;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      button.primary, .button.primary {
+        background: var(--ink);
+        color: white;
+      }
+      button.secondary, .button.secondary {
+        background: white;
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
+      .stack { display: grid; gap: 16px; }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font: 600 0.8rem/1 ui-monospace, "SFMono-Regular", Menlo, monospace;
+      }
+      .badge.warn {
+        background: var(--warn-soft);
+        color: var(--warn);
+      }
+      .callout {
+        border-radius: 18px;
+        padding: 16px 18px;
+        background: rgba(255, 255, 255, 0.76);
+        border: 1px solid var(--line);
+      }
+      ul {
+        margin: 10px 0 0;
+        padding-left: 18px;
+        color: var(--muted);
+      }
+      li + li {
+        margin-top: 8px;
+      }
+      pre {
+        margin: 0;
+        padding: 14px;
+        border-radius: 16px;
+        background: #102230;
+        color: #edf4f7;
+        overflow: auto;
+        font: 0.84rem/1.45 ui-monospace, "SFMono-Regular", Menlo, monospace;
+      }
+      dl {
+        margin: 0;
+        display: grid;
+        gap: 10px;
+      }
+      dt {
+        font: 600 0.78rem/1 ui-monospace, "SFMono-Regular", Menlo, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      dd {
+        margin: 2px 0 0;
+      }
+      @media (max-width: 920px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="topbar">
+        <a class="home-link" href="/portal">Travel Request Portal</a>
+        {% block topbar_badge %}{% endblock %}
+      </div>
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

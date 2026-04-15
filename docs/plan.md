@@ -24,6 +24,19 @@ perfection.
 See `docs/workflows.md` and `docs/policy-lite-checklist.md` for current
 scope and guardrails.
 
+### Stage 2 portal details
+
+The lightweight portal now has a fixed three-step server-rendered contract:
+
+- `GET /portal/draft/new` uses `templates/draft_entry.html`
+- `POST /portal/draft` validates with prompt-flow before any draft persistence
+- `GET /portal/review/{draft_id}` uses `templates/review_summary.html`
+
+Validation failures on `POST /portal/draft` return HTTP 400 and render
+`templates/validation_feedback.html`. That response includes a single `<ul>` with
+one `<li>` per missing field reported by prompt-flow, and the invalid submission
+does not create or save a portal draft.
+
 ## Success metrics
 
 - Minutes saved per itinerary vs baseline
