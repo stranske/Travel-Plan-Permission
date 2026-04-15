@@ -37,3 +37,13 @@ Collecting Receipts → Employee Submit → Manager Review → Accounting Review
 → Reimbursed
 
 Branches: Missing Receipt, Policy Warning (manager override allowed), Reject.
+
+### Expense portal contract
+
+The Stage 2 browser portal now exposes a separate expense and reimbursement flow:
+
+- `GET /portal/expenses/new` renders `templates/portal_expense.html`
+- `POST /portal/expenses/review` validates the current expense submission and saves a draft when the required fields are present
+- `GET /portal/expenses/{draft_id}` renders the linked receipt, manager/accounting disposition, and accounting export handoff
+
+The expense portal intentionally reuses the existing approval and export services. It does not write directly into an external reimbursement or ERP system yet.
