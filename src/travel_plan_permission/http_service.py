@@ -912,7 +912,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     async def portal_submit_exception_request(
         request: Request,
         draft_id: str,
-    ) -> RedirectResponse:
+    ) -> Response:
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
             raise HTTPException(
@@ -946,7 +946,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
         try:
             parsed_amount = Decimal(amount_text) if amount_text else None
-        except InvalidOperation as exc:
+        except InvalidOperation:
             return _TEMPLATES.TemplateResponse(
                 request=request,
                 name="review_summary.html",
