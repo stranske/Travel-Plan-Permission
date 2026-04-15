@@ -42,6 +42,7 @@ class PortalReviewState:
     next_questions: list[dict[str, object]]
     validation_errors: list[str]
     canonical_payload: dict[str, object] | None
+    canonical_plan: CanonicalTripPlan | None
     trip_plan: TripPlan | None
     policy_snapshot: PlannerPolicySnapshot | None
     policy_result: Any | None
@@ -103,11 +104,12 @@ def portal_validation_state(
     ]
     validation_errors: list[str] = []
     canonical_payload: dict[str, object] | None = None
+    canonical_plan: CanonicalTripPlan | None = None
 
     if not missing_fields:
         canonical_payload = canonical_payload_builder(answers)
         try:
-            CanonicalTripPlan.model_validate(canonical_payload)
+            canonical_plan = CanonicalTripPlan.model_validate(canonical_payload)
         except ValidationError as exc:
             validation_errors = _review_validation_errors(exc)
 
@@ -118,6 +120,7 @@ def portal_validation_state(
         next_questions=next_questions,
         validation_errors=validation_errors,
         canonical_payload=canonical_payload,
+        canonical_plan=canonical_plan,
         trip_plan=None,
         policy_snapshot=None,
         policy_result=None,
@@ -143,21 +146,21 @@ def portal_review_state(
     next_questions = validation_state.next_questions
     validation_errors = validation_state.validation_errors
     canonical_payload = validation_state.canonical_payload
+    canonical_plan = validation_state.canonical_plan
     trip_plan: TripPlan | None = None
     policy_snapshot: PlannerPolicySnapshot | None = None
     policy_result: Any | None = None
     artifacts: dict[str, PortalArtifact] = {}
 
-    if not missing_fields and canonical_payload is not None and not validation_errors:
-        canonical = CanonicalTripPlan.model_validate(canonical_payload)
-        trip_plan = canonical_trip_plan_to_model(canonical)
+    if not missing_fields and canonical_plan is not None and not validation_errors:
+        trip_plan = canonical_trip_plan_to_model(canonical_plan)
         policy_snapshot = get_policy_snapshot(
             trip_plan,
             PlannerPolicySnapshotRequest(trip_id=trip_plan.trip_id),
         )
         policy_result = check_trip_plan(trip_plan)
         artifacts = _portal_artifacts(
-            canonical=canonical,
+            canonical=canonical_plan,
             plan=trip_plan,
             answers=answers,
         )
@@ -169,6 +172,7 @@ def portal_review_state(
         next_questions=next_questions,
         validation_errors=validation_errors,
         canonical_payload=canonical_payload,
+        canonical_plan=canonical_plan,
         trip_plan=trip_plan,
         policy_snapshot=policy_snapshot,
         policy_result=policy_result,
