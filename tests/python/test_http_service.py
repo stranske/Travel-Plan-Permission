@@ -320,7 +320,9 @@ def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
 
     assert response.status_code == 400
     assert 'data-template="validation-feedback"' in response.text
-    assert "Complete the missing details before this draft can be saved." in response.text
+    assert (
+        "Complete the missing details before this draft can be saved." in response.text
+    )
     assert store.portal_drafts_by_id == {}
     assert re.search(
         r'<ul class="missing-fields">.*?<li><code>destination_zip</code></li>',
@@ -330,7 +332,9 @@ def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
     assert "Where are you headed and what" in response.text
 
 
-def test_portal_draft_validation_rejects_invalid_present_payload_without_saving() -> None:
+def test_portal_draft_validation_rejects_invalid_present_payload_without_saving() -> (
+    None
+):
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
     payload = _portal_form_payload()
@@ -477,7 +481,7 @@ def test_submission_creates_manager_review_queue_entry(monkeypatch) -> None:
     )
 
     assert submit.status_code == 200
-    assert "Manager review lane" in submit.text
+    assert "Submission result" in submit.text
     review = store.lookup_manager_review_for_draft(draft_id)
     assert review is not None
     queue = client.get("/portal/manager/reviews", headers=AUTH_HEADER)
@@ -736,7 +740,9 @@ def test_portal_artifacts_raise_runtime_error_without_bundle_mappings(
     monkeypatch,
 ) -> None:
     _set_runtime_env(monkeypatch)
-    client = TestClient(create_app(PlannerProposalStore()), raise_server_exceptions=False)
+    client = TestClient(
+        create_app(PlannerProposalStore()), raise_server_exceptions=False
+    )
 
     def invalid_bundle(**_kwargs):
         return {"itinerary_excel": "bad", "summary_pdf": "bad"}

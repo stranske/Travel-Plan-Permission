@@ -597,7 +597,9 @@ def _portal_artifacts(
 
 
 def _portal_validation_state(answers: dict[str, object]) -> PortalReviewState:
-    missing_fields = required_field_gaps(answers, required_fields=_PORTAL_REQUIRED_FIELDS)
+    missing_fields = required_field_gaps(
+        answers, required_fields=_PORTAL_REQUIRED_FIELDS
+    )
     next_questions: list[dict[str, object]] = [
         {
             "prompt": question.prompt,
