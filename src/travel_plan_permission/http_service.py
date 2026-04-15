@@ -38,12 +38,14 @@ from .policy_api import (
     PlannerProposalStatusRequest,
     PlannerProposalSubmissionRequest,
     build_portal_policy_review,
-    check_trip_plan,
     get_evaluation_result,
     get_policy_snapshot,
     poll_execution_status,
     render_travel_spreadsheet_bytes,
     submit_proposal,
+)
+from .policy_api import (
+    check_trip_plan as policy_check_trip_plan,
 )
 from .prompt_flow import build_output_bundle, generate_questions, required_field_gaps
 from .review_workflow import ReviewAction, ReviewRequest, ReviewWorkflowStore
@@ -51,6 +53,7 @@ from .security import Permission
 
 _OPTIONAL_SNAPSHOT_BODY = Body(default=None)
 _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
+check_trip_plan = policy_check_trip_plan
 _PORTAL_CANONICAL_FIELDS: tuple[str, ...] = (
     "traveler_name",
     "business_purpose",
