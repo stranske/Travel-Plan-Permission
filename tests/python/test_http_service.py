@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from travel_plan_permission.http_service import (
-    PlannerProposalStore,
-    create_app,
-    main,
-)
+from travel_plan_permission import http_service
+from travel_plan_permission.http_service import PlannerProposalStore, create_app, main
 from travel_plan_permission.planner_auth import mint_bootstrap_token
 from travel_plan_permission.policy_api import PlannerProposalOperationResponse
 from travel_plan_permission.security import Permission
@@ -34,6 +32,51 @@ def _set_bootstrap_runtime_env(monkeypatch, *, provider: str = "google") -> None
     monkeypatch.setenv("TPP_OIDC_PROVIDER", provider)
     monkeypatch.setenv("TPP_AUTH_MODE", "bootstrap-token")
     monkeypatch.setenv("TPP_BOOTSTRAP_SIGNING_SECRET", "bootstrap-secret-123")
+
+
+def _portal_form_payload() -> dict[str, str]:
+    return {
+        "traveler_name": "Alex Rivera",
+        "business_purpose": "Regional partner summit",
+        "cost_center": "OPS-410",
+        "city_state": "Seattle, WA",
+        "destination_zip": "98101",
+        "depart_date": "2025-10-05",
+        "return_date": "2025-10-09",
+        "notes": "Request airport pickup and late checkout.",
+        "flight_pref_outbound.carrier_flight": "AS120",
+        "flight_pref_outbound.depart_time": "2025-10-05T07:15",
+        "flight_pref_outbound.arrive_time": "2025-10-05T09:40",
+        "flight_pref_outbound.roundtrip_cost": "455.25",
+        "flight_pref_return.carrier_flight": "AS221",
+        "flight_pref_return.depart_time": "2025-10-09T18:10",
+        "flight_pref_return.arrive_time": "2025-10-09T20:30",
+        "lowest_cost_roundtrip": "430.00",
+        "hotel.name": "Pine Street Suites",
+        "hotel.address": "120 Pine St",
+        "hotel.city_state": "Seattle, WA",
+        "hotel.nightly_rate": "210.00",
+        "hotel.nights": "4",
+        "hotel.conference_hotel": "true",
+        "hotel.price_compare_notes": "Conference hotel is $20 more per night.",
+        "comparable_hotels[0].name": "Marketview Hotel",
+        "comparable_hotels[0].nightly_rate": "190.00",
+        "ground_transport_pref": "rideshare/taxi",
+        "parking_estimate": "35.00",
+        "event_registration_cost": "320.00",
+        "booking_date": "2025-09-20",
+        "selected_fare": "455.25",
+        "lowest_fare": "430.00",
+        "cabin_class": "economy",
+        "flight_duration_hours": "2.5",
+        "fare_evidence_attached": "true",
+        "driving_cost": "120.00",
+        "flight_cost": "200.00",
+        "distance_from_office_miles": "12.5",
+        "overnight_stay": "true",
+        "meals_provided": "false",
+        "meal_per_diem_requested": "true",
+    }
 
 
 def test_readyz_reports_missing_runtime_config(monkeypatch) -> None:
@@ -240,3 +283,180 @@ def test_snapshot_route_returns_bad_request_for_contract_mismatch(monkeypatch) -
 
     assert response.status_code == 400
     assert "trip_id" in response.json()["detail"]
+
+
+def test_portal_home_and_request_form_render() -> None:
+    client = TestClient(create_app())
+
+    home = client.get("/portal")
+    form = client.get("/portal/requests/new")
+
+    assert home.status_code == 200
+    assert "Travel Request Portal" in home.text
+    assert form.status_code == 200
+    assert "Draft a travel request through the real service runtime." in form.text
+
+
+def test_portal_request_form_get_stays_lightweight() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/portal/requests/new?traveler_name=Alex+Rivera")
+
+    assert response.status_code == 200
+    assert 'value="Alex Rivera"' not in response.text
+    assert "Generated artifacts" not in response.text
+    assert "Policy-lite posture" not in response.text
+
+
+def test_portal_review_shows_missing_inputs() -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/portal/requests/review",
+        data={"traveler_name": "Alex Rivera", "business_purpose": "Partner summit"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Missing required inputs" in response.text
+    assert "destination_zip" in response.text
+    assert "Where are you headed and what" in response.text
+
+
+def test_portal_review_allows_optional_fields_to_remain_blank(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+    payload = _portal_form_payload()
+    for field_name in (
+        "cost_center",
+        "event_registration_cost",
+        "flight_pref_outbound.carrier_flight",
+        "flight_pref_return.carrier_flight",
+        "lowest_cost_roundtrip",
+        "parking_estimate",
+        "hotel.name",
+        "hotel.address",
+        "hotel.city_state",
+        "hotel.nightly_rate",
+        "hotel.nights",
+        "hotel.conference_hotel",
+        "hotel.price_compare_notes",
+        "comparable_hotels[0].name",
+        "comparable_hotels[0].nightly_rate",
+        "ground_transport_pref",
+        "notes",
+    ):
+        payload.pop(field_name)
+
+    response = client.post(
+        "/portal/requests/review",
+        data=payload,
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Generated artifacts" in response.text
+    assert "Missing required inputs" not in response.text
+
+
+def test_portal_review_persists_policy_readiness_answers(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.post(
+        "/portal/requests/review",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert 'value="2025-09-20"' in response.text
+    assert 'value="economy"' in response.text
+    assert 'value="120.00"' in response.text
+
+
+def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.post(
+        "/portal/requests/review",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Policy-lite posture" in response.text
+    assert "Generated artifacts" in response.text
+
+    match = re.search(r"/portal/requests/([^/]+)/artifacts/itinerary", response.text)
+    assert match is not None
+    draft_id = match.group(1)
+
+    itinerary = client.get(f"/portal/requests/{draft_id}/artifacts/itinerary")
+    summary = client.get(f"/portal/requests/{draft_id}/artifacts/summary")
+    submit = client.post(
+        f"/portal/requests/{draft_id}/submit",
+        headers=AUTH_HEADER,
+        follow_redirects=True,
+    )
+
+    assert itinerary.status_code == 200
+    assert itinerary.content.startswith(b"PK")
+    assert summary.status_code == 200
+    assert summary.content
+    assert summary.headers["content-type"].startswith(("application/pdf", "text/plain"))
+    assert submit.status_code == 200
+    assert "Submission result" in submit.text
+
+
+def test_portal_artifact_downloads_use_cached_review_artifacts(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.post(
+        "/portal/requests/review",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    match = re.search(r"/portal/requests/([^/]+)/artifacts/itinerary", response.text)
+    assert match is not None
+    draft_id = match.group(1)
+
+    def fail_render(*_args, **_kwargs):
+        raise AssertionError("artifact download should use cached payloads")
+
+    monkeypatch.setattr(http_service, "render_travel_spreadsheet_bytes", fail_render)
+    monkeypatch.setattr(http_service, "build_output_bundle", fail_render)
+
+    itinerary = client.get(f"/portal/requests/{draft_id}/artifacts/itinerary")
+    summary = client.get(f"/portal/requests/{draft_id}/artifacts/summary")
+
+    assert itinerary.status_code == 200
+    assert itinerary.content.startswith(b"PK")
+    assert summary.status_code == 200
+    assert summary.content
+
+
+def test_portal_submit_requires_bearer_token(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.post(
+        "/portal/requests/review",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+    match = re.search(r"/portal/requests/([^/]+)/artifacts/itinerary", response.text)
+    assert match is not None
+    draft_id = match.group(1)
+
+    submit = client.post(
+        f"/portal/requests/{draft_id}/submit",
+        follow_redirects=True,
+    )
+
+    assert submit.status_code == 401
+    assert submit.json()["detail"] == "Missing bearer token."

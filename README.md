@@ -67,6 +67,15 @@ the planner routes. The startup command now fails fast unless the planner auth
 contract is complete: base URL, supported OIDC provider, and an explicit auth
 mode with its matching token configuration must all be present.
 
+The same runtime now also exposes a minimal browser-facing workflow portal:
+
+- Open `http://127.0.0.1:8000/portal` for the portal home.
+- Use `http://127.0.0.1:8000/portal/requests/new` to draft and review a travel
+  request through the canonical form fields.
+- The review screen reuses the repo's canonical conversion, policy snapshot,
+  and spreadsheet/export seams before submitting through the existing proposal
+  contract.
+
 For bounded local or preview testing, mint a short-lived planner token with:
 
 ```bash
@@ -76,6 +85,17 @@ tpp-planner-token --subject trip-planner-local
 Use the emitted value as `Authorization: Bearer <token>` when calling planner
 routes. `TPP_AUTH_MODE="static-token"` plus `TPP_ACCESS_TOKEN` remains
 available for simple fixed-token environments.
+
+For a browser-facing draft flow on top of the same runtime, open:
+
+```text
+http://127.0.0.1:8000/portal
+```
+
+The portal stays intentionally small and server-rendered. It lets a traveler
+capture draft trip details, see missing canonical inputs before submission,
+review policy-lite posture, and download the generated itinerary and summary
+artifacts before triggering the existing proposal submission seam.
 
 Run the repo-native live smoke command against a running service with:
 

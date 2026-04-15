@@ -29,11 +29,11 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "httpx>=0.28.1",
-    "pytest>=9.0.2",
-    "pytest-cov>=7.0.0",
-    "ruff==0.15.1",
-    "black==26.1.0",
-    "mypy>=1.19.1",
+    "pytest==9.0.3",
+    "pytest-cov==7.1.0",
+    "ruff==0.15.10",
+    "black==26.3.1",
+    "mypy==1.20.1",
     "types-PyYAML>=6.0.12",
     "numpy>=1.24.0",
     "packaging>=23.0",
@@ -71,6 +71,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 travel_plan_permission = [
     "config/*.yaml",
+    "templates/*.html",
     "templates/*.xlsx",
     "fixtures/planner_integration/*.json",
 ]

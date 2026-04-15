@@ -15,3 +15,16 @@ def test_template_resource_exists() -> None:
     )
     assert template.is_file()
     assert template.read_bytes().startswith(b"PK")
+
+
+def test_portal_template_resources_exist() -> None:
+    templates = resources.files("travel_plan_permission").joinpath("templates")
+    home = templates.joinpath("portal_home.html")
+    request = templates.joinpath("portal_request.html")
+
+    assert home.is_file()
+    assert "Travel Request Portal" in home.read_text(encoding="utf-8")
+    assert request.is_file()
+    assert "Draft a travel request through the real service runtime." in request.read_text(
+        encoding="utf-8"
+    )
