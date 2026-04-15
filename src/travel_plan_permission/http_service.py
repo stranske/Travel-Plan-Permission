@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -39,10 +39,8 @@ from .prompt_flow import build_output_bundle, generate_questions, required_field
 from .security import Permission
 
 _OPTIONAL_SNAPSHOT_BODY = Body(default=None)
-_TEMPLATES = Jinja2Templates(
-    directory=str(Path(__file__).resolve().parent / "templates")
-)
-_PORTAL_FIELDS: tuple[str, ...] = (
+_TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
+_PORTAL_CANONICAL_FIELDS: tuple[str, ...] = (
     "traveler_name",
     "business_purpose",
     "cost_center",
@@ -72,6 +70,21 @@ _PORTAL_FIELDS: tuple[str, ...] = (
     "ground_transport_pref",
     "notes",
 )
+_PORTAL_POLICY_FIELDS: tuple[str, ...] = (
+    "booking_date",
+    "selected_fare",
+    "lowest_fare",
+    "cabin_class",
+    "flight_duration_hours",
+    "fare_evidence_attached",
+    "driving_cost",
+    "flight_cost",
+    "distance_from_office_miles",
+    "overnight_stay",
+    "meals_provided",
+    "meal_per_diem_requested",
+)
+_PORTAL_FIELDS: tuple[str, ...] = _PORTAL_CANONICAL_FIELDS + _PORTAL_POLICY_FIELDS
 _PORTAL_OPTIONAL_FIELDS = {
     "cost_center",
     "event_registration_cost",
@@ -95,8 +108,32 @@ _PORTAL_OPTIONAL_FIELDS = {
     "comparable_hotels[0].nightly_rate",
     "ground_transport_pref",
     "notes",
+    "booking_date",
+    "selected_fare",
+    "lowest_fare",
+    "cabin_class",
+    "flight_duration_hours",
+    "fare_evidence_attached",
+    "driving_cost",
+    "flight_cost",
+    "distance_from_office_miles",
+    "overnight_stay",
+    "meals_provided",
+    "meal_per_diem_requested",
 }
-_PORTAL_BOOLEAN_FIELDS = {"hotel.conference_hotel"}
+_PORTAL_REQUIRED_FIELDS: tuple[str, ...] = tuple(
+    field_name
+    for field_name in _PORTAL_CANONICAL_FIELDS
+    if field_name not in _PORTAL_OPTIONAL_FIELDS
+)
+_PORTAL_BOOLEAN_FIELDS = {
+    "hotel.conference_hotel",
+    "fare_evidence_attached",
+    "overnight_stay",
+    "meals_provided",
+    "meal_per_diem_requested",
+}
+_PORTAL_MAX_DRAFTS = 64
 
 
 @dataclass(frozen=True)
@@ -106,6 +143,7 @@ class PortalDraft:
     draft_id: str
     answers: dict[str, object]
     updated_at: datetime
+    cached_artifacts: dict[str, PortalArtifact] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -284,9 +322,7 @@ class PlannerProposalStore:
         self.remember_plan(trip_plan)
         execution_id = response.result_payload.get("execution_id")
         if not isinstance(execution_id, str):
-            raise ValueError(
-                "Planner proposal response missing required string execution_id"
-            )
+            raise ValueError("Planner proposal response missing required string execution_id")
         self.proposals_by_execution_id[execution_id] = StoredProposal(
             trip_plan=trip_plan.model_copy(deep=True),
             request=request.model_copy(deep=True),
@@ -308,6 +344,12 @@ class PlannerProposalStore:
     def save_portal_draft(self, answers: dict[str, object]) -> PortalDraft:
         """Persist portal answers so a review route can be revisited."""
 
+        if len(self.portal_drafts_by_id) >= _PORTAL_MAX_DRAFTS:
+            oldest_draft_id = min(
+                self.portal_drafts_by_id.items(),
+                key=lambda item: item[1].updated_at,
+            )[0]
+            del self.portal_drafts_by_id[oldest_draft_id]
         draft = PortalDraft(
             draft_id=uuid4().hex[:12],
             answers=dict(answers),
@@ -315,6 +357,24 @@ class PlannerProposalStore:
         )
         self.portal_drafts_by_id[draft.draft_id] = draft
         return draft
+
+    def cache_portal_artifacts(
+        self,
+        draft_id: str,
+        artifacts: dict[str, PortalArtifact],
+    ) -> PortalDraft | None:
+        """Persist generated portal artifacts for repeated downloads."""
+
+        draft = self.portal_drafts_by_id.get(draft_id)
+        if draft is None:
+            return None
+        updated = replace(
+            draft,
+            updated_at=datetime.now(UTC),
+            cached_artifacts=dict(artifacts),
+        )
+        self.portal_drafts_by_id[draft_id] = updated
+        return updated
 
     def lookup_portal_draft(self, draft_id: str) -> PortalDraft | None:
         """Return a previously stored portal draft by identifier."""
@@ -326,6 +386,7 @@ class PlannerProposalStore:
             draft_id=draft.draft_id,
             answers=dict(draft.answers),
             updated_at=draft.updated_at,
+            cached_artifacts=dict(draft.cached_artifacts),
         )
 
 
@@ -411,7 +472,7 @@ def _portal_answers_from_encoded_body(body: bytes) -> dict[str, object]:
 
 def _canonical_payload_from_answers(answers: dict[str, object]) -> dict[str, object]:
     payload: dict[str, object] = {"type": "trip"}
-    for field_name in _PORTAL_FIELDS:
+    for field_name in _PORTAL_CANONICAL_FIELDS:
         value = answers.get(field_name)
         if value is None:
             continue
@@ -486,7 +547,7 @@ def _portal_review_state(
     *,
     submission_response: PlannerProposalOperationResponse | None = None,
 ) -> PortalReviewState:
-    missing_fields = required_field_gaps(answers)
+    missing_fields = required_field_gaps(answers, required_fields=_PORTAL_REQUIRED_FIELDS)
     next_questions = [
         {
             "prompt": question.prompt,
@@ -579,14 +640,10 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
 
     @app.get("/portal/requests/new", response_class=HTMLResponse)
     def portal_request_form(request: Request) -> HTMLResponse:
-        answers = _portal_answers_from_form(request)
-        review = (
-            _portal_review_state(draft_id="preview", answers=answers) if answers else None
-        )
         return _TEMPLATES.TemplateResponse(
             request=request,
             name="portal_request.html",
-            context=_portal_template_context(request, review),
+            context=_portal_template_context(request, None),
         )
 
     @app.post("/portal/requests/review")
@@ -598,7 +655,9 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
-    @app.get("/portal/requests/{draft_id}", response_class=HTMLResponse, name="portal_request_detail")
+    @app.get(
+        "/portal/requests/{draft_id}", response_class=HTMLResponse, name="portal_request_detail"
+    )
     def portal_request_detail(request: Request, draft_id: str) -> HTMLResponse:
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
@@ -607,6 +666,8 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 detail=f"No portal draft found for '{draft_id}'.",
             )
         review = _portal_review_state(draft.draft_id, draft.answers)
+        if review.artifacts and not draft.cached_artifacts:
+            proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
         return _TEMPLATES.TemplateResponse(
             request=request,
             name="portal_request.html",
@@ -614,7 +675,15 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         )
 
     @app.post("/portal/requests/{draft_id}/submit", response_class=HTMLResponse)
-    def portal_submit_request(request: Request, draft_id: str) -> HTMLResponse:
+    def portal_submit_request(
+        request: Request,
+        draft_id: str,
+        authorization: str | None = Header(default=None),
+    ) -> HTMLResponse:
+        _authorize_request(
+            authorization,
+            required_permission=Permission.CREATE,
+        )
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
             raise HTTPException(
@@ -622,11 +691,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 detail=f"No portal draft found for '{draft_id}'.",
             )
         review = _portal_review_state(draft.draft_id, draft.answers)
-        if (
-            review.trip_plan is None
-            or review.missing_fields
-            or review.validation_errors
-        ):
+        if review.trip_plan is None or review.missing_fields or review.validation_errors:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Complete the request review before submitting the portal draft.",
@@ -669,8 +734,13 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No portal draft found for '{draft_id}'.",
             )
-        review = _portal_review_state(draft.draft_id, draft.answers)
-        artifact = review.artifacts.get(artifact_name)
+        artifacts = draft.cached_artifacts
+        if not artifacts:
+            review = _portal_review_state(draft.draft_id, draft.answers)
+            artifacts = review.artifacts
+            if artifacts:
+                proposal_store.cache_portal_artifacts(draft.draft_id, artifacts)
+        artifact = artifacts.get(artifact_name)
         if artifact is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -679,9 +749,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         return Response(
             content=artifact.content,
             media_type=artifact.media_type,
-            headers={
-                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
-            },
+            headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
         )
 
     @app.get(
@@ -785,9 +853,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         if stored.request.proposal_id != proposal_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    f"Execution '{execution_id}' does not belong to proposal '{proposal_id}'."
-                ),
+                detail=(f"Execution '{execution_id}' does not belong to proposal '{proposal_id}'."),
             )
         status_request = _submission_status_request(
             stored,

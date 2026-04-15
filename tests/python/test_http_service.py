@@ -11,6 +11,7 @@ from travel_plan_permission.http_service import (
     create_app,
     main,
 )
+from travel_plan_permission import http_service
 from travel_plan_permission.planner_auth import mint_bootstrap_token
 from travel_plan_permission.policy_api import PlannerProposalOperationResponse
 from travel_plan_permission.security import Permission
@@ -300,6 +301,17 @@ def test_portal_home_and_request_form_render() -> None:
     assert "Draft a travel request through the real service runtime." in form.text
 
 
+def test_portal_request_form_get_stays_lightweight() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/portal/requests/new?traveler_name=Alex+Rivera")
+
+    assert response.status_code == 200
+    assert 'value="Alex Rivera"' not in response.text
+    assert "Generated artifacts" not in response.text
+    assert "Policy-lite posture" not in response.text
+
+
 def test_portal_review_shows_missing_inputs() -> None:
     client = TestClient(create_app())
 
@@ -313,6 +325,58 @@ def test_portal_review_shows_missing_inputs() -> None:
     assert "Missing required inputs" in response.text
     assert "destination_zip" in response.text
     assert "Where are you headed and what" in response.text
+
+
+def test_portal_review_allows_optional_fields_to_remain_blank(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+    payload = _portal_form_payload()
+    for field_name in (
+        "cost_center",
+        "event_registration_cost",
+        "flight_pref_outbound.carrier_flight",
+        "flight_pref_return.carrier_flight",
+        "lowest_cost_roundtrip",
+        "parking_estimate",
+        "hotel.name",
+        "hotel.address",
+        "hotel.city_state",
+        "hotel.nightly_rate",
+        "hotel.nights",
+        "hotel.conference_hotel",
+        "hotel.price_compare_notes",
+        "comparable_hotels[0].name",
+        "comparable_hotels[0].nightly_rate",
+        "ground_transport_pref",
+        "notes",
+    ):
+        payload.pop(field_name)
+
+    response = client.post(
+        "/portal/requests/review",
+        data=payload,
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Generated artifacts" in response.text
+    assert "Missing required inputs" not in response.text
+
+
+def test_portal_review_persists_policy_readiness_answers(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.post(
+        "/portal/requests/review",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert 'value="2025-09-20"' in response.text
+    assert 'value="economy"' in response.text
+    assert 'value="120.00"' in response.text
 
 
 def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
@@ -337,6 +401,7 @@ def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
     summary = client.get(f"/portal/requests/{draft_id}/artifacts/summary")
     submit = client.post(
         f"/portal/requests/{draft_id}/submit",
+        headers=AUTH_HEADER,
         follow_redirects=True,
     )
 
@@ -347,3 +412,55 @@ def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
     assert summary.headers["content-type"].startswith(("application/pdf", "text/plain"))
     assert submit.status_code == 200
     assert "Submission result" in submit.text
+
+
+def test_portal_artifact_downloads_use_cached_review_artifacts(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.post(
+        "/portal/requests/review",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    match = re.search(r"/portal/requests/([^/]+)/artifacts/itinerary", response.text)
+    assert match is not None
+    draft_id = match.group(1)
+
+    def fail_render(*args, **kwargs):
+        raise AssertionError("artifact download should use cached payloads")
+
+    monkeypatch.setattr(http_service, "render_travel_spreadsheet_bytes", fail_render)
+    monkeypatch.setattr(http_service, "build_output_bundle", fail_render)
+
+    itinerary = client.get(f"/portal/requests/{draft_id}/artifacts/itinerary")
+    summary = client.get(f"/portal/requests/{draft_id}/artifacts/summary")
+
+    assert itinerary.status_code == 200
+    assert itinerary.content.startswith(b"PK")
+    assert summary.status_code == 200
+    assert summary.content
+
+
+def test_portal_submit_requires_bearer_token(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.post(
+        "/portal/requests/review",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+    match = re.search(r"/portal/requests/([^/]+)/artifacts/itinerary", response.text)
+    assert match is not None
+    draft_id = match.group(1)
+
+    submit = client.post(
+        f"/portal/requests/{draft_id}/submit",
+        follow_redirects=True,
+    )
+
+    assert submit.status_code == 401
+    assert submit.json()["detail"] == "Missing bearer token."
