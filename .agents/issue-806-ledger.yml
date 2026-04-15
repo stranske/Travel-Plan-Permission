@@ -6,10 +6,10 @@ tasks:
   - id: task-01
     title: Register new portal routes for GET /portal/draft/new, POST /portal/draft,
       and GET /portal/review/{draft_id} in the app router module
-    status: doing
+    status: done
     started_at: '2026-04-15T08:20:55Z'
-    finished_at: null
-    commit: ''
+    finished_at: '2026-04-15T08:21:06Z'
+    commit: 012d4684d609939f93474e8a44af67276964f088
     notes: []
   - id: task-02
     title: Remove all legacy /portal/requests/* route registrations from the app router
