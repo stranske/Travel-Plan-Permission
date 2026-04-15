@@ -7,7 +7,6 @@ import sys
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 from urllib.parse import parse_qs
 from uuid import uuid4
 
@@ -26,15 +25,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from .canonical import CanonicalTripPlan
 from .models import TripPlan
 from .planner_auth import PlannerAuthConfig, authenticate_request
-from .portal_review import (
-    PortalArtifact,
-    PortalReviewState,
-    portal_review_state,
-    portal_validation_state,
-)
 from .policy_api import (
     PlannerPolicySnapshot,
     PlannerPolicySnapshotRequest,
@@ -43,11 +35,16 @@ from .policy_api import (
     PlannerProposalOperationResponse,
     PlannerProposalStatusRequest,
     PlannerProposalSubmissionRequest,
-    check_trip_plan,
     get_evaluation_result,
     get_policy_snapshot,
     poll_execution_status,
     submit_proposal,
+)
+from .portal_review import (
+    PortalArtifact,
+    PortalReviewState,
+    portal_review_state,
+    portal_validation_state,
 )
 from .review_workflow import ReviewAction, ReviewRequest, ReviewWorkflowStore
 from .security import Permission

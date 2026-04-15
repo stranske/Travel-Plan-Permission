@@ -8,8 +8,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from travel_plan_permission import http_service
-from travel_plan_permission import portal_review
+from travel_plan_permission import http_service, portal_review
 from travel_plan_permission.http_service import PlannerProposalStore, create_app, main
 from travel_plan_permission.planner_auth import mint_bootstrap_token
 from travel_plan_permission.policy_api import PlannerProposalOperationResponse
