@@ -6,12 +6,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from travel_plan_permission.http_service import (
-    PlannerProposalStore,
-    create_app,
-    main,
-)
 from travel_plan_permission import http_service
+from travel_plan_permission.http_service import PlannerProposalStore, create_app, main
 from travel_plan_permission.planner_auth import mint_bootstrap_token
 from travel_plan_permission.policy_api import PlannerProposalOperationResponse
 from travel_plan_permission.security import Permission
@@ -429,7 +425,7 @@ def test_portal_artifact_downloads_use_cached_review_artifacts(monkeypatch) -> N
     assert match is not None
     draft_id = match.group(1)
 
-    def fail_render(*args, **kwargs):
+    def fail_render(*_args, **_kwargs):
         raise AssertionError("artifact download should use cached payloads")
 
     monkeypatch.setattr(http_service, "render_travel_spreadsheet_bytes", fail_render)
