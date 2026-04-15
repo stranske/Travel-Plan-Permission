@@ -1,0 +1,39 @@
+{% extends "portal_base.html" %}
+
+{% block title %}Travel Request Draft Entry{% endblock %}
+
+{% block content %}
+  <div class="layout" data-template="draft-entry">
+    <section class="panel">
+      <div class="intro">
+        <h1>Draft a travel request through the real service runtime.</h1>
+        <p>
+          Start with the browser-facing entry form, then move into a separate review summary
+          only after the required fields are present.
+        </p>
+      </div>
+
+      <form method="post" action="/portal/draft">
+        {% include "_portal_form_fields.html" %}
+        <div class="actions">
+          <button class="primary" type="submit">Save draft and review</button>
+          <a class="button secondary" href="/portal">Back to portal home</a>
+        </div>
+      </form>
+    </section>
+
+    <aside class="stack">
+      <section class="panel">
+        <h2>Portal contract</h2>
+        <div class="callout" style="margin-top: 16px;">
+          <h3>Endpoints</h3>
+          <ul>
+            <li><code>GET /portal/draft/new</code> renders this entry template.</li>
+            <li><code>POST /portal/draft</code> validates before any draft save.</li>
+            <li><code>GET /portal/review/{draft_id}</code> renders the review summary.</li>
+          </ul>
+        </div>
+      </section>
+    </aside>
+  </div>
+{% endblock %}

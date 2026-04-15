@@ -1,0 +1,58 @@
+{% extends "portal_base.html" %}
+
+{% block title %}Travel Request Validation Feedback{% endblock %}
+
+{% block content %}
+  <div class="layout" data-template="validation-feedback">
+    <section class="panel">
+      <div class="intro">
+        <h1>Complete the missing details before this draft can be saved.</h1>
+        <p>
+          The browser portal validates required fields before any draft persistence. Fix the
+          highlighted gaps below and resubmit.
+        </p>
+      </div>
+
+      <div class="callout" style="margin-bottom: 18px;">
+        <h3>Validation feedback</h3>
+        <ul class="missing-fields">
+          {% for field in review.missing_fields %}
+            <li><code>{{ field }}</code></li>
+          {% endfor %}
+          {% for error in review.validation_errors %}
+            <li>{{ error }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      {% if review.next_questions %}
+        <div class="callout" style="margin-bottom: 18px;">
+          <h3>Next intake questions</h3>
+          <ul>
+            {% for question in review.next_questions %}
+              <li>{{ question.prompt }}{% if question.fields %} <code>{{ question.fields }}</code>{% endif %}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      <form method="post" action="/portal/draft">
+        {% include "_portal_form_fields.html" %}
+        <div class="actions">
+          <button class="primary" type="submit">Retry validation</button>
+          <a class="button secondary" href="/portal">Back to portal home</a>
+        </div>
+      </form>
+    </section>
+
+    <aside class="stack">
+      <section class="panel">
+        <h2>Validation rules</h2>
+        <p style="margin-top: 10px;">
+          Missing-field submissions return HTTP 400, render this dedicated feedback template,
+          and do not create a saved draft.
+        </p>
+      </section>
+    </aside>
+  </div>
+{% endblock %}

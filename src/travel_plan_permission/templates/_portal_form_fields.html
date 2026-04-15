@@ -1,0 +1,126 @@
+<div class="section-grid">
+  <section class="section-card">
+    <h2>Trip brief</h2>
+    <div class="fields">
+      <label>
+        <div class="label-row"><span>Traveler name</span></div>
+        <input name="traveler_name" value="{{ answers.get('traveler_name', '') }}" />
+      </label>
+      <label>
+        <div class="label-row"><span>Business purpose</span></div>
+        <textarea name="business_purpose">{{ answers.get('business_purpose', '') }}</textarea>
+      </label>
+      <label>
+        <div class="label-row"><span>Cost center</span><span class="optional">Optional</span></div>
+        <input name="cost_center" value="{{ answers.get('cost_center', '') }}" />
+      </label>
+      <label>
+        <div class="label-row"><span>Destination city and state</span></div>
+        <input name="city_state" value="{{ answers.get('city_state', '') }}" />
+      </label>
+      <label>
+        <div class="label-row"><span>Destination ZIP</span></div>
+        <input name="destination_zip" value="{{ answers.get('destination_zip', '') }}" />
+      </label>
+      <label>
+        <div class="label-row"><span>Departure date</span></div>
+        <input type="date" name="depart_date" value="{{ answers.get('depart_date', '') }}" />
+      </label>
+      <label>
+        <div class="label-row"><span>Return date</span></div>
+        <input type="date" name="return_date" value="{{ answers.get('return_date', '') }}" />
+      </label>
+      <label>
+        <div class="label-row"><span>Traveler notes</span><span class="optional">Optional</span></div>
+        <textarea name="notes">{{ answers.get('notes', '') }}</textarea>
+      </label>
+    </div>
+  </section>
+
+  <section class="section-card">
+    <h2>Air and lodging</h2>
+    <div class="fields">
+      <label><div class="label-row"><span>Outbound flight</span><span class="optional">Optional</span></div><input name="flight_pref_outbound.carrier_flight" value="{{ answers.get('flight_pref_outbound.carrier_flight', '') }}" /></label>
+      <label><div class="label-row"><span>Outbound departure</span><span class="optional">Optional</span></div><input name="flight_pref_outbound.depart_time" value="{{ answers.get('flight_pref_outbound.depart_time', '') }}" /></label>
+      <label><div class="label-row"><span>Outbound arrival</span><span class="optional">Optional</span></div><input name="flight_pref_outbound.arrive_time" value="{{ answers.get('flight_pref_outbound.arrive_time', '') }}" /></label>
+      <label><div class="label-row"><span>Chosen roundtrip fare</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="flight_pref_outbound.roundtrip_cost" value="{{ answers.get('flight_pref_outbound.roundtrip_cost', '') }}" /></label>
+      <label><div class="label-row"><span>Return flight</span><span class="optional">Optional</span></div><input name="flight_pref_return.carrier_flight" value="{{ answers.get('flight_pref_return.carrier_flight', '') }}" /></label>
+      <label><div class="label-row"><span>Return departure</span><span class="optional">Optional</span></div><input name="flight_pref_return.depart_time" value="{{ answers.get('flight_pref_return.depart_time', '') }}" /></label>
+      <label><div class="label-row"><span>Return arrival</span><span class="optional">Optional</span></div><input name="flight_pref_return.arrive_time" value="{{ answers.get('flight_pref_return.arrive_time', '') }}" /></label>
+      <label><div class="label-row"><span>Lowest available roundtrip fare</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="lowest_cost_roundtrip" value="{{ answers.get('lowest_cost_roundtrip', '') }}" /></label>
+      <label><div class="label-row"><span>Hotel name</span><span class="optional">Optional</span></div><input name="hotel.name" value="{{ answers.get('hotel.name', '') }}" /></label>
+      <label><div class="label-row"><span>Hotel address</span><span class="optional">Optional</span></div><input name="hotel.address" value="{{ answers.get('hotel.address', '') }}" /></label>
+      <label><div class="label-row"><span>Hotel city and state</span><span class="optional">Optional</span></div><input name="hotel.city_state" value="{{ answers.get('hotel.city_state', '') }}" /></label>
+      <label><div class="label-row"><span>Nightly rate</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="hotel.nightly_rate" value="{{ answers.get('hotel.nightly_rate', '') }}" /></label>
+      <label><div class="label-row"><span>Nights</span><span class="optional">Optional</span></div><input type="number" step="1" name="hotel.nights" value="{{ answers.get('hotel.nights', '') }}" /></label>
+      <label>
+        <div class="label-row"><span>Conference hotel</span><span class="optional">Optional</span></div>
+        <select name="hotel.conference_hotel">
+          <option value="">Select</option>
+          <option value="true" {% if answers.get('hotel.conference_hotel') in [True, 'true'] %}selected{% endif %}>Yes</option>
+          <option value="false" {% if answers.get('hotel.conference_hotel') in [False, 'false'] %}selected{% endif %}>No</option>
+        </select>
+      </label>
+      <label><div class="label-row"><span>Hotel comparison notes</span><span class="optional">Optional</span></div><textarea name="hotel.price_compare_notes">{{ answers.get('hotel.price_compare_notes', '') }}</textarea></label>
+      <label><div class="label-row"><span>Comparable hotel</span><span class="optional">Optional</span></div><input name="comparable_hotels[0].name" value="{{ answers.get('comparable_hotels[0].name', '') }}" /></label>
+      <label><div class="label-row"><span>Comparable nightly rate</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="comparable_hotels[0].nightly_rate" value="{{ answers.get('comparable_hotels[0].nightly_rate', '') }}" /></label>
+      <label>
+        <div class="label-row"><span>Ground transport</span><span class="optional">Optional</span></div>
+        <select name="ground_transport_pref">
+          <option value="">Select</option>
+          {% for option in ground_transport_options %}
+            <option value="{{ option }}" {% if answers.get('ground_transport_pref') == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label><div class="label-row"><span>Parking estimate</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="parking_estimate" value="{{ answers.get('parking_estimate', '') }}" /></label>
+      <label><div class="label-row"><span>Registration cost</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="event_registration_cost" value="{{ answers.get('event_registration_cost', '') }}" /></label>
+    </div>
+  </section>
+
+  <section class="section-card">
+    <h2>Policy readiness</h2>
+    <div class="fields">
+      <label><div class="label-row"><span>Booking date</span><span class="optional">Optional</span></div><input type="date" name="booking_date" value="{{ answers.get('booking_date', '') }}" /></label>
+      <label><div class="label-row"><span>Selected fare</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="selected_fare" value="{{ answers.get('selected_fare', '') }}" /></label>
+      <label><div class="label-row"><span>Lowest comparable fare</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="lowest_fare" value="{{ answers.get('lowest_fare', '') }}" /></label>
+      <label><div class="label-row"><span>Cabin class</span><span class="optional">Optional</span></div><input name="cabin_class" value="{{ answers.get('cabin_class', '') }}" /></label>
+      <label><div class="label-row"><span>Flight duration hours</span><span class="optional">Optional</span></div><input type="number" step="0.1" name="flight_duration_hours" value="{{ answers.get('flight_duration_hours', '') }}" /></label>
+      <label>
+        <div class="label-row"><span>Fare evidence attached</span><span class="optional">Optional</span></div>
+        <select name="fare_evidence_attached">
+          <option value="">Select</option>
+          <option value="true" {% if answers.get('fare_evidence_attached') in [True, 'true'] %}selected{% endif %}>Yes</option>
+          <option value="false" {% if answers.get('fare_evidence_attached') in [False, 'false'] %}selected{% endif %}>No</option>
+        </select>
+      </label>
+      <label><div class="label-row"><span>Driving cost</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="driving_cost" value="{{ answers.get('driving_cost', '') }}" /></label>
+      <label><div class="label-row"><span>Flight cost</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="flight_cost" value="{{ answers.get('flight_cost', '') }}" /></label>
+      <label><div class="label-row"><span>Distance from office miles</span><span class="optional">Optional</span></div><input type="number" step="0.1" name="distance_from_office_miles" value="{{ answers.get('distance_from_office_miles', '') }}" /></label>
+      <label>
+        <div class="label-row"><span>Overnight stay requested</span><span class="optional">Optional</span></div>
+        <select name="overnight_stay">
+          <option value="">Select</option>
+          <option value="true" {% if answers.get('overnight_stay') in [True, 'true'] %}selected{% endif %}>Yes</option>
+          <option value="false" {% if answers.get('overnight_stay') in [False, 'false'] %}selected{% endif %}>No</option>
+        </select>
+      </label>
+      <label>
+        <div class="label-row"><span>Meals provided</span><span class="optional">Optional</span></div>
+        <select name="meals_provided">
+          <option value="">Select</option>
+          <option value="true" {% if answers.get('meals_provided') in [True, 'true'] %}selected{% endif %}>Yes</option>
+          <option value="false" {% if answers.get('meals_provided') in [False, 'false'] %}selected{% endif %}>No</option>
+        </select>
+      </label>
+      <label>
+        <div class="label-row"><span>Meal per diem requested</span><span class="optional">Optional</span></div>
+        <select name="meal_per_diem_requested">
+          <option value="">Select</option>
+          <option value="true" {% if answers.get('meal_per_diem_requested') in [True, 'true'] %}selected{% endif %}>Yes</option>
+          <option value="false" {% if answers.get('meal_per_diem_requested') in [False, 'false'] %}selected{% endif %}>No</option>
+        </select>
+      </label>
+    </div>
+  </section>
+</div>

@@ -12,7 +12,16 @@ from urllib.parse import parse_qs
 from uuid import uuid4
 
 import uvicorn
-from fastapi import Body, FastAPI, Header, HTTPException, Query, Request, Response, status
+from fastapi import (
+    Body,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
@@ -39,7 +48,9 @@ from .prompt_flow import build_output_bundle, generate_questions, required_field
 from .security import Permission
 
 _OPTIONAL_SNAPSHOT_BODY = Body(default=None)
-_TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
+_TEMPLATES = Jinja2Templates(
+    directory=str(Path(__file__).resolve().parent / "templates")
+)
 _PORTAL_CANONICAL_FIELDS: tuple[str, ...] = (
     "traveler_name",
     "business_purpose",
@@ -322,7 +333,9 @@ class PlannerProposalStore:
         self.remember_plan(trip_plan)
         execution_id = response.result_payload.get("execution_id")
         if not isinstance(execution_id, str):
-            raise ValueError("Planner proposal response missing required string execution_id")
+            raise ValueError(
+                "Planner proposal response missing required string execution_id"
+            )
         self.proposals_by_execution_id[execution_id] = StoredProposal(
             trip_plan=trip_plan.model_copy(deep=True),
             request=request.model_copy(deep=True),
@@ -443,19 +456,6 @@ def _normalize_portal_value(field_name: str, raw_value: str) -> object | None:
     return value
 
 
-def _portal_answers_from_form(request: Request) -> dict[str, object]:
-    answers: dict[str, object] = {}
-    for field_name in _PORTAL_FIELDS:
-        raw_value = request.query_params.get(field_name)
-        if raw_value is None:
-            continue
-        normalized = _normalize_portal_value(field_name, raw_value)
-        if normalized is None:
-            continue
-        answers[field_name] = normalized
-    return answers
-
-
 def _portal_answers_from_encoded_body(body: bytes) -> dict[str, object]:
     answers: dict[str, object] = {}
     parsed = parse_qs(body.decode("utf-8"), keep_blank_values=False)
@@ -527,8 +527,10 @@ def _portal_artifacts(
     bundle = build_output_bundle(itinerary_excel=itinerary_excel, answers=answers)
     itinerary_payload = bundle["itinerary_excel"]
     summary_payload = bundle["summary_pdf"]
-    assert isinstance(itinerary_payload, dict)
-    assert isinstance(summary_payload, dict)
+    if not isinstance(itinerary_payload, dict):
+        raise RuntimeError("itinerary_excel bundle payload must be a mapping")
+    if not isinstance(summary_payload, dict):
+        raise RuntimeError("summary_pdf bundle payload must be a mapping")
     return {
         "itinerary": PortalArtifact(
             filename=str(itinerary_payload["filename"]),
@@ -549,7 +551,9 @@ def _portal_review_state(
     *,
     submission_response: PlannerProposalOperationResponse | None = None,
 ) -> PortalReviewState:
-    missing_fields = required_field_gaps(answers, required_fields=_PORTAL_REQUIRED_FIELDS)
+    missing_fields = required_field_gaps(
+        answers, required_fields=_PORTAL_REQUIRED_FIELDS
+    )
     next_questions: list[dict[str, object]] = [
         {
             "prompt": question.prompt,
@@ -644,20 +648,34 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     def portal_draft_form(request: Request) -> HTMLResponse:
         return _TEMPLATES.TemplateResponse(
             request=request,
-            name="portal_request.html",
+            name="draft_entry.html",
             context=_portal_template_context(request, None),
         )
 
     @app.post("/portal/draft")
-    async def portal_draft_review(request: Request) -> RedirectResponse:
+    async def portal_draft_review(request: Request) -> Response:
         answers = _portal_answers_from_encoded_body(await request.body())
+        review = _portal_review_state("", answers)
+        if review.missing_fields or review.validation_errors:
+            return _TEMPLATES.TemplateResponse(
+                request=request,
+                name="validation_feedback.html",
+                context=_portal_template_context(request, review),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
         draft = proposal_store.save_portal_draft(answers)
+        if review.artifacts:
+            proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
         return RedirectResponse(
             url=request.url_for("portal_review_detail", draft_id=draft.draft_id),
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
-    @app.get("/portal/review/{draft_id}", response_class=HTMLResponse, name="portal_review_detail")
+    @app.get(
+        "/portal/review/{draft_id}",
+        response_class=HTMLResponse,
+        name="portal_review_detail",
+    )
     def portal_review_detail(request: Request, draft_id: str) -> HTMLResponse:
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
@@ -670,7 +688,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
         return _TEMPLATES.TemplateResponse(
             request=request,
-            name="portal_request.html",
+            name="review_summary.html",
             context=_portal_template_context(request, review),
         )
 
@@ -691,7 +709,11 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 detail=f"No portal draft found for '{draft_id}'.",
             )
         review = _portal_review_state(draft.draft_id, draft.answers)
-        if review.trip_plan is None or review.missing_fields or review.validation_errors:
+        if (
+            review.trip_plan is None
+            or review.missing_fields
+            or review.validation_errors
+        ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Complete the request review before submitting the portal draft.",
@@ -719,7 +741,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         )
         return _TEMPLATES.TemplateResponse(
             request=request,
-            name="portal_request.html",
+            name="review_summary.html",
             context=_portal_template_context(request, review),
         )
 
@@ -749,7 +771,9 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         return Response(
             content=artifact.content,
             media_type=artifact.media_type,
-            headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
+            },
         )
 
     @app.get(
@@ -853,7 +877,9 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         if stored.request.proposal_id != proposal_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(f"Execution '{execution_id}' does not belong to proposal '{proposal_id}'."),
+                detail=(
+                    f"Execution '{execution_id}' does not belong to proposal '{proposal_id}'."
+                ),
             )
         status_request = _submission_status_request(
             stored,

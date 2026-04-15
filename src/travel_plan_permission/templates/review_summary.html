@@ -1,0 +1,140 @@
+{% extends "portal_base.html" %}
+
+{% block title %}Travel Request Review Summary{% endblock %}
+
+{% block topbar_badge %}
+  {% if review and review.draft_id %}
+    <span class="badge">Draft {{ review.draft_id }}</span>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  <div class="layout" data-template="review-summary">
+    <section class="panel">
+      <div class="intro">
+        <h1>Review summary for the saved travel draft.</h1>
+        <p>
+          This page reuses the existing canonical trip, prompt-flow, and policy seams to show
+          readiness before the request is submitted.
+        </p>
+      </div>
+
+      <section class="section-card">
+        <h2>Submitted answers</h2>
+        <dl style="margin-top: 14px;">
+          {% for key, value in review.answers.items() | sort %}
+            <div>
+              <dt>{{ key }}</dt>
+              <dd>{{ value }}</dd>
+            </div>
+          {% endfor %}
+        </dl>
+      </section>
+
+      {% if review.next_questions %}
+        <section class="section-card" style="margin-top: 18px;">
+          <h2>Next intake questions</h2>
+          <ul>
+            {% for question in review.next_questions %}
+              <li>{{ question.prompt }}{% if question.fields %} <code>{{ question.fields }}</code>{% endif %}</li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+
+      {% if review.canonical_payload %}
+        <section class="section-card" style="margin-top: 18px;">
+          <h2>Canonical payload preview</h2>
+          <pre>{{ review.canonical_payload | tojson(indent=2) }}</pre>
+        </section>
+      {% endif %}
+    </section>
+
+    <aside class="stack">
+      <section class="panel">
+        <h2>Review status</h2>
+        {% if review.missing_fields %}
+          <p style="margin-top: 10px;"><span class="badge warn">Missing required inputs</span></p>
+          <ul>
+            {% for field in review.missing_fields %}
+              <li><code>{{ field }}</code></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p style="margin-top: 10px;"><span class="badge">Canonical payload complete</span></p>
+        {% endif %}
+
+        {% if review.validation_errors %}
+          <div class="callout" style="margin-top: 16px;">
+            <h3>Validation notes</h3>
+            <ul>
+              {% for error in review.validation_errors %}
+                <li>{{ error }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+      </section>
+
+      {% if review and review.policy_snapshot %}
+        <section class="panel">
+          <h2>Policy-lite posture</h2>
+          <p style="margin-top: 10px;">
+            <span class="badge {% if review.policy_snapshot.policy_status == 'fail' %}warn{% endif %}">
+              {{ review.policy_snapshot.policy_status }}
+            </span>
+          </p>
+          <div class="callout" style="margin-top: 16px;">
+            <h3>Approval triggers</h3>
+            <ul>
+              {% for trigger in review.policy_snapshot.approval_triggers %}
+                <li>{{ trigger.summary }}</li>
+              {% else %}
+                <li>No approval triggers surfaced.</li>
+              {% endfor %}
+            </ul>
+          </div>
+          <div class="callout" style="margin-top: 16px;">
+            <h3>Policy issues</h3>
+            <ul>
+              {% for issue in review.policy_result.issues %}
+                <li>{{ issue.code }}: {{ issue.message }}</li>
+              {% else %}
+                <li>No current policy issues.</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if review and review.artifacts %}
+        <section class="panel">
+          <h2>Generated artifacts</h2>
+          <p style="margin-top: 10px;">Download the current spreadsheet and summary generated from the saved draft.</p>
+          <div class="actions">
+            <a class="button primary" href="/portal/review/{{ review.draft_id }}/artifacts/itinerary">Download itinerary</a>
+            <a class="button secondary" href="/portal/review/{{ review.draft_id }}/artifacts/summary">Download summary</a>
+          </div>
+          <div class="callout" style="margin-top: 16px;">
+            <h3>Ready for submit</h3>
+            <p>
+              Submission reuses the existing proposal submission seam and records the resulting
+              execution contract alongside the draft.
+            </p>
+            <form method="post" action="/portal/review/{{ review.draft_id }}/submit" style="margin-top: 14px;">
+              <button class="primary" type="submit">Submit request</button>
+            </form>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if review and review.submission_response %}
+        <section class="panel">
+          <h2>Submission result</h2>
+          <p style="margin-top: 10px;">The proposal submission seam accepted the browser draft.</p>
+          <pre>{{ review.submission_response.model_dump_json(indent=2) }}</pre>
+        </section>
+      {% endif %}
+    </aside>
+  </div>
+{% endblock %}

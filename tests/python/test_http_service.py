@@ -294,6 +294,7 @@ def test_portal_home_and_request_form_render() -> None:
     assert home.status_code == 200
     assert "Travel Request Portal" in home.text
     assert form.status_code == 200
+    assert 'data-template="draft-entry"' in form.text
     assert "Draft a travel request through the real service runtime." in form.text
 
 
@@ -308,18 +309,26 @@ def test_portal_request_form_get_stays_lightweight() -> None:
     assert "Policy-lite posture" not in response.text
 
 
-def test_portal_review_shows_missing_inputs() -> None:
-    client = TestClient(create_app())
+def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
 
     response = client.post(
         "/portal/draft",
         data={"traveler_name": "Alex Rivera", "business_purpose": "Partner summit"},
-        follow_redirects=True,
     )
 
-    assert response.status_code == 200
-    assert "Missing required inputs" in response.text
-    assert "destination_zip" in response.text
+    assert response.status_code == 400
+    assert 'data-template="validation-feedback"' in response.text
+    assert (
+        "Complete the missing details before this draft can be saved." in response.text
+    )
+    assert store.portal_drafts_by_id == {}
+    assert re.search(
+        r'<ul class="missing-fields">.*?<li><code>destination_zip</code></li>',
+        response.text,
+        re.DOTALL,
+    )
     assert "Where are you headed and what" in response.text
 
 
@@ -355,6 +364,7 @@ def test_portal_review_allows_optional_fields_to_remain_blank(monkeypatch) -> No
     )
 
     assert response.status_code == 200
+    assert 'data-template="review-summary"' in response.text
     assert "Generated artifacts" in response.text
     assert "Missing required inputs" not in response.text
 
@@ -370,9 +380,13 @@ def test_portal_review_persists_policy_readiness_answers(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert 'value="2025-09-20"' in response.text
-    assert 'value="economy"' in response.text
-    assert 'value="120.00"' in response.text
+    assert 'data-template="review-summary"' in response.text
+    assert "<dt>booking_date</dt>" in response.text
+    assert "<dd>2025-09-20</dd>" in response.text
+    assert "<dt>cabin_class</dt>" in response.text
+    assert "<dd>economy</dd>" in response.text
+    assert "<dt>driving_cost</dt>" in response.text
+    assert "<dd>120.00</dd>" in response.text
 
 
 def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
@@ -386,6 +400,7 @@ def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
+    assert 'data-template="review-summary"' in response.text
     assert "Policy-lite posture" in response.text
     assert "Generated artifacts" in response.text
 
@@ -408,6 +423,23 @@ def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
     assert summary.headers["content-type"].startswith(("application/pdf", "text/plain"))
     assert submit.status_code == 200
     assert "Submission result" in submit.text
+
+
+def test_portal_draft_submission_redirects_without_authorization_header(
+    monkeypatch,
+) -> None:
+    _set_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.post(
+        "/portal/draft",
+        data=_portal_form_payload(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert "/portal/review/" in location
 
 
 def test_portal_artifact_downloads_use_cached_review_artifacts(monkeypatch) -> None:
@@ -470,3 +502,24 @@ def test_portal_routes_do_not_leave_legacy_request_paths_active() -> None:
     assert "/portal/draft" in paths
     assert "/portal/review/{draft_id}" in paths
     assert all(not path.startswith("/portal/requests") for path in paths)
+
+
+def test_portal_artifacts_raise_runtime_error_without_bundle_mappings(
+    monkeypatch,
+) -> None:
+    _set_runtime_env(monkeypatch)
+    client = TestClient(
+        create_app(PlannerProposalStore()), raise_server_exceptions=False
+    )
+
+    def invalid_bundle(**_kwargs):
+        return {"itinerary_excel": "bad", "summary_pdf": "bad"}
+
+    monkeypatch.setattr(http_service, "build_output_bundle", invalid_bundle)
+
+    response = client.post(
+        "/portal/draft",
+        data=_portal_form_payload(),
+    )
+
+    assert response.status_code == 500
