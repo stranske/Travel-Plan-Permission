@@ -81,6 +81,29 @@ def _portal_form_payload() -> dict[str, str]:
     }
 
 
+def _expense_form_payload() -> dict[str, str]:
+    return {
+        "approved_request_id": "REQ-410",
+        "trip_id": "TRIP-410",
+        "traveler_name": "Alex Rivera",
+        "cost_center": "OPS-410",
+        "expense_description": "Conference hotel folio",
+        "expense_category": "lodging",
+        "expense_amount": "640.00",
+        "expense_date": "2025-10-09",
+        "expense_vendor": "Pine Street Suites",
+        "receipt_file_reference": "receipts/hotel-folio.pdf",
+        "receipt_file_size_bytes": "2048",
+        "receipt_total": "640.00",
+        "receipt_date": "2025-10-09",
+        "receipt_vendor": "Pine Street Suites",
+        "receipt_ocr_text": "Pine Street Suites\nTotal: 640.00\n2025-10-09",
+        "reimbursement_status": "manager_review",
+        "manager_disposition": "Need lodging policy confirmation",
+        "accounting_disposition": "Queue next export batch",
+    }
+
+
 def test_readyz_reports_missing_runtime_config(monkeypatch) -> None:
     monkeypatch.delenv("TPP_BASE_URL", raising=False)
     monkeypatch.delenv("TPP_ACCESS_TOKEN", raising=False)
@@ -309,6 +332,143 @@ def test_portal_request_form_get_stays_lightweight() -> None:
     assert 'value="Alex Rivera"' not in response.text
     assert "Generated artifacts" not in response.text
     assert "Policy-lite posture" not in response.text
+
+
+def test_expense_portal_form_renders() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/portal/expenses/new")
+
+    assert response.status_code == 200
+    assert "Prepare an expense report from an approved request." in response.text
+    assert "Receipt intake" in response.text
+
+
+def test_expense_portal_review_surfaces_missing_receipt_warning() -> None:
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+    payload = _expense_form_payload()
+    payload.pop("receipt_file_reference")
+    payload.pop("receipt_file_size_bytes")
+    payload.pop("receipt_total")
+    payload.pop("receipt_date")
+    payload.pop("receipt_vendor")
+    payload.pop("receipt_ocr_text")
+
+    response = client.post(
+        "/portal/expenses/review",
+        data=payload,
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Receipt missing: reviewers should hold reimbursement until the traveler uploads support." in response.text
+    assert "Download CSV" in response.text
+    assert store.expense_drafts_by_id
+
+
+def test_expense_portal_generates_exports_and_policy_warning() -> None:
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+    payload = _expense_form_payload()
+    payload["expense_amount"] = "7500.00"
+    payload["receipt_total"] = "7500.00"
+
+    response = client.post(
+        "/portal/expenses/review",
+        data=payload,
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Policy warning: manager or accounting review is required before reimbursement." in response.text
+    assert "Manual receipt entry overrides OCR values for total." in response.text
+
+    match = re.search(r"/portal/expenses/([^/]+)/artifacts/expense-csv", response.text)
+    assert match is not None
+    draft_id = match.group(1)
+
+    csv_export = client.get(f"/portal/expenses/{draft_id}/artifacts/expense-csv")
+    excel_export = client.get(f"/portal/expenses/{draft_id}/artifacts/expense-xlsx")
+
+    assert csv_export.status_code == 200
+    assert b"date,vendor,amount,category,cost_center,receipt_link" in csv_export.content
+    assert f"{draft_id}.csv" in csv_export.headers["content-disposition"]
+    assert excel_export.status_code == 200
+    assert excel_export.content.startswith(b"PK")
+    assert f"{draft_id}.xlsx" in excel_export.headers["content-disposition"]
+
+
+def test_expense_portal_invalid_amount_returns_validation_error() -> None:
+    client = TestClient(create_app())
+    payload = _expense_form_payload()
+    payload["expense_amount"] = "not-a-decimal"
+
+    response = client.post("/portal/expenses/review", data=payload)
+
+    assert response.status_code == 400
+    assert "One or more currency amounts are not valid decimal values." in response.text
+
+
+def test_expense_portal_missing_approval_rules_returns_validation_error(
+    monkeypatch,
+) -> None:
+    client = TestClient(create_app())
+    payload = _expense_form_payload()
+
+    monkeypatch.setattr("travel_plan_permission.approval._default_rules_path", lambda: None)
+    monkeypatch.setattr(
+        "travel_plan_permission.approval._package_rules_resource", lambda: None
+    )
+
+    response = client.post("/portal/expenses/review", data=payload)
+
+    assert response.status_code == 400
+    assert (
+        "Approval rules configuration is unavailable; expense policy review cannot be completed."
+        in response.text
+    )
+
+
+def test_expense_portal_caches_artifacts_with_persisted_draft_id() -> None:
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+
+    response = client.post(
+        "/portal/expenses/review",
+        data=_expense_form_payload(),
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    match = re.search(r"/portal/expenses/([^/]+)/artifacts/expense-csv", response.text)
+    assert match is not None
+    draft_id = match.group(1)
+
+    draft = store.lookup_expense_draft(draft_id)
+    assert draft is not None
+    assert draft_id in draft.cached_artifacts["expense-csv"].filename
+    assert draft_id in draft.cached_artifacts["expense-xlsx"].filename
+    assert "preview" not in draft.cached_artifacts["expense-csv"].filename.lower()
+    assert "preview" not in draft.cached_artifacts["expense-xlsx"].filename.lower()
+    assert b"EXP-PREVIEW" not in draft.cached_artifacts["expense-csv"].content
+
+
+def test_expense_portal_rejects_invalid_decimal_input_without_saving() -> None:
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+    payload = _expense_form_payload()
+    payload["expense_amount"] = "not-a-decimal"
+
+    response = client.post(
+        "/portal/expenses/review",
+        data=payload,
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 400
+    assert "not-a-decimal" in response.text
+    assert not store.expense_drafts_by_id
 
 
 def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
@@ -1081,6 +1241,9 @@ def test_portal_routes_do_not_leave_legacy_request_paths_active() -> None:
     assert "/portal/draft/new" in paths
     assert "/portal/draft" in paths
     assert "/portal/review/{draft_id}" in paths
+    assert "/portal/expenses/new" in paths
+    assert "/portal/expenses/review" in paths
+    assert "/portal/expenses/{draft_id}" in paths
     assert all(not path.startswith("/portal/requests") for path in paths)
 
 

@@ -2,6 +2,8 @@
 
 The accounting export provides CSV and Excel outputs that finance teams can import directly into downstream systems.
 
+The browser-facing expense portal at `/portal/expenses/new` now generates these same artifacts for draft reimbursement reports, so accounting handoff stays aligned with the repo’s shared export layer.
+
 ## Column schema and order
 
 The exports always include a header row using the following columns in order:
@@ -34,3 +36,4 @@ Receipt links are signed for 7 days and emitted as clickable hyperlinks in the E
 * Batch exports support up to **100** expense reports.
 * CSV output is UTF-8 encoded with a header row.
 * Excel amounts are formatted with currency number formatting for rapid review.
+* The expense portal is export-only for now; direct accounting-system writes remain out of scope.

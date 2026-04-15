@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -26,7 +26,17 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 
-from .models import ExceptionRequest, ExceptionType, TripPlan
+from .approval import ApprovalEngine
+from .export import ExportService
+from .models import (
+    ApprovalStatus,
+    ExceptionRequest,
+    ExceptionType,
+    ExpenseCategory,
+    ExpenseItem,
+    ExpenseReport,
+    TripPlan,
+)
 from .planner_auth import PlannerAuthConfig, PlannerAuthContext, authenticate_request
 from .policy_api import (
     PlannerPolicySnapshot,
@@ -48,6 +58,7 @@ from .portal_review import (
     portal_review_state,
     portal_validation_state,
 )
+from .receipts import Receipt, ReceiptExtractionResult, ReceiptProcessor
 from .review_workflow import ReviewAction, ReviewRequest, ReviewWorkflowStore
 from .security import (
     DEFAULT_ROLES,
@@ -166,6 +177,45 @@ _PORTAL_BOOLEAN_FIELDS = {
     "meal_per_diem_requested",
 }
 _PORTAL_MAX_DRAFTS = 64
+_EXPENSE_FIELDS: tuple[str, ...] = (
+    "approved_request_id",
+    "trip_id",
+    "traveler_name",
+    "cost_center",
+    "expense_description",
+    "expense_category",
+    "expense_amount",
+    "expense_date",
+    "expense_vendor",
+    "receipt_file_reference",
+    "receipt_file_size_bytes",
+    "receipt_total",
+    "receipt_date",
+    "receipt_vendor",
+    "receipt_paid_by_third_party",
+    "third_party_paid_explanation",
+    "receipt_ocr_text",
+    "manager_disposition",
+    "accounting_disposition",
+    "reimbursement_status",
+)
+_EXPENSE_REQUIRED_FIELDS: tuple[str, ...] = (
+    "approved_request_id",
+    "trip_id",
+    "traveler_name",
+    "expense_description",
+    "expense_category",
+    "expense_amount",
+    "expense_date",
+)
+_EXPENSE_BOOLEAN_FIELDS = {"receipt_paid_by_third_party"}
+_EXPENSE_STATUS_OPTIONS: tuple[str, ...] = (
+    "draft",
+    "manager_review",
+    "accounting_review",
+    "export_ready",
+    "reimbursed",
+)
 
 
 @dataclass(frozen=True)
@@ -196,6 +246,21 @@ class RoleView:
 
     role: RoleName
     permissions: tuple[Permission, ...]
+
+
+@dataclass(frozen=True)
+class ExpensePortalReviewState:
+    """Computed expense portal review context derived from a draft."""
+
+    draft_id: str
+    answers: dict[str, object]
+    missing_fields: list[str]
+    validation_errors: list[str]
+    receipt_state: str
+    receipt_extraction: ReceiptExtractionResult | None
+    expense_report: ExpenseReport | None
+    review_warnings: list[str]
+    artifacts: dict[str, PortalArtifact]
 
 
 class PlannerRuntimeConfigError(RuntimeError):
@@ -340,6 +405,7 @@ class PlannerProposalStore:
     plans_by_trip_id: dict[str, TripPlan] = field(default_factory=dict)
     proposals_by_execution_id: dict[str, StoredProposal] = field(default_factory=dict)
     portal_drafts_by_id: dict[str, PortalDraft] = field(default_factory=dict)
+    expense_drafts_by_id: dict[str, PortalDraft] = field(default_factory=dict)
     manager_reviews: ReviewWorkflowStore = field(default_factory=ReviewWorkflowStore)
     exception_requests_by_draft_id: dict[str, list[ExceptionRequest]] = field(
         default_factory=dict
@@ -438,6 +504,61 @@ class PlannerProposalStore:
         """Return a previously stored portal draft by identifier."""
 
         draft = self.portal_drafts_by_id.get(draft_id)
+        if draft is None:
+            return None
+        return PortalDraft(
+            draft_id=draft.draft_id,
+            answers=dict(draft.answers),
+            updated_at=draft.updated_at,
+            cached_artifacts=dict(draft.cached_artifacts),
+        )
+
+    def save_expense_draft(self, answers: dict[str, object]) -> PortalDraft:
+        """Persist expense portal answers so review and export can be revisited."""
+
+        if len(self.expense_drafts_by_id) >= _PORTAL_MAX_DRAFTS:
+            oldest_draft_id = min(
+                self.expense_drafts_by_id.items(),
+                key=lambda item: item[1].updated_at,
+            )[0]
+            del self.expense_drafts_by_id[oldest_draft_id]
+        draft = PortalDraft(
+            draft_id=uuid4().hex[:12],
+            answers=dict(answers),
+            updated_at=datetime.now(UTC),
+        )
+        self.expense_drafts_by_id[draft.draft_id] = draft
+        self.security.audit_log.record(
+            event_type=AuditEventType.REQUEST,
+            actor=str(answers.get("traveler_name") or "expense-portal-traveler"),
+            subject=draft.draft_id,
+            outcome="expense_draft_saved",
+            metadata={"surface": "expense-portal"},
+        )
+        return draft
+
+    def cache_expense_artifacts(
+        self,
+        draft_id: str,
+        artifacts: dict[str, PortalArtifact],
+    ) -> PortalDraft | None:
+        """Persist generated expense export artifacts for repeated downloads."""
+
+        draft = self.expense_drafts_by_id.get(draft_id)
+        if draft is None:
+            return None
+        updated = replace(
+            draft,
+            updated_at=datetime.now(UTC),
+            cached_artifacts=dict(artifacts),
+        )
+        self.expense_drafts_by_id[draft_id] = updated
+        return updated
+
+    def lookup_expense_draft(self, draft_id: str) -> PortalDraft | None:
+        """Return a previously stored expense portal draft by identifier."""
+
+        draft = self.expense_drafts_by_id.get(draft_id)
         if draft is None:
             return None
         return PortalDraft(
@@ -675,7 +796,7 @@ def _normalize_portal_value(field_name: str, raw_value: str) -> object | None:
     value = raw_value.strip()
     if not value:
         return None
-    if field_name in _PORTAL_BOOLEAN_FIELDS:
+    if field_name in _PORTAL_BOOLEAN_FIELDS or field_name in _EXPENSE_BOOLEAN_FIELDS:
         normalized = value.casefold()
         if normalized in {"true", "yes", "on", "1"}:
             return True
@@ -688,6 +809,20 @@ def _portal_answers_from_encoded_body(body: bytes) -> dict[str, object]:
     answers: dict[str, object] = {}
     parsed = parse_qs(body.decode("utf-8"), keep_blank_values=False)
     for field_name in _PORTAL_FIELDS:
+        values = parsed.get(field_name)
+        if not values:
+            continue
+        normalized = _normalize_portal_value(field_name, values[-1])
+        if normalized is None:
+            continue
+        answers[field_name] = normalized
+    return answers
+
+
+def _expense_answers_from_encoded_body(body: bytes) -> dict[str, object]:
+    answers: dict[str, object] = {}
+    parsed = parse_qs(body.decode("utf-8"), keep_blank_values=False)
+    for field_name in _EXPENSE_FIELDS:
         values = parsed.get(field_name)
         if not values:
             continue
@@ -737,6 +872,164 @@ def _canonical_payload_from_answers(answers: dict[str, object]) -> dict[str, obj
     return payload
 
 
+def _expense_export_artifacts(
+    *,
+    draft_id: str,
+    expense_report: ExpenseReport,
+) -> dict[str, PortalArtifact]:
+    service = ExportService()
+    csv_filename, csv_content = service.to_csv([expense_report], batch_id=draft_id)
+    excel_filename, excel_content = service.to_excel([expense_report], batch_id=draft_id)
+    return {
+        "expense-csv": PortalArtifact(
+            filename=csv_filename,
+            content=csv_content.encode("utf-8"),
+            media_type="text/csv; charset=utf-8",
+        ),
+        "expense-xlsx": PortalArtifact(
+            filename=excel_filename,
+            content=excel_content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+    }
+
+
+def _expense_review_state(
+    draft_id: str,
+    answers: dict[str, object],
+) -> ExpensePortalReviewState:
+    missing_fields = [
+        field_name for field_name in _EXPENSE_REQUIRED_FIELDS if not answers.get(field_name)
+    ]
+    validation_errors: list[str] = []
+    review_warnings: list[str] = []
+    receipt_state = "missing"
+    receipt_extraction: ReceiptExtractionResult | None = None
+    expense_report: ExpenseReport | None = None
+    artifacts: dict[str, PortalArtifact] = {}
+
+    ocr_text = answers.get("receipt_ocr_text")
+    if isinstance(ocr_text, str) and ocr_text.strip():
+        receipt_extraction = ReceiptProcessor.extract_from_text(ocr_text)
+
+    if not missing_fields:
+        try:
+            category = ExpenseCategory(str(answers["expense_category"]))
+            expense_amount = Decimal(str(answers["expense_amount"]))
+            expense_date = date.fromisoformat(str(answers["expense_date"]))
+            receipt_reference = answers.get("receipt_file_reference")
+            receipt: Receipt | None = None
+            if receipt_reference:
+                if not all(
+                    (
+                        answers.get("receipt_file_size_bytes"),
+                        answers.get("receipt_total"),
+                        answers.get("receipt_date"),
+                        answers.get("receipt_vendor"),
+                    )
+                ):
+                    validation_errors.append(
+                        "Receipt uploads require file size, total, date, and vendor details."
+                    )
+                    receipt_state = "incomplete"
+                else:
+                    receipt = Receipt.from_manual_entry(
+                        total=Decimal(str(answers["receipt_total"])),
+                        date=date.fromisoformat(str(answers["receipt_date"])),
+                        vendor=str(answers["receipt_vendor"]),
+                        file_reference=str(receipt_reference),
+                        file_size_bytes=int(str(answers["receipt_file_size_bytes"])),
+                        paid_by_third_party=bool(answers.get("receipt_paid_by_third_party")),
+                    )
+                    receipt_state = "attached"
+                    if receipt_extraction is not None:
+                        mismatches: list[str] = []
+                        if (
+                            receipt_extraction.vendor is not None
+                            and receipt_extraction.vendor != receipt.vendor
+                        ):
+                            mismatches.append("vendor")
+                        if (
+                            receipt_extraction.total is not None
+                            and receipt_extraction.total != receipt.total
+                        ):
+                            mismatches.append("total")
+                        if (
+                            receipt_extraction.date is not None
+                            and receipt_extraction.date != receipt.date
+                        ):
+                            mismatches.append("date")
+                        if mismatches:
+                            review_warnings.append(
+                                "Manual receipt entry overrides OCR values for "
+                                + ", ".join(mismatches)
+                                + "."
+                            )
+            else:
+                review_warnings.append(
+                    "Receipt missing: reviewers should hold reimbursement until the traveler uploads support."
+                )
+
+            expense = ExpenseItem(
+                category=category,
+                description=str(answers["expense_description"]),
+                vendor=str(answers.get("expense_vendor") or "") or None,
+                amount=expense_amount,
+                expense_date=expense_date,
+                receipt_attached=receipt is not None,
+                receipt_url=str(receipt_reference) if receipt_reference else None,
+                receipt_references=[receipt] if receipt is not None else [],
+                third_party_paid_explanation=(
+                    str(answers["third_party_paid_explanation"])
+                    if answers.get("third_party_paid_explanation")
+                    else None
+                ),
+            )
+            expense_report = ExpenseReport(
+                report_id=f"EXP-{draft_id.upper()}",
+                trip_id=str(answers["trip_id"]),
+                traveler_name=str(answers["traveler_name"]),
+                cost_center=str(answers.get("cost_center") or "") or None,
+                expenses=[expense],
+            )
+            expense_report = ApprovalEngine.from_file().evaluate_report(expense_report)
+            if expense_report.approval_status == ApprovalStatus.FLAGGED:
+                review_warnings.append(
+                    "Policy warning: manager or accounting review is required before reimbursement."
+                )
+            artifacts = _expense_export_artifacts(
+                draft_id=draft_id,
+                expense_report=expense_report,
+            )
+        except ValidationError as exc:
+            validation_errors.extend(
+                f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+                for error in exc.errors()
+            )
+        except FileNotFoundError:
+            validation_errors.append(
+                "Approval rules configuration is unavailable; expense policy review cannot be completed."
+            )
+        except InvalidOperation:
+            validation_errors.append(
+                "One or more currency amounts are not valid decimal values."
+            )
+        except ValueError as exc:
+            validation_errors.append(str(exc))
+
+    return ExpensePortalReviewState(
+        draft_id=draft_id,
+        answers=answers,
+        missing_fields=missing_fields,
+        validation_errors=validation_errors,
+        receipt_state=receipt_state,
+        receipt_extraction=receipt_extraction,
+        expense_report=expense_report,
+        review_warnings=review_warnings,
+        artifacts=artifacts,
+    )
+
+
 def _portal_template_context(
     request: Request,
     review: PortalReviewState | None = None,
@@ -759,6 +1052,20 @@ def _portal_template_context(
         ),
         "optional_fields": _PORTAL_OPTIONAL_FIELDS,
         "error_message": error_message,
+    }
+
+
+def _expense_template_context(
+    request: Request,
+    review: ExpensePortalReviewState | None = None,
+) -> dict[str, object]:
+    answers = review.answers if review is not None else {}
+    return {
+        "request": request,
+        "answers": answers,
+        "review": review,
+        "expense_categories": tuple(category.value for category in ExpenseCategory),
+        "reimbursement_status_options": _EXPENSE_STATUS_OPTIONS,
     }
 
 
@@ -856,6 +1163,14 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             },
         )
 
+    @app.get("/portal/expenses/new", response_class=HTMLResponse)
+    def portal_expense_form(request: Request) -> HTMLResponse:
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="portal_expense.html",
+            context=_expense_template_context(request, None),
+        )
+
     @app.get("/portal/draft/new", response_class=HTMLResponse)
     def portal_draft_form(request: Request) -> HTMLResponse:
         return _TEMPLATES.TemplateResponse(
@@ -884,6 +1199,28 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
         return RedirectResponse(
             url=request.url_for("portal_review_detail", draft_id=draft.draft_id),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    @app.post("/portal/expenses/review")
+    async def portal_expense_review(request: Request) -> Response:
+        answers = _expense_answers_from_encoded_body(await request.body())
+        review = _expense_review_state("preview", answers)
+        if review.missing_fields or review.validation_errors:
+            return _TEMPLATES.TemplateResponse(
+                request=request,
+                name="portal_expense.html",
+                context=_expense_template_context(request, review),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        draft = proposal_store.save_expense_draft(answers)
+        persisted_review = _expense_review_state(draft.draft_id, answers)
+        if persisted_review.artifacts:
+            proposal_store.cache_expense_artifacts(
+                draft.draft_id, persisted_review.artifacts
+            )
+        return RedirectResponse(
+            url=request.url_for("portal_expense_detail", draft_id=draft.draft_id),
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -918,6 +1255,27 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 review,
                 exceptions=proposal_store.list_exception_requests(draft_id),
             ),
+        )
+
+    @app.get(
+        "/portal/expenses/{draft_id}",
+        response_class=HTMLResponse,
+        name="portal_expense_detail",
+    )
+    def portal_expense_detail(request: Request, draft_id: str) -> HTMLResponse:
+        draft = proposal_store.lookup_expense_draft(draft_id)
+        if draft is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No expense portal draft found for '{draft_id}'.",
+            )
+        review = _expense_review_state(draft.draft_id, draft.answers)
+        if review.artifacts and not draft.cached_artifacts:
+            proposal_store.cache_expense_artifacts(draft.draft_id, review.artifacts)
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="portal_expense.html",
+            context=_expense_template_context(request, review),
         )
 
     @app.post("/portal/review/{draft_id}/exceptions")
@@ -1316,6 +1674,44 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         proposal_store.security.audit_log.record(
             event_type=AuditEventType.EXPORT,
             actor="workflow-portal",
+            subject=draft_id,
+            outcome="artifact_downloaded",
+            metadata={"artifact": artifact_name},
+        )
+        return Response(
+            content=artifact.content,
+            media_type=artifact.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
+            },
+        )
+
+    @app.get("/portal/expenses/{draft_id}/artifacts/{artifact_name}")
+    def portal_expense_artifact(
+        draft_id: str,
+        artifact_name: str,
+    ) -> Response:
+        draft = proposal_store.lookup_expense_draft(draft_id)
+        if draft is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No expense portal draft found for '{draft_id}'.",
+            )
+        artifacts = draft.cached_artifacts
+        if not artifacts:
+            review = _expense_review_state(draft.draft_id, draft.answers)
+            artifacts = review.artifacts
+            if artifacts:
+                proposal_store.cache_expense_artifacts(draft.draft_id, artifacts)
+        artifact = artifacts.get(artifact_name)
+        if artifact is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No artifact named '{artifact_name}' for expense draft '{draft_id}'.",
+            )
+        proposal_store.security.audit_log.record(
+            event_type=AuditEventType.EXPORT,
+            actor="expense-portal",
             subject=draft_id,
             outcome="artifact_downloaded",
             metadata={"artifact": artifact_name},
