@@ -320,9 +320,7 @@ def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
 
     assert response.status_code == 400
     assert 'data-template="validation-feedback"' in response.text
-    assert (
-        "Complete the missing details before this draft can be saved." in response.text
-    )
+    assert "Complete the missing details before this draft can be saved." in response.text
     assert store.portal_drafts_by_id == {}
     assert re.search(
         r'<ul class="missing-fields">.*?<li><code>destination_zip</code></li>',
@@ -330,6 +328,20 @@ def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
         re.DOTALL,
     )
     assert "Where are you headed and what" in response.text
+
+
+def test_portal_draft_validation_rejects_invalid_present_payload_without_saving() -> None:
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+    payload = _portal_form_payload()
+    payload["destination_zip"] = "98A01"
+
+    response = client.post("/portal/draft", data=payload)
+
+    assert response.status_code == 400
+    assert 'data-template="validation-feedback"' in response.text
+    assert store.portal_drafts_by_id == {}
+    assert "destination_zip:" in response.text
 
 
 def test_portal_review_allows_optional_fields_to_remain_blank(monkeypatch) -> None:
@@ -508,9 +520,7 @@ def test_portal_artifacts_raise_runtime_error_without_bundle_mappings(
     monkeypatch,
 ) -> None:
     _set_runtime_env(monkeypatch)
-    client = TestClient(
-        create_app(PlannerProposalStore()), raise_server_exceptions=False
-    )
+    client = TestClient(create_app(PlannerProposalStore()), raise_server_exceptions=False)
 
     def invalid_bundle(**_kwargs):
         return {"itinerary_excel": "bad", "summary_pdf": "bad"}

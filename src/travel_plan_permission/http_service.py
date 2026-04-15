@@ -48,9 +48,7 @@ from .prompt_flow import build_output_bundle, generate_questions, required_field
 from .security import Permission
 
 _OPTIONAL_SNAPSHOT_BODY = Body(default=None)
-_TEMPLATES = Jinja2Templates(
-    directory=str(Path(__file__).resolve().parent / "templates")
-)
+_TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 _PORTAL_CANONICAL_FIELDS: tuple[str, ...] = (
     "traveler_name",
     "business_purpose",
@@ -333,9 +331,7 @@ class PlannerProposalStore:
         self.remember_plan(trip_plan)
         execution_id = response.result_payload.get("execution_id")
         if not isinstance(execution_id, str):
-            raise ValueError(
-                "Planner proposal response missing required string execution_id"
-            )
+            raise ValueError("Planner proposal response missing required string execution_id")
         self.proposals_by_execution_id[execution_id] = StoredProposal(
             trip_plan=trip_plan.model_copy(deep=True),
             request=request.model_copy(deep=True),
@@ -545,15 +541,8 @@ def _portal_artifacts(
     }
 
 
-def _portal_review_state(
-    draft_id: str,
-    answers: dict[str, object],
-    *,
-    submission_response: PlannerProposalOperationResponse | None = None,
-) -> PortalReviewState:
-    missing_fields = required_field_gaps(
-        answers, required_fields=_PORTAL_REQUIRED_FIELDS
-    )
+def _portal_validation_state(answers: dict[str, object]) -> PortalReviewState:
+    missing_fields = required_field_gaps(answers, required_fields=_PORTAL_REQUIRED_FIELDS)
     next_questions: list[dict[str, object]] = [
         {
             "prompt": question.prompt,
@@ -564,29 +553,57 @@ def _portal_review_state(
     ]
     validation_errors: list[str] = []
     canonical_payload: dict[str, object] | None = None
+
+    if not missing_fields:
+        canonical_payload = _canonical_payload_from_answers(answers)
+        try:
+            CanonicalTripPlan.model_validate(canonical_payload)
+        except ValidationError as exc:
+            validation_errors = _review_validation_errors(exc)
+
+    return PortalReviewState(
+        draft_id="",
+        answers=answers,
+        missing_fields=missing_fields,
+        next_questions=next_questions,
+        validation_errors=validation_errors,
+        canonical_payload=canonical_payload,
+        trip_plan=None,
+        policy_snapshot=None,
+        policy_result=None,
+        artifacts={},
+    )
+
+
+def _portal_review_state(
+    draft_id: str,
+    answers: dict[str, object],
+    *,
+    submission_response: PlannerProposalOperationResponse | None = None,
+) -> PortalReviewState:
+    validation_state = _portal_validation_state(answers)
+    missing_fields = validation_state.missing_fields
+    next_questions = validation_state.next_questions
+    validation_errors = validation_state.validation_errors
+    canonical_payload = validation_state.canonical_payload
     trip_plan: TripPlan | None = None
     policy_snapshot: PlannerPolicySnapshot | None = None
     policy_result: Any | None = None
     artifacts: dict[str, PortalArtifact] = {}
 
-    if not missing_fields:
-        canonical_payload = _canonical_payload_from_answers(answers)
-        try:
-            canonical = CanonicalTripPlan.model_validate(canonical_payload)
-        except ValidationError as exc:
-            validation_errors = _review_validation_errors(exc)
-        else:
-            trip_plan = canonical_trip_plan_to_model(canonical)
-            policy_snapshot = get_policy_snapshot(
-                trip_plan,
-                PlannerPolicySnapshotRequest(trip_id=trip_plan.trip_id),
-            )
-            policy_result = check_trip_plan(trip_plan)
-            artifacts = _portal_artifacts(
-                canonical=canonical,
-                plan=trip_plan,
-                answers=answers,
-            )
+    if not missing_fields and canonical_payload is not None and not validation_errors:
+        canonical = CanonicalTripPlan.model_validate(canonical_payload)
+        trip_plan = canonical_trip_plan_to_model(canonical)
+        policy_snapshot = get_policy_snapshot(
+            trip_plan,
+            PlannerPolicySnapshotRequest(trip_id=trip_plan.trip_id),
+        )
+        policy_result = check_trip_plan(trip_plan)
+        artifacts = _portal_artifacts(
+            canonical=canonical,
+            plan=trip_plan,
+            answers=answers,
+        )
 
     return PortalReviewState(
         draft_id=draft_id,
@@ -655,7 +672,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     @app.post("/portal/draft")
     async def portal_draft_review(request: Request) -> Response:
         answers = _portal_answers_from_encoded_body(await request.body())
-        review = _portal_review_state("", answers)
+        review = _portal_validation_state(answers)
         if review.missing_fields or review.validation_errors:
             return _TEMPLATES.TemplateResponse(
                 request=request,
@@ -709,11 +726,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 detail=f"No portal draft found for '{draft_id}'.",
             )
         review = _portal_review_state(draft.draft_id, draft.answers)
-        if (
-            review.trip_plan is None
-            or review.missing_fields
-            or review.validation_errors
-        ):
+        if review.trip_plan is None or review.missing_fields or review.validation_errors:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Complete the request review before submitting the portal draft.",
@@ -771,9 +784,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         return Response(
             content=artifact.content,
             media_type=artifact.media_type,
-            headers={
-                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
-            },
+            headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
         )
 
     @app.get(
@@ -877,9 +888,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         if stored.request.proposal_id != proposal_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    f"Execution '{execution_id}' does not belong to proposal '{proposal_id}'."
-                ),
+                detail=(f"Execution '{execution_id}' does not belong to proposal '{proposal_id}'."),
             )
         status_request = _submission_status_request(
             stored,
