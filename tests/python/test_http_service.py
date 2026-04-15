@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -15,52 +16,11 @@ from travel_plan_permission.policy_api import PlannerProposalOperationResponse
 from travel_plan_permission.security import Permission
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "planner_integration"
-CANONICAL_FIXTURE = (
-    Path(__file__).resolve().parents[1] / "fixtures" / "canonical_trip_plan_realistic.json"
-)
 AUTH_HEADER = {"Authorization": "Bearer dev-token"}
 
 
 def _load_fixture(name: str) -> dict[str, object]:
     return json.loads((FIXTURE_ROOT / name).read_text(encoding="utf-8"))
-
-
-def _portal_form_data() -> dict[str, str]:
-    payload = json.loads(CANONICAL_FIXTURE.read_text(encoding="utf-8"))
-    hotel = payload["hotel"]
-    outbound = payload["flight_pref_outbound"]
-    inbound = payload["flight_pref_return"]
-    comparable = payload["comparable_hotels"][0]
-    return {
-        "traveler_name": payload["traveler_name"],
-        "business_purpose": payload["business_purpose"],
-        "cost_center": payload["cost_center"],
-        "destination_zip": payload["destination_zip"],
-        "city_state": payload["city_state"],
-        "depart_date": payload["depart_date"],
-        "return_date": payload["return_date"],
-        "event_registration_cost": str(payload["event_registration_cost"]),
-        "flight_pref_outbound.carrier_flight": outbound["carrier_flight"],
-        "flight_pref_outbound.depart_time": outbound["depart_time"],
-        "flight_pref_outbound.arrive_time": outbound["arrive_time"],
-        "flight_pref_outbound.roundtrip_cost": str(outbound["roundtrip_cost"]),
-        "flight_pref_return.carrier_flight": inbound["carrier_flight"],
-        "flight_pref_return.depart_time": inbound["depart_time"],
-        "flight_pref_return.arrive_time": inbound["arrive_time"],
-        "lowest_cost_roundtrip": str(payload["lowest_cost_roundtrip"]),
-        "parking_estimate": str(payload["parking_estimate"]),
-        "hotel.name": hotel["name"],
-        "hotel.address": hotel["address"],
-        "hotel.city_state": hotel["city_state"],
-        "hotel.nightly_rate": str(hotel["nightly_rate"]),
-        "hotel.nights": str(hotel["nights"]),
-        "hotel.conference_hotel": "true",
-        "hotel.price_compare_notes": hotel["price_compare_notes"],
-        "comparable_hotels[0].name": comparable["name"],
-        "comparable_hotels[0].nightly_rate": str(comparable["nightly_rate"]),
-        "ground_transport_pref": payload["ground_transport_pref"],
-        "notes": payload["notes"],
-    }
 
 
 def _set_runtime_env(monkeypatch, *, provider: str = "google") -> None:
@@ -75,6 +35,51 @@ def _set_bootstrap_runtime_env(monkeypatch, *, provider: str = "google") -> None
     monkeypatch.setenv("TPP_OIDC_PROVIDER", provider)
     monkeypatch.setenv("TPP_AUTH_MODE", "bootstrap-token")
     monkeypatch.setenv("TPP_BOOTSTRAP_SIGNING_SECRET", "bootstrap-secret-123")
+
+
+def _portal_form_payload() -> dict[str, str]:
+    return {
+        "traveler_name": "Alex Rivera",
+        "business_purpose": "Regional partner summit",
+        "cost_center": "OPS-410",
+        "city_state": "Seattle, WA",
+        "destination_zip": "98101",
+        "depart_date": "2025-10-05",
+        "return_date": "2025-10-09",
+        "notes": "Request airport pickup and late checkout.",
+        "flight_pref_outbound.carrier_flight": "AS120",
+        "flight_pref_outbound.depart_time": "2025-10-05T07:15",
+        "flight_pref_outbound.arrive_time": "2025-10-05T09:40",
+        "flight_pref_outbound.roundtrip_cost": "455.25",
+        "flight_pref_return.carrier_flight": "AS221",
+        "flight_pref_return.depart_time": "2025-10-09T18:10",
+        "flight_pref_return.arrive_time": "2025-10-09T20:30",
+        "lowest_cost_roundtrip": "430.00",
+        "hotel.name": "Pine Street Suites",
+        "hotel.address": "120 Pine St",
+        "hotel.city_state": "Seattle, WA",
+        "hotel.nightly_rate": "210.00",
+        "hotel.nights": "4",
+        "hotel.conference_hotel": "true",
+        "hotel.price_compare_notes": "Conference hotel is $20 more per night.",
+        "comparable_hotels[0].name": "Marketview Hotel",
+        "comparable_hotels[0].nightly_rate": "190.00",
+        "ground_transport_pref": "rideshare/taxi",
+        "parking_estimate": "35.00",
+        "event_registration_cost": "320.00",
+        "booking_date": "2025-09-20",
+        "selected_fare": "455.25",
+        "lowest_fare": "430.00",
+        "cabin_class": "economy",
+        "flight_duration_hours": "2.5",
+        "fare_evidence_attached": "true",
+        "driving_cost": "120.00",
+        "flight_cost": "200.00",
+        "distance_from_office_miles": "12.5",
+        "overnight_stay": "true",
+        "meals_provided": "false",
+        "meal_per_diem_requested": "true",
+    }
 
 
 def test_readyz_reports_missing_runtime_config(monkeypatch) -> None:
@@ -283,64 +288,62 @@ def test_snapshot_route_returns_bad_request_for_contract_mismatch(monkeypatch) -
     assert "trip_id" in response.json()["detail"]
 
 
-def test_portal_home_and_form_routes_render() -> None:
+def test_portal_home_and_request_form_render() -> None:
     client = TestClient(create_app())
 
     home = client.get("/portal")
     form = client.get("/portal/requests/new")
 
     assert home.status_code == 200
-    assert "Workflow Lite Portal" in home.text
+    assert "Travel Request Portal" in home.text
     assert form.status_code == 200
-    assert "Travel request submission shell" in form.text
-    assert "Review request" in form.text
+    assert "Draft a travel request through the real service runtime." in form.text
 
 
-def test_portal_review_surfaces_missing_required_inputs() -> None:
+def test_portal_review_shows_missing_inputs() -> None:
     client = TestClient(create_app())
 
     response = client.post(
         "/portal/requests/review",
-        data={
-            "traveler_name": "Ada Lovelace",
-            "city_state": "Boston, MA",
-        },
+        data={"traveler_name": "Alex Rivera", "business_purpose": "Partner summit"},
         follow_redirects=True,
     )
 
     assert response.status_code == 200
     assert "Missing required inputs" in response.text
-    assert "business_purpose" in response.text
-    assert "Next intake questions" in response.text
+    assert "destination_zip" in response.text
+    assert "Where are you headed and what" in response.text
 
 
-def test_portal_review_generates_artifacts_and_submission(monkeypatch) -> None:
+def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
     _set_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()))
 
-    review = client.post(
+    response = client.post(
         "/portal/requests/review",
-        data=_portal_form_data(),
+        data=_portal_form_payload(),
         follow_redirects=True,
     )
 
-    assert review.status_code == 200
-    assert "Ready for submit" in review.text
-    assert "Policy readiness" in review.text
-    assert "itinerary.xlsx" in review.text
-    assert "summary.pdf" in review.text
-    assert "TRIP-20251005-ALEX-RIVERA" in review.text
+    assert response.status_code == 200
+    assert "Policy-lite posture" in response.text
+    assert "Generated artifacts" in response.text
 
-    draft_id = str(review.url).rstrip("/").split("/")[-1]
-    submit = client.post(f"/portal/requests/{draft_id}/submit")
+    match = re.search(r"/portal/requests/([^/]+)/artifacts/itinerary", response.text)
+    assert match is not None
+    draft_id = match.group(1)
 
-    assert submit.status_code == 200
-    assert "Submitted." in submit.text
-    assert "pending" in submit.text
-
-    artifact = client.get(f"/portal/requests/{draft_id}/artifacts/itinerary")
-    assert artifact.status_code == 200
-    assert (
-        artifact.headers["content-type"]
-        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    itinerary = client.get(f"/portal/requests/{draft_id}/artifacts/itinerary")
+    summary = client.get(f"/portal/requests/{draft_id}/artifacts/summary")
+    submit = client.post(
+        f"/portal/requests/{draft_id}/submit",
+        follow_redirects=True,
     )
+
+    assert itinerary.status_code == 200
+    assert itinerary.content.startswith(b"PK")
+    assert summary.status_code == 200
+    assert summary.content
+    assert summary.headers["content-type"].startswith(("application/pdf", "text/plain"))
+    assert submit.status_code == 200
+    assert "Submission result" in submit.text

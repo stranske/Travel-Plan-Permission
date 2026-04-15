@@ -86,6 +86,17 @@ Use the emitted value as `Authorization: Bearer <token>` when calling planner
 routes. `TPP_AUTH_MODE="static-token"` plus `TPP_ACCESS_TOKEN` remains
 available for simple fixed-token environments.
 
+For a browser-facing draft flow on top of the same runtime, open:
+
+```text
+http://127.0.0.1:8000/portal
+```
+
+The portal stays intentionally small and server-rendered. It lets a traveler
+capture draft trip details, see missing canonical inputs before submission,
+review policy-lite posture, and download the generated itinerary and summary
+artifacts before triggering the existing proposal submission seam.
+
 Run the repo-native live smoke command against a running service with:
 
 ```bash
