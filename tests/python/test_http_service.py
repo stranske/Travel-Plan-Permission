@@ -289,7 +289,7 @@ def test_portal_home_and_request_form_render() -> None:
     client = TestClient(create_app())
 
     home = client.get("/portal")
-    form = client.get("/portal/requests/new")
+    form = client.get("/portal/draft/new")
 
     assert home.status_code == 200
     assert "Travel Request Portal" in home.text
@@ -300,7 +300,7 @@ def test_portal_home_and_request_form_render() -> None:
 def test_portal_request_form_get_stays_lightweight() -> None:
     client = TestClient(create_app())
 
-    response = client.get("/portal/requests/new?traveler_name=Alex+Rivera")
+    response = client.get("/portal/draft/new?traveler_name=Alex+Rivera")
 
     assert response.status_code == 200
     assert 'value="Alex Rivera"' not in response.text
@@ -312,7 +312,7 @@ def test_portal_review_shows_missing_inputs() -> None:
     client = TestClient(create_app())
 
     response = client.post(
-        "/portal/requests/review",
+        "/portal/draft",
         data={"traveler_name": "Alex Rivera", "business_purpose": "Partner summit"},
         follow_redirects=True,
     )
@@ -349,7 +349,7 @@ def test_portal_review_allows_optional_fields_to_remain_blank(monkeypatch) -> No
         payload.pop(field_name)
 
     response = client.post(
-        "/portal/requests/review",
+        "/portal/draft",
         data=payload,
         follow_redirects=True,
     )
@@ -364,7 +364,7 @@ def test_portal_review_persists_policy_readiness_answers(monkeypatch) -> None:
     client = TestClient(create_app(PlannerProposalStore()))
 
     response = client.post(
-        "/portal/requests/review",
+        "/portal/draft",
         data=_portal_form_payload(),
         follow_redirects=True,
     )
@@ -380,7 +380,7 @@ def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
     client = TestClient(create_app(PlannerProposalStore()))
 
     response = client.post(
-        "/portal/requests/review",
+        "/portal/draft",
         data=_portal_form_payload(),
         follow_redirects=True,
     )
@@ -389,14 +389,14 @@ def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
     assert "Policy-lite posture" in response.text
     assert "Generated artifacts" in response.text
 
-    match = re.search(r"/portal/requests/([^/]+)/artifacts/itinerary", response.text)
+    match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
     assert match is not None
     draft_id = match.group(1)
 
-    itinerary = client.get(f"/portal/requests/{draft_id}/artifacts/itinerary")
-    summary = client.get(f"/portal/requests/{draft_id}/artifacts/summary")
+    itinerary = client.get(f"/portal/review/{draft_id}/artifacts/itinerary")
+    summary = client.get(f"/portal/review/{draft_id}/artifacts/summary")
     submit = client.post(
-        f"/portal/requests/{draft_id}/submit",
+        f"/portal/review/{draft_id}/submit",
         headers=AUTH_HEADER,
         follow_redirects=True,
     )
@@ -415,13 +415,13 @@ def test_portal_artifact_downloads_use_cached_review_artifacts(monkeypatch) -> N
     client = TestClient(create_app(PlannerProposalStore()))
 
     response = client.post(
-        "/portal/requests/review",
+        "/portal/draft",
         data=_portal_form_payload(),
         follow_redirects=True,
     )
 
     assert response.status_code == 200
-    match = re.search(r"/portal/requests/([^/]+)/artifacts/itinerary", response.text)
+    match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
     assert match is not None
     draft_id = match.group(1)
 
@@ -431,8 +431,8 @@ def test_portal_artifact_downloads_use_cached_review_artifacts(monkeypatch) -> N
     monkeypatch.setattr(http_service, "render_travel_spreadsheet_bytes", fail_render)
     monkeypatch.setattr(http_service, "build_output_bundle", fail_render)
 
-    itinerary = client.get(f"/portal/requests/{draft_id}/artifacts/itinerary")
-    summary = client.get(f"/portal/requests/{draft_id}/artifacts/summary")
+    itinerary = client.get(f"/portal/review/{draft_id}/artifacts/itinerary")
+    summary = client.get(f"/portal/review/{draft_id}/artifacts/summary")
 
     assert itinerary.status_code == 200
     assert itinerary.content.startswith(b"PK")
@@ -445,18 +445,28 @@ def test_portal_submit_requires_bearer_token(monkeypatch) -> None:
     client = TestClient(create_app(PlannerProposalStore()))
 
     response = client.post(
-        "/portal/requests/review",
+        "/portal/draft",
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    match = re.search(r"/portal/requests/([^/]+)/artifacts/itinerary", response.text)
+    match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
     assert match is not None
     draft_id = match.group(1)
 
     submit = client.post(
-        f"/portal/requests/{draft_id}/submit",
+        f"/portal/review/{draft_id}/submit",
         follow_redirects=True,
     )
 
     assert submit.status_code == 401
     assert submit.json()["detail"] == "Missing bearer token."
+
+
+def test_portal_routes_do_not_leave_legacy_request_paths_active() -> None:
+    app = create_app()
+    paths = {route.path for route in app.routes}
+
+    assert "/portal/draft/new" in paths
+    assert "/portal/draft" in paths
+    assert "/portal/review/{draft_id}" in paths
+    assert all(not path.startswith("/portal/requests") for path in paths)

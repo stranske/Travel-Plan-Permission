@@ -640,27 +640,25 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             context={"service_ready": _readiness_response().status == "ready"},
         )
 
-    @app.get("/portal/requests/new", response_class=HTMLResponse)
-    def portal_request_form(request: Request) -> HTMLResponse:
+    @app.get("/portal/draft/new", response_class=HTMLResponse)
+    def portal_draft_form(request: Request) -> HTMLResponse:
         return _TEMPLATES.TemplateResponse(
             request=request,
             name="portal_request.html",
             context=_portal_template_context(request, None),
         )
 
-    @app.post("/portal/requests/review")
-    async def portal_request_review(request: Request) -> RedirectResponse:
+    @app.post("/portal/draft")
+    async def portal_draft_review(request: Request) -> RedirectResponse:
         answers = _portal_answers_from_encoded_body(await request.body())
         draft = proposal_store.save_portal_draft(answers)
         return RedirectResponse(
-            url=request.url_for("portal_request_detail", draft_id=draft.draft_id),
+            url=request.url_for("portal_review_detail", draft_id=draft.draft_id),
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
-    @app.get(
-        "/portal/requests/{draft_id}", response_class=HTMLResponse, name="portal_request_detail"
-    )
-    def portal_request_detail(request: Request, draft_id: str) -> HTMLResponse:
+    @app.get("/portal/review/{draft_id}", response_class=HTMLResponse, name="portal_review_detail")
+    def portal_review_detail(request: Request, draft_id: str) -> HTMLResponse:
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
             raise HTTPException(
@@ -676,7 +674,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             context=_portal_template_context(request, review),
         )
 
-    @app.post("/portal/requests/{draft_id}/submit", response_class=HTMLResponse)
+    @app.post("/portal/review/{draft_id}/submit", response_class=HTMLResponse)
     def portal_submit_request(
         request: Request,
         draft_id: str,
@@ -725,7 +723,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             context=_portal_template_context(request, review),
         )
 
-    @app.get("/portal/requests/{draft_id}/artifacts/{artifact_name}")
+    @app.get("/portal/review/{draft_id}/artifacts/{artifact_name}")
     def portal_artifact(
         draft_id: str,
         artifact_name: str,

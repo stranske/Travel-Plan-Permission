@@ -8,23 +8,24 @@ tasks:
       and GET /portal/review/{draft_id} in the app router module
     status: done
     started_at: '2026-04-15T08:20:55Z'
-    finished_at: '2026-04-15T08:21:06Z'
-    commit: 012d4684d609939f93474e8a44af67276964f088
-    notes: []
+    finished_at: '2026-04-15T13:45:00Z'
+    commit: ''
+    notes:
+      - Route registration corrected in follow-up after earlier ledger-only bookkeeping commit.
   - id: task-02
     title: Remove all legacy /portal/requests/* route registrations from the app router
       and route registration modules
-    status: todo
-    started_at: null
-    finished_at: null
+    status: done
+    started_at: '2026-04-15T13:40:00Z'
+    finished_at: '2026-04-15T13:45:00Z'
     commit: ''
     notes: []
   - id: task-03
     title: Verify that no active route registration exists for /portal/requests/*
       endpoints after removal
-    status: todo
-    started_at: null
-    finished_at: null
+    status: done
+    started_at: '2026-04-15T13:40:00Z'
+    finished_at: '2026-04-15T13:45:00Z'
     commit: ''
     notes: []
   - id: task-04
@@ -156,17 +157,17 @@ tasks:
   - id: task-20
     title: Update existing portal route tests to use new route names /portal/draft/new,
       /portal/draft, and /portal/review/{draft_id}
-    status: todo
-    started_at: null
-    finished_at: null
+    status: done
+    started_at: '2026-04-15T13:40:00Z'
+    finished_at: '2026-04-15T13:45:00Z'
     commit: ''
     notes: []
   - id: task-21
     title: Remove all test references and assertions that rely on legacy /portal/requests/*
       route names
-    status: todo
-    started_at: null
-    finished_at: null
+    status: done
+    started_at: '2026-04-15T13:40:00Z'
+    finished_at: '2026-04-15T13:45:00Z'
     commit: ''
     notes: []
   - id: task-22
