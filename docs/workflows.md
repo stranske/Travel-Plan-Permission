@@ -20,6 +20,17 @@ and renders `templates/validation_feedback.html` instead of redirecting. The ent
 validation, and review states are intentionally separate templates so the route
 contract stays explicit and testable.
 
+### Current manager review path
+
+- The workflow portal persists a submitted request into a manager review queue at
+  `/portal/manager/reviews`.
+- Each queue item has a detail view at `/portal/manager/reviews/{review_id}`
+  that shows current policy posture, approval triggers, policy issues, and the
+  immutable approval history recorded on the trip.
+- Managers can record `approve`, `request_changes`, or `reject` decisions with
+  rationale from the detail view, and the runtime keeps that decision history in
+  durable in-memory workflow state for later review during the same service run.
+
 ## Expense (Stage 2)
 
 Collecting Receipts → Employee Submit → Manager Review → Accounting Review

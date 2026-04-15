@@ -63,9 +63,14 @@ Approval packets package the trip summary, policy status, cost breakdown, and a 
 - `ApprovalPacket` bundles the rendered emails, PDF bytes, and immutable `approval_history`.
 - `ApprovalLinks` supply approve/reject/override URLs for both manager and board audiences.
 - `TripPlan.approval_history` is append-only. Each `ApprovalEvent` captures approver ID, level (manager/board), outcome, timestamp, prior status, and resulting status.
+- `review_workflow.py` adds persisted in-runtime `ReviewRequest` state for manager queue/detail
+  screens. It keeps the queue status, submission timestamp, policy posture, and a
+  workflow event log alongside the immutable `TripPlan.approval_history`.
 
 ### Override and auditability rules
 
 - `TripPlan.record_approval_decision` enforces justification text for override outcomes.
 - Approval history entries are frozen Pydantic models and stored as tuples to prevent mutation.
 - PDFs include the justification column to preserve override rationale for auditing.
+- Manager review decisions captured through the browser queue require rationale so
+  approval, rejection, and requested changes all leave an audit-ready explanation.
