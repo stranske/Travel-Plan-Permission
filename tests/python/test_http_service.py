@@ -561,17 +561,17 @@ def test_manager_review_routes_require_authorization(monkeypatch) -> None:
     client = TestClient(create_app(store))
 
     response = client.post(
-        "/portal/requests/review",
+        "/portal/draft",
         data=_portal_form_payload(),
         follow_redirects=True,
     )
     draft_match = re.search(
-        r"/portal/requests/([^/]+)/artifacts/itinerary", response.text
+        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
     )
     assert draft_match is not None
     draft_id = draft_match.group(1)
     client.post(
-        f"/portal/requests/{draft_id}/submit",
+        f"/portal/review/{draft_id}/submit",
         headers=AUTH_HEADER,
         follow_redirects=True,
     )
@@ -600,17 +600,17 @@ def test_manager_review_decision_requires_approve_permission(monkeypatch) -> Non
     client = TestClient(create_app(store))
 
     response = client.post(
-        "/portal/requests/review",
+        "/portal/draft",
         data=_portal_form_payload(),
         follow_redirects=True,
     )
     draft_match = re.search(
-        r"/portal/requests/([^/]+)/artifacts/itinerary", response.text
+        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
     )
     assert draft_match is not None
     draft_id = draft_match.group(1)
     client.post(
-        f"/portal/requests/{draft_id}/submit",
+        f"/portal/review/{draft_id}/submit",
         headers={
             "Authorization": "Bearer "
             + mint_bootstrap_token(

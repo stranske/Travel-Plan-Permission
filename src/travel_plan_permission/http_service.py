@@ -848,7 +848,6 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             context=_portal_template_context(request, review),
         )
 
-    @app.get("/portal/review/{draft_id}/artifacts/{artifact_name}")
     @app.get("/portal/manager/reviews", response_class=HTMLResponse)
     def portal_manager_review_queue(
         request: Request,
@@ -952,6 +951,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+    @app.get("/portal/review/{draft_id}/artifacts/{artifact_name}")
     def portal_artifact(
         draft_id: str,
         artifact_name: str,
