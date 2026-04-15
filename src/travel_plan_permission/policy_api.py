@@ -68,9 +68,7 @@ PlannerExecutionState = Literal[
 PolicyIssueContextValue = str | int | float | bool | None
 _PLANNER_POLICY_CONTRACT_VERSION = "2026-04-11"
 _PLANNER_POLICY_TTL = timedelta(hours=24)
-_DOCUMENTATION_RULE_IDS = frozenset(
-    {"fare_evidence", "hotel_comparison", "third_party_paid"}
-)
+_DOCUMENTATION_RULE_IDS = frozenset({"fare_evidence", "hotel_comparison", "third_party_paid"})
 
 __all__ = [
     "PolicyIssueSeverity",
@@ -103,11 +101,13 @@ __all__ = [
     "PlannerExceptionRequirement",
     "PlannerReoptimizationGuidance",
     "PlannerProposalEvaluationResult",
+    "PortalPolicyReview",
     "ReconciliationResult",
     "UnfilledMappingEntry",
     "UnfilledMappingReport",
     "TripPlan",
     "Receipt",
+    "build_portal_policy_review",
     "check_trip_plan",
     "fill_travel_spreadsheet",
     "get_evaluation_result",
@@ -137,9 +137,7 @@ class PolicyCheckResult(BaseModel):
     issues: list[PolicyIssue] = Field(
         default_factory=list, description="Policy issues raised by the check"
     )
-    policy_version: str = Field(
-        ..., description="Deterministic policy version identifier"
-    )
+    policy_version: str = Field(..., description="Deterministic policy version identifier")
 
 
 class PlannerPolicySnapshotRequest(BaseModel):
@@ -187,9 +185,7 @@ class PlannerAuthContract(BaseModel):
     """Authentication contract for the planner-facing policy snapshot seam."""
 
     endpoint: str = Field(..., description="Stable planner-facing endpoint identifier")
-    required_permission: str = Field(
-        ..., description="Permission required to read the snapshot"
-    )
+    required_permission: str = Field(..., description="Permission required to read the snapshot")
     auth_scheme: str = Field(..., description="Authentication scheme to use")
     supported_sso: list[str] = Field(
         default_factory=list,
@@ -292,9 +288,7 @@ class PlannerProposalExecutionStatus(BaseModel):
     state: PlannerExecutionState = Field(..., description="Current execution state")
     terminal: bool = Field(..., description="Whether the execution has finished")
     summary: str = Field(..., description="Human-readable execution summary")
-    external_status: str = Field(
-        ..., description="Transport or HTTP-style status summary"
-    )
+    external_status: str = Field(..., description="Transport or HTTP-style status summary")
     poll_after_seconds: float | None = Field(
         default=None, ge=0, description="Suggested poll interval for non-terminal states"
     )
@@ -466,9 +460,7 @@ class PlannerProposalEvaluationResult(BaseModel):
     correlation_id: PlannerCorrelationId = Field(
         ..., description="Correlation identifier shared across proposal operations"
     )
-    outcome: PlannerEvaluationOutcome = Field(
-        ..., description="Planner-facing evaluation outcome"
-    )
+    outcome: PlannerEvaluationOutcome = Field(..., description="Planner-facing evaluation outcome")
     result_endpoint: str = Field(
         ..., description="Stable endpoint for re-fetching this evaluation result"
     )
@@ -497,6 +489,14 @@ class PlannerProposalEvaluationResult(BaseModel):
     generated_at: datetime = Field(..., description="When this result payload was generated")
 
 
+@dataclass(frozen=True)
+class PortalPolicyReview:
+    """Bundled portal review policy snapshot and evaluation result."""
+
+    policy_snapshot: PlannerPolicySnapshot
+    policy_result: PolicyCheckResult
+
+
 class ReconciliationResult(BaseModel):
     """Summary of post-trip expense reconciliation."""
 
@@ -505,9 +505,7 @@ class ReconciliationResult(BaseModel):
     planned_total: Decimal = Field(..., description="Estimated trip total")
     actual_total: Decimal = Field(..., description="Actual reconciled spend")
     variance: Decimal = Field(..., description="Actual minus planned spend variance")
-    status: ReconciliationStatus = Field(
-        ..., description="Budget reconciliation status"
-    )
+    status: ReconciliationStatus = Field(..., description="Budget reconciliation status")
     receipt_count: int = Field(..., ge=0, description="Number of receipts")
     receipts_by_type: dict[str, int] = Field(
         default_factory=dict, description="Receipt counts by file type"
@@ -567,9 +565,7 @@ def _default_template_path(template_file: str | None = None) -> Path:
         if candidate.exists():
             return candidate
     try:
-        resource = resources.files("travel_plan_permission").joinpath(
-            "templates", template_name
-        )
+        resource = resources.files("travel_plan_permission").joinpath("templates", template_name)
     except ModuleNotFoundError:
         resource = None
     if resource is not None and resource.is_file():
@@ -591,9 +587,7 @@ def _default_template_bytes(template_file: str | None = None) -> bytes:
         if candidate.exists():
             return candidate.read_bytes()
     try:
-        resource = resources.files("travel_plan_permission").joinpath(
-            "templates", template_name
-        )
+        resource = resources.files("travel_plan_permission").joinpath("templates", template_name)
     except ModuleNotFoundError:
         resource = None
     if resource is not None and resource.is_file():
@@ -636,12 +630,8 @@ def _plan_field_values(
             ),
             "city_state": city_state,
             "destination_zip": zip_code,
-            "depart_date": (
-                canonical_plan.depart_date if canonical_plan else plan.departure_date
-            ),
-            "return_date": (
-                canonical_plan.return_date if canonical_plan else plan.return_date
-            ),
+            "depart_date": (canonical_plan.depart_date if canonical_plan else plan.departure_date),
+            "return_date": (canonical_plan.return_date if canonical_plan else plan.return_date),
             "event_registration_cost": (
                 canonical_plan.event_registration_cost
                 if canonical_plan and canonical_plan.event_registration_cost is not None
@@ -854,10 +844,7 @@ def _planner_snapshot_etag(plan: TripPlan, *, policy_version: str) -> str:
         separators=(",", ":"),
     )
     plan_revision = sha256(plan_payload.encode("utf-8")).hexdigest()[:12]
-    return (
-        f"{plan.trip_id}:{policy_version}:{_PLANNER_POLICY_CONTRACT_VERSION}:"
-        f"{plan_revision}"
-    )
+    return f"{plan.trip_id}:{policy_version}:{_PLANNER_POLICY_CONTRACT_VERSION}:" f"{plan_revision}"
 
 
 def _stable_operation_id(prefix: str, *parts: str) -> str:
@@ -875,9 +862,7 @@ def _proposal_request_id(
 ) -> str:
     if provided:
         return provided
-    return _stable_operation_id(
-        "req", operation, trip_id, proposal_id, proposal_version
-    )
+    return _stable_operation_id("req", operation, trip_id, proposal_id, proposal_version)
 
 
 def _proposal_correlation_id(
@@ -894,17 +879,13 @@ def _proposal_correlation_id(
     )
 
 
-def _proposal_execution_id(
-    *, trip_id: str, proposal_id: str, proposal_version: str
-) -> str:
+def _proposal_execution_id(*, trip_id: str, proposal_id: str, proposal_version: str) -> str:
     return _stable_operation_id("exec", trip_id, proposal_id, proposal_version)
 
 
 def _proposal_status_endpoint(*, proposal_id: str, execution_id: str) -> str:
-    return (
-        PLANNER_EXECUTION_STATUS_ENDPOINT.replace(":proposal_id", proposal_id).replace(
-            ":execution_id", execution_id
-        )
+    return PLANNER_EXECUTION_STATUS_ENDPOINT.replace(":proposal_id", proposal_id).replace(
+        ":execution_id", execution_id
     )
 
 
@@ -947,9 +928,7 @@ def _proposal_response_for_plan(
     execution_id = _proposal_execution_id(
         trip_id=trip_id, proposal_id=proposal_id, proposal_version=proposal_version
     )
-    status_endpoint = _proposal_status_endpoint(
-        proposal_id=proposal_id, execution_id=execution_id
-    )
+    status_endpoint = _proposal_status_endpoint(proposal_id=proposal_id, execution_id=execution_id)
     base_payload = _proposal_result_payload(
         trip_id=trip_id,
         proposal_id=proposal_id,
@@ -1033,14 +1012,8 @@ def _proposal_response_for_plan(
             status_endpoint=status_endpoint,
         )
 
-    pending_state: PlannerExecutionState = (
-        "running" if transport_pattern == "async" else "deferred"
-    )
-    queue_state = (
-        "running"
-        if transport_pattern == "async"
-        else "waiting_for_policy_engine"
-    )
+    pending_state: PlannerExecutionState = "running" if transport_pattern == "async" else "deferred"
+    queue_state = "running" if transport_pattern == "async" else "waiting_for_policy_engine"
     poll_after_seconds = 15.0 if transport_pattern == "async" else 30.0
 
     return PlannerProposalOperationResponse(
@@ -1318,8 +1291,7 @@ def get_policy_snapshot(
             contract_version=_PLANNER_POLICY_CONTRACT_VERSION,
             policy_version=policy_version,
             planner_known_policy_version=request.known_policy_version,
-            compatible_with_planner_cache=request.known_policy_version
-            in (None, policy_version),
+            compatible_with_planner_cache=request.known_policy_version in (None, policy_version),
             etag=_planner_snapshot_etag(plan, policy_version=policy_version),
         ),
     )
@@ -1493,6 +1465,18 @@ def get_evaluation_result(
     )
 
 
+def build_portal_policy_review(plan: TripPlan) -> PortalPolicyReview:
+    """Build the policy review data needed by the workflow portal."""
+
+    return PortalPolicyReview(
+        policy_snapshot=get_policy_snapshot(
+            plan,
+            PlannerPolicySnapshotRequest(trip_id=plan.trip_id),
+        ),
+        policy_result=check_trip_plan(plan),
+    )
+
+
 def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
     """Evaluate a trip plan using the policy-lite engine."""
 
@@ -1504,9 +1488,7 @@ def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
         not result.passed and result.severity == Severity.BLOCKING for result in results
     )
     status: PolicyCheckStatus = "fail" if has_blocking else "pass"
-    return PolicyCheckResult(
-        status=status, issues=issues, policy_version=_policy_version(engine)
-    )
+    return PolicyCheckResult(status=status, issues=issues, policy_version=_policy_version(engine))
 
 
 def list_allowed_vendors(plan: TripPlan) -> list[str]:
@@ -1518,9 +1500,7 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
     providers = {
         provider.name
         for provider_type in ProviderType
-        for provider in registry.lookup(
-            provider_type, destination, reference_date=reference_date
-        )
+        for provider in registry.lookup(provider_type, destination, reference_date=reference_date)
     }
     return sorted(providers, key=str.lower)
 
@@ -1533,9 +1513,7 @@ def _allowed_vendors_for_type(plan: TripPlan, provider_type: ProviderType) -> li
     reference_date = plan.departure_date
     providers = {
         provider.name
-        for provider in registry.lookup(
-            provider_type, destination, reference_date=reference_date
-        )
+        for provider in registry.lookup(provider_type, destination, reference_date=reference_date)
     }
     return sorted(providers, key=str.lower)
 
@@ -1656,18 +1634,14 @@ def fill_travel_spreadsheet(
 
     output_path = Path(output_path)
     output_path.write_bytes(
-        render_travel_spreadsheet_bytes(
-            plan, canonical_plan=canonical_plan, report=report
-        )
+        render_travel_spreadsheet_bytes(plan, canonical_plan=canonical_plan, report=report)
     )
     return output_path
 
 
 def _expense_from_receipt(receipt: Receipt) -> ExpenseItem:
     explanation = (
-        "Third-party payment recorded on receipt."
-        if receipt.paid_by_third_party
-        else None
+        "Third-party payment recorded on receipt." if receipt.paid_by_third_party else None
     )
     return ExpenseItem(
         category=ExpenseCategory.OTHER,

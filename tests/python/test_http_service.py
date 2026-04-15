@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
+import sys
+import textwrap
 
 from fastapi.testclient import TestClient
 
@@ -13,6 +17,7 @@ from travel_plan_permission.policy_api import PlannerProposalOperationResponse
 from travel_plan_permission.security import Permission
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "planner_integration"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 AUTH_HEADER = {"Authorization": "Bearer dev-token"}
 
 
@@ -320,9 +325,7 @@ def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
 
     assert response.status_code == 400
     assert 'data-template="validation-feedback"' in response.text
-    assert (
-        "Complete the missing details before this draft can be saved." in response.text
-    )
+    assert "Complete the missing details before this draft can be saved." in response.text
     assert store.portal_drafts_by_id == {}
     assert re.search(
         r'<ul class="missing-fields">.*?<li><code>destination_zip</code></li>',
@@ -332,9 +335,7 @@ def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
     assert "Where are you headed and what" in response.text
 
 
-def test_portal_draft_validation_rejects_invalid_present_payload_without_saving() -> (
-    None
-):
+def test_portal_draft_validation_rejects_invalid_present_payload_without_saving() -> None:
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
     payload = _portal_form_payload()
@@ -345,6 +346,8 @@ def test_portal_draft_validation_rejects_invalid_present_payload_without_saving(
     assert response.status_code == 400
     assert 'data-template="validation-feedback"' in response.text
     assert store.portal_drafts_by_id == {}
+    assert '<ul class="missing-fields">' not in response.text
+    assert '<ul class="validation-errors">' in response.text
     assert "destination_zip:" in response.text
 
 
@@ -468,9 +471,7 @@ def test_submission_creates_manager_review_queue_entry(monkeypatch) -> None:
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
 
@@ -508,9 +509,7 @@ def test_manager_review_decision_updates_status_and_history(monkeypatch) -> None
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
 
@@ -569,9 +568,7 @@ def test_manager_review_routes_require_authorization(monkeypatch) -> None:
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
     client.post(
@@ -608,9 +605,7 @@ def test_manager_review_decision_requires_approve_permission(monkeypatch) -> Non
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
     client.post(
@@ -740,9 +735,7 @@ def test_portal_artifacts_raise_runtime_error_without_bundle_mappings(
     monkeypatch,
 ) -> None:
     _set_runtime_env(monkeypatch)
-    client = TestClient(
-        create_app(PlannerProposalStore()), raise_server_exceptions=False
-    )
+    client = TestClient(create_app(PlannerProposalStore()), raise_server_exceptions=False)
 
     def invalid_bundle(**_kwargs):
         return {"itinerary_excel": "bad", "summary_pdf": "bad"}
@@ -755,3 +748,59 @@ def test_portal_artifacts_raise_runtime_error_without_bundle_mappings(
     )
 
     assert response.status_code == 500
+
+
+def test_portal_artifacts_raise_runtime_error_under_python_optimization() -> None:
+    env = os.environ.copy()
+    pythonpath = str(REPO_ROOT / "src")
+    existing_pythonpath = env.get("PYTHONPATH")
+    if existing_pythonpath:
+        pythonpath = f"{pythonpath}{os.pathsep}{existing_pythonpath}"
+    env["PYTHONPATH"] = pythonpath
+
+    script = textwrap.dedent("""
+        from travel_plan_permission.canonical import load_trip_plan_input
+        from travel_plan_permission.http_service import _portal_artifacts
+        import travel_plan_permission.http_service as http_service
+
+        http_service.render_travel_spreadsheet_bytes = lambda *args, **kwargs: b"PK"
+        http_service.build_output_bundle = lambda **kwargs: {
+            "itinerary_excel": "bad",
+            "summary_pdf": "bad",
+        }
+
+        trip_input = load_trip_plan_input(
+            {
+                "type": "trip",
+                "traveler_name": "Alex Rivera",
+                "business_purpose": "Regional partner summit",
+                "destination_zip": "98101",
+                "city_state": "Seattle, WA",
+                "depart_date": "2025-10-05",
+                "return_date": "2025-10-09",
+            }
+        )
+
+        try:
+            _portal_artifacts(
+                canonical=trip_input.canonical,
+                plan=trip_input.plan,
+                answers={},
+            )
+        except RuntimeError as exc:
+            print(exc)
+        else:
+            raise SystemExit("expected RuntimeError under python -O")
+        """)
+
+    result = subprocess.run(
+        [sys.executable, "-O", "-c", script],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "bundle payload must be a mapping" in result.stdout

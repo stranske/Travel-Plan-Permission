@@ -26,7 +26,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 
-from .canonical import CanonicalTripPlan, canonical_trip_plan_to_model
+from .canonical import CanonicalTripPlan, load_trip_plan_input
 from .models import TripPlan
 from .planner_auth import PlannerAuthConfig, authenticate_request
 from .policy_api import (
@@ -37,6 +37,7 @@ from .policy_api import (
     PlannerProposalOperationResponse,
     PlannerProposalStatusRequest,
     PlannerProposalSubmissionRequest,
+    build_portal_policy_review,
     check_trip_plan,
     get_evaluation_result,
     get_policy_snapshot,
@@ -49,9 +50,7 @@ from .review_workflow import ReviewAction, ReviewRequest, ReviewWorkflowStore
 from .security import Permission
 
 _OPTIONAL_SNAPSHOT_BODY = Body(default=None)
-_TEMPLATES = Jinja2Templates(
-    directory=str(Path(__file__).resolve().parent / "templates")
-)
+_TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 _PORTAL_CANONICAL_FIELDS: tuple[str, ...] = (
     "traveler_name",
     "business_purpose",
@@ -336,9 +335,7 @@ class PlannerProposalStore:
         self.remember_plan(trip_plan)
         execution_id = response.result_payload.get("execution_id")
         if not isinstance(execution_id, str):
-            raise ValueError(
-                "Planner proposal response missing required string execution_id"
-            )
+            raise ValueError("Planner proposal response missing required string execution_id")
         self.proposals_by_execution_id[execution_id] = StoredProposal(
             trip_plan=trip_plan.model_copy(deep=True),
             request=request.model_copy(deep=True),
@@ -597,9 +594,7 @@ def _portal_artifacts(
 
 
 def _portal_validation_state(answers: dict[str, object]) -> PortalReviewState:
-    missing_fields = required_field_gaps(
-        answers, required_fields=_PORTAL_REQUIRED_FIELDS
-    )
+    missing_fields = required_field_gaps(answers, required_fields=_PORTAL_REQUIRED_FIELDS)
     next_questions: list[dict[str, object]] = [
         {
             "prompt": question.prompt,
@@ -614,7 +609,7 @@ def _portal_validation_state(answers: dict[str, object]) -> PortalReviewState:
     if not missing_fields:
         canonical_payload = _canonical_payload_from_answers(answers)
         try:
-            CanonicalTripPlan.model_validate(canonical_payload)
+            load_trip_plan_input(canonical_payload)
         except ValidationError as exc:
             validation_errors = _review_validation_errors(exc)
 
@@ -650,13 +645,14 @@ def _portal_review_state(
     artifacts: dict[str, PortalArtifact] = {}
 
     if not missing_fields and canonical_payload is not None and not validation_errors:
-        canonical = CanonicalTripPlan.model_validate(canonical_payload)
-        trip_plan = canonical_trip_plan_to_model(canonical)
-        policy_snapshot = get_policy_snapshot(
-            trip_plan,
-            PlannerPolicySnapshotRequest(trip_id=trip_plan.trip_id),
-        )
-        policy_result = check_trip_plan(trip_plan)
+        trip_input = load_trip_plan_input(canonical_payload)
+        canonical = trip_input.canonical
+        if canonical is None:
+            raise RuntimeError("portal review requires canonical trip payloads")
+        trip_plan = trip_input.plan
+        policy_review = build_portal_policy_review(trip_plan)
+        policy_snapshot = policy_review.policy_snapshot
+        policy_result = policy_review.policy_result
         artifacts = _portal_artifacts(
             canonical=canonical,
             plan=trip_plan,
@@ -783,9 +779,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         review = _portal_review_state(
             draft.draft_id,
             draft.answers,
-            manager_review=proposal_store.lookup_manager_review_for_draft(
-                draft.draft_id
-            ),
+            manager_review=proposal_store.lookup_manager_review_for_draft(draft.draft_id),
         )
         if review.artifacts and not draft.cached_artifacts:
             proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
@@ -812,11 +806,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 detail=f"No portal draft found for '{draft_id}'.",
             )
         review = _portal_review_state(draft.draft_id, draft.answers)
-        if (
-            review.trip_plan is None
-            or review.missing_fields
-            or review.validation_errors
-        ):
+        if review.trip_plan is None or review.missing_fields or review.validation_errors:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Complete the request review before submitting the portal draft.",
@@ -904,9 +894,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             authorization,
             required_permission=Permission.APPROVE,
         )
-        parsed = parse_qs(
-            (await request.body()).decode("utf-8"), keep_blank_values=True
-        )
+        parsed = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
         action_name = parsed.get("action", [""])[-1].strip()
         actor_id = parsed.get("actor_id", [""])[-1].strip()
         rationale = parsed.get("rationale", [""])[-1].strip()
@@ -979,9 +967,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         return Response(
             content=artifact.content,
             media_type=artifact.media_type,
-            headers={
-                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
-            },
+            headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
         )
 
     @app.get(
@@ -1085,9 +1071,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         if stored.request.proposal_id != proposal_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    f"Execution '{execution_id}' does not belong to proposal '{proposal_id}'."
-                ),
+                detail=(f"Execution '{execution_id}' does not belong to proposal '{proposal_id}'."),
             )
         status_request = _submission_status_request(
             stored,
