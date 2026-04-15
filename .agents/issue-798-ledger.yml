@@ -5,10 +5,10 @@ branch: codex/issue-798
 tasks:
   - id: task-01
     title: Create GET route for displaying the draft creation form in `src/travel_plan_permission/http_service.py`
-    status: doing
+    status: done
     started_at: '2026-04-15T05:30:16Z'
-    finished_at: null
-    commit: ''
+    finished_at: '2026-04-15T05:30:30Z'
+    commit: 9c6ed940944acb484f7e54e696d815c5211b8d11
     notes: []
   - id: task-02
     title: Create POST route for handling draft submission in `src/travel_plan_permission/http_service.py`
