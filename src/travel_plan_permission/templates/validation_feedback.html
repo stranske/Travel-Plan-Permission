@@ -15,14 +15,20 @@
 
       <div class="callout" style="margin-bottom: 18px;">
         <h3>Validation feedback</h3>
-        <ul class="missing-fields">
-          {% for field in review.missing_fields %}
-            <li><code>{{ field }}</code></li>
-          {% endfor %}
-          {% for error in review.validation_errors %}
-            <li>{{ error }}</li>
-          {% endfor %}
-        </ul>
+        {% if review.missing_fields %}
+          <ul class="missing-fields">
+            {% for field in review.missing_fields %}
+              <li><code>{{ field }}</code></li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+        {% if review.validation_errors %}
+          <ul class="validation-errors">
+            {% for error in review.validation_errors %}
+              <li>{{ error }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
       </div>
 
       {% if review.next_questions %}

@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from travel_plan_permission import http_service
+from travel_plan_permission import portal_review
 from travel_plan_permission.http_service import PlannerProposalStore, create_app, main
 from travel_plan_permission.planner_auth import mint_bootstrap_token
 from travel_plan_permission.policy_api import PlannerProposalOperationResponse
@@ -346,6 +349,8 @@ def test_portal_draft_validation_rejects_invalid_present_payload_without_saving(
     assert 'data-template="validation-feedback"' in response.text
     assert store.portal_drafts_by_id == {}
     assert "destination_zip:" in response.text
+    assert '<ul class="missing-fields">' not in response.text
+    assert '<ul class="validation-errors">' in response.text
 
 
 def test_portal_review_allows_optional_fields_to_remain_blank(monkeypatch) -> None:
@@ -692,8 +697,8 @@ def test_portal_artifact_downloads_use_cached_review_artifacts(monkeypatch) -> N
     def fail_render(*_args, **_kwargs):
         raise AssertionError("artifact download should use cached payloads")
 
-    monkeypatch.setattr(http_service, "render_travel_spreadsheet_bytes", fail_render)
-    monkeypatch.setattr(http_service, "build_output_bundle", fail_render)
+    monkeypatch.setattr(portal_review, "render_travel_spreadsheet_bytes", fail_render)
+    monkeypatch.setattr(portal_review, "build_output_bundle", fail_render)
 
     itinerary = client.get(f"/portal/review/{draft_id}/artifacts/itinerary")
     summary = client.get(f"/portal/review/{draft_id}/artifacts/summary")
@@ -747,7 +752,7 @@ def test_portal_artifacts_raise_runtime_error_without_bundle_mappings(
     def invalid_bundle(**_kwargs):
         return {"itinerary_excel": "bad", "summary_pdf": "bad"}
 
-    monkeypatch.setattr(http_service, "build_output_bundle", invalid_bundle)
+    monkeypatch.setattr(portal_review, "build_output_bundle", invalid_bundle)
 
     response = client.post(
         "/portal/draft",
@@ -755,3 +760,40 @@ def test_portal_artifacts_raise_runtime_error_without_bundle_mappings(
     )
 
     assert response.status_code == 500
+
+
+def test_portal_artifacts_runtime_error_survives_python_optimized_mode() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    script = """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path.cwd() / "src"))
+
+import travel_plan_permission.portal_review as portal_review
+
+portal_review.render_travel_spreadsheet_bytes = lambda *args, **kwargs: b"x"
+portal_review.build_output_bundle = (
+    lambda **kwargs: {"itinerary_excel": "bad", "summary_pdf": "bad"}
+)
+
+try:
+    portal_review._portal_artifacts(canonical=object(), plan=object(), answers={})
+except RuntimeError:
+    raise SystemExit(0)
+except Exception as exc:
+    print(type(exc).__name__, exc)
+    raise SystemExit(2)
+
+raise SystemExit(1)
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-O", "-c", script],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
