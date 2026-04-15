@@ -1,0 +1,179 @@
+version: 1
+issue: 798
+base: main
+branch: codex/issue-798
+tasks:
+  - id: task-01
+    title: Create GET route for displaying the draft creation form in `src/travel_plan_permission/http_service.py`
+    status: doing
+    started_at: '2026-04-15T05:30:16Z'
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-02
+    title: Create POST route for handling draft submission in `src/travel_plan_permission/http_service.py`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-03
+    title: Create GET route for displaying the review screen in `src/travel_plan_permission/http_service.py`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-04
+    title: Mount all new portal routes on the existing FastAPI app instance
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-05
+    title: Create HTML template for the draft entry form with all required input fields
+      under `src/travel_plan_permission/templates/`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-06
+    title: Create HTML template for displaying validation feedback and missing field
+      errors under `src/travel_plan_permission/templates/`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-07
+    title: Create HTML template for the request review and summary screen under `src/travel_plan_permission/templates/`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-08
+    title: Implement draft data model to capture trip details, travel purpose, and
+      cost context
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-09
+    title: Integrate `src/travel_plan_permission/canonical.py` seams to validate and
+      normalize draft input data
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-10
+    title: Integrate `src/travel_plan_permission/prompt_flow.py` to identify missing
+      required fields in draft submissions
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-11
+    title: Add error handling and user-friendly error messages for validation failures
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-12
+    title: Update the portal review route to display policy-readiness diagnostics
+      by reusing `src/travel_plan_permission/policy_api.py` instead of duplicating
+      policy logic
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-13
+    title: Add test for successful draft creation POST request with valid inputs under
+      `tests/python/`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-14
+    title: Add test for draft creation POST with missing required fields returns validation
+      errors under `tests/python/`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-15
+    title: Add test for validation error rendering displays correct missing field
+      messages under `tests/python/`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-16
+    title: Add test for review page rendering displays draft data and policy readiness
+      status under `tests/python/`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-17
+    title: Update `docs/workflows.md` with steps to run the portal locally via the
+      standard service workflow
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-18
+    title: Update `docs/plan.md` with portal architecture and integration points
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-19
+    title: The portal serves a draft creation form at `/portal/draft/new`, accepts
+      POST submissions to `/portal/draft`, and displays a review screen at `/portal/review/{draft_id}`
+      with data from `canonical.py` and `policy_api.py`
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-20
+    title: When required inputs are missing, the portal returns HTTP 400 with an HTML
+      response containing a list element for each missing field identified by `prompt_flow.py`,
+      and the form is not submitted to the backend
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-21
+    title: The portal's policy-readiness and canonical evaluation paths call into
+      `src/travel_plan_permission/canonical.py`, `src/travel_plan_permission/prompt_flow.py`,
+      and `src/travel_plan_permission/policy_api.py` (no duplicated policy/canonical
+      logic in route handlers)
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-22
+    title: All tests under `tests/python/` pass, covering draft creation, validation
+      feedback rendering, and review-state rendering
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
