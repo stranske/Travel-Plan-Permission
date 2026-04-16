@@ -158,6 +158,8 @@ jobs:
                 continue;
               }
 
+              auditIssueNumber ??= await ensureAuditIssue();
+
               const mergeMessage = `Docs auto-merge: PR #${pr.number} (${pr.title})`;
 
               try {
@@ -173,22 +175,21 @@ jobs:
                 continue;
               }
 
+              const mergedAt = new Date().toISOString();
               mergedPrs.push({
                 number: pr.number,
                 title: pr.title,
                 changeCount,
-                mergedAt: new Date().toISOString()
+                mergedAt
               });
 
-              const confirmation = `Docs auto-merge workflow merged this PR on ${mergedPrs[mergedPrs.length - 1].mergedAt} after verifying docs-only scope (<50 lines), passing checks, and 1-hour delay.`;
+              const confirmation = `Docs auto-merge workflow merged this PR on ${mergedAt} after verifying docs-only scope (<50 lines), passing checks, and 1-hour delay.`;
               await github.rest.issues.createComment({
                 owner,
                 repo,
                 issue_number: pr.number,
                 body: confirmation
               });
-
-              auditIssueNumber ??= await ensureAuditIssue();
 
               await github.rest.issues.createComment({
                 owner,
@@ -197,7 +198,7 @@ jobs:
                 body: [
                   `### Docs auto-merge: #${pr.number} ${pr.title}`,
                   "",
-                  `- Merged at: ${mergedPrs[mergedPrs.length - 1].mergedAt}`,
+                  `- Merged at: ${mergedAt}`,
                   `- Changed lines: ${changeCount}`,
                   `- Merge method: squash`,
                   `- Confirmation comment posted on #${pr.number}`,
