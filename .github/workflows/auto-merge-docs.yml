@@ -67,7 +67,12 @@ jobs:
                 repo,
                 title: auditTitle,
                 labels: [auditLabel],
-                body: "This issue collects an audit trail of documentation auto-merges."
+                body: [
+                  "This issue collects an audit trail of documentation auto-merges.",
+                  "",
+                  "Entries are added only after the workflow successfully merges",
+                  "a qualifying documentation PR."
+                ].join("\n")
               });
 
               return created.data.number;
@@ -85,7 +90,7 @@ jobs:
               per_page: 50
             });
 
-            const auditIssueNumber = await ensureAuditIssue();
+            let auditIssueNumber = null;
             const mergedPrs = [];
 
             for (const pr of pulls) {
@@ -183,11 +188,20 @@ jobs:
                 body: confirmation
               });
 
+              auditIssueNumber ??= await ensureAuditIssue();
+
               await github.rest.issues.createComment({
                 owner,
                 repo,
                 issue_number: auditIssueNumber,
-                body: `Merged #${pr.number} (${pr.title}) at ${mergedPrs[mergedPrs.length - 1].mergedAt} with ${changeCount} changed lines.`
+                body: [
+                  `### Docs auto-merge: #${pr.number} ${pr.title}`,
+                  "",
+                  `- Merged at: ${mergedPrs[mergedPrs.length - 1].mergedAt}`,
+                  `- Changed lines: ${changeCount}`,
+                  `- Merge method: squash`,
+                  `- Confirmation comment posted on #${pr.number}`,
+                ].join("\n")
               });
             }
 
