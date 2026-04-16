@@ -16,6 +16,7 @@ Small documentation-only pull requests can be automatically merged when they sat
 
 - A scheduled workflow (`.github/workflows/auto-merge-docs.yml`) inspects open pull requests every 30 minutes and can also be triggered manually.
 - Eligible pull requests are merged with a squash commit once all conditions are met.
-- Each automated merge is recorded in an audit log issue labeled `auto-merge-audit`, and a confirmation comment is added to the merged pull request.
+- Each automated merge is recorded in a lazily created audit log issue labeled `auto-merge-audit`, and a confirmation comment is added to the merged pull request.
+- The workflow does not leave behind an empty audit issue when no documentation PR was actually merged.
 
 If you want to prevent auto-merge for a documentation PR, add the `no-auto-merge` label. If your change includes more than Markdown or exceeds the line threshold, it will be skipped automatically.
