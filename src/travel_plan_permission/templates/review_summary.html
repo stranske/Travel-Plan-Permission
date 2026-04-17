@@ -96,6 +96,22 @@
 
       <section class="panel">
         <h2>Review status</h2>
+        {% if auth_context %}
+          <div class="callout" style="margin-top: 16px;">
+            <h3>Authenticated caller</h3>
+            <p><strong>{{ auth_context.subject }}</strong> via {{ auth_context.provider }}</p>
+            <p style="margin-top: 10px;">
+              Permission posture:
+              {% if actor_permissions %}
+                {% for permission in actor_permissions %}
+                  <span class="badge">{{ permission.value if permission.value is defined else permission }}</span>
+                {% endfor %}
+              {% else %}
+                <span class="badge warn">none</span>
+              {% endif %}
+            </p>
+          </div>
+        {% endif %}
         {% if review.missing_fields %}
           <p style="margin-top: 10px;"><span class="badge warn">Missing required inputs</span></p>
           <ul>

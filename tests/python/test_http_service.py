@@ -36,6 +36,53 @@ def _set_bootstrap_runtime_env(monkeypatch, *, provider: str = "google") -> None
     monkeypatch.setenv("TPP_BOOTSTRAP_SIGNING_SECRET", "bootstrap-secret-123")
 
 
+def _bootstrap_auth_header(
+    *,
+    subject: str,
+    permissions: tuple[Permission, ...],
+    provider: str = "google",
+) -> dict[str, str]:
+    token = mint_bootstrap_token(
+        subject=subject,
+        permissions=permissions,
+        provider=provider,
+        secret="bootstrap-secret-123",
+        expires_in_seconds=600,
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _create_portal_draft(
+    client: TestClient,
+    *,
+    payload: dict[str, str] | None = None,
+) -> tuple[str, str]:
+    response = client.post(
+        "/portal/draft",
+        data=payload or _portal_form_payload(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    location = response.headers["location"]
+    match = re.search(r"/portal/review/([^/]+)$", location)
+    assert match is not None
+    return match.group(1), location
+
+
+def _get_portal_review(
+    client: TestClient,
+    draft_id: str,
+    *,
+    headers: dict[str, str] | None = None,
+):
+    return client.get(
+        f"/portal/review/{draft_id}",
+        headers=headers or AUTH_HEADER,
+        follow_redirects=True,
+    )
+
+
 def _portal_form_payload() -> dict[str, str]:
     return {
         "traveler_name": "Alex Rivera",
@@ -79,23 +126,6 @@ def _portal_form_payload() -> dict[str, str]:
         "meals_provided": "false",
         "meal_per_diem_requested": "true",
     }
-
-
-def _create_portal_draft(
-    client: TestClient,
-    *,
-    payload: dict[str, str] | None = None,
-) -> tuple[str, str]:
-    response = client.post(
-        "/portal/draft",
-        data=payload or _portal_form_payload(),
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    location = response.headers["location"]
-    match = re.search(r"/portal/review/([^/]+)$", location)
-    assert match is not None
-    return match.group(1), location
 
 
 def _expense_form_payload() -> dict[str, str]:
@@ -554,8 +584,8 @@ def test_portal_review_allows_optional_fields_to_remain_blank(monkeypatch) -> No
     ):
         payload.pop(field_name)
 
-    _draft_id, location = _create_portal_draft(client, payload=payload)
-    response = client.get(location, headers=AUTH_HEADER)
+    draft_id, _location = _create_portal_draft(client, payload=payload)
+    response = _get_portal_review(client, draft_id)
 
     assert response.status_code == 200
     assert 'data-template="review-summary"' in response.text
@@ -567,8 +597,8 @@ def test_portal_review_persists_policy_readiness_answers(monkeypatch) -> None:
     _set_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()))
 
-    _draft_id, location = _create_portal_draft(client)
-    response = client.get(location, headers=AUTH_HEADER)
+    draft_id, _location = _create_portal_draft(client)
+    response = _get_portal_review(client, draft_id)
 
     assert response.status_code == 200
     assert 'data-template="review-summary"' in response.text
@@ -584,13 +614,16 @@ def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
     _set_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()))
 
-    draft_id, location = _create_portal_draft(client)
-    response = client.get(location, headers=AUTH_HEADER)
+    draft_id, _location = _create_portal_draft(client)
+    response = _get_portal_review(client, draft_id)
 
     assert response.status_code == 200
     assert 'data-template="review-summary"' in response.text
     assert "Policy-lite posture" in response.text
     assert "Generated artifacts" in response.text
+    assert "dev-token" not in response.text
+    assert "planner-static-client" in response.text
+    assert "via google" in response.text
 
     itinerary = client.get(
         f"/portal/review/{draft_id}/artifacts/itinerary",
@@ -669,34 +702,27 @@ def test_manager_review_decision_updates_status_and_history(monkeypatch) -> None
     client = TestClient(create_app(store))
 
     draft_id, _location = _create_portal_draft(client)
-
-    traveler_token = mint_bootstrap_token(
+    traveler_header = _bootstrap_auth_header(
         subject="traveler",
         permissions=(Permission.CREATE,),
-        provider="google",
-        secret="bootstrap-secret-123",
-        expires_in_seconds=600,
     )
 
     client.post(
         f"/portal/review/{draft_id}/submit",
-        headers={"Authorization": f"Bearer {traveler_token}"},
+        headers=traveler_header,
         follow_redirects=True,
     )
     review = store.lookup_manager_review_for_draft(draft_id)
     assert review is not None
 
-    manager_token = mint_bootstrap_token(
+    manager_header = _bootstrap_auth_header(
         subject="manager-reviewer",
         permissions=(Permission.VIEW, Permission.APPROVE),
-        provider="google",
-        secret="bootstrap-secret-123",
-        expires_in_seconds=600,
     )
 
     decision = client.post(
         f"/portal/manager/reviews/{review.review_id}/decision",
-        headers={"Authorization": f"Bearer {manager_token}"},
+        headers=manager_header,
         data={
             "actor_id": "manager-17",
             "action": "request_changes",
@@ -753,31 +779,21 @@ def test_manager_review_decision_requires_approve_permission(monkeypatch) -> Non
     draft_id, _location = _create_portal_draft(client)
     client.post(
         f"/portal/review/{draft_id}/submit",
-        headers={
-            "Authorization": "Bearer "
-            + mint_bootstrap_token(
-                subject="traveler",
-                permissions=(Permission.CREATE,),
-                provider="google",
-                secret="bootstrap-secret-123",
-                expires_in_seconds=600,
-            )
-        },
+        headers=_bootstrap_auth_header(
+            subject="traveler",
+            permissions=(Permission.CREATE,),
+        ),
         follow_redirects=True,
     )
     review = store.lookup_manager_review_for_draft(draft_id)
     assert review is not None
 
-    viewer_token = mint_bootstrap_token(
-        subject="viewer-only",
-        permissions=(Permission.VIEW,),
-        provider="google",
-        secret="bootstrap-secret-123",
-        expires_in_seconds=600,
-    )
     decision = client.post(
         f"/portal/manager/reviews/{review.review_id}/decision",
-        headers={"Authorization": f"Bearer {viewer_token}"},
+        headers=_bootstrap_auth_header(
+            subject="viewer-only",
+            permissions=(Permission.VIEW,),
+        ),
         data={
             "actor_id": "manager-17",
             "action": "approve",
@@ -870,31 +886,21 @@ def test_manager_review_detail_uses_authenticated_permissions_for_actions(
     draft_id, _location = _create_portal_draft(client)
     client.post(
         f"/portal/review/{draft_id}/submit",
-        headers={
-            "Authorization": "Bearer "
-            + mint_bootstrap_token(
-                subject="traveler",
-                permissions=(Permission.CREATE,),
-                provider="google",
-                secret="bootstrap-secret-123",
-                expires_in_seconds=600,
-            )
-        },
+        headers=_bootstrap_auth_header(
+            subject="traveler",
+            permissions=(Permission.CREATE,),
+        ),
         follow_redirects=True,
     )
     review = store.lookup_manager_review_for_draft(draft_id)
     assert review is not None
 
-    approver_token = mint_bootstrap_token(
-        subject="approver-8",
-        permissions=(Permission.VIEW, Permission.APPROVE),
-        provider="google",
-        secret="bootstrap-secret-123",
-        expires_in_seconds=600,
-    )
     detail = client.get(
         f"/portal/manager/reviews/{review.review_id}?actor_role=traveler",
-        headers={"Authorization": f"Bearer {approver_token}"},
+        headers=_bootstrap_auth_header(
+            subject="approver-8",
+            permissions=(Permission.VIEW, Permission.APPROVE),
+        ),
     )
 
     assert detail.status_code == 200
@@ -922,16 +928,10 @@ def test_exception_decision_updates_review_detail_and_audit_log(monkeypatch) -> 
     )
     client.post(
         f"/portal/review/{draft_id}/submit",
-        headers={
-            "Authorization": "Bearer "
-            + mint_bootstrap_token(
-                subject="traveler",
-                permissions=(Permission.CREATE,),
-                provider="google",
-                secret="bootstrap-secret-123",
-                expires_in_seconds=600,
-            )
-        },
+        headers=_bootstrap_auth_header(
+            subject="traveler",
+            permissions=(Permission.CREATE,),
+        ),
         follow_redirects=True,
     )
     review = store.lookup_manager_review_for_draft(draft_id)
@@ -939,16 +939,10 @@ def test_exception_decision_updates_review_detail_and_audit_log(monkeypatch) -> 
 
     decision = client.post(
         f"/portal/admin/exceptions/{draft_id}/0/decision?actor_role=approver",
-        headers={
-            "Authorization": "Bearer "
-            + mint_bootstrap_token(
-                subject="approver-7",
-                permissions=(Permission.VIEW, Permission.APPROVE),
-                provider="google",
-                secret="bootstrap-secret-123",
-                expires_in_seconds=600,
-            )
-        },
+        headers=_bootstrap_auth_header(
+            subject="approver-7",
+            permissions=(Permission.VIEW, Permission.APPROVE),
+        ),
         data={
             "actor_id": "approver-7",
             "decision": "approve",
@@ -981,16 +975,10 @@ def test_exception_rejection_keeps_notes_in_audit_log(monkeypatch) -> None:
 
     decision = client.post(
         f"/portal/admin/exceptions/{draft_id}/0/decision?actor_role=approver",
-        headers={
-            "Authorization": "Bearer "
-            + mint_bootstrap_token(
-                subject="approver-9",
-                permissions=(Permission.VIEW, Permission.APPROVE),
-                provider="google",
-                secret="bootstrap-secret-123",
-                expires_in_seconds=600,
-            )
-        },
+        headers=_bootstrap_auth_header(
+            subject="approver-9",
+            permissions=(Permission.VIEW, Permission.APPROVE),
+        ),
         data={
             "actor_id": "approver-9",
             "decision": "reject",
@@ -1107,8 +1095,8 @@ def test_portal_artifact_downloads_use_cached_review_artifacts(monkeypatch) -> N
     _set_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()))
 
-    draft_id, location = _create_portal_draft(client)
-    response = client.get(location, headers=AUTH_HEADER)
+    draft_id, _location = _create_portal_draft(client)
+    response = _get_portal_review(client, draft_id)
     assert response.status_code == 200
 
     def fail_render(*_args, **_kwargs):
@@ -1151,8 +1139,8 @@ def test_portal_review_surface_requires_bearer_token(monkeypatch) -> None:
     _set_bootstrap_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()))
 
-    _draft_id, location = _create_portal_draft(client)
-    review = client.get(location)
+    draft_id, _location = _create_portal_draft(client)
+    review = client.get(f"/portal/review/{draft_id}")
 
     assert review.status_code == 401
     assert review.json()["detail"] == "Missing bearer token."
@@ -1163,8 +1151,8 @@ def test_portal_review_state_survives_restart(monkeypatch, tmp_path) -> None:
     state_path = tmp_path / "portal-runtime-state.json"
 
     first_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
-    draft_id, location = _create_portal_draft(first_client)
-    response = first_client.get(location, headers=AUTH_HEADER)
+    draft_id, _location = _create_portal_draft(first_client)
+    response = _get_portal_review(first_client, draft_id)
 
     assert response.status_code == 200
     assert state_path.exists()
@@ -1260,28 +1248,65 @@ def test_portal_artifact_download_requires_view_permission(monkeypatch) -> None:
     assert forbidden.json()["detail"] == "Bootstrap token does not grant 'view'."
 
 
-def test_portal_review_surface_hides_submit_for_view_only_token(monkeypatch) -> None:
+def test_portal_review_shows_auth_posture_and_hides_submit_for_view_only(
+    monkeypatch,
+) -> None:
     _set_bootstrap_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()))
 
-    _draft_id, location = _create_portal_draft(client)
-    token = mint_bootstrap_token(
-        subject="portal-reviewer",
-        permissions=(Permission.VIEW,),
-        provider="google",
-        secret="bootstrap-secret-123",
-        expires_in_seconds=600,
+    draft_id, _location = _create_portal_draft(client)
+    view_only = _get_portal_review(
+        client,
+        draft_id,
+        headers=_bootstrap_auth_header(
+            subject="planner-reviewer",
+            permissions=(Permission.VIEW,),
+        ),
+    )
+    creator = _get_portal_review(
+        client,
+        draft_id,
+        headers=_bootstrap_auth_header(
+            subject="planner-author",
+            permissions=(Permission.VIEW, Permission.CREATE),
+        ),
     )
 
-    review = client.get(
-        location,
-        headers={"Authorization": f"Bearer {token}"},
+    assert view_only.status_code == 200
+    assert "planner-reviewer" in view_only.text
+    assert "via google" in view_only.text
+    assert "Permission posture:" in view_only.text
+    assert "Submit request" not in view_only.text
+    assert "Submission stays hidden until the caller has `create` permission." in view_only.text
+    assert creator.status_code == 200
+    assert "planner-author" in creator.text
+    assert "Submit request" in creator.text
+
+
+def test_portal_review_detail_and_artifacts_require_view_permission(monkeypatch) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+    draft_id, _location = _create_portal_draft(client)
+
+    missing_detail = client.get(f"/portal/review/{draft_id}")
+    missing_artifact = client.get(f"/portal/review/{draft_id}/artifacts/summary")
+    create_only_header = _bootstrap_auth_header(
+        subject="submit-only",
+        permissions=(Permission.CREATE,),
+    )
+    forbidden_detail = client.get(
+        f"/portal/review/{draft_id}",
+        headers=create_only_header,
+    )
+    forbidden_artifact = client.get(
+        f"/portal/review/{draft_id}/artifacts/summary",
+        headers=create_only_header,
     )
 
-    assert review.status_code == 200
-    assert "portal-reviewer" in review.text
-    assert "submission still requires `create`." in review.text
-    assert "Submit request" not in review.text
+    assert missing_detail.status_code == 401
+    assert missing_artifact.status_code == 401
+    assert forbidden_detail.status_code == 403
+    assert forbidden_artifact.status_code == 403
 
 
 def test_portal_routes_do_not_leave_legacy_request_paths_active() -> None:
@@ -1308,9 +1333,9 @@ def test_portal_artifacts_raise_runtime_error_without_bundle_mappings(
 
     monkeypatch.setattr(portal_review, "build_output_bundle", invalid_bundle)
 
-    response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
+    draft_id, _location = _create_portal_draft(client)
+    response = client.get(
+        f"/portal/review/{draft_id}",
         headers=AUTH_HEADER,
     )
 

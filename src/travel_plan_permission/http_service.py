@@ -1240,9 +1240,9 @@ def _portal_template_context(
     request: Request,
     review: PortalReviewState | None = None,
     *,
+    auth_context: PlannerAuthContext | None = None,
     exceptions: list[ExceptionRequest] | None = None,
     error_message: str | None = None,
-    auth_context: PlannerAuthContext | None = None,
 ) -> dict[str, object]:
     answers = review.answers if review is not None else {}
     viewer_permissions = (
@@ -1259,6 +1259,12 @@ def _portal_template_context(
         "request": request,
         "answers": answers,
         "review": review,
+        "auth_context": auth_context,
+        "actor_permissions": (
+            tuple(sorted(auth_context.permissions, key=lambda item: item.value))
+            if auth_context is not None
+            else ()
+        ),
         "exceptions": exceptions or [],
         "exception_types": tuple(ExceptionType),
         "ground_transport_options": (
@@ -1480,8 +1486,8 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             context=_portal_template_context(
                 request,
                 review,
-                exceptions=proposal_store.list_exception_requests(draft_id),
                 auth_context=auth_context,
+                exceptions=proposal_store.list_exception_requests(draft_id),
             ),
         )
 
@@ -1640,8 +1646,8 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             context=_portal_template_context(
                 request,
                 review,
-                exceptions=proposal_store.list_exception_requests(draft_id),
                 auth_context=auth_context,
+                exceptions=proposal_store.list_exception_requests(draft_id),
             ),
         )
 
@@ -1864,7 +1870,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         artifact_name: str,
         authorization: str | None = Header(default=None),
     ) -> Response:
-        _authorize_request(
+        auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
         )
@@ -1893,10 +1899,17 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             )
         proposal_store.security.audit_log.record(
             event_type=AuditEventType.EXPORT,
-            actor="workflow-portal",
+            actor=auth_context.subject,
             subject=draft_id,
             outcome="artifact_downloaded",
-            metadata={"artifact": artifact_name},
+            metadata={
+                "artifact": artifact_name,
+                "provider": auth_context.provider,
+                "permissions": [
+                    permission.value
+                    for permission in sorted(auth_context.permissions, key=lambda item: item.value)
+                ],
+            },
         )
         return Response(
             content=artifact.content,
