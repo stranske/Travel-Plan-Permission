@@ -81,6 +81,23 @@ def _portal_form_payload() -> dict[str, str]:
     }
 
 
+def _create_portal_draft(
+    client: TestClient,
+    *,
+    payload: dict[str, str] | None = None,
+) -> tuple[str, str]:
+    response = client.post(
+        "/portal/draft",
+        data=payload or _portal_form_payload(),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    location = response.headers["location"]
+    match = re.search(r"/portal/review/([^/]+)$", location)
+    assert match is not None
+    return match.group(1), location
+
+
 def _expense_form_payload() -> dict[str, str]:
     return {
         "approved_request_id": "REQ-410",
@@ -537,11 +554,8 @@ def test_portal_review_allows_optional_fields_to_remain_blank(monkeypatch) -> No
     ):
         payload.pop(field_name)
 
-    response = client.post(
-        "/portal/draft",
-        data=payload,
-        follow_redirects=True,
-    )
+    _draft_id, location = _create_portal_draft(client, payload=payload)
+    response = client.get(location, headers=AUTH_HEADER)
 
     assert response.status_code == 200
     assert 'data-template="review-summary"' in response.text
@@ -553,11 +567,8 @@ def test_portal_review_persists_policy_readiness_answers(monkeypatch) -> None:
     _set_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()))
 
-    response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
-        follow_redirects=True,
-    )
+    _draft_id, location = _create_portal_draft(client)
+    response = client.get(location, headers=AUTH_HEADER)
 
     assert response.status_code == 200
     assert 'data-template="review-summary"' in response.text
@@ -573,20 +584,13 @@ def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
     _set_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()))
 
-    response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
-        follow_redirects=True,
-    )
+    draft_id, location = _create_portal_draft(client)
+    response = client.get(location, headers=AUTH_HEADER)
 
     assert response.status_code == 200
     assert 'data-template="review-summary"' in response.text
     assert "Policy-lite posture" in response.text
     assert "Generated artifacts" in response.text
-
-    match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
-    assert match is not None
-    draft_id = match.group(1)
 
     itinerary = client.get(
         f"/portal/review/{draft_id}/artifacts/itinerary",
@@ -633,14 +637,7 @@ def test_submission_creates_manager_review_queue_entry(monkeypatch) -> None:
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
-    response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
-        follow_redirects=True,
-    )
-    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
-    assert draft_match is not None
-    draft_id = draft_match.group(1)
+    draft_id, _location = _create_portal_draft(client)
 
     submit = client.post(
         f"/portal/review/{draft_id}/submit",
@@ -671,14 +668,7 @@ def test_manager_review_decision_updates_status_and_history(monkeypatch) -> None
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
-    response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
-        follow_redirects=True,
-    )
-    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
-    assert draft_match is not None
-    draft_id = draft_match.group(1)
+    draft_id, _location = _create_portal_draft(client)
 
     traveler_token = mint_bootstrap_token(
         subject="traveler",
@@ -730,14 +720,7 @@ def test_manager_review_routes_require_authorization(monkeypatch) -> None:
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
-    response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
-        follow_redirects=True,
-    )
-    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
-    assert draft_match is not None
-    draft_id = draft_match.group(1)
+    draft_id, _location = _create_portal_draft(client)
     client.post(
         f"/portal/review/{draft_id}/submit",
         headers=AUTH_HEADER,
@@ -767,14 +750,7 @@ def test_manager_review_decision_requires_approve_permission(monkeypatch) -> Non
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
-    response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
-        follow_redirects=True,
-    )
-    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
-    assert draft_match is not None
-    draft_id = draft_match.group(1)
+    draft_id, _location = _create_portal_draft(client)
     client.post(
         f"/portal/review/{draft_id}/submit",
         headers={
@@ -820,14 +796,7 @@ def test_manager_review_detail_hides_decision_form_for_read_only_role(
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
-    response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
-        follow_redirects=True,
-    )
-    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
-    assert draft_match is not None
-    draft_id = draft_match.group(1)
+    draft_id, _location = _create_portal_draft(client)
     client.post(
         f"/portal/review/{draft_id}/submit",
         headers=AUTH_HEADER,
@@ -853,14 +822,7 @@ def test_portal_admin_console_surfaces_permissions_runtime_and_audit_history(
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
-    review_response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
-        follow_redirects=True,
-    )
-    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text)
-    assert draft_match is not None
-    draft_id = draft_match.group(1)
+    draft_id, _location = _create_portal_draft(client)
     client.post(
         f"/portal/review/{draft_id}/exceptions",
         data={
@@ -905,14 +867,7 @@ def test_manager_review_detail_uses_authenticated_permissions_for_actions(
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
-    response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
-        follow_redirects=True,
-    )
-    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
-    assert draft_match is not None
-    draft_id = draft_match.group(1)
+    draft_id, _location = _create_portal_draft(client)
     client.post(
         f"/portal/review/{draft_id}/submit",
         headers={
@@ -954,14 +909,7 @@ def test_exception_decision_updates_review_detail_and_audit_log(monkeypatch) -> 
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
-    review_response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
-        follow_redirects=True,
-    )
-    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text)
-    assert draft_match is not None
-    draft_id = draft_match.group(1)
+    draft_id, _location = _create_portal_draft(client)
     client.post(
         f"/portal/review/{draft_id}/exceptions",
         data={
@@ -1019,14 +967,7 @@ def test_exception_rejection_keeps_notes_in_audit_log(monkeypatch) -> None:
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
-    review_response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
-        follow_redirects=True,
-    )
-    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text)
-    assert draft_match is not None
-    draft_id = draft_match.group(1)
+    draft_id, _location = _create_portal_draft(client)
     client.post(
         f"/portal/review/{draft_id}/exceptions",
         data={
@@ -1074,14 +1015,7 @@ def test_portal_submit_exception_request_returns_400_for_invalid_payload(
     _set_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()), raise_server_exceptions=False)
 
-    review_response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
-        follow_redirects=True,
-    )
-    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text)
-    assert draft_match is not None
-    draft_id = draft_match.group(1)
+    draft_id, _location = _create_portal_draft(client)
 
     response = client.post(
         f"/portal/review/{draft_id}/exceptions",
@@ -1173,16 +1107,9 @@ def test_portal_artifact_downloads_use_cached_review_artifacts(monkeypatch) -> N
     _set_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()))
 
-    response = client.post(
-        "/portal/draft",
-        data=_portal_form_payload(),
-        follow_redirects=True,
-    )
-
+    draft_id, location = _create_portal_draft(client)
+    response = client.get(location, headers=AUTH_HEADER)
     assert response.status_code == 200
-    match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
-    assert match is not None
-    draft_id = match.group(1)
 
     def fail_render(*_args, **_kwargs):
         raise AssertionError("artifact download should use cached payloads")
@@ -1384,6 +1311,7 @@ def test_portal_artifacts_raise_runtime_error_without_bundle_mappings(
     response = client.post(
         "/portal/draft",
         data=_portal_form_payload(),
+        headers=AUTH_HEADER,
     )
 
     assert response.status_code == 500

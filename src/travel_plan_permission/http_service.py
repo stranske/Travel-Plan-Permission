@@ -1246,7 +1246,12 @@ def _portal_template_context(
 ) -> dict[str, object]:
     answers = review.answers if review is not None else {}
     viewer_permissions = (
-        tuple(permission.value for permission in auth_context.permissions)
+        tuple(
+            permission.value
+            for permission in sorted(
+                auth_context.permissions, key=lambda permission: permission.value
+            )
+        )
         if auth_context is not None
         else ()
     )
@@ -1444,14 +1449,15 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         response_class=HTMLResponse,
         name="portal_review_detail",
     )
-    def portal_review_detail(request: Request, draft_id: str) -> HTMLResponse:
-        auth_context: PlannerAuthContext | None = None
-        authorization = request.headers.get("authorization")
-        if authorization is not None:
-            auth_context = _authorize_request(
-                authorization,
-                required_permission=Permission.VIEW,
-            )
+    def portal_review_detail(
+        request: Request,
+        draft_id: str,
+        authorization: str | None = Header(default=None),
+    ) -> HTMLResponse:
+        auth_context = _authorize_request(
+            authorization,
+            required_permission=Permission.VIEW,
+        )
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
             raise HTTPException(
