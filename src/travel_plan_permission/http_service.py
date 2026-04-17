@@ -44,12 +44,12 @@ from .planner_auth import PlannerAuthConfig, PlannerAuthContext, authenticate_re
 from .policy_api import (
     PlannerPolicySnapshot,
     PlannerPolicySnapshotRequest,
-    PolicyCheckResult,
     PlannerProposalEvaluationRequest,
     PlannerProposalEvaluationResult,
     PlannerProposalOperationResponse,
     PlannerProposalStatusRequest,
     PlannerProposalSubmissionRequest,
+    PolicyCheckResult,
     check_trip_plan,
     get_evaluation_result,
     get_policy_snapshot,
