@@ -1242,8 +1242,14 @@ def _portal_template_context(
     *,
     exceptions: list[ExceptionRequest] | None = None,
     error_message: str | None = None,
+    auth_context: PlannerAuthContext | None = None,
 ) -> dict[str, object]:
     answers = review.answers if review is not None else {}
+    viewer_permissions = (
+        tuple(permission.value for permission in auth_context.permissions)
+        if auth_context is not None
+        else ()
+    )
     return {
         "request": request,
         "answers": answers,
@@ -1258,6 +1264,17 @@ def _portal_template_context(
         ),
         "optional_fields": _PORTAL_OPTIONAL_FIELDS,
         "error_message": error_message,
+        "viewer": auth_context,
+        "viewer_permissions": viewer_permissions,
+        "viewer_can_view": (
+            auth_context.can(Permission.VIEW) if auth_context is not None else False
+        ),
+        "viewer_can_create": (
+            auth_context.can(Permission.CREATE) if auth_context is not None else False
+        ),
+        "viewer_can_approve": (
+            auth_context.can(Permission.APPROVE) if auth_context is not None else False
+        ),
     }
 
 
@@ -1428,6 +1445,13 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         name="portal_review_detail",
     )
     def portal_review_detail(request: Request, draft_id: str) -> HTMLResponse:
+        auth_context: PlannerAuthContext | None = None
+        authorization = request.headers.get("authorization")
+        if authorization is not None:
+            auth_context = _authorize_request(
+                authorization,
+                required_permission=Permission.VIEW,
+            )
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
             raise HTTPException(
@@ -1451,6 +1475,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 request,
                 review,
                 exceptions=proposal_store.list_exception_requests(draft_id),
+                auth_context=auth_context,
             ),
         )
 
@@ -1556,7 +1581,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         draft_id: str,
         authorization: str | None = Header(default=None),
     ) -> HTMLResponse:
-        _authorize_request(
+        auth_context = _authorize_request(
             authorization,
             required_permission=Permission.CREATE,
         )
@@ -1610,6 +1635,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 request,
                 review,
                 exceptions=proposal_store.list_exception_requests(draft_id),
+                auth_context=auth_context,
             ),
         )
 
@@ -1830,7 +1856,12 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     def portal_artifact(
         draft_id: str,
         artifact_name: str,
+        authorization: str | None = Header(default=None),
     ) -> Response:
+        _authorize_request(
+            authorization,
+            required_permission=Permission.VIEW,
+        )
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
             raise HTTPException(
