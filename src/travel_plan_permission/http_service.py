@@ -1265,9 +1265,6 @@ def _portal_template_context(
             if auth_context is not None
             else ()
         ),
-        "can_submit_request": (
-            auth_context.can(Permission.CREATE) if auth_context is not None else False
-        ),
         "exceptions": exceptions or [],
         "exception_types": tuple(ExceptionType),
         "ground_transport_options": (
