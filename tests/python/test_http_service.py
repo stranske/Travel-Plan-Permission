@@ -362,7 +362,10 @@ def test_expense_portal_review_surfaces_missing_receipt_warning() -> None:
     )
 
     assert response.status_code == 200
-    assert "Receipt missing: reviewers should hold reimbursement until the traveler uploads support." in response.text
+    assert (
+        "Receipt missing: reviewers should hold reimbursement until the traveler uploads support."
+        in response.text
+    )
     assert "Download CSV" in response.text
     assert store.expense_drafts_by_id
 
@@ -381,7 +384,10 @@ def test_expense_portal_generates_exports_and_policy_warning() -> None:
     )
 
     assert response.status_code == 200
-    assert "Policy warning: manager or accounting review is required before reimbursement." in response.text
+    assert (
+        "Policy warning: manager or accounting review is required before reimbursement."
+        in response.text
+    )
     assert "Manual receipt entry overrides OCR values for total." in response.text
 
     match = re.search(r"/portal/expenses/([^/]+)/artifacts/expense-csv", response.text)
@@ -417,9 +423,7 @@ def test_expense_portal_missing_approval_rules_returns_validation_error(
     payload = _expense_form_payload()
 
     monkeypatch.setattr("travel_plan_permission.approval._default_rules_path", lambda: None)
-    monkeypatch.setattr(
-        "travel_plan_permission.approval._package_rules_resource", lambda: None
-    )
+    monkeypatch.setattr("travel_plan_permission.approval._package_rules_resource", lambda: None)
 
     response = client.post("/portal/expenses/review", data=payload)
 
@@ -482,9 +486,7 @@ def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
 
     assert response.status_code == 400
     assert 'data-template="validation-feedback"' in response.text
-    assert (
-        "Complete the missing details before this draft can be saved." in response.text
-    )
+    assert "Complete the missing details before this draft can be saved." in response.text
     assert store.portal_drafts_by_id == {}
     assert re.search(
         r'<ul class="missing-fields">.*?<li><code>destination_zip</code></li>',
@@ -494,9 +496,7 @@ def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
     assert "Where are you headed and what" in response.text
 
 
-def test_portal_draft_validation_rejects_invalid_present_payload_without_saving() -> (
-    None
-):
+def test_portal_draft_validation_rejects_invalid_present_payload_without_saving() -> None:
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
     payload = _portal_form_payload()
@@ -632,9 +632,7 @@ def test_submission_creates_manager_review_queue_entry(monkeypatch) -> None:
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
 
@@ -672,9 +670,7 @@ def test_manager_review_decision_updates_status_and_history(monkeypatch) -> None
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
 
@@ -733,9 +729,7 @@ def test_manager_review_routes_require_authorization(monkeypatch) -> None:
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
     client.post(
@@ -772,9 +766,7 @@ def test_manager_review_decision_requires_approve_permission(monkeypatch) -> Non
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
     client.post(
@@ -827,9 +819,7 @@ def test_manager_review_detail_hides_decision_form_for_read_only_role(
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
     client.post(
@@ -862,9 +852,7 @@ def test_portal_admin_console_surfaces_permissions_runtime_and_audit_history(
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
     client.post(
@@ -913,9 +901,7 @@ def test_manager_review_detail_uses_authenticated_permissions_for_actions(
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
     client.post(
@@ -964,9 +950,7 @@ def test_exception_decision_updates_review_detail_and_audit_log(monkeypatch) -> 
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
     client.post(
@@ -1031,9 +1015,7 @@ def test_exception_rejection_keeps_notes_in_audit_log(monkeypatch) -> None:
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
     client.post(
@@ -1081,18 +1063,14 @@ def test_portal_submit_exception_request_returns_400_for_invalid_payload(
     monkeypatch,
 ) -> None:
     _set_runtime_env(monkeypatch)
-    client = TestClient(
-        create_app(PlannerProposalStore()), raise_server_exceptions=False
-    )
+    client = TestClient(create_app(PlannerProposalStore()), raise_server_exceptions=False)
 
     review_response = client.post(
         "/portal/draft",
         data=_portal_form_payload(),
         follow_redirects=True,
     )
-    draft_match = re.search(
-        r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text
-    )
+    draft_match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", review_response.text)
     assert draft_match is not None
     draft_id = draft_match.group(1)
 
@@ -1234,6 +1212,98 @@ def test_portal_submit_requires_bearer_token(monkeypatch) -> None:
     assert submit.json()["detail"] == "Missing bearer token."
 
 
+def test_portal_review_state_survives_restart(monkeypatch, tmp_path) -> None:
+    _set_runtime_env(monkeypatch)
+    state_path = tmp_path / "portal-runtime-state.json"
+
+    first_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
+    response = first_client.post(
+        "/portal/draft",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
+    assert match is not None
+    draft_id = match.group(1)
+    assert state_path.exists()
+
+    second_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
+    restored = second_client.get(f"/portal/review/{draft_id}")
+
+    assert restored.status_code == 200
+    assert 'data-template="review-summary"' in restored.text
+    assert f"Draft {draft_id}" in restored.text
+    assert "Generated artifacts" in restored.text
+
+
+def test_portal_submission_result_survives_restart(monkeypatch, tmp_path) -> None:
+    _set_runtime_env(monkeypatch)
+    state_path = tmp_path / "portal-runtime-state.json"
+
+    first_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
+    response = first_client.post(
+        "/portal/draft",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+    match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", response.text)
+    assert match is not None
+    draft_id = match.group(1)
+
+    submit = first_client.post(
+        f"/portal/review/{draft_id}/submit",
+        headers=AUTH_HEADER,
+        follow_redirects=True,
+    )
+
+    assert submit.status_code == 200
+    assert "Submission result" in submit.text
+
+    second_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
+    restored = second_client.get(f"/portal/review/{draft_id}")
+
+    assert restored.status_code == 200
+    assert "Submission result" in restored.text
+    assert "Open manager review" in restored.text
+
+
+def test_submission_status_lookup_survives_restart(monkeypatch, tmp_path) -> None:
+    _set_runtime_env(monkeypatch, provider="okta")
+    state_path = tmp_path / "portal-runtime-state.json"
+    first_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
+    trip_plan = _load_fixture("proposal_submission.json")
+    request_payload = {
+        "trip_id": trip_plan["trip_id"],
+        "proposal_id": "proposal-123",
+        "proposal_version": "proposal-v1",
+        "payload": {"selected_options": ["flight-1", "hotel-3"]},
+    }
+
+    submit_response = first_client.post(
+        "/api/planner/proposals",
+        headers=AUTH_HEADER,
+        json={"trip_plan": trip_plan, "request": request_payload},
+    )
+
+    assert submit_response.status_code == 200
+    execution_id = str(submit_response.json()["result_payload"]["execution_id"])
+
+    second_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
+    status_response = second_client.get(
+        f"/api/planner/proposals/proposal-123/executions/{execution_id}",
+        headers=AUTH_HEADER,
+    )
+    evaluation_response = second_client.get(
+        f"/api/planner/executions/{execution_id}/evaluation-result",
+        headers=AUTH_HEADER,
+    )
+
+    assert status_response.status_code == 200
+    assert evaluation_response.status_code == 200
+
+
 def test_portal_routes_do_not_leave_legacy_request_paths_active() -> None:
     app = create_app()
     paths = {route.path for route in app.routes}
@@ -1251,9 +1321,7 @@ def test_portal_artifacts_raise_runtime_error_without_bundle_mappings(
     monkeypatch,
 ) -> None:
     _set_runtime_env(monkeypatch)
-    client = TestClient(
-        create_app(PlannerProposalStore()), raise_server_exceptions=False
-    )
+    client = TestClient(create_app(PlannerProposalStore()), raise_server_exceptions=False)
 
     def invalid_bundle(**_kwargs):
         return {"itinerary_excel": "bad", "summary_pdf": "bad"}
