@@ -97,6 +97,13 @@ capture draft trip details, see missing canonical inputs before submission,
 review policy-lite posture, and download the generated itinerary and summary
 artifacts before triggering the existing proposal submission seam.
 
+Portal draft and submission state now persist to
+`var/portal-runtime-state.json` by default. Set `TPP_PORTAL_STATE_PATH` when
+you need a different local or preview-safe path. For restart verification,
+create a draft, copy the `/portal/review/{draft_id}` URL, restart the service,
+and reopen the same page to confirm the review state, submission result, and
+follow-on review link still render intentionally before rechecking artifacts.
+
 Run the repo-native live smoke command against a running service with:
 
 ```bash
