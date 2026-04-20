@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -28,12 +29,14 @@ def _to_float(value: Any, default: float = 0.0) -> float:
     if isinstance(value, bool):
         return default
     if isinstance(value, (int, float)):
-        return float(value)
+        parsed = float(value)
+        return parsed if math.isfinite(parsed) else default
     if isinstance(value, str):
         try:
-            return float(value)
+            parsed = float(value)
         except ValueError:
             return default
+        return parsed if math.isfinite(parsed) else default
     return default
 
 
@@ -44,12 +47,17 @@ def _to_int(value: Any, default: int = 0) -> int:
     if isinstance(value, int):
         return value
     if isinstance(value, float):
+        if not math.isfinite(value):
+            return default
         return int(value)
     if isinstance(value, str):
         try:
-            return int(float(value))
+            parsed = float(value)
         except ValueError:
             return default
+        if not math.isfinite(parsed):
+            return default
+        return int(parsed)
     return default
 
 
@@ -278,7 +286,10 @@ def main(args: list[str] | None = None) -> int:
 
     # Extract values
     current = _to_float(trend_data.get("current"))
-    baseline = _to_float(baseline_data.get("line"), _to_float(trend_data.get("baseline"), 70.0))
+    baseline = _to_float(
+        baseline_data.get("line"),
+        _to_float(baseline_data.get("coverage"), _to_float(trend_data.get("baseline"), 70.0)),
+    )
     delta = current - baseline
 
     # Get hotspots
