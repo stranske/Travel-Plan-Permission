@@ -5,7 +5,7 @@
 # - Lint (Ruff)
 # - Format check (Black)
 # - Type checking (mypy)
-# - Tests (pytest) on Python 3.11 and 3.12
+# - Tests (pytest) on Python 3.12 and 3.13
 #
 # NOTE: Do NOT add a top-level 'permissions:' block here. It causes
 # startup_failure when calling reusable workflows. The reusable workflow
@@ -29,7 +29,7 @@ jobs:
     env:
       BLACK_VERSION: '26.1.0'
     with:
-      python-versions: '["3.11", "3.12"]'
+      python-versions: '["3.12", "3.13"]'
       typecheck: true
       coverage: true
       coverage-min: '80'

@@ -9,7 +9,7 @@ For comprehensive documentation, see [docs/ci-system-guide.md](../../docs/ci-sys
 
 | File | Purpose | Description |
 |------|---------|-------------|
-| `ci.yml` | Main CI pipeline | Python testing (3.11, 3.12), linting with ruff, type checking with mypy |
+| `ci.yml` | Main CI pipeline | Python testing (3.12, 3.13), linting with ruff, type checking with mypy |
 | `lint.yml` | Additional linting | actionlint, JSON schema validation, docs link checking |
 | `agents-*.yml` | Agent automation | Issue intake and automation workflows |
 | `maint-*.yml` | Maintenance | Dependency refresh and other maintenance tasks |
@@ -28,7 +28,7 @@ The following workflows have been archived to `.github/workflows-archive/`:
 
 | Job | Description |
 |-----|-------------|
-| `test` | Matrix job running pytest on Python 3.11 and 3.12 with coverage |
+| `test` | Matrix job running pytest on Python 3.12 and 3.13 with coverage |
 | `lint` | Runs ruff to check code style |
 
 ### lint.yml
