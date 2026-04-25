@@ -118,6 +118,7 @@ evaluation-result retrieval.
 
 ## Documentation
 
+- [Local Testing Plan](docs/local-testing-plan.md)
 - [Planner Live-Test Runbook](docs/planner-live-test-runbook.md)
 - [Policy API](docs/policy-api.md)
 - [Planner Integration Contract](docs/contracts/planner-integration.md)
