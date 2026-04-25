@@ -9,6 +9,21 @@ const AUTH_ARTIFACT_FAMILIES = new Set([
   'bot-comment-auth-coverage-wrapper',
   'bot-comment-auth-coverage-reusable',
 ]);
+const AUTH_ARTIFACT_FAMILY_CONTRACTS = {
+  'bot-comment-auth-coverage-wrapper': {
+    family: 'bot-comment-auth-coverage-wrapper',
+    filename: 'wrapper.json',
+    artifact_dir_pattern: /^bot-comment-auth-coverage-wrapper(?:-[A-Za-z0-9][A-Za-z0-9._-]*)?$/,
+  },
+  'bot-comment-auth-coverage-reusable': {
+    family: 'bot-comment-auth-coverage-reusable',
+    filename: 'reusable.json',
+    artifact_dir_pattern: /^bot-comment-auth-coverage-reusable(?:-[A-Za-z0-9][A-Za-z0-9._-]*)?$/,
+  },
+};
+const AUTH_ARTIFACT_FILE_CONTRACTS = Object.fromEntries(
+  Object.values(AUTH_ARTIFACT_FAMILY_CONTRACTS).map((contract) => [contract.filename, contract])
+);
 
 const COMPONENT_POLICIES = {
   'agents-bot-comment-handler-wrapper': {
@@ -20,6 +35,21 @@ const COMPONENT_POLICIES = {
     expected_mode: '',
     allowed_modes: ['client-id', 'none'],
     missing_record_severity: 'no-data',
+  },
+};
+
+const COMPONENT_POLICY_OVERRIDES = {
+  'agents-bot-comment-handler-wrapper': {
+    expected_option: 'wrapper_expected_mode',
+    expected_env: 'BOT_COMMENT_WRAPPER_EXPECTED_AUTH_MODE',
+    allowed_option: 'wrapper_allowed_modes',
+    allowed_env: 'BOT_COMMENT_WRAPPER_ALLOWED_AUTH_MODES',
+  },
+  'reusable-bot-comment-handler': {
+    expected_option: 'reusable_expected_mode',
+    expected_env: 'BOT_COMMENT_REUSABLE_EXPECTED_AUTH_MODE',
+    allowed_option: 'reusable_allowed_modes',
+    allowed_env: 'BOT_COMMENT_REUSABLE_ALLOWED_AUTH_MODES',
   },
 };
 
@@ -39,6 +69,7 @@ function normalizeRecordBoolean(value) {
   const text = cleanString(value).toLowerCase();
   if (['1', 'true', 'yes', 'y', 'on'].includes(text)) return true;
   if (['0', 'false', 'no', 'n', 'off', ''].includes(text)) return false;
+  if (typeof value === 'string') return false;
   return Boolean(value);
 }
 
@@ -108,7 +139,7 @@ function normalizeRecord(raw = {}, sourcePath = '') {
 }
 
 function isAuthCoverageRecord(record) {
-  return Boolean(record && typeof record === 'object' && record.schema === AUTH_SCHEMA);
+  return Boolean(record && typeof record === 'object' && cleanString(record.schema) === AUTH_SCHEMA);
 }
 
 function parseAllowedModes(value, fallback) {
@@ -141,31 +172,64 @@ function parseCsvList(value) {
     .filter(Boolean);
 }
 
+function firstConfiguredValue(options, keys, envName) {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(options, key)) {
+      return { value: options[key], configured: true };
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(process.env, envName)) {
+    return { value: process.env[envName], configured: true };
+  }
+  return { value: undefined, configured: false };
+}
+
 function summarizeOrganicEvidence(records = [], options = {}) {
-  const requiredEvents = parseCsvList(
-    options.required_organic_events ??
-      options.requiredOrganicEvents ??
-      process.env.BOT_COMMENT_AUTH_REQUIRED_ORGANIC_EVENTS
+  const requiredEventsConfig = firstConfiguredValue(
+    options,
+    ['required_organic_events', 'requiredOrganicEvents'],
+    'BOT_COMMENT_AUTH_REQUIRED_ORGANIC_EVENTS'
   );
-  const requiredComponents = parseCsvList(
-    options.organic_components ??
-      options.organicComponents ??
-      process.env.BOT_COMMENT_AUTH_ORGANIC_COMPONENTS
+  const organicComponentsConfig = firstConfiguredValue(
+    options,
+    ['organic_components', 'organicComponents'],
+    'BOT_COMMENT_AUTH_ORGANIC_COMPONENTS'
   );
+  const requiredEvents = parseCsvList(requiredEventsConfig.value);
+  const requiredComponents = parseCsvList(organicComponentsConfig.value);
   const expectedMode = normalizeAuthMode(
     options.organic_expected_mode ??
       options.organicExpectedMode ??
       process.env.BOT_COMMENT_AUTH_ORGANIC_EXPECTED_MODE
   );
-  const components = requiredComponents.length > 0
-    ? requiredComponents
-    : Object.keys(COMPONENT_POLICIES);
+  const organicChecksDisabled = requiredEvents.length === 0 ||
+    (organicComponentsConfig.configured && requiredComponents.length === 0);
+  const components = organicChecksDisabled
+    ? []
+    : requiredComponents.length > 0
+      ? requiredComponents
+      : Object.keys(COMPONENT_POLICIES);
   const eventCounts = Object.create(null);
   const latestByComponentEvent = Object.create(null);
 
+  if (records.length === 0) {
+    const blockers = organicChecksDisabled
+      ? []
+      : missingOrganicEvidenceBlockers(components, requiredEvents);
+    return {
+      schema: 'workflows-bot-comment-auth-organic-evidence/v1',
+      required_events: requiredEvents,
+      required_components: components,
+      expected_mode: expectedMode === 'unknown' ? '' : expectedMode,
+      event_counts: eventCounts,
+      blockers,
+      status: organicChecksDisabled ? 'pass' : 'no-data',
+    };
+  }
+
   for (const record of records) {
     if (!record.component || !record.event_name) continue;
-    eventCounts[record.component] ||= {};
+    eventCounts[record.component] = eventCounts[record.component] || {};
     eventCounts[record.component][record.event_name] =
       (eventCounts[record.component][record.event_name] || 0) + 1;
     const key = `${record.component}:${record.event_name}`;
@@ -183,8 +247,11 @@ function summarizeOrganicEvidence(records = [], options = {}) {
         blockers.push(`missing-organic-${component}-${eventName}`);
         continue;
       }
-      if (latest.fallback_warning_active || latest.auth_mode === 'legacy-app-id') {
-        blockers.push(`legacy-organic-${component}-${eventName}`);
+      if (latest.fallback_warning_active) {
+        blockers.push(`legacy-organic-${component}-${eventName}-fallback-active`);
+      }
+      if (latest.auth_mode === 'legacy-app-id') {
+        blockers.push(`legacy-organic-${component}-${eventName}-auth-mode`);
       }
       if (expectedMode !== 'unknown' && latest.auth_mode !== expectedMode) {
         blockers.push(`expected-${expectedMode}-organic-${component}-${eventName}`);
@@ -203,41 +270,32 @@ function summarizeOrganicEvidence(records = [], options = {}) {
   };
 }
 
+function missingOrganicEvidenceBlockers(components = [], requiredEvents = []) {
+  return components.flatMap((component) =>
+    requiredEvents.map((eventName) => `missing-organic-${component}-${eventName}`)
+  );
+}
+
 function componentPolicy(component, options = {}) {
   const base = COMPONENT_POLICIES[component] || {
     expected_mode: '',
     allowed_modes: ['client-id', 'none'],
     missing_record_severity: 'no-data',
   };
-  if (component === 'agents-bot-comment-handler-wrapper') {
-    const expectedMode = parseExpectedMode(
-      options.wrapper_expected_mode ?? process.env.BOT_COMMENT_WRAPPER_EXPECTED_AUTH_MODE,
-      base.expected_mode
-    );
-    return {
-      ...base,
-      ...expectedMode,
-      allowed_modes: parseAllowedModes(
-        options.wrapper_allowed_modes ?? process.env.BOT_COMMENT_WRAPPER_ALLOWED_AUTH_MODES,
-        base.allowed_modes
-      ),
-    };
-  }
-  if (component === 'reusable-bot-comment-handler') {
-    const expectedMode = parseExpectedMode(
-      options.reusable_expected_mode ?? process.env.BOT_COMMENT_REUSABLE_EXPECTED_AUTH_MODE,
-      base.expected_mode
-    );
-    return {
-      ...base,
-      ...expectedMode,
-      allowed_modes: parseAllowedModes(
-        options.reusable_allowed_modes ?? process.env.BOT_COMMENT_REUSABLE_ALLOWED_AUTH_MODES,
-        base.allowed_modes
-      ),
-    };
-  }
-  return base;
+  const override = COMPONENT_POLICY_OVERRIDES[component];
+  if (!override) return base;
+  const expectedMode = parseExpectedMode(
+    options[override.expected_option] ?? process.env[override.expected_env],
+    base.expected_mode
+  );
+  return {
+    ...base,
+    ...expectedMode,
+    allowed_modes: parseAllowedModes(
+      options[override.allowed_option] ?? process.env[override.allowed_env],
+      base.allowed_modes
+    ),
+  };
 }
 
 function runSortKey(record) {
@@ -260,20 +318,20 @@ function compareRecords(a, b) {
 
 function normalizeArtifactSelectionSummary(report) {
   if (!report) return null;
-  if (report.status === 'missing' || report.status === 'parse-error') {
-    return {
-      schema: cleanString(report.schema) || 'workflows-weekly-metrics-artifact-selection/v1',
-      status: report.status,
-      error_message: cleanString(report.error_message),
-      selected_auth_artifact_count: 0,
-      selected_auth_artifacts: [],
-    };
-  }
   if (typeof report !== 'object' || Array.isArray(report)) {
     return {
       schema: 'workflows-weekly-metrics-artifact-selection/v1',
       status: 'parse-error',
       error_message: 'artifact selection report is not a JSON object',
+      selected_auth_artifact_count: 0,
+      selected_auth_artifacts: [],
+    };
+  }
+  if (report.status === 'missing' || report.status === 'parse-error') {
+    return {
+      schema: cleanString(report.schema) || 'workflows-weekly-metrics-artifact-selection/v1',
+      status: report.status,
+      error_message: cleanString(report.error_message),
       selected_auth_artifact_count: 0,
       selected_auth_artifacts: [],
     };
@@ -300,19 +358,50 @@ function normalizeArtifactSelectionSummary(report) {
 function artifactFamilyFromSelection(artifact = {}) {
   const family = cleanString(artifact.family);
   if (AUTH_ARTIFACT_FAMILIES.has(family)) return family;
-  const name = cleanString(artifact.name);
-  if (name.startsWith('bot-comment-auth-coverage-wrapper-')) {
-    return 'bot-comment-auth-coverage-wrapper';
+  return artifactFamilyFromName(artifact.name);
+}
+
+function artifactFamilyFromName(name) {
+  const artifactName = cleanString(name);
+  const contract = Object.values(AUTH_ARTIFACT_FAMILY_CONTRACTS).find((candidate) =>
+    candidate.artifact_dir_pattern.test(artifactName)
+  );
+  return contract?.family || '';
+}
+
+function componentCoverageStatus(blockers, policy, latest) {
+  if (blockers.length === 0) return 'pass';
+  const onlyMissingBlockers = blockers.every((blocker) => isComponentMissingBlocker(blocker));
+  if (!latest && policy.missing_record_severity === 'no-data' && onlyMissingBlockers) {
+    return 'no-data';
   }
-  if (name.startsWith('bot-comment-auth-coverage-reusable-')) {
-    return 'bot-comment-auth-coverage-reusable';
-  }
-  return '';
+  return 'warning';
+}
+
+function isComponentMissingBlocker(blocker) {
+  return Object.keys(COMPONENT_POLICIES).some((component) => blocker === `missing-${component}`);
+}
+
+function isNoDataBlocker(blocker) {
+  return isComponentMissingBlocker(blocker) || String(blocker).startsWith('missing-organic-');
 }
 
 function summarizeBotCommentAuthCoverage(records = [], options = {}) {
   const policy = normalizePolicy(options);
-  const parseErrors = Number(options.parse_errors || options.parseErrors || 0);
+  const parseErrors = Number(options.parse_errors ?? options.parseErrors ?? 0);
+  const readErrors = Number(options.read_errors ?? options.readErrors ?? 0);
+  const parsedJsonFileCount = Number(
+    options.parsed_json_file_count ??
+      options.parsedJsonFileCount ??
+      options.parsed_json_record_count ??
+      options.parsedJsonRecordCount ??
+      records.length
+  );
+  const nonAuthRecordCount = Number(
+    options.non_auth_record_count ??
+      options.nonAuthRecordCount ??
+      Math.max(0, parsedJsonFileCount - records.length)
+  );
   const artifactSelection = normalizeArtifactSelectionSummary(
     options.artifact_selection_report ?? options.artifactSelectionReport
   );
@@ -347,8 +436,11 @@ function summarizeBotCommentAuthCoverage(records = [], options = {}) {
       if (!componentPolicyConfig.allowed_modes.includes(latest.auth_mode)) {
         blockers.push(`disallowed-${component}-auth-mode`);
       }
-      if (latest.fallback_warning_active || latest.auth_mode === 'legacy-app-id') {
+      if (latest.fallback_warning_active) {
         blockers.push(`legacy-${component}-fallback-active`);
+      }
+      if (latest.auth_mode === 'legacy-app-id') {
+        blockers.push(`legacy-${component}-auth-mode`);
       }
       if (
         componentPolicyConfig.expected_mode &&
@@ -357,12 +449,6 @@ function summarizeBotCommentAuthCoverage(records = [], options = {}) {
         blockers.push(`expected-${componentPolicyConfig.expected_mode}-${component}`);
       }
     }
-    let status = 'pass';
-    if (blockers.length > 0) {
-      status = componentPolicyConfig.missing_record_severity === 'no-data' && !latest
-        ? 'no-data'
-        : 'warning';
-    }
     return {
       component,
       record_count: componentRecords.length,
@@ -370,7 +456,8 @@ function summarizeBotCommentAuthCoverage(records = [], options = {}) {
       expected_mode: componentPolicyConfig.expected_mode,
       invalid_expected_mode: componentPolicyConfig.invalid_expected_mode,
       allowed_modes: componentPolicyConfig.allowed_modes,
-      status,
+      missing_record_severity: componentPolicyConfig.missing_record_severity,
+      status: componentCoverageStatus(blockers, componentPolicyConfig, latest),
       blockers,
     };
   });
@@ -380,23 +467,35 @@ function summarizeBotCommentAuthCoverage(records = [], options = {}) {
     artifactSelection.status !== 'not-configured';
   const selectedAuthArtifactCount = artifactSelection?.selected_auth_artifact_count || 0;
   const authArtifactInputMismatch = selectedAuthArtifactCount > 0 && inputFileCount === 0;
-  const blockers = componentSummaries.flatMap((summary) => summary.blockers);
+  const blockers = componentSummaries.flatMap((summary) =>
+    summary.blockers.filter(
+      (blocker) =>
+        !(summary.missing_record_severity === 'no-data' && isComponentMissingBlocker(blocker))
+    )
+  );
   if (parseErrors > 0) blockers.push('parse-errors');
+  if (readErrors > 0) blockers.push('read-errors');
+  if (nonAuthRecordCount > 0) blockers.push('non-auth-records');
   if (artifactSelectionWarning) blockers.push('artifact-selection-warning');
   if (authArtifactInputMismatch) blockers.push('selected-auth-artifacts-without-input-files');
   blockers.push(...organicEvidence.blockers);
 
   let coverageStatus = 'pass';
   if (authRecords.length === 0) {
-    coverageStatus = parseErrors > 0 || artifactSelectionWarning || authArtifactInputMismatch
-      ? 'warning'
-      : 'no-data';
+    const nonNoDataBlockers = blockers.filter((blocker) => !isNoDataBlocker(blocker));
+    coverageStatus = nonNoDataBlockers.length > 0 ? 'warning' : 'no-data';
   } else if (blockers.length > 0) {
     coverageStatus = 'warning';
   }
 
+  const hardBlockEligible = authRecords.length > 0 &&
+    parseErrors === 0 &&
+    readErrors === 0 &&
+    nonAuthRecordCount === 0 &&
+    !artifactSelectionWarning &&
+    !authArtifactInputMismatch;
   const hardBlockActive = policy.effective_mode === HARD_BLOCK_MODE;
-  const shouldFail = hardBlockActive && coverageStatus !== 'pass';
+  const shouldFail = hardBlockActive && hardBlockEligible && coverageStatus === 'warning';
   return {
     schema: COVERAGE_SCHEMA,
     status: shouldFail ? 'fail' : coverageStatus,
@@ -408,6 +507,7 @@ function summarizeBotCommentAuthCoverage(records = [], options = {}) {
       mode: policy.effective_mode,
       requested_mode: policy.requested_mode,
       hard_block_approved: policy.hard_block_approved,
+      hard_block_eligible: hardBlockEligible,
       hard_block_active: hardBlockActive,
       should_fail: shouldFail,
       blockers,
@@ -415,9 +515,11 @@ function summarizeBotCommentAuthCoverage(records = [], options = {}) {
     },
     input_file_count: inputFileCount,
     input_files: inputFiles,
-    scanned_record_count: records.length,
+    parsed_json_file_count: parsedJsonFileCount,
     auth_record_count: authRecords.length,
+    non_auth_record_count: nonAuthRecordCount,
     parse_errors: parseErrors,
+    read_errors: readErrors,
     auth_artifact_input_mismatch: authArtifactInputMismatch,
     artifact_selection: artifactSelection,
     organic_evidence: organicEvidence,
@@ -433,13 +535,18 @@ function formatBotCommentAuthCoverageMarkdown(report) {
     `- Status: ${report.status}`,
     `- Coverage status: ${report.coverage_status}`,
     `- Mode: ${report.mode}`,
+    `- Hard block eligible: ${report.enforcement.hard_block_eligible}`,
     `- Hard block active: ${report.enforcement.hard_block_active}`,
     `- Input files: ${report.input_file_count}`,
+    `- Parsed JSON files: ${report.parsed_json_file_count}`,
     `- Auth records: ${report.auth_record_count}`,
+    `- Non-auth records: ${report.non_auth_record_count}`,
     `- Parse errors: ${report.parse_errors}`,
+    `- Read errors: ${report.read_errors}`,
   ];
 
   if (report.artifact_selection) {
+    lines.push(`- Artifact selection status: ${report.artifact_selection.status || 'unknown'}`);
     lines.push(`- Selected auth artifacts: ${report.artifact_selection.selected_auth_artifact_count}`);
     if (report.artifact_selection.error_message) {
       lines.push(`- Artifact selector error: ${report.artifact_selection.error_message}`);
@@ -478,9 +585,21 @@ function collectJsonFiles(rootDir) {
   const stack = [rootDir];
   while (stack.length > 0) {
     const current = stack.pop();
-    const stat = fs.statSync(current);
+    if (!current || !fs.existsSync(current)) continue;
+    let stat;
+    try {
+      stat = fs.statSync(current);
+    } catch (_error) {
+      continue;
+    }
     if (stat.isDirectory()) {
-      for (const entry of fs.readdirSync(current)) {
+      let entries = [];
+      try {
+        entries = fs.readdirSync(current);
+      } catch (_error) {
+        continue;
+      }
+      for (const entry of entries) {
         stack.push(path.join(current, entry));
       }
     } else if (stat.isFile() && isPotentialAuthCoverageFile(current)) {
@@ -492,28 +611,56 @@ function collectJsonFiles(rootDir) {
 
 function isPotentialAuthCoverageFile(file) {
   const normalized = cleanString(file).split(path.sep).join('/');
-  const basename = path.basename(normalized);
+  const basename = path.posix.basename(normalized);
   if (!normalized.endsWith('.json')) return false;
-  return normalized.includes('/bot-comment-auth-coverage-wrapper-') ||
-    normalized.includes('/bot-comment-auth-coverage-reusable-') ||
-    basename === 'wrapper.json' ||
-    basename === 'reusable.json';
+  const contract = AUTH_ARTIFACT_FILE_CONTRACTS[basename];
+  if (!contract) return false;
+  let currentDir = path.posix.dirname(normalized);
+  while (currentDir && currentDir !== '.' && currentDir !== '/') {
+    if (artifactFamilyFromName(path.posix.basename(currentDir)) === contract.family) {
+      return true;
+    }
+    const parentDir = path.posix.dirname(currentDir);
+    if (parentDir === currentDir) break;
+    currentDir = parentDir;
+  }
+  return false;
 }
 
 function readJsonRecords(files = []) {
   const records = [];
   let parseErrors = 0;
+  let readErrors = 0;
+  let parsedJsonFileCount = 0;
+  let nonAuthRecordCount = 0;
   for (const file of files) {
+    let content = '';
     try {
-      const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+      content = fs.readFileSync(file, 'utf8');
+    } catch (_error) {
+      readErrors += 1;
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(content);
+      parsedJsonFileCount += 1;
       if (isAuthCoverageRecord(parsed)) {
         records.push({ ...parsed, source_path: file });
+      } else {
+        nonAuthRecordCount += 1;
       }
     } catch (_error) {
       parseErrors += 1;
     }
   }
-  return { records, parse_errors: parseErrors, file_count: files.length };
+  return {
+    records,
+    parse_errors: parseErrors,
+    read_errors: readErrors,
+    parsed_json_file_count: parsedJsonFileCount,
+    non_auth_record_count: nonAuthRecordCount,
+    file_count: files.length,
+  };
 }
 
 function readArtifactSelectionReport(file) {
@@ -578,6 +725,9 @@ function main() {
   const readResult = readJsonRecords(files);
   const report = summarizeBotCommentAuthCoverage(readResult.records, {
     parse_errors: readResult.parse_errors,
+    read_errors: readResult.read_errors,
+    parsed_json_file_count: readResult.parsed_json_file_count,
+    non_auth_record_count: readResult.non_auth_record_count,
     input_files: files,
     input_file_count: readResult.file_count,
     artifact_selection_report: readArtifactSelectionReport(options.artifact_selection_report),
