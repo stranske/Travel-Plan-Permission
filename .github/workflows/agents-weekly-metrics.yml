@@ -42,8 +42,10 @@ jobs:
             scripts/aggregate_agent_metrics.py
           sparse-checkout-cone-mode: false
 
-      - name: Install GitHub API dependencies
-        run: npm install --no-save --no-package-lock @octokit/rest @octokit/auth-app
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "20"
 
       - name: Setup API client
         uses: ./.github/actions/setup-api-client
@@ -188,6 +190,8 @@ jobs:
             ${{ vars.BOT_COMMENT_AUTH_HARD_BLOCK_APPROVED || 'false' }}
           BOT_COMMENT_WRAPPER_EXPECTED_AUTH_MODE: >-
             ${{ vars.BOT_COMMENT_WRAPPER_EXPECTED_AUTH_MODE || 'client-id' }}
+          BOT_COMMENT_WRAPPER_ALLOWED_AUTH_MODES: >-
+            ${{ vars.BOT_COMMENT_WRAPPER_ALLOWED_AUTH_MODES || 'client-id' }}
           BOT_COMMENT_REUSABLE_EXPECTED_AUTH_MODE: >-
             ${{ vars.BOT_COMMENT_REUSABLE_EXPECTED_AUTH_MODE }}
           BOT_COMMENT_REUSABLE_ALLOWED_AUTH_MODES: >-
