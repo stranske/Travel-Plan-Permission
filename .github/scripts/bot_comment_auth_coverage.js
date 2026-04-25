@@ -39,6 +39,7 @@ function normalizeRecordBoolean(value) {
   const text = cleanString(value).toLowerCase();
   if (['1', 'true', 'yes', 'y', 'on'].includes(text)) return true;
   if (['0', 'false', 'no', 'n', 'off', ''].includes(text)) return false;
+  if (typeof value === 'string') return false;
   return Boolean(value);
 }
 
@@ -163,6 +164,18 @@ function summarizeOrganicEvidence(records = [], options = {}) {
   const eventCounts = Object.create(null);
   const latestByComponentEvent = Object.create(null);
 
+  if (records.length === 0) {
+    return {
+      schema: 'workflows-bot-comment-auth-organic-evidence/v1',
+      required_events: requiredEvents,
+      required_components: components,
+      expected_mode: expectedMode === 'unknown' ? '' : expectedMode,
+      event_counts: eventCounts,
+      blockers: [],
+      status: 'no-data',
+    };
+  }
+
   for (const record of records) {
     if (!record.component || !record.event_name) continue;
     eventCounts[record.component] ||= {};
@@ -183,8 +196,11 @@ function summarizeOrganicEvidence(records = [], options = {}) {
         blockers.push(`missing-organic-${component}-${eventName}`);
         continue;
       }
-      if (latest.fallback_warning_active || latest.auth_mode === 'legacy-app-id') {
-        blockers.push(`legacy-organic-${component}-${eventName}`);
+      if (latest.fallback_warning_active) {
+        blockers.push(`legacy-organic-${component}-${eventName}-fallback-active`);
+      }
+      if (latest.auth_mode === 'legacy-app-id') {
+        blockers.push(`legacy-organic-${component}-${eventName}-auth-mode`);
       }
       if (expectedMode !== 'unknown' && latest.auth_mode !== expectedMode) {
         blockers.push(`expected-${expectedMode}-organic-${component}-${eventName}`);
@@ -310,9 +326,19 @@ function artifactFamilyFromSelection(artifact = {}) {
   return '';
 }
 
+function componentCoverageStatus(blockers, policy, latest) {
+  if (blockers.length === 0) return 'pass';
+  if (!latest && policy.missing_record_severity === 'no-data') return 'no-data';
+  return 'warning';
+}
+
+function isComponentMissingBlocker(blocker) {
+  return Object.keys(COMPONENT_POLICIES).some((component) => blocker === `missing-${component}`);
+}
+
 function summarizeBotCommentAuthCoverage(records = [], options = {}) {
   const policy = normalizePolicy(options);
-  const parseErrors = Number(options.parse_errors || options.parseErrors || 0);
+  const parseErrors = Number(options.parse_errors ?? options.parseErrors ?? 0);
   const artifactSelection = normalizeArtifactSelectionSummary(
     options.artifact_selection_report ?? options.artifactSelectionReport
   );
@@ -347,8 +373,11 @@ function summarizeBotCommentAuthCoverage(records = [], options = {}) {
       if (!componentPolicyConfig.allowed_modes.includes(latest.auth_mode)) {
         blockers.push(`disallowed-${component}-auth-mode`);
       }
-      if (latest.fallback_warning_active || latest.auth_mode === 'legacy-app-id') {
+      if (latest.fallback_warning_active) {
         blockers.push(`legacy-${component}-fallback-active`);
+      }
+      if (latest.auth_mode === 'legacy-app-id') {
+        blockers.push(`legacy-${component}-auth-mode`);
       }
       if (
         componentPolicyConfig.expected_mode &&
@@ -357,12 +386,6 @@ function summarizeBotCommentAuthCoverage(records = [], options = {}) {
         blockers.push(`expected-${componentPolicyConfig.expected_mode}-${component}`);
       }
     }
-    let status = 'pass';
-    if (blockers.length > 0) {
-      status = componentPolicyConfig.missing_record_severity === 'no-data' && !latest
-        ? 'no-data'
-        : 'warning';
-    }
     return {
       component,
       record_count: componentRecords.length,
@@ -370,7 +393,7 @@ function summarizeBotCommentAuthCoverage(records = [], options = {}) {
       expected_mode: componentPolicyConfig.expected_mode,
       invalid_expected_mode: componentPolicyConfig.invalid_expected_mode,
       allowed_modes: componentPolicyConfig.allowed_modes,
-      status,
+      status: componentCoverageStatus(blockers, componentPolicyConfig, latest),
       blockers,
     };
   });
@@ -388,9 +411,8 @@ function summarizeBotCommentAuthCoverage(records = [], options = {}) {
 
   let coverageStatus = 'pass';
   if (authRecords.length === 0) {
-    coverageStatus = parseErrors > 0 || artifactSelectionWarning || authArtifactInputMismatch
-      ? 'warning'
-      : 'no-data';
+    const nonMissingBlockers = blockers.filter((blocker) => !isComponentMissingBlocker(blocker));
+    coverageStatus = nonMissingBlockers.length > 0 ? 'warning' : 'no-data';
   } else if (blockers.length > 0) {
     coverageStatus = 'warning';
   }
@@ -440,6 +462,7 @@ function formatBotCommentAuthCoverageMarkdown(report) {
   ];
 
   if (report.artifact_selection) {
+    lines.push(`- Artifact selection status: ${report.artifact_selection.status || 'unknown'}`);
     lines.push(`- Selected auth artifacts: ${report.artifact_selection.selected_auth_artifact_count}`);
     if (report.artifact_selection.error_message) {
       lines.push(`- Artifact selector error: ${report.artifact_selection.error_message}`);
@@ -494,10 +517,15 @@ function isPotentialAuthCoverageFile(file) {
   const normalized = cleanString(file).split(path.sep).join('/');
   const basename = path.basename(normalized);
   if (!normalized.endsWith('.json')) return false;
-  return normalized.includes('/bot-comment-auth-coverage-wrapper-') ||
-    normalized.includes('/bot-comment-auth-coverage-reusable-') ||
-    basename === 'wrapper.json' ||
-    basename === 'reusable.json';
+  const segments = normalized.split('/');
+  const hasWrapperArtifactDir = segments.some((segment) =>
+    segment.startsWith('bot-comment-auth-coverage-wrapper-')
+  );
+  const hasReusableArtifactDir = segments.some((segment) =>
+    segment.startsWith('bot-comment-auth-coverage-reusable-')
+  );
+  return (basename === 'wrapper.json' && hasWrapperArtifactDir) ||
+    (basename === 'reusable.json' && hasReusableArtifactDir);
 }
 
 function readJsonRecords(files = []) {
