@@ -10,6 +10,7 @@ from pathlib import Path
 
 CHECKBOX_PATTERN = re.compile(r"^\s*[-*]\s*\[(?P<mark>[ xX])\]\s*(?P<text>.+?)\s*$")
 DEFAULT_APPROVAL_PATTERNS = (r"\bapprove(?:d)?\b", r"\blgtm\b")
+DEFAULT_TRUSTED_ASSOCIATIONS = ("COLLABORATOR", "MEMBER", "OWNER")
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,7 @@ class CheckboxSummary:
 class ApprovalEvidence:
     author: str
     url: str | None
+    association: str
     snippet: str
 
 
@@ -57,6 +59,7 @@ def _collect_approval_evidence(
     approval_patterns: tuple[re.Pattern[str], ...],
 ) -> tuple[ApprovalEvidence, ...]:
     maintainers_set = {name.lower() for name in maintainers}
+    trusted_associations = set(DEFAULT_TRUSTED_ASSOCIATIONS)
     evidence: list[ApprovalEvidence] = []
 
     for comment in comments:
@@ -66,7 +69,11 @@ def _collect_approval_evidence(
         author = str(user.get("login", "")).strip()
         if not author:
             continue
-        if maintainers_set and author.lower() not in maintainers_set:
+        association = str(comment.get("author_association", "")).upper().strip()
+        if maintainers_set:
+            if author.lower() not in maintainers_set:
+                continue
+        elif association not in trusted_associations:
             continue
 
         body = str(comment.get("body", ""))
@@ -85,6 +92,7 @@ def _collect_approval_evidence(
                         if isinstance(comment.get("html_url"), str)
                         else None
                     ),
+                    association=association,
                     snippet=snippet,
                 )
             )
@@ -141,6 +149,7 @@ def build_disposition_report(
             {
                 "author": item.author,
                 "url": item.url,
+                "association": item.association,
                 "snippet": item.snippet,
             }
             for item in approvals
@@ -185,9 +194,15 @@ def build_comment_report(report: dict[str, object]) -> str:
         lines.append("### Maintainer approval evidence")
         for approval in report["approvals"]:
             if approval["url"]:
-                lines.append(f"- {approval['author']}: `{approval['snippet']}` ({approval['url']})")
+                lines.append(
+                    f"- {approval['author']} ({approval['association']}): "
+                    + f"`{approval['snippet']}` ({approval['url']})"
+                )
             else:
-                lines.append(f"- {approval['author']}: `{approval['snippet']}`")
+                lines.append(
+                    f"- {approval['author']} ({approval['association']}): "
+                    + f"`{approval['snippet']}`"
+                )
 
     if not summary["passing"]:
         lines.extend(

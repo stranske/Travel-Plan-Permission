@@ -80,11 +80,13 @@ def test_ready_to_close_when_checkboxes_complete_and_maintainer_approves() -> No
             "user": {"login": "maintainer-a"},
             "body": "I approve this disposition; safe to close.",
             "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-1",
+            "author_association": "MEMBER",
         },
         {
             "user": {"login": "contributor-b"},
             "body": "looks good",
             "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-2",
+            "author_association": "CONTRIBUTOR",
         },
     ]
 
@@ -98,6 +100,64 @@ def test_ready_to_close_when_checkboxes_complete_and_maintainer_approves() -> No
     assert report["summary"]["maintainer_approved"] is True
     assert report["summary"]["ready_to_close"] is True
     assert len(report["approvals"]) == 1
+    assert report["approvals"][0]["association"] == "MEMBER"
+
+
+def test_approval_requires_trusted_association_when_maintainer_list_not_set() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "- [x] task one\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "external-contributor"},
+            "body": "LGTM, approving this",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-3",
+            "author_association": "CONTRIBUTOR",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=(),
+        approval_regexes=(r"\bapprove(?:d)?\b", r"\blgtm\b"),
+    )
+
+    assert report["summary"]["maintainer_approved"] is False
+    assert report["summary"]["ready_to_close"] is False
+    assert report["approvals"] == []
+
+
+def test_member_approval_counts_without_explicit_maintainer_list() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "- [x] task one\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "repo-maintainer"},
+            "body": "Approved. This can be closed.",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-4",
+            "author_association": "OWNER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=(),
+        approval_regexes=(r"\bapprove(?:d)?\b",),
+    )
+
+    assert report["summary"]["maintainer_approved"] is True
+    assert report["summary"]["ready_to_close"] is True
+    assert len(report["approvals"]) == 1
+    assert report["approvals"][0]["association"] == "OWNER"
 
 
 def test_comment_report_includes_needs_human_on_failure() -> None:

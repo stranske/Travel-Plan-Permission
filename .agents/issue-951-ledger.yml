@@ -136,11 +136,12 @@ tasks:
       complete, (b) all acceptance criteria are met with documented evidence, and
       (c) at least one maintainer has reviewed and approved the disposition in comments'
     status: todo
-    started_at: null
+    started_at: '2026-04-26T23:23:27Z'
     finished_at: null
     commit: ''
     notes:
       - Blocking on maintainer review/approval of the false-positive disposition before closing #939.
+      - Added stricter disposition audit validation so approval requires an explicitly listed maintainer or trusted GitHub association (OWNER/MEMBER/COLLABORATOR).
   - id: task-16
     title: 'All GitHub Action references from PR #943 are documented as valid or flagged
       for replacement'
