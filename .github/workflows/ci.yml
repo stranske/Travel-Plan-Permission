@@ -6,6 +6,7 @@
 # - Format check (Black)
 # - Type checking (mypy)
 # - Tests (pytest) on Python 3.12 and 3.13
+# - LangGraph orchestration smoke tests with the orchestration extra installed
 #
 # NOTE: Do NOT add a top-level 'permissions:' block here. It causes
 # startup_failure when calling reusable workflows. The reusable workflow
@@ -34,3 +35,25 @@ jobs:
       coverage: true
       coverage-min: '80'
     secrets: inherit
+
+  orchestration-tests:
+    name: Orchestration Tests (LangGraph)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies with orchestration extra
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[orchestration,dev]"
+
+      - name: Run LangGraph orchestration tests
+        run: |
+          pytest tests/orchestration_graph_test.py tests/python/test_langgraph_orchestration.py -v
