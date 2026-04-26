@@ -6,10 +6,10 @@ tasks:
   - id: task-01
     title: 'Inspect the workflow files in `.github/workflows/**` from PR #943 to identify
       all GitHub Action references with their versions'
-    status: doing
+    status: done
     started_at: '2026-04-26T21:42:51Z'
-    finished_at: null
-    commit: ''
+    finished_at: '2026-04-26T21:43:04Z'
+    commit: e7254c7e4ce3b0167e1af7bb463b88da9f047527
     notes: []
   - id: task-02
     title: Verify each identified GitHub Action reference exists and is accessible
