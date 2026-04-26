@@ -6,10 +6,10 @@ import argparse
 import json
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
 from urllib import error, request
 
 import yaml
@@ -196,7 +196,7 @@ def build_validation_report(
     valid_count = sum(1 for result in validations if result.is_valid)
     invalid_count = sum(1 for result in validations if result.classification == "invalid")
     return {
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "workflows": [path.as_posix() for path in workflow_paths],
         "results": results,
         "summary": {

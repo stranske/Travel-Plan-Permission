@@ -96,7 +96,7 @@ def test_build_runtime_report_marks_missing_and_non_langgraph_targets(tmp_path: 
     assert targets["tests/missing.py"]["file_exists"] is False
 
 
-def test_build_comment_report_formats_table(tmp_path: Path) -> None:
+def test_build_comment_report_formats_table() -> None:
     report = {
         "workflows": [".github/workflows/ci.yml"],
         "summary": {
