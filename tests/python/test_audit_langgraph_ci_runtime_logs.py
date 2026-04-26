@@ -1,0 +1,138 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from scripts.audit_langgraph_ci_runtime_logs import (  # noqa: E402
+    DEFAULT_REQUIRED_TARGETS,
+    build_comment_report,
+    build_runtime_log_report,
+    is_report_passing,
+)
+
+
+def test_build_runtime_log_report_marks_log_with_complete_langgraph_evidence(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "run.log"
+    log_path.write_text(
+        "\n".join(
+            [
+                "2026-04-20T08:11:31Z ##[group]Run LangGraph orchestration tests",
+                (
+                    "2026-04-20T08:11:32Z pytest tests/orchestration_graph_test.py "
+                    "tests/python/test_langgraph_orchestration.py "
+                    "tests/python/test_orchestration_smoke.py::test_policy_graph_langgraph_smoke "
+                    "tests/python/test_orchestration_smoke.py::"
+                    "test_policy_graph_prefers_langgraph_when_available -v"
+                ),
+                "2026-04-20T08:11:50Z tests/orchestration_graph_test.py PASSED",
+                "2026-04-20T08:11:51Z tests/python/test_langgraph_orchestration.py PASSED",
+                (
+                    "2026-04-20T08:11:53Z "
+                    "tests/python/test_orchestration_smoke.py::test_policy_graph_langgraph_smoke "
+                    "PASSED"
+                ),
+                (
+                    "2026-04-20T08:11:54Z "
+                    "tests/python/test_orchestration_smoke.py::"
+                    "test_policy_graph_prefers_langgraph_when_available PASSED"
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    report = build_runtime_log_report([log_path], required_targets=DEFAULT_REQUIRED_TARGETS)
+
+    assert report["summary"] == {
+        "total_logs": 1,
+        "logs_with_step_marker": 1,
+        "logs_with_command_targets": 1,
+        "logs_with_all_targets_passed": 1,
+    }
+    assert is_report_passing(report) is True
+
+
+def test_build_runtime_log_report_detects_missing_pass_target(tmp_path: Path) -> None:
+    log_path = tmp_path / "run.log"
+    log_path.write_text(
+        "\n".join(
+            [
+                "##[group]Run LangGraph orchestration tests",
+                (
+                    "pytest tests/orchestration_graph_test.py "
+                    "tests/python/test_langgraph_orchestration.py "
+                    "tests/python/test_orchestration_smoke.py::test_policy_graph_langgraph_smoke "
+                    "tests/python/test_orchestration_smoke.py::"
+                    "test_policy_graph_prefers_langgraph_when_available -v"
+                ),
+                "tests/orchestration_graph_test.py PASSED",
+                "tests/python/test_langgraph_orchestration.py PASSED",
+                (
+                    "tests/python/test_orchestration_smoke.py::test_policy_graph_langgraph_smoke "
+                    "PASSED"
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    report = build_runtime_log_report([log_path], required_targets=DEFAULT_REQUIRED_TARGETS)
+
+    assert report["summary"]["logs_with_all_targets_passed"] == 0
+    assert report["results"][0]["missing_pass_targets"] == [
+        "tests/python/test_orchestration_smoke.py::test_policy_graph_prefers_langgraph_when_available"
+    ]
+    assert is_report_passing(report) is False
+
+
+def test_build_comment_report_surfaces_evidence_and_missing_targets(tmp_path: Path) -> None:
+    good_log = tmp_path / "good.log"
+    bad_log = tmp_path / "bad.log"
+    good_log.write_text(
+        "\n".join(
+            [
+                "##[group]Run LangGraph orchestration tests",
+                (
+                    "pytest tests/orchestration_graph_test.py "
+                    "tests/python/test_langgraph_orchestration.py "
+                    "tests/python/test_orchestration_smoke.py::test_policy_graph_langgraph_smoke "
+                    "tests/python/test_orchestration_smoke.py::"
+                    "test_policy_graph_prefers_langgraph_when_available -v"
+                ),
+                "tests/orchestration_graph_test.py PASSED",
+                "tests/python/test_langgraph_orchestration.py PASSED",
+                (
+                    "tests/python/test_orchestration_smoke.py::test_policy_graph_langgraph_smoke "
+                    "PASSED"
+                ),
+                (
+                    "tests/python/test_orchestration_smoke.py::"
+                    "test_policy_graph_prefers_langgraph_when_available PASSED"
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    bad_log.write_text(
+        "\n".join(
+            [
+                "pytest tests/orchestration_graph_test.py -v",
+                "tests/orchestration_graph_test.py PASSED",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    report = build_runtime_log_report(
+        [good_log, bad_log],
+        required_targets=DEFAULT_REQUIRED_TARGETS,
+    )
+    comment = build_comment_report(report)
+
+    assert "LangGraph CI Runtime Log Audit" in comment
+    assert f"`{good_log.as_posix()}`" in comment
+    assert f"`{bad_log.as_posix()}`" in comment
+    assert "Step evidence:" in comment
+    assert "Missing command targets:" in comment
