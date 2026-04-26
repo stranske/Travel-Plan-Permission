@@ -1,0 +1,129 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from scripts.audit_langgraph_issue_disposition import (  # noqa: E402
+    build_comment_report,
+    build_disposition_report,
+    is_report_passing,
+    summarize_checkboxes,
+)
+
+
+def test_summarize_checkboxes_counts_checked_and_unchecked() -> None:
+    body = "\n".join(
+        [
+            "### Tasks",
+            "- [x] completed task",
+            "- [ ] pending task",
+            "not a task",
+        ]
+    )
+
+    summary = summarize_checkboxes(body)
+
+    assert summary.total == 2
+    assert summary.checked == 1
+    assert summary.unchecked_items == ("pending task",)
+
+
+def test_closed_issue_without_approval_is_flagged_as_premature() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "closed",
+        "body": "- [x] done\n- [ ] needs maintainer review",
+    }
+    comments: list[dict[str, object]] = []
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("maintainer-a",),
+        approval_regexes=(r"\bapprove(?:d)?\b",),
+    )
+
+    assert report["summary"]["prematurely_closed"] is True
+    assert is_report_passing(report) is False
+
+
+def test_open_issue_without_approval_is_allowed_to_remain_open() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "- [x] done\n- [ ] waiting on maintainer approval",
+    }
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=[],
+        maintainers=("maintainer-a",),
+        approval_regexes=(r"\bapprove(?:d)?\b",),
+    )
+
+    assert report["summary"]["prematurely_closed"] is False
+    assert report["summary"]["ready_to_close"] is False
+    assert is_report_passing(report) is True
+
+
+def test_ready_to_close_when_checkboxes_complete_and_maintainer_approves() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "- [x] task one\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "maintainer-a"},
+            "body": "I approve this disposition; safe to close.",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-1",
+        },
+        {
+            "user": {"login": "contributor-b"},
+            "body": "looks good",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-2",
+        },
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("maintainer-a",),
+        approval_regexes=(r"\bapprove(?:d)?\b", r"\blgtm\b"),
+    )
+
+    assert report["summary"]["maintainer_approved"] is True
+    assert report["summary"]["ready_to_close"] is True
+    assert len(report["approvals"]) == 1
+
+
+def test_comment_report_includes_needs_human_on_failure() -> None:
+    report = {
+        "issue": {
+            "number": 939,
+            "url": "https://example.invalid/939",
+            "state": "closed",
+        },
+        "summary": {
+            "total_checkboxes": 2,
+            "checked_checkboxes": 1,
+            "unchecked_checkboxes": 1,
+            "approval_comments": 0,
+            "maintainer_approved": False,
+            "ready_to_close": False,
+            "issue_open": False,
+            "prematurely_closed": True,
+            "passing": False,
+        },
+        "remaining_checkboxes": ["pending"],
+        "approvals": [],
+    }
+
+    comment = build_comment_report(report)
+
+    assert "LangGraph Issue Disposition Audit" in comment
+    assert "Needs human" in comment
+    assert "Issue was closed before completion" in comment
