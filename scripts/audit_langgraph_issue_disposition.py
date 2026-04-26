@@ -13,6 +13,11 @@ HEADING_PATTERN = re.compile(r"^\s{0,3}#{1,6}\s+(?P<title>.+?)\s*$")
 FENCE_PATTERN = re.compile(r"^\s*```")
 DEFAULT_APPROVAL_PATTERNS = (r"\bapprove(?:d)?\b", r"\blgtm\b")
 DEFAULT_TRUSTED_ASSOCIATIONS = ("COLLABORATOR", "MEMBER", "OWNER")
+NEGATED_APPROVAL_PATTERNS = (
+    re.compile(r"\b(?:do\s+not|don't|not|cannot|can't|no)\s+approve(?:d)?\b", re.IGNORECASE),
+    re.compile(r"\b(?:do\s+not|don't|not|no)\s+lgtm\b", re.IGNORECASE),
+    re.compile(r"\bwithhold(?:ing)?\s+approval\b", re.IGNORECASE),
+)
 
 
 @dataclass(frozen=True)
@@ -155,6 +160,8 @@ def _collect_approval_evidence(
         for pattern in approval_patterns:
             match = pattern.search(body)
             if match is None:
+                continue
+            if any(negative.search(body) for negative in NEGATED_APPROVAL_PATTERNS):
                 continue
             start = max(0, match.start() - 24)
             end = min(len(body), match.end() + 24)
