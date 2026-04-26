@@ -105,3 +105,12 @@ def test_collect_workflow_files_ignores_non_yaml(tmp_path: Path) -> None:
     files = collect_workflow_files(workflows)
 
     assert list(files) == ["ci.yml"]
+
+
+def test_ci_runs_langgraph_path_with_orchestration_extra() -> None:
+    ci_workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
+    content = ci_workflow.read_text(encoding="utf-8")
+
+    assert "LangGraph Orchestration Smoke" in content
+    assert 'pip install -e ".[orchestration,dev]"' in content
+    assert "pytest tests/orchestration_graph_test.py tests/python/test_langgraph_orchestration.py -v" in content
