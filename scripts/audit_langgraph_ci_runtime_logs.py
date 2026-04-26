@@ -15,6 +15,7 @@ DEFAULT_REQUIRED_TARGETS = (
     "tests/python/test_orchestration_smoke.py::test_policy_graph_langgraph_smoke",
     "tests/python/test_orchestration_smoke.py::test_policy_graph_prefers_langgraph_when_available",
 )
+ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
 
 
 @dataclass(frozen=True)
@@ -39,13 +40,32 @@ def _find_first_line_with_pattern(log_text: str, pattern: re.Pattern[str]) -> st
     return None
 
 
+def _clean_log_line(line: str) -> str:
+    return ANSI_ESCAPE_PATTERN.sub("", line).strip()
+
+
 def _collect_pytest_command_lines(log_text: str) -> list[str]:
-    command_lines: list[str] = []
+    command_blocks: list[str] = []
+    current_block: list[str] = []
     for line in log_text.splitlines():
-        trimmed = line.strip()
+        trimmed = _clean_log_line(line)
+        if "##[group]Run pytest" in trimmed:
+            if current_block:
+                command_blocks.append(" ".join(current_block))
+            current_block = [trimmed]
+            continue
+        if current_block:
+            if "shell:" in trimmed or "##[endgroup]" in trimmed:
+                command_blocks.append(" ".join(current_block))
+                current_block = []
+                continue
+            current_block.append(trimmed)
+            continue
         if "pytest " in trimmed or trimmed.startswith("pytest "):
-            command_lines.append(trimmed)
-    return command_lines
+            command_blocks.append(trimmed)
+    if current_block:
+        command_blocks.append(" ".join(current_block))
+    return command_blocks
 
 
 def _line_contains_target(line: str, target: str) -> bool:
@@ -53,7 +73,7 @@ def _line_contains_target(line: str, target: str) -> bool:
 
 
 def _find_pass_line(log_text: str, target: str) -> str | None:
-    pattern = re.compile(rf"{re.escape(target)}\s+PASSED\b")
+    pattern = re.compile(rf"{re.escape(target)}(?:::[^\s]+)?\s+PASSED\b")
     return _find_first_line_with_pattern(log_text, pattern)
 
 
@@ -65,11 +85,14 @@ def audit_runtime_log(
 
     log_text = log_path.read_text(encoding="utf-8")
     step_pattern = re.compile(re.escape(LANGGRAPH_TEST_STEP_NAME))
-    step_evidence = _find_first_line_with_pattern(log_text, step_pattern)
-    has_step_marker = step_evidence is not None
-
     command_lines = _collect_pytest_command_lines(log_text)
     command_evidence = command_lines[0] if command_lines else None
+    step_evidence = _find_first_line_with_pattern(log_text, step_pattern)
+    if step_evidence is None and command_evidence and "LangGraph Orchestration CI" in log_text:
+        step_evidence = _find_first_line_with_pattern(
+            log_text, re.compile(r"LangGraph Orchestration CI")
+        )
+    has_step_marker = step_evidence is not None
     missing_command_targets = tuple(
         target
         for target in required_targets
