@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 CHECKBOX_PATTERN = re.compile(r"^\s*[-*]\s*\[(?P<mark>[ xX])\]\s*(?P<text>.+?)\s*$")
+HEADING_PATTERN = re.compile(r"^\s{0,3}#{1,6}\s+(?P<title>.+?)\s*$")
+FENCE_PATTERN = re.compile(r"^\s*```")
 DEFAULT_APPROVAL_PATTERNS = (r"\bapprove(?:d)?\b", r"\blgtm\b")
 DEFAULT_TRUSTED_ASSOCIATIONS = ("COLLABORATOR", "MEMBER", "OWNER")
 
@@ -28,6 +30,56 @@ class ApprovalEvidence:
     snippet: str
 
 
+@dataclass(frozen=True)
+class SectionCheckboxSummary:
+    tasks: CheckboxSummary
+    acceptance: CheckboxSummary
+
+
+def _iter_relevant_checkboxes(
+    issue_body: str, *, section: str | None = None
+) -> tuple[tuple[str | None, str, bool], ...]:
+    rows: list[tuple[str | None, str, bool]] = []
+    in_fence = False
+    current_section: str | None = None
+
+    for raw_line in issue_body.splitlines():
+        line = raw_line.rstrip()
+        if FENCE_PATTERN.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+
+        heading_match = HEADING_PATTERN.match(line)
+        if heading_match is not None:
+            heading = heading_match.group("title").strip().lower()
+            if "acceptance criteria" in heading:
+                current_section = "acceptance"
+            elif "tasks" in heading:
+                current_section = "tasks"
+            else:
+                current_section = None
+            continue
+
+        checkbox_match = CHECKBOX_PATTERN.match(line)
+        if checkbox_match is None:
+            continue
+
+        if section is not None and current_section != section:
+            continue
+
+        rows.append(
+            (
+                current_section,
+                checkbox_match.group("text").strip(),
+                checkbox_match.group("mark").lower() == "x",
+            )
+        )
+
+    return tuple(rows)
+
+
 def _load_json(path: Path) -> object:
     if not path.exists():
         raise FileNotFoundError(f"JSON file not found: {path}")
@@ -37,19 +89,38 @@ def _load_json(path: Path) -> object:
 def summarize_checkboxes(issue_body: str) -> CheckboxSummary:
     checked = 0
     unchecked_items: list[str] = []
-    total = 0
+    rows = _iter_relevant_checkboxes(issue_body)
 
-    for line in issue_body.splitlines():
-        match = CHECKBOX_PATTERN.match(line)
-        if match is None:
-            continue
-        total += 1
-        if match.group("mark").lower() == "x":
+    for _, text, is_checked in rows:
+        if is_checked:
             checked += 1
         else:
-            unchecked_items.append(match.group("text").strip())
+            unchecked_items.append(text)
 
-    return CheckboxSummary(total=total, checked=checked, unchecked_items=tuple(unchecked_items))
+    return CheckboxSummary(total=len(rows), checked=checked, unchecked_items=tuple(unchecked_items))
+
+
+def summarize_gate_sections(issue_body: str) -> SectionCheckboxSummary:
+    task_rows = _iter_relevant_checkboxes(issue_body, section="tasks")
+    acceptance_rows = _iter_relevant_checkboxes(issue_body, section="acceptance")
+
+    task_checked = sum(1 for _, _, is_checked in task_rows if is_checked)
+    acceptance_checked = sum(1 for _, _, is_checked in acceptance_rows if is_checked)
+
+    return SectionCheckboxSummary(
+        tasks=CheckboxSummary(
+            total=len(task_rows),
+            checked=task_checked,
+            unchecked_items=tuple(text for _, text, is_checked in task_rows if not is_checked),
+        ),
+        acceptance=CheckboxSummary(
+            total=len(acceptance_rows),
+            checked=acceptance_checked,
+            unchecked_items=tuple(
+                text for _, text, is_checked in acceptance_rows if not is_checked
+            ),
+        ),
+    )
 
 
 def _collect_approval_evidence(
@@ -114,6 +185,7 @@ def build_disposition_report(
     body = str(issue_json.get("body") or "")
 
     checkbox_summary = summarize_checkboxes(body)
+    section_summary = summarize_gate_sections(body)
     compiled_regexes = tuple(re.compile(pattern, re.IGNORECASE) for pattern in approval_regexes)
     approvals = _collect_approval_evidence(
         comments_json,
@@ -121,9 +193,12 @@ def build_disposition_report(
         approval_patterns=compiled_regexes,
     )
 
-    tasks_complete = checkbox_summary.total > 0 and not checkbox_summary.unchecked_items
+    tasks_complete = section_summary.tasks.total > 0 and not section_summary.tasks.unchecked_items
+    acceptance_complete = (
+        section_summary.acceptance.total > 0 and not section_summary.acceptance.unchecked_items
+    )
     maintainer_approved = len(approvals) > 0
-    ready_to_close = tasks_complete and maintainer_approved
+    ready_to_close = tasks_complete and acceptance_complete and maintainer_approved
     issue_is_open = issue_state == "open"
     prematurely_closed = (not ready_to_close) and (not issue_is_open)
 
@@ -137,6 +212,12 @@ def build_disposition_report(
             "total_checkboxes": checkbox_summary.total,
             "checked_checkboxes": checkbox_summary.checked,
             "unchecked_checkboxes": checkbox_summary.total - checkbox_summary.checked,
+            "tasks_checkboxes_total": section_summary.tasks.total,
+            "tasks_checkboxes_checked": section_summary.tasks.checked,
+            "tasks_complete": tasks_complete,
+            "acceptance_checkboxes_total": section_summary.acceptance.total,
+            "acceptance_checkboxes_checked": section_summary.acceptance.checked,
+            "acceptance_complete": acceptance_complete,
             "approval_comments": len(approvals),
             "maintainer_approved": maintainer_approved,
             "ready_to_close": ready_to_close,
@@ -145,6 +226,8 @@ def build_disposition_report(
             "passing": not prematurely_closed,
         },
         "remaining_checkboxes": list(checkbox_summary.unchecked_items),
+        "remaining_tasks": list(section_summary.tasks.unchecked_items),
+        "remaining_acceptance": list(section_summary.acceptance.unchecked_items),
         "approvals": [
             {
                 "author": item.author,
@@ -170,6 +253,14 @@ def build_comment_report(report: dict[str, object]) -> str:
         f"- Issue: #{issue['number']} ({issue['url']})",
         f"- State: `{issue['state']}`",
         f"- Checkboxes complete: {summary['checked_checkboxes']}/{summary['total_checkboxes']}",
+        (
+            "- Tasks complete: "
+            + f"{summary['tasks_checkboxes_checked']}/{summary['tasks_checkboxes_total']}"
+        ),
+        (
+            "- Acceptance criteria complete: "
+            + f"{summary['acceptance_checkboxes_checked']}/{summary['acceptance_checkboxes_total']}"
+        ),
         f"- Maintainer approval comments: {summary['approval_comments']}",
         f"- Ready to close: {'YES' if summary['ready_to_close'] else 'NO'}",
         f"- Prematurely closed: {'YES' if summary['prematurely_closed'] else 'NO'}",
@@ -177,11 +268,23 @@ def build_comment_report(report: dict[str, object]) -> str:
         "| Gate | Status |",
         "|---|---|",
         (
-            "| Issue remains open until all checkboxes complete + maintainer approval | "
+            "| Issue remains open until Tasks + Acceptance Criteria are complete + maintainer approval | "
             + ("PASS" if summary["passing"] else "FAIL")
             + " |"
         ),
     ]
+
+    if report["remaining_tasks"]:
+        lines.append("")
+        lines.append("### Remaining tasks")
+        for item in report["remaining_tasks"]:
+            lines.append(f"- [ ] {item}")
+
+    if report["remaining_acceptance"]:
+        lines.append("")
+        lines.append("### Remaining acceptance criteria")
+        for item in report["remaining_acceptance"]:
+            lines.append(f"- [ ] {item}")
 
     if report["remaining_checkboxes"]:
         lines.append("")

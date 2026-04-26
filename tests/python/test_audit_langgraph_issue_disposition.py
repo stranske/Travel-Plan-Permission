@@ -8,6 +8,7 @@ from scripts.audit_langgraph_issue_disposition import (  # noqa: E402
     build_disposition_report,
     is_report_passing,
     summarize_checkboxes,
+    summarize_gate_sections,
 )
 
 
@@ -28,12 +29,34 @@ def test_summarize_checkboxes_counts_checked_and_unchecked() -> None:
     assert summary.unchecked_items == ("pending task",)
 
 
+def test_summarize_gate_sections_tracks_tasks_and_acceptance_independently() -> None:
+    body = "\n".join(
+        [
+            "## Tasks",
+            "- [x] completed task",
+            "- [ ] pending task",
+            "## Acceptance Criteria",
+            "- [x] accepted one",
+            "- [ ] accepted two",
+        ]
+    )
+
+    summary = summarize_gate_sections(body)
+
+    assert summary.tasks.total == 2
+    assert summary.tasks.checked == 1
+    assert summary.tasks.unchecked_items == ("pending task",)
+    assert summary.acceptance.total == 2
+    assert summary.acceptance.checked == 1
+    assert summary.acceptance.unchecked_items == ("accepted two",)
+
+
 def test_closed_issue_without_approval_is_flagged_as_premature() -> None:
     issue = {
         "number": 939,
         "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
         "state": "closed",
-        "body": "- [x] done\n- [ ] needs maintainer review",
+        "body": "## Tasks\n- [x] done\n## Acceptance Criteria\n- [ ] needs maintainer review",
     }
     comments: list[dict[str, object]] = []
 
@@ -53,7 +76,7 @@ def test_open_issue_without_approval_is_allowed_to_remain_open() -> None:
         "number": 939,
         "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
         "state": "open",
-        "body": "- [x] done\n- [ ] waiting on maintainer approval",
+        "body": "## Tasks\n- [x] done\n## Acceptance Criteria\n- [ ] waiting on maintainer approval",
     }
 
     report = build_disposition_report(
@@ -73,7 +96,7 @@ def test_ready_to_close_when_checkboxes_complete_and_maintainer_approves() -> No
         "number": 939,
         "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
         "state": "open",
-        "body": "- [x] task one\n- [x] task two",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
     }
     comments = [
         {
@@ -108,7 +131,7 @@ def test_approval_requires_trusted_association_when_maintainer_list_not_set() ->
         "number": 939,
         "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
         "state": "open",
-        "body": "- [x] task one\n- [x] task two",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
     }
     comments = [
         {
@@ -136,7 +159,7 @@ def test_member_approval_counts_without_explicit_maintainer_list() -> None:
         "number": 939,
         "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
         "state": "open",
-        "body": "- [x] task one\n- [x] task two",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
     }
     comments = [
         {
@@ -160,6 +183,33 @@ def test_member_approval_counts_without_explicit_maintainer_list() -> None:
     assert report["approvals"][0]["association"] == "OWNER"
 
 
+def test_ready_to_close_requires_acceptance_section_checkboxes() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "## Tasks\n- [x] task one\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "maintainer-a"},
+            "body": "Approved.",
+            "author_association": "MEMBER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("maintainer-a",),
+        approval_regexes=(r"\bapprove(?:d)?\b",),
+    )
+
+    assert report["summary"]["tasks_complete"] is True
+    assert report["summary"]["acceptance_complete"] is False
+    assert report["summary"]["ready_to_close"] is False
+
+
 def test_comment_report_includes_needs_human_on_failure() -> None:
     report = {
         "issue": {
@@ -171,6 +221,12 @@ def test_comment_report_includes_needs_human_on_failure() -> None:
             "total_checkboxes": 2,
             "checked_checkboxes": 1,
             "unchecked_checkboxes": 1,
+            "tasks_checkboxes_total": 1,
+            "tasks_checkboxes_checked": 1,
+            "tasks_complete": True,
+            "acceptance_checkboxes_total": 1,
+            "acceptance_checkboxes_checked": 0,
+            "acceptance_complete": False,
             "approval_comments": 0,
             "maintainer_approved": False,
             "ready_to_close": False,
@@ -179,6 +235,8 @@ def test_comment_report_includes_needs_human_on_failure() -> None:
             "passing": False,
         },
         "remaining_checkboxes": ["pending"],
+        "remaining_tasks": [],
+        "remaining_acceptance": ["pending"],
         "approvals": [],
     }
 
