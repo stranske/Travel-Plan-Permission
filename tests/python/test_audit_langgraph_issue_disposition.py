@@ -183,6 +183,62 @@ def test_member_approval_counts_without_explicit_maintainer_list() -> None:
     assert report["approvals"][0]["association"] == "OWNER"
 
 
+def test_bot_member_approval_does_not_count() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "workflow-bot[bot]", "type": "Bot"},
+            "body": "Approved.",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-5",
+            "author_association": "MEMBER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=(),
+        approval_regexes=(r"\bapprove(?:d)?\b",),
+    )
+
+    assert report["summary"]["maintainer_approved"] is False
+    assert report["summary"]["ready_to_close"] is False
+    assert report["approvals"] == []
+
+
+def test_bot_named_in_maintainer_list_does_not_count() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "ops-automation[bot]", "type": "Bot"},
+            "body": "I approve this.",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-6",
+            "author_association": "OWNER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("ops-automation[bot]",),
+        approval_regexes=(r"\bapprove(?:d)?\b",),
+    )
+
+    assert report["summary"]["maintainer_approved"] is False
+    assert report["summary"]["ready_to_close"] is False
+    assert report["approvals"] == []
+
+
 def test_ready_to_close_requires_acceptance_section_checkboxes() -> None:
     issue = {
         "number": 939,

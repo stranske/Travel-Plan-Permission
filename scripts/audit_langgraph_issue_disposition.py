@@ -140,6 +140,10 @@ def _collect_approval_evidence(
         author = str(user.get("login", "")).strip()
         if not author:
             continue
+        user_type = str(user.get("type", "")).strip().lower()
+        # Approval must come from a human maintainer, not an automation actor.
+        if user_type == "bot" or author.lower().endswith("[bot]"):
+            continue
         association = str(comment.get("author_association", "")).upper().strip()
         if maintainers_set:
             if author.lower() not in maintainers_set:
