@@ -34,14 +34,18 @@ class RuntimeLogAuditResult:
 
 
 def _find_first_line_with_pattern(log_text: str, pattern: re.Pattern[str]) -> str | None:
-    for line in log_text.splitlines():
+    for line in _clean_log_text(log_text).splitlines():
         if pattern.search(line):
             return line.strip()
     return None
 
 
+def _clean_log_text(log_text: str) -> str:
+    return ANSI_ESCAPE_PATTERN.sub("", log_text).replace("\ufeff", "")
+
+
 def _clean_log_line(line: str) -> str:
-    return ANSI_ESCAPE_PATTERN.sub("", line).strip()
+    return _clean_log_text(line).strip()
 
 
 def _collect_pytest_command_lines(log_text: str) -> list[str]:
@@ -74,7 +78,7 @@ def _line_contains_target(line: str, target: str) -> bool:
 
 def _find_pass_line(log_text: str, target: str) -> str | None:
     pattern = re.compile(rf"{re.escape(target)}(?:::[^\s]+)?\s+PASSED\b")
-    return _find_first_line_with_pattern(log_text, pattern)
+    return _find_first_line_with_pattern(_clean_log_text(log_text), pattern)
 
 
 def audit_runtime_log(
@@ -93,16 +97,17 @@ def audit_runtime_log(
             log_text, re.compile(r"LangGraph Orchestration CI")
         )
     has_step_marker = step_evidence is not None
-    missing_command_targets = tuple(
+    command_targets = tuple(
         target
         for target in required_targets
-        if not any(_line_contains_target(line, target) for line in command_lines)
+        if any(_line_contains_target(line, target) for line in command_lines)
     )
-    command_includes_targets = not missing_command_targets
+    missing_command_targets = () if command_targets else tuple(required_targets)
+    command_includes_targets = bool(command_targets)
 
     pass_evidence = {}
     missing_pass_targets: list[str] = []
-    for target in required_targets:
+    for target in command_targets:
         evidence = _find_pass_line(log_text, target)
         if evidence is None:
             missing_pass_targets.append(target)
