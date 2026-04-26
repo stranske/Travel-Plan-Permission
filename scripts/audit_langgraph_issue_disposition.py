@@ -156,7 +156,7 @@ def _collect_approval_evidence(
         elif association not in trusted_associations:
             continue
 
-        body = str(comment.get("body", ""))
+        body = _extract_human_comment_text(str(comment.get("body", "")))
         for pattern in approval_patterns:
             match = pattern.search(body)
             if match is None:
@@ -181,6 +181,26 @@ def _collect_approval_evidence(
             break
 
     return tuple(evidence)
+
+
+def _extract_human_comment_text(body: str) -> str:
+    """Drop quoted and fenced content so approval checks only inspect direct comment text."""
+
+    in_fence = False
+    kept_lines: list[str] = []
+
+    for raw_line in body.splitlines():
+        line = raw_line.rstrip()
+        if FENCE_PATTERN.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if line.lstrip().startswith(">"):
+            continue
+        kept_lines.append(line)
+
+    return "\n".join(kept_lines)
 
 
 def build_disposition_report(
