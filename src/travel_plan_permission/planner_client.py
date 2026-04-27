@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -14,6 +15,7 @@ from .policy_api import (
 )
 
 JsonPayload = dict[str, object]
+Sleeper = Callable[[float], None]
 
 
 @dataclass(frozen=True)
@@ -117,6 +119,7 @@ class TravelPlanPermissionClient:
         token: str,
         timeout: float = 10.0,
         transport: Transport = urllib_transport,
+        sleeper: Sleeper = time.sleep,
     ) -> None:
         if not base_url:
             raise ValueError("base_url is required")
@@ -125,6 +128,7 @@ class TravelPlanPermissionClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self._transport = transport
+        self._sleeper = sleeper
         self._headers = {"Authorization": f"Bearer {token}"}
 
     def submit_proposal(
@@ -185,7 +189,7 @@ class TravelPlanPermissionClient:
         if max_attempts < 1:
             raise ValueError("max_attempts must be at least 1")
         last_response: PlannerProposalOperationResponse | None = None
-        for _ in range(max_attempts):
+        for attempt in range(max_attempts):
             last_response = self.poll_status(
                 proposal_id=proposal_id,
                 execution_id=execution_id,
@@ -195,6 +199,10 @@ class TravelPlanPermissionClient:
                 return last_response
             if last_response.submission_status in {"succeeded", "failed", "unavailable"}:
                 return last_response
+            if attempt < max_attempts - 1 and execution_status is not None:
+                poll_after_seconds = execution_status.poll_after_seconds
+                if poll_after_seconds is not None and poll_after_seconds > 0:
+                    self._sleeper(poll_after_seconds)
         raise PlannerPollingTimeout(
             "proposal status polling did not reach a terminal state",
             attempts=max_attempts,

@@ -577,8 +577,8 @@ evaluation = client.fetch_evaluation_result(execution_id=execution_id)
 ```
 
 The same client is used by `tpp-planner-smoke`, which reads `TPP_BASE_URL`,
-`TPP_AUTH_MODE`, `TPP_ACCESS_TOKEN`, and `TPP_BOOTSTRAP_SIGNING_SECRET` for
-local deterministic smoke runs.
+`TPP_AUTH_MODE`, `TPP_OIDC_PROVIDER`, `TPP_ACCESS_TOKEN`, and
+`TPP_BOOTSTRAP_SIGNING_SECRET` for local deterministic smoke runs.
 
 ### get_evaluation_result
 

@@ -60,7 +60,8 @@ need the operational proposal lifecycle:
 The client uses `TPP_BASE_URL` and a bearer token from either
 `TPP_ACCESS_TOKEN` (`TPP_AUTH_MODE=static-token`) or a bootstrap token minted
 from `TPP_BOOTSTRAP_SIGNING_SECRET` (`TPP_AUTH_MODE=bootstrap-token`) when wired
-through `tpp-planner-smoke`.
+through `tpp-planner-smoke`. `PlannerAuthConfig.from_env` also requires
+`TPP_OIDC_PROVIDER`, including when `TPP_AUTH_MODE=static-token`.
 
 ## Transport Authentication
 

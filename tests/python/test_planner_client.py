@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -75,7 +76,19 @@ def _json_response(payload: object, *, status_code: int = 200) -> PlannerJsonRes
     )
 
 
-def _client(transport: ScriptedTransport) -> TravelPlanPermissionClient:
+def _client(
+    transport: ScriptedTransport,
+    *,
+    sleeper: Callable[[float], None] | None = None,
+) -> TravelPlanPermissionClient:
+    if sleeper is not None:
+        return TravelPlanPermissionClient(
+            base_url="https://tpp.example.test/",
+            token="planner-token",
+            timeout=2.5,
+            transport=transport,
+            sleeper=sleeper,
+        )
     return TravelPlanPermissionClient(
         base_url="https://tpp.example.test/",
         token="planner-token",
@@ -124,7 +137,8 @@ def test_polling_returns_terminal_response_without_dropping_body() -> None:
             _json_response(terminal_payload),
         ]
     )
-    client = _client(transport)
+    sleep_calls: list[float] = []
+    client = _client(transport, sleeper=sleep_calls.append)
 
     result = client.wait_for_terminal_status(
         proposal_id="proposal-123",
@@ -137,6 +151,7 @@ def test_polling_returns_terminal_response_without_dropping_body() -> None:
     assert result.execution_status.terminal is True
     assert result.result_payload["raw_response"] == {"provider_status": "failed"}
     assert [call[0] for call in transport.calls] == ["GET", "GET"]
+    assert sleep_calls == [1]
 
 
 def test_polling_timeout_preserves_last_nonterminal_response() -> None:
@@ -146,7 +161,8 @@ def test_polling_timeout_preserves_last_nonterminal_response() -> None:
             _json_response(_operation_payload(execution_state="running")),
         ]
     )
-    client = _client(transport)
+    sleep_calls: list[float] = []
+    client = _client(transport, sleeper=sleep_calls.append)
 
     with pytest.raises(PlannerPollingTimeout) as exc_info:
         client.wait_for_terminal_status(
@@ -160,6 +176,7 @@ def test_polling_timeout_preserves_last_nonterminal_response() -> None:
     assert exc_info.value.last_response is not None
     assert exc_info.value.last_response.execution_status is not None
     assert exc_info.value.last_response.execution_status.state == "running"
+    assert sleep_calls == [1]
 
 
 def test_http_errors_are_structured_and_retryable_only_when_safe() -> None:
