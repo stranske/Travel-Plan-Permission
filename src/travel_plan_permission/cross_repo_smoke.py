@@ -24,6 +24,9 @@ _FIXTURE_ROOT: Traversable = resources.files("travel_plan_permission").joinpath(
     "fixtures", "planner_integration"
 )
 _TRIP_PLANNER_ROOT_ENV = "TRIP_PLANNER_REPO"
+_TRIP_PLANNER_PROPOSAL_FIXTURE = Path(
+    "tests/fixtures/integrations/tpp/proposal_submit_deferred.json"
+)
 _AUTH_HEADER = {"Authorization": "Bearer cross-repo-smoke-token"}
 _RUNTIME_ENV = {
     "TPP_BASE_URL": "http://testserver",
@@ -34,8 +37,9 @@ _RUNTIME_ENV = {
 _TRIP_PLANNER_REQUIRED_FILES = (
     Path("docs/contracts/tpp-proposal-execution.md"),
     Path("docs/contracts/tpp-execution-contracts.md"),
-    Path("tests/fixtures/integrations/tpp/proposal_submit_deferred.json"),
+    _TRIP_PLANNER_PROPOSAL_FIXTURE,
 )
+_DEFAULT_PROPOSAL_VERSION = "proposal-v1"
 
 
 class CrossRepoSmokeError(RuntimeError):
@@ -95,6 +99,22 @@ def _load_packaged_fixture(name: str) -> dict[str, object]:
     return _load_json(_FIXTURE_ROOT / name)
 
 
+def _object_field(payload: dict[str, object], field: str, *, context: str) -> dict[str, object]:
+    value = payload.get(field)
+    if not isinstance(value, dict):
+        raise CrossRepoSmokeError(f"{context} must include an object field: {field}.")
+    if any(not isinstance(key, str) for key in value):
+        raise CrossRepoSmokeError(f"{context}.{field} must use string keys.")
+    return dict(value)
+
+
+def _string_field(payload: dict[str, object], field: str, *, context: str) -> str:
+    value = payload.get(field)
+    if not isinstance(value, str) or not value:
+        raise CrossRepoSmokeError(f"{context} must include a non-empty string field: {field}.")
+    return value
+
+
 def _resolve_trip_planner_root(configured_root: str | None) -> Path:
     root = configured_root or os.getenv(_TRIP_PLANNER_ROOT_ENV)
     if root is None:
@@ -108,36 +128,43 @@ def _resolve_trip_planner_root(configured_root: str | None) -> Path:
     return resolved
 
 
-def _load_trip_planner_submission_request(trip_planner_root: Path) -> dict[str, object]:
+def _load_trip_planner_proposal_fixture(
+    trip_planner_root: Path,
+) -> tuple[dict[str, object], dict[str, object]]:
+    fixture = _load_json(trip_planner_root / _TRIP_PLANNER_PROPOSAL_FIXTURE)
+    request_payload = _object_field(
+        fixture,
+        "request",
+        context="trip-planner proposal fixture",
+    )
+    response_payload = _object_field(
+        fixture,
+        "response",
+        context="trip-planner proposal fixture",
+    )
+    if request_payload.get("operation") != "submit_proposal":
+        raise CrossRepoSmokeError("trip-planner proposal fixture must submit a proposal.")
+    if response_payload.get("operation") != "submit_proposal":
+        raise CrossRepoSmokeError("trip-planner proposal fixture response must submit a proposal.")
+    result_payload = _object_field(
+        response_payload,
+        "result_payload",
+        context="trip-planner proposal fixture response",
+    )
+    _string_field(result_payload, "execution_id", context="trip-planner proposal result payload")
+    return request_payload, response_payload
+
+
+def _validate_trip_planner_contracts(
+    trip_planner_root: Path,
+) -> tuple[dict[str, object], dict[str, object]]:
     proposal_doc = (trip_planner_root / "docs/contracts/tpp-proposal-execution.md").read_text(
         encoding="utf-8"
     )
     execution_doc = (trip_planner_root / "docs/contracts/tpp-execution-contracts.md").read_text(
         encoding="utf-8"
     )
-    fixture = _load_json(
-        trip_planner_root / "tests/fixtures/integrations/tpp/proposal_submit_deferred.json"
-    )
-    request_payload = fixture.get("request")
-    response_payload = fixture.get("response")
-    if (
-        not isinstance(request_payload, dict)
-        or request_payload.get("operation") != "submit_proposal"
-    ):
-        raise CrossRepoSmokeError("trip-planner proposal fixture must submit a proposal.")
-    if not isinstance(response_payload, dict):
-        raise CrossRepoSmokeError("trip-planner proposal fixture must include a response object.")
-    result_payload = response_payload.get("result_payload")
-    if not isinstance(result_payload, dict) or not result_payload.get("execution_id"):
-        raise CrossRepoSmokeError("trip-planner proposal fixture must persist a TPP execution_id.")
-    request_payload_detail = request_payload.get("payload")
-    proposal_id = request_payload.get("proposal_id")
-    if not isinstance(proposal_id, str) or not proposal_id:
-        raise CrossRepoSmokeError("trip-planner proposal fixture must include a proposal_id.")
-    if not isinstance(request_payload_detail, dict):
-        raise CrossRepoSmokeError("trip-planner proposal fixture must include a payload object.")
-    if request_payload_detail.get("proposal_ref") != proposal_id:
-        raise CrossRepoSmokeError("trip-planner proposal fixture payload must echo proposal_id.")
+    request_payload, response_payload = _load_trip_planner_proposal_fixture(trip_planner_root)
     required_doc_phrases = (
         "Persist the returned `ProposalSubmissionRecord`",
         "status polling",
@@ -150,7 +177,80 @@ def _load_trip_planner_submission_request(trip_planner_root: Path) -> dict[str, 
             "trip-planner TPP docs are missing required contract language: "
             + ", ".join(missing_phrases)
         )
-    return request_payload
+    return request_payload, response_payload
+
+
+def _proposal_request_from_trip_planner_fixture(
+    request_payload: dict[str, object],
+) -> dict[str, object]:
+    trip_id = _string_field(request_payload, "trip_id", context="trip-planner proposal request")
+    proposal_id = _string_field(
+        request_payload,
+        "proposal_id",
+        context="trip-planner proposal request",
+    )
+    payload = _object_field(request_payload, "payload", context="trip-planner proposal request")
+    proposal_version = request_payload.get("proposal_version")
+    if not isinstance(proposal_version, str) or not proposal_version:
+        # The current trip-planner fixture predates proposal_version; keep only that
+        # compatibility default while deriving the rest of the envelope from trip-planner.
+        proposal_version = _DEFAULT_PROPOSAL_VERSION
+    proposal_request: dict[str, object] = {
+        "trip_id": trip_id,
+        "proposal_id": proposal_id,
+        "proposal_version": proposal_version,
+        "payload": payload,
+    }
+    for optional_field in (
+        "request_id",
+        "correlation_id",
+        "transport_pattern",
+        "organization_id",
+        "submitted_at",
+    ):
+        value = request_payload.get(optional_field)
+        if value is not None:
+            proposal_request[optional_field] = value
+    return proposal_request
+
+
+def _assert_submit_echoes_planner_fixture(
+    *,
+    submit_contract: PlannerProposalOperationResponse,
+    proposal_request: dict[str, object],
+    response_payload: dict[str, object],
+) -> None:
+    if submit_contract.operation != response_payload.get("operation"):
+        raise CrossRepoSmokeError("Proposal submission did not echo the planner operation.")
+    if submit_contract.transport_pattern != proposal_request.get("transport_pattern", "deferred"):
+        raise CrossRepoSmokeError("Proposal submission did not preserve transport_pattern.")
+    for field in ("trip_id", "proposal_id", "proposal_version"):
+        if submit_contract.result_payload.get(field) != proposal_request[field]:
+            raise CrossRepoSmokeError(f"Proposal submission did not echo {field}.")
+
+
+def _assert_status_contract(
+    *,
+    status_contract: PlannerProposalOperationResponse,
+    execution_id: str,
+) -> None:
+    if status_contract.operation != "poll_execution_status":
+        raise CrossRepoSmokeError("Reloaded status returned the wrong operation.")
+    if status_contract.submission_status != "pending":
+        raise CrossRepoSmokeError("Reloaded status did not preserve pending submission state.")
+    if status_contract.result_payload.get("execution_id") != execution_id:
+        raise CrossRepoSmokeError("Reloaded status returned the wrong execution_id.")
+    execution_status = status_contract.execution_status
+    if execution_status is None:
+        raise CrossRepoSmokeError("Reloaded status did not include execution_status.")
+    if execution_status.state != "deferred":
+        raise CrossRepoSmokeError("Reloaded status did not preserve deferred execution state.")
+    if execution_status.terminal is not False:
+        raise CrossRepoSmokeError("Reloaded deferred execution status must remain non-terminal.")
+    if execution_status.poll_after_seconds is None or execution_status.poll_after_seconds <= 0:
+        raise CrossRepoSmokeError(
+            "Reloaded deferred execution status must include positive poll_after_seconds."
+        )
 
 
 @contextmanager
@@ -211,26 +311,13 @@ def run_cross_repo_smoke(
 ) -> CrossRepoSmokeResult:
     """Run the deterministic cross-repo smoke against a reloadable local TPP store."""
 
-    trip_planner_request = _load_trip_planner_submission_request(trip_planner_root)
+    request_payload, response_payload = _validate_trip_planner_contracts(trip_planner_root)
     trip_plan = _load_packaged_fixture("proposal_submission.json")
     snapshot_request = _load_packaged_fixture("policy_snapshot_request.json")
-    trip_id = trip_plan.get("trip_id")
-    if not isinstance(trip_id, str) or not trip_id:
-        raise CrossRepoSmokeError("TPP proposal fixture must include a trip_id.")
-    request_proposal_id = trip_planner_request.get("proposal_id")
-    request_payload = trip_planner_request.get("payload")
-    request_id = trip_planner_request.get("request_id")
-    proposal_request: dict[str, object] = {
-        "trip_id": trip_id,
-        "proposal_id": request_proposal_id,
-        "proposal_version": trip_planner_request.get("proposal_version", "proposal-v1"),
-        "payload": request_payload,
-    }
-    for optional_key in ("correlation_id", "transport_pattern", "organization_id", "submitted_at"):
-        if optional_key in trip_planner_request:
-            proposal_request[optional_key] = trip_planner_request[optional_key]
-    if isinstance(request_id, str):
-        proposal_request["request_id"] = request_id
+    proposal_request = _proposal_request_from_trip_planner_fixture(request_payload)
+    trip_id = _string_field(proposal_request, "trip_id", context="planner proposal request")
+    trip_plan["trip_id"] = trip_id
+    snapshot_request["trip_id"] = trip_id
 
     with _planner_runtime_env():
         first_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
@@ -249,6 +336,11 @@ def run_cross_repo_smoke(
         )
         submit_payload = _expect_object(submit, step="proposal submission")
         submit_contract = PlannerProposalOperationResponse.model_validate(submit_payload)
+        _assert_submit_echoes_planner_fixture(
+            submit_contract=submit_contract,
+            proposal_request=proposal_request,
+            response_payload=response_payload,
+        )
         result_payload = submit_contract.result_payload
         proposal_id = result_payload.get("proposal_id")
         execution_id = result_payload.get("execution_id")
@@ -256,8 +348,6 @@ def run_cross_repo_smoke(
             raise CrossRepoSmokeError("Proposal submission did not return a proposal_id.")
         if not isinstance(execution_id, str) or not execution_id:
             raise CrossRepoSmokeError("Proposal submission did not return an execution_id.")
-        if proposal_id != request_proposal_id:
-            raise CrossRepoSmokeError("Proposal submission did not echo trip-planner proposal_id.")
 
         _assert_state_file_reloads(
             state_path=state_path,
@@ -273,28 +363,7 @@ def run_cross_repo_smoke(
         )
         status_payload = _expect_object(status_response, step="proposal status reload")
         status_contract = PlannerProposalOperationResponse.model_validate(status_payload)
-        if status_contract.operation != "poll_execution_status":
-            raise CrossRepoSmokeError(
-                "Reloaded status returned the wrong operation for execution polling."
-            )
-        if status_contract.result_payload.get("execution_id") != execution_id:
-            raise CrossRepoSmokeError("Reloaded status returned the wrong execution_id.")
-        if status_contract.submission_status != "pending":
-            raise CrossRepoSmokeError(
-                "Reloaded status did not preserve the pending submission status."
-            )
-        execution_status = status_contract.execution_status
-        if execution_status is None:
-            raise CrossRepoSmokeError("Reloaded status did not include execution_status.")
-        if execution_status.state != "deferred":
-            raise CrossRepoSmokeError("Reloaded status did not preserve deferred execution state.")
-        if execution_status.terminal is not False:
-            raise CrossRepoSmokeError("Reloaded deferred execution status must be non-terminal.")
-        poll_after_seconds = execution_status.poll_after_seconds
-        if poll_after_seconds is None or poll_after_seconds <= 0:
-            raise CrossRepoSmokeError(
-                "Reloaded deferred execution status must include a positive poll_after_seconds."
-            )
+        _assert_status_contract(status_contract=status_contract, execution_id=execution_id)
 
         evaluation_response = second_client.get(
             f"/api/planner/executions/{execution_id}/evaluation-result",
