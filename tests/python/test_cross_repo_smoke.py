@@ -35,8 +35,17 @@ def _write_trip_planner_contracts(root: Path) -> None:
             {
                 "request": {
                     "operation": "submit_proposal",
+                    "request_id": "req-submit-test",
+                    "correlation_id": {
+                        "value": "corr-submit-test",
+                        "issued_by": "trip-planner",
+                    },
                     "transport_pattern": "deferred",
-                    "payload": {"proposal_id": "proposal-123"},
+                    "organization_id": "org-test",
+                    "proposal_id": "planner-proposal-789",
+                    "proposal_version": "planner-v2",
+                    "submitted_at": "2026-04-03T00:41:00Z",
+                    "payload": {"proposal_ref": "planner-proposal-789"},
                 },
                 "response": {
                     "operation": "submit_proposal",
@@ -59,7 +68,7 @@ def test_cross_repo_smoke_proves_submission_status_evaluation_and_reload(tmp_pat
         state_path=state_path,
     )
 
-    assert result.proposal_id == "proposal-123"
+    assert result.proposal_id == "planner-proposal-789"
     assert result.execution_id
     assert result.outcome in {"compliant", "non_compliant", "exception_required"}
     persisted = json.loads(state_path.read_text(encoding="utf-8"))
