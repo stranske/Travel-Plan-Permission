@@ -846,6 +846,40 @@ def test_approved_for_investigation_does_not_count() -> None:
     assert report["approvals"] == []
 
 
+def test_approval_with_not_ready_to_close_does_not_count() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "maintainer-a"},
+            "body": "Looks good to me, but this is not ready to close yet.",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-32",
+            "author_association": "MEMBER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("maintainer-a",),
+        approval_regexes=(
+            r"\bapprove(?:d)?\b",
+            r"\blgtm\b",
+            r"\blooks\s+good\s+to\s+me\b",
+            r"\bship\s+it\b",
+            r"\b(?:has|have)\s+my\s+approval\b",
+        ),
+    )
+
+    assert report["summary"]["maintainer_approved"] is False
+    assert report["summary"]["ready_to_close"] is False
+    assert report["approvals"] == []
+
+
 def test_ready_to_close_requires_acceptance_section_checkboxes() -> None:
     issue = {
         "number": 939,

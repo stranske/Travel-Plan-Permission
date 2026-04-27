@@ -75,6 +75,22 @@ NEGATED_APPROVAL_PATTERNS = (
         ),
         re.IGNORECASE,
     ),
+    re.compile(
+        (
+            r"\b(?:approve(?:d)?|lgtm|looks\s+good\s+to\s+me|ship\s+it|"
+            r"(?:has|have)\s+my\s+approval)\b[^\n]{0,80}"
+            r"\b(?:not|isn't|is\s+not)\s+ready\s+to\s+close\b"
+        ),
+        re.IGNORECASE,
+    ),
+    re.compile(
+        (
+            r"\b(?:approve(?:d)?|lgtm|looks\s+good\s+to\s+me|ship\s+it|"
+            r"(?:has|have)\s+my\s+approval)\b[^\n]{0,80}"
+            r"\b(?:do\s+not|don't|cannot|can't)\s+close\b"
+        ),
+        re.IGNORECASE,
+    ),
 )
 
 CLOSURE_CONTEXT_PATTERN = re.compile(
