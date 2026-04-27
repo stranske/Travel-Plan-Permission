@@ -59,6 +59,22 @@ NEGATED_APPROVAL_PATTERNS = (
     re.compile(
         r"\b(?:need|needs|pending|request(?:ed|ing)?)\s+(?:my\s+)?approval\b", re.IGNORECASE
     ),
+    re.compile(
+        (
+            r"\b(?:approve(?:d)?|lgtm|looks\s+good\s+to\s+me|ship\s+it|"
+            r"(?:has|have)\s+my\s+approval)\b[^\n]{0,80}"
+            r"\b(?:keep|remain|stays?)\s+(?:this\s+)?issue\s+open\b"
+        ),
+        re.IGNORECASE,
+    ),
+    re.compile(
+        (
+            r"\b(?:approve(?:d)?|lgtm|looks\s+good\s+to\s+me|ship\s+it|"
+            r"(?:has|have)\s+my\s+approval)\b[^\n]{0,80}"
+            r"\b(?:continue|continuing)\s+(?:to\s+)?(?:investigat(?:e|ing)|triage|debug)\b"
+        ),
+        re.IGNORECASE,
+    ),
 )
 
 
