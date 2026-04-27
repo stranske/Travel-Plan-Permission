@@ -42,6 +42,7 @@ from .security import (
 
 PolicyIssueSeverity = Literal["info", "warning", "error"]
 PolicyCheckStatus = Literal["pass", "fail"]
+BusinessPolicyEffect = Literal["none", "soft_penalty", "hard_block"]
 ReconciliationStatus = Literal["under_budget", "on_budget", "over_budget"]
 PolicySnapshotFreshness = Literal["current", "stale", "invalidated"]
 PlannerOperationType = Literal[
@@ -68,6 +69,8 @@ PlannerExecutionState = Literal[
 PolicyIssueContextValue = str | int | float | bool | None
 _PLANNER_POLICY_CONTRACT_VERSION = "2026-04-11"
 _PLANNER_POLICY_TTL = timedelta(hours=24)
+_BUSINESS_POLICY_BASE_SCORE = 100
+_BUSINESS_POLICY_SOFT_PENALTY = 10
 _DOCUMENTATION_RULE_IDS = frozenset(
     {"fare_evidence", "hotel_comparison", "third_party_paid"}
 )
@@ -75,6 +78,7 @@ _DOCUMENTATION_RULE_IDS = frozenset(
 __all__ = [
     "PolicyIssueSeverity",
     "PolicyCheckStatus",
+    "BusinessPolicyEffect",
     "PolicySnapshotFreshness",
     "PlannerOperationType",
     "PlannerProposalStatus",
@@ -84,6 +88,7 @@ __all__ = [
     "ReconciliationStatus",
     "PolicyIssue",
     "PolicyCheckResult",
+    "BusinessPolicyScore",
     "PlannerPolicySnapshotRequest",
     "PlannerPolicyRequirement",
     "PlannerApprovalTrigger",
@@ -130,6 +135,35 @@ class PolicyIssue(BaseModel):
     )
 
 
+class BusinessPolicyScore(BaseModel):
+    """Business-mode preference score effects from policy results."""
+
+    base_preference_score: int = Field(
+        default=_BUSINESS_POLICY_BASE_SCORE,
+        ge=0,
+        le=100,
+        description="Preference score before business policy effects",
+    )
+    final_preference_score: int = Field(
+        ..., ge=0, le=100, description="Preference score after policy effects"
+    )
+    hard_blocked: bool = Field(
+        ..., description="Whether a hard policy constraint capped the score at zero"
+    )
+    hard_block_codes: list[str] = Field(
+        default_factory=list, description="Hard policy rules that cannot be outweighed"
+    )
+    soft_penalty_points: int = Field(
+        default=0, ge=0, description="Total additive penalty from advisory rules"
+    )
+    soft_penalty_codes: list[str] = Field(
+        default_factory=list, description="Advisory rules that reduced the score"
+    )
+    explanation: str = Field(
+        ..., description="Human-readable scoring semantics for callers"
+    )
+
+
 class PolicyCheckResult(BaseModel):
     """Aggregated policy check results for a trip plan."""
 
@@ -139,6 +173,16 @@ class PolicyCheckResult(BaseModel):
     )
     policy_version: str = Field(
         ..., description="Deterministic policy version identifier"
+    )
+    business_policy_score: BusinessPolicyScore = Field(
+        default_factory=lambda: BusinessPolicyScore(
+            final_preference_score=_BUSINESS_POLICY_BASE_SCORE,
+            hard_blocked=False,
+            explanation="No business-policy constraint changed the preference score.",
+        ),
+        description=(
+            "Business-mode score explanation showing hard blocks and soft preference penalties"
+        ),
     )
 
 
@@ -806,12 +850,82 @@ def _issue_severity(result: PolicyResult) -> PolicyIssueSeverity:
     return "info"
 
 
+def _policy_effect(result: PolicyResult) -> BusinessPolicyEffect:
+    if result.passed:
+        return "none"
+    if result.severity == Severity.BLOCKING:
+        return "hard_block"
+    if result.severity == Severity.ADVISORY:
+        return "soft_penalty"
+    return "none"
+
+
 def _issue_from_result(result: PolicyResult) -> PolicyIssue:
+    effect = _policy_effect(result)
+    context: dict[str, PolicyIssueContextValue] = {
+        "rule_id": result.rule_id,
+        "severity": result.severity,
+        "policy_effect": effect,
+    }
+    if effect == "hard_block":
+        context.update(
+            {
+                "preference_score_cap": 0,
+                "can_be_outweighed_by_preference": False,
+            }
+        )
+    elif effect == "soft_penalty":
+        context.update(
+            {
+                "score_delta": -_BUSINESS_POLICY_SOFT_PENALTY,
+                "can_be_outweighed_by_preference": True,
+            }
+        )
     return PolicyIssue(
         code=result.rule_id,
         message=result.message,
         severity=_issue_severity(result),
-        context={"rule_id": result.rule_id, "severity": result.severity},
+        context=context,
+    )
+
+
+def _business_policy_score(results: Sequence[PolicyResult]) -> BusinessPolicyScore:
+    hard_block_codes = [
+        result.rule_id
+        for result in results
+        if not result.passed and result.severity == Severity.BLOCKING
+    ]
+    soft_penalty_codes = [
+        result.rule_id
+        for result in results
+        if not result.passed and result.severity == Severity.ADVISORY
+    ]
+    soft_penalty_points = len(soft_penalty_codes) * _BUSINESS_POLICY_SOFT_PENALTY
+    hard_blocked = bool(hard_block_codes)
+    final_score = (
+        0
+        if hard_blocked
+        else max(0, _BUSINESS_POLICY_BASE_SCORE - soft_penalty_points)
+    )
+    if hard_blocked:
+        explanation = (
+            "Hard business-policy constraints cap the preference score at 0; "
+            "traveler preference cannot outweigh them."
+        )
+    elif soft_penalty_codes:
+        explanation = (
+            "Soft business-policy constraints subtract "
+            f"{_BUSINESS_POLICY_SOFT_PENALTY} points each from the preference score."
+        )
+    else:
+        explanation = "No business-policy constraint changed the preference score."
+    return BusinessPolicyScore(
+        final_preference_score=final_score,
+        hard_blocked=hard_blocked,
+        hard_block_codes=hard_block_codes,
+        soft_penalty_points=soft_penalty_points,
+        soft_penalty_codes=soft_penalty_codes,
+        explanation=explanation,
     )
 
 
@@ -1505,7 +1619,10 @@ def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
     )
     status: PolicyCheckStatus = "fail" if has_blocking else "pass"
     return PolicyCheckResult(
-        status=status, issues=issues, policy_version=_policy_version(engine)
+        status=status,
+        issues=issues,
+        policy_version=_policy_version(engine),
+        business_policy_score=_business_policy_score(results),
     )
 
 

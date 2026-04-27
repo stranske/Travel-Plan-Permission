@@ -90,6 +90,29 @@ def matching_receipts() -> list[Receipt]:
     ]
 
 
+class StaticPolicyRule(PolicyRule):
+    """Small test rule for deterministic scoring assertions."""
+
+    def __init__(
+        self, rule_id: str, severity: str, *, passed: bool, message: str
+    ) -> None:
+        super().__init__(severity)
+        self.rule_id = rule_id
+        self._passed = passed
+        self._message = message
+
+    def evaluate(self, _context: PolicyContext) -> PolicyResult:
+        return PolicyResult(
+            rule_id=self.rule_id,
+            severity=self.severity,
+            passed=self._passed,
+            message=self._message,
+        )
+
+    def message(self) -> str:
+        return self._message
+
+
 def test_check_trip_plan_reports_policy_issues(trip_plan: TripPlan) -> None:
     result = check_trip_plan(trip_plan)
 
@@ -99,6 +122,112 @@ def test_check_trip_plan_reports_policy_issues(trip_plan: TripPlan) -> None:
     assert any(issue.code == "fare_evidence" for issue in result.issues)
     for issue in result.issues:
         assert issue.context["rule_id"] == issue.code
+
+
+def test_business_policy_score_stays_full_when_compliant(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine = PolicyEngine(
+        [
+            StaticPolicyRule(
+                "preferred_carrier", Severity.BLOCKING, passed=True, message="Allowed."
+            )
+        ]
+    )
+    monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
+
+    result = check_trip_plan(trip_plan)
+
+    assert result.status == "pass"
+    assert result.issues == []
+    assert result.business_policy_score.final_preference_score == 100
+    assert result.business_policy_score.hard_blocked is False
+    assert result.business_policy_score.soft_penalty_points == 0
+
+
+def test_soft_policy_penalty_reduces_preference_score_predictably(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine = PolicyEngine(
+        [
+            StaticPolicyRule(
+                "hotel_comparison",
+                Severity.ADVISORY,
+                passed=False,
+                message="Comparable hotel evidence missing.",
+            )
+        ]
+    )
+    monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
+
+    result = check_trip_plan(trip_plan)
+
+    assert result.status == "pass"
+    assert result.business_policy_score.final_preference_score == 90
+    assert result.business_policy_score.soft_penalty_points == 10
+    assert result.business_policy_score.soft_penalty_codes == ["hotel_comparison"]
+    assert result.issues[0].context["policy_effect"] == "soft_penalty"
+    assert result.issues[0].context["score_delta"] == -10
+
+
+def test_hard_policy_block_cannot_be_outweighed_by_preference(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine = PolicyEngine(
+        [
+            StaticPolicyRule(
+                "fare_comparison",
+                Severity.BLOCKING,
+                passed=False,
+                message="Selected fare exceeds allowed threshold.",
+            )
+        ]
+    )
+    monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
+
+    result = check_trip_plan(trip_plan)
+
+    assert result.status == "fail"
+    assert result.business_policy_score.final_preference_score == 0
+    assert result.business_policy_score.hard_block_codes == ["fare_comparison"]
+    assert result.issues[0].context["policy_effect"] == "hard_block"
+    assert result.issues[0].context["preference_score_cap"] == 0
+    assert result.issues[0].context["can_be_outweighed_by_preference"] is False
+
+
+def test_mixed_policy_tradeoff_preserves_soft_penalty_explanation_under_hard_block(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine = PolicyEngine(
+        [
+            StaticPolicyRule(
+                "fare_comparison",
+                Severity.BLOCKING,
+                passed=False,
+                message="Selected fare exceeds allowed threshold.",
+            ),
+            StaticPolicyRule(
+                "advance_booking",
+                Severity.ADVISORY,
+                passed=False,
+                message="Short booking window needs manager context.",
+            ),
+        ]
+    )
+    monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
+
+    result = check_trip_plan(trip_plan)
+
+    assert result.status == "fail"
+    assert result.business_policy_score.final_preference_score == 0
+    assert result.business_policy_score.hard_blocked is True
+    assert result.business_policy_score.soft_penalty_points == 10
+    assert result.business_policy_score.soft_penalty_codes == ["advance_booking"]
+    effects = {issue.code: issue.context["policy_effect"] for issue in result.issues}
+    assert effects == {
+        "fare_comparison": "hard_block",
+        "advance_booking": "soft_penalty",
+    }
 
 
 def test_check_trip_plan_triggers_fare_comparison_when_inputs_present(

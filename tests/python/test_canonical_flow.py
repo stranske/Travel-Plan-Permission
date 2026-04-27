@@ -28,10 +28,16 @@ def test_canonical_trip_plan_flow_renders_policy_and_spreadsheet() -> None:
 
     policy_result = check_trip_plan(trip_input.plan)
     policy_dump = policy_result.model_dump()
-    assert set(policy_dump) == {"status", "issues", "policy_version"}
+    assert set(policy_dump) == {
+        "status",
+        "issues",
+        "policy_version",
+        "business_policy_score",
+    }
     assert policy_dump["status"] in ("pass", "fail")
     assert isinstance(policy_dump["issues"], list)
     assert re.fullmatch(r"[0-9a-f]{64}", policy_dump["policy_version"])
+    assert 0 <= policy_dump["business_policy_score"]["final_preference_score"] <= 100
     if policy_result.issues:
         issue_dump = policy_result.issues[0].model_dump()
         assert set(issue_dump) == {"code", "message", "severity", "context"}

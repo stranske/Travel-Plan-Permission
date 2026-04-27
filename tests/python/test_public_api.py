@@ -10,6 +10,8 @@ def test_public_api_imports() -> None:
     travel_plan_permission = importlib.import_module("travel_plan_permission")
 
     from travel_plan_permission import (
+        BusinessPolicyEffect,
+        BusinessPolicyScore,
         PlannerBlockingIssue,
         PlannerEvaluationOutcome,
         PlannerExceptionRequirement,
@@ -39,6 +41,8 @@ def test_public_api_imports() -> None:
     )
 
     required_exports = {
+        "BusinessPolicyEffect",
+        "BusinessPolicyScore",
         "PlannerBlockingIssue",
         "PlannerEvaluationOutcome",
         "PlannerExceptionRequirement",
@@ -70,6 +74,8 @@ def test_public_api_imports() -> None:
     assert required_exports.issubset(set(travel_plan_permission.__all__))
     assert travel_plan_permission.__version__
     assert TripPlan is not None
+    assert BusinessPolicyEffect is not None
+    assert BusinessPolicyScore is not None
     assert check_trip_plan is not None
     assert list_allowed_vendors is not None
     assert reconcile is not None

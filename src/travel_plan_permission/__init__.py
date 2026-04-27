@@ -56,6 +56,8 @@ from .policy import (
     ThirdPartyPaidRule,
 )
 from .policy_api import (
+    BusinessPolicyEffect,
+    BusinessPolicyScore,
     PlannerApprovalTrigger,
     PlannerAuthContract,
     PlannerBlockingIssue,
@@ -182,6 +184,8 @@ __all__ = [
     "AuditLog",
     "Delegation",
     "BudgetLimitRule",
+    "BusinessPolicyEffect",
+    "BusinessPolicyScore",
     "CANONICAL_TRIP_FIELDS",
     "CabinClassRule",
     "DEFAULT_TEMPLATE_VERSION",

@@ -65,13 +65,34 @@ Example JSON structure (matches `PolicyCheckResult` in
       "severity": "warning",
       "context": {
         "rule_id": "advance_booking",
-        "severity": "advisory"
+        "severity": "advisory",
+        "policy_effect": "soft_penalty",
+        "score_delta": -10,
+        "can_be_outweighed_by_preference": true
       }
     }
   ],
-  "policy_version": "d7a6d25a"
+  "policy_version": "d7a6d25a",
+  "business_policy_score": {
+    "base_preference_score": 100,
+    "final_preference_score": 90,
+    "hard_blocked": false,
+    "hard_block_codes": [],
+    "soft_penalty_points": 10,
+    "soft_penalty_codes": ["advance_booking"],
+    "explanation": "Soft business-policy constraints subtract 10 points each from the preference score."
+  }
 }
 ```
+
+Business-mode scoring is deterministic:
+
+- Failed hard policy constraints cap `final_preference_score` at `0` and set
+  `status` to `fail`.
+- Failed advisory constraints subtract 10 points each from the base preference
+  score of 100.
+- When hard and soft constraints both fail, the final score remains `0` and the
+  soft penalties remain listed for explanation.
 
 ### PlannerPolicySnapshotRequest (input)
 

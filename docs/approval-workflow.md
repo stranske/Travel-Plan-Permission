@@ -74,3 +74,24 @@ Approval packets package the trip summary, policy status, cost breakdown, and a 
 - PDFs include the justification column to preserve override rationale for auditing.
 - Manager review decisions captured through the browser queue require rationale so
   approval, rejection, and requested changes all leave an audit-ready explanation.
+
+## Business policy scoring
+
+Proposal evaluation treats business policy as the controlling layer above
+traveler preference. The planner-facing `PolicyCheckResult` includes a
+`business_policy_score` object so callers can explain whether policy or
+preference drove an outcome.
+
+- Hard policy constraints are rules configured as `blocking`. A failed hard
+  constraint sets `status` to `fail`, caps `final_preference_score` at `0`, and
+  cannot be outweighed by traveler preference.
+- Soft policy constraints are advisory rules. Each failed advisory subtracts 10
+  points from the base preference score of 100 while preserving `status=pass`
+  when no hard constraints fail.
+- Mixed results keep both explanations: hard blocks still cap the final score at
+  0, and advisory failures are listed as soft penalties for reviewer context.
+
+Each policy issue also includes a `policy_effect` context value:
+`hard_block`, `soft_penalty`, or `none`. Hard-block issues include
+`preference_score_cap=0` and `can_be_outweighed_by_preference=false`; soft
+penalties include `score_delta=-10`.
