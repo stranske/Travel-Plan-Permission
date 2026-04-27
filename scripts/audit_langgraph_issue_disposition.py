@@ -23,6 +23,16 @@ NEGATED_APPROVAL_PATTERNS = (
     ),
     re.compile(r"\bwithhold(?:ing)?\s+approval\b", re.IGNORECASE),
     re.compile(r"\b(?:should|can|could|would)\s+(?:we\s+)?approve(?:d)?\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:do|does|did|is|are|was|were|will|shall)\s+(?:we\s+)?approve(?:d)?\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bplease\s+approve(?:d)?\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:anyone|someone|who)\s+(?:can|could|should)?\s*approve(?:d)?\b", re.IGNORECASE
+    ),
+    re.compile(r"\bapprove(?:d)?\b[^\n]{0,40}\?", re.IGNORECASE),
+    re.compile(r"\blgtm\b[^\n]{0,40}\?", re.IGNORECASE),
     re.compile(r"\bapprove(?:d)?\s*\?", re.IGNORECASE),
     re.compile(r"\blgtm\s*\?", re.IGNORECASE),
 )

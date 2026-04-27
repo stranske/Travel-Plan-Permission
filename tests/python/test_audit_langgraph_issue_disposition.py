@@ -407,6 +407,90 @@ def test_lgtm_question_does_not_count() -> None:
     assert report["approvals"] == []
 
 
+def test_sentence_question_with_approve_does_not_count() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "maintainer-a"},
+            "body": "Do we approve this disposition now, or wait for one more run?",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-13",
+            "author_association": "MEMBER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("maintainer-a",),
+        approval_regexes=(r"\bapprove(?:d)?\b", r"\blgtm\b"),
+    )
+
+    assert report["summary"]["maintainer_approved"] is False
+    assert report["summary"]["ready_to_close"] is False
+    assert report["approvals"] == []
+
+
+def test_request_for_approval_does_not_count() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "maintainer-a"},
+            "body": "Please approve this after checking the verifier links.",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-14",
+            "author_association": "MEMBER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("maintainer-a",),
+        approval_regexes=(r"\bapprove(?:d)?\b", r"\blgtm\b"),
+    )
+
+    assert report["summary"]["maintainer_approved"] is False
+    assert report["summary"]["ready_to_close"] is False
+    assert report["approvals"] == []
+
+
+def test_sentence_question_with_lgtm_does_not_count() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "maintainer-a"},
+            "body": "Is this LGTM for closure now?",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-15",
+            "author_association": "MEMBER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("maintainer-a",),
+        approval_regexes=(r"\bapprove(?:d)?\b", r"\blgtm\b"),
+    )
+
+    assert report["summary"]["maintainer_approved"] is False
+    assert report["summary"]["ready_to_close"] is False
+    assert report["approvals"] == []
+
+
 def test_ready_to_close_requires_acceptance_section_checkboxes() -> None:
     issue = {
         "number": 939,
