@@ -98,6 +98,8 @@ __all__ = [
     "PlannerProposalOperationResponse",
     "PlannerBlockingIssue",
     "PlannerPreferredAlternative",
+    "PlannerPolicyScoreEffect",
+    "PlannerPolicyScoreExplanation",
     "PlannerExceptionRequirement",
     "PlannerReoptimizationGuidance",
     "PlannerProposalEvaluationResult",
@@ -1187,24 +1189,19 @@ def _score_explanation(
             )
 
     hard_blocked = any(effect.blocking for effect in effects)
-    blocking_codes = {effect.code for effect in effects if effect.category == "hard_block"}
-    for alternative in preferred_alternatives:
-        if alternative.category in {"airfare", "lodging"} and any(
-            code in blocking_codes
-            for code in ("fare_comparison", "fare_evidence", "hotel_comparison")
-        ):
-            continue
-        effects.append(
-            PlannerPolicyScoreEffect(
-                code=f"preference:{alternative.category}",
-                category="preference_tradeoff",
-                score_delta=-5,
-                blocking=False,
-                message=(
-                    f"Preference tradeoff favors '{alternative.title}': {alternative.rationale}"
-                ),
+    if not hard_blocked:
+        for alternative in preferred_alternatives:
+            effects.append(
+                PlannerPolicyScoreEffect(
+                    code=f"preference:{alternative.category}",
+                    category="preference_tradeoff",
+                    score_delta=-5,
+                    blocking=False,
+                    message=(
+                        f"Preference tradeoff favors '{alternative.title}': {alternative.rationale}"
+                    ),
+                )
             )
-        )
 
     if hard_blocked:
         final_score = 0

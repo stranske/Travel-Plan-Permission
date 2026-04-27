@@ -13,6 +13,8 @@ from travel_plan_permission import (
     ExpenseCategory,
     ExpenseItem,
     PlannerCorrelationId,
+    PlannerPolicyScoreEffect,
+    PlannerPolicyScoreExplanation,
     PlannerPolicySnapshotRequest,
     PlannerProposalEvaluationRequest,
     PlannerProposalEvaluationResult,
@@ -778,6 +780,53 @@ def test_get_evaluation_result_applies_soft_policy_penalty(
     assert result.score_explanation.effects[0].score_delta == -10
 
 
+def test_get_evaluation_result_omits_preference_tradeoffs_when_hard_blocked(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        policy_api_module,
+        "check_trip_plan",
+        lambda _plan: PolicyCheckResult(
+            status="fail",
+            issues=[
+                PolicyIssue(
+                    code="advance_booking",
+                    message="Booked too close to departure for business travel.",
+                    severity="error",
+                    context={"rule_id": "advance_booking"},
+                )
+            ],
+            policy_version="v1",
+        ),
+    )
+    plan = trip_plan.model_copy(
+        update={"selected_fare": Decimal("325.00"), "lowest_fare": Decimal("300.00")}
+    )
+    submit_response = submit_proposal(
+        plan,
+        PlannerProposalSubmissionRequest(
+            trip_id=plan.trip_id,
+            proposal_id="proposal-123",
+            proposal_version="proposal-v8-hard-tradeoff",
+        ),
+    )
+    request = PlannerProposalEvaluationRequest(
+        trip_id=plan.trip_id,
+        proposal_id="proposal-123",
+        proposal_version="proposal-v8-hard-tradeoff",
+        execution_id=str(submit_response.result_payload["execution_id"]),
+        requested_at=datetime(2026, 4, 11, 13, 7, tzinfo=UTC),
+    )
+
+    result = get_evaluation_result(plan, request)
+
+    assert result.score_explanation.hard_blocked is True
+    assert result.score_explanation.final_preference_score == 0
+    assert all(
+        effect.category != "preference_tradeoff" for effect in result.score_explanation.effects
+    )
+
+
 def test_get_evaluation_result_scores_mixed_preference_tradeoff(
     trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -811,6 +860,13 @@ def test_get_evaluation_result_scores_mixed_preference_tradeoff(
     assert result.preferred_alternatives[0].category == "airfare"
     assert result.score_explanation.final_preference_score == 95
     assert result.score_explanation.effects[0].category == "preference_tradeoff"
+
+
+def test_policy_score_models_are_public_exports() -> None:
+    assert policy_api_module.PlannerPolicyScoreEffect is PlannerPolicyScoreEffect
+    assert policy_api_module.PlannerPolicyScoreExplanation is PlannerPolicyScoreExplanation
+    assert "PlannerPolicyScoreEffect" in policy_api_module.__all__
+    assert "PlannerPolicyScoreExplanation" in policy_api_module.__all__
 
 
 def test_get_evaluation_result_returns_compliant_contract(
