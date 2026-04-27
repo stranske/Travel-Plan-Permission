@@ -183,6 +183,38 @@ def test_member_approval_counts_without_explicit_maintainer_list() -> None:
     assert report["approvals"][0]["association"] == "OWNER"
 
 
+def test_looks_good_to_me_counts_as_approval() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "maintainer-a"},
+            "body": "Looks good to me. Safe to close this issue.",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-16",
+            "author_association": "MEMBER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("maintainer-a",),
+        approval_regexes=(
+            r"\bapprove(?:d)?\b",
+            r"\blgtm\b",
+            r"\blooks\s+good\s+to\s+me\b",
+        ),
+    )
+
+    assert report["summary"]["maintainer_approved"] is True
+    assert report["summary"]["ready_to_close"] is True
+    assert len(report["approvals"]) == 1
+
+
 def test_bot_member_approval_does_not_count() -> None:
     issue = {
         "number": 939,
@@ -484,6 +516,38 @@ def test_sentence_question_with_lgtm_does_not_count() -> None:
         comments_json=comments,
         maintainers=("maintainer-a",),
         approval_regexes=(r"\bapprove(?:d)?\b", r"\blgtm\b"),
+    )
+
+    assert report["summary"]["maintainer_approved"] is False
+    assert report["summary"]["ready_to_close"] is False
+    assert report["approvals"] == []
+
+
+def test_looks_good_to_me_question_does_not_count() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "maintainer-a"},
+            "body": "Looks good to me?",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-17",
+            "author_association": "MEMBER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("maintainer-a",),
+        approval_regexes=(
+            r"\bapprove(?:d)?\b",
+            r"\blgtm\b",
+            r"\blooks\s+good\s+to\s+me\b",
+        ),
     )
 
     assert report["summary"]["maintainer_approved"] is False

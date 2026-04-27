@@ -11,7 +11,7 @@ from pathlib import Path
 CHECKBOX_PATTERN = re.compile(r"^\s*[-*]\s*\[(?P<mark>[ xX])\]\s*(?P<text>.+?)\s*$")
 HEADING_PATTERN = re.compile(r"^\s{0,3}#{1,6}\s+(?P<title>.+?)\s*$")
 FENCE_PATTERN = re.compile(r"^\s*```")
-DEFAULT_APPROVAL_PATTERNS = (r"\bapprove(?:d)?\b", r"\blgtm\b")
+DEFAULT_APPROVAL_PATTERNS = (r"\bapprove(?:d)?\b", r"\blgtm\b", r"\blooks\s+good\s+to\s+me\b")
 DEFAULT_TRUSTED_ASSOCIATIONS = ("COLLABORATOR", "MEMBER", "OWNER")
 NEGATED_APPROVAL_PATTERNS = (
     re.compile(r"\b(?:do\s+not|don't|not|cannot|can't|no)\s+approve(?:d)?\b", re.IGNORECASE),
@@ -35,6 +35,11 @@ NEGATED_APPROVAL_PATTERNS = (
     re.compile(r"\blgtm\b[^\n]{0,40}\?", re.IGNORECASE),
     re.compile(r"\bapprove(?:d)?\s*\?", re.IGNORECASE),
     re.compile(r"\blgtm\s*\?", re.IGNORECASE),
+    re.compile(r"\blooks\s+good\s+to\s+me\b[^\n]{0,40}\?", re.IGNORECASE),
+    re.compile(
+        r"\blooks\s+good\s+to\s+me\b[^\n]{0,20}\b(?:not|yet|pending|later|after|once)\b",
+        re.IGNORECASE,
+    ),
 )
 
 
