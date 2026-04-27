@@ -32,6 +32,10 @@ class TripState(BaseModel):
     canonical_plan: dict[str, object] | None = None
     policy_result: dict[str, object] | None = None
     policy_missing_inputs: list[dict[str, object]] = Field(default_factory=list)
+    planner_turn: dict[str, object] | None = None
+    checkpoint_metadata: dict[str, object] | None = None
+    planner_feedback: dict[str, object] | None = None
+    follow_up_action: dict[str, object] | None = None
     unfilled_mapping_report: dict[str, list[dict[str, object]]] | None = None
     spreadsheet_path: str | None = None
     errors: list[str] = Field(default_factory=list)
@@ -91,6 +95,21 @@ class TripState(BaseModel):
             return normalized
         return value  # type: ignore[return-value]
 
+    @field_validator(
+        "planner_turn",
+        "checkpoint_metadata",
+        "planner_feedback",
+        "follow_up_action",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_runtime_record(cls, value: object) -> dict[str, object] | None:
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            return value
+        return value  # type: ignore[return-value]
+
     @field_validator("unfilled_mapping_report", mode="before")
     @classmethod
     def _coerce_unfilled_mapping_report(
@@ -123,9 +142,7 @@ class TripState(BaseModel):
         return value  # type: ignore[return-value]
 
     @field_serializer("policy_missing_inputs", mode="plain")
-    def _serialize_policy_missing_inputs(
-        self, value: object
-    ) -> list[dict[str, object]]:
+    def _serialize_policy_missing_inputs(self, value: object) -> list[dict[str, object]]:
         if isinstance(value, list):
             serialized: list[dict[str, object]] = []
             for entry in value:
@@ -178,6 +195,42 @@ def _policy_check_node(state: TripState) -> TripState:
     return state
 
 
+def _planner_runtime_node(state: TripState) -> TripState:
+    plan = _load_plan(state)
+    policy_result = state.policy_result or {}
+    policy_status = policy_result.get("status")
+    policy_issues = policy_result.get("issues")
+    issue_count = len(policy_issues) if isinstance(policy_issues, list) else 0
+    missing_rule_ids = [
+        entry["rule_id"]
+        for entry in state.policy_missing_inputs
+        if isinstance(entry.get("rule_id"), str)
+    ]
+
+    state.planner_turn = state.planner_turn or {
+        "source": "trip_planner",
+        "trip_id": plan.trip_id,
+        "operation": "submit_trip_plan",
+        "input": state.plan_json,
+    }
+    state.checkpoint_metadata = {
+        "checkpoint_id": f"{plan.trip_id}:policy:{policy_status or 'unknown'}",
+        "trip_id": plan.trip_id,
+        "state_model": "TripState",
+        "policy_status": policy_status,
+        "policy_issue_count": issue_count,
+        "missing_input_rule_ids": missing_rule_ids,
+    }
+    state.follow_up_action = {
+        "required": policy_status != "pass",
+        "source": "policy_check",
+        "policy_status": policy_status,
+        "next_step": ("planner_revise_trip" if policy_status != "pass" else "planner_continue"),
+        "missing_input_rule_ids": missing_rule_ids,
+    }
+    return state
+
+
 def _spreadsheet_node(state: TripState) -> TripState:
     plan = _load_plan(state)
     canonical_plan = _load_canonical_plan(state)
@@ -221,11 +274,7 @@ def _serialize_unfilled_mapping_report(
     def serialize_entries(entries: Sequence[Any]) -> list[dict[str, object]]:
         serialized: list[dict[str, object]] = []
         for entry in entries:
-            if (
-                hasattr(entry, "field")
-                and hasattr(entry, "cell")
-                and hasattr(entry, "reason")
-            ):
+            if hasattr(entry, "field") and hasattr(entry, "cell") and hasattr(entry, "reason"):
                 serialized.append(
                     {
                         "field": entry.field,
@@ -247,6 +296,7 @@ def _serialize_unfilled_mapping_report(
 class _SimplePolicyGraph:
     def invoke(self, state: TripState) -> TripState:
         state = _policy_check_node(state)
+        state = _planner_runtime_node(state)
         state = _spreadsheet_node(state)
         return state
 
@@ -277,8 +327,10 @@ def _build_langgraph() -> PolicyGraph | None:
 
     graph = StateGraph(TripState)
     graph.add_node("policy_check", _policy_check_node)
+    graph.add_node("planner_runtime", _planner_runtime_node)
     graph.add_node("spreadsheet", _spreadsheet_node)
-    graph.add_edge("policy_check", "spreadsheet")
+    graph.add_edge("policy_check", "planner_runtime")
+    graph.add_edge("planner_runtime", "spreadsheet")
     graph.add_edge("spreadsheet", END)
     graph.set_entry_point("policy_check")
     compiled = graph.compile()
@@ -300,6 +352,8 @@ def run_policy_graph(
     *,
     canonical_plan: CanonicalTripPlan | None = None,
     output_path: Path | str | None = None,
+    planner_turn: dict[str, object] | None = None,
+    planner_feedback: dict[str, object] | None = None,
     prefer_langgraph: bool = True,
 ) -> TripState:
     """Run the policy graph over a trip plan and return the final state."""
@@ -309,10 +363,10 @@ def run_policy_graph(
     state = TripState(
         plan_json=plan.model_dump(mode="json"),
         canonical_plan=(
-            canonical_plan.model_dump(mode="json")
-            if canonical_plan is not None
-            else None
+            canonical_plan.model_dump(mode="json") if canonical_plan is not None else None
         ),
+        planner_turn=planner_turn,
+        planner_feedback=planner_feedback,
         spreadsheet_path=spreadsheet_path,
     )
     return graph.invoke(state)

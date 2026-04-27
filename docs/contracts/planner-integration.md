@@ -158,6 +158,24 @@ current policy decision for a proposal.
   stable machine-readable join keys for UI copy, analytics, or follow-up
   handling.
 
+### 5. Persist planner-runtime follow-up state
+
+When `trip-planner` submits or replays a proposal through the orchestration
+smoke path, the policy result must be persisted in the shared
+`travel_plan_permission.orchestration.graph.TripState` model. That state is the
+canonical seam for broader orchestration work:
+
+- `planner_turn` carries the planner input turn.
+- `policy_result` carries the TPP policy evaluation.
+- `checkpoint_metadata` records the persisted checkpoint identity and policy
+  status.
+- `planner_feedback` carries user feedback from the planner adjustment loop.
+- `follow_up_action` records the planner-side next step.
+
+Future integration work should use this state model for checkpoint save/load
+and follow-up behavior; a policy call that only returns advisory output without
+updating this state is not sufficient for the planner-runtime lifecycle.
+
 ## Example Fixtures
 
 These fixtures are the repository-owned source of truth for planner integration
