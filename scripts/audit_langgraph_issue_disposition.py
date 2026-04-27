@@ -22,6 +22,9 @@ NEGATED_APPROVAL_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(r"\bwithhold(?:ing)?\s+approval\b", re.IGNORECASE),
+    re.compile(r"\b(?:should|can|could|would)\s+(?:we\s+)?approve(?:d)?\b", re.IGNORECASE),
+    re.compile(r"\bapprove(?:d)?\s*\?", re.IGNORECASE),
+    re.compile(r"\blgtm\s*\?", re.IGNORECASE),
 )
 
 
