@@ -46,7 +46,7 @@ const PRIORITY_METRICS_FAMILIES = [
   'pr-source-context',
 ];
 
-const PRIORITY_WORKFLOW_ARTIFACT_SOURCES = [
+const PRIORITY_WORKFLOW_ARTIFACT_SOURCE_CANDIDATES = [
   {
     workflow_id: 'health-76-codex-cli-freshness.yml',
     families: ['codex-cli-freshness'],
@@ -77,6 +77,20 @@ const PRIORITY_WORKFLOW_ARTIFACT_SOURCES = [
   },
 ];
 
+function workflowSourceExists(workflowId, workflowsDir = '.github/workflows') {
+  const path = require('path');
+  return fs.existsSync(path.join(process.cwd(), workflowsDir, workflowId));
+}
+
+function defaultPriorityWorkflowArtifactSources({
+  candidates = PRIORITY_WORKFLOW_ARTIFACT_SOURCE_CANDIDATES,
+  workflowsDir = '.github/workflows',
+} = {}) {
+  return candidates.filter((source) => workflowSourceExists(source.workflow_id, workflowsDir));
+}
+
+const PRIORITY_WORKFLOW_ARTIFACT_SOURCES = defaultPriorityWorkflowArtifactSources();
+
 function cleanString(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
@@ -85,6 +99,11 @@ function cleanString(value) {
 function parsePositiveInt(value, fallback) {
   const parsed = Number.parseInt(cleanString(value), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseNonNegativeInt(value, fallback) {
+  const parsed = Number.parseInt(cleanString(value), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function parseDateMs(value) {
@@ -134,7 +153,7 @@ function normalizeSelectionOptions(options = {}) {
     options.per_page ?? options.perPage ?? process.env.METRICS_ARTIFACTS_PER_PAGE,
     DEFAULT_PER_PAGE
   );
-  const priorityWorkflowRunsPerSource = parsePositiveInt(
+  const priorityWorkflowRunsPerSource = parseNonNegativeInt(
     options.priority_workflow_runs_per_source ??
       options.priorityWorkflowRunsPerSource ??
       process.env.METRICS_PRIORITY_WORKFLOW_RUNS_PER_SOURCE,
@@ -491,10 +510,14 @@ async function collectPriorityWorkflowArtifacts({
 }) {
   const config = normalizeSelectionOptions(options);
   const artifacts = [];
+  if (config.priority_workflow_runs_per_source <= 0) {
+    return artifacts;
+  }
   for (const source of sources) {
     const workflowId = cleanString(source.workflow_id ?? source.workflowId);
     const families = (source.families || []).map(cleanString).filter(Boolean);
     if (!workflowId || families.length === 0) continue;
+    const sourceArtifacts = [];
     let runsResponse;
     try {
       runsResponse = await withRetry((client) => client.rest.actions.listWorkflowRuns({
@@ -533,8 +556,9 @@ async function collectPriorityWorkflowArtifacts({
       const matchingArtifacts = (artifactResponse?.data?.artifacts || []).filter((artifact) =>
         families.includes(artifactFamily(artifact.name))
       );
+      sourceArtifacts.push(...matchingArtifacts);
       artifacts.push(...matchingArtifacts);
-      if (familiesSatisfied(artifacts, families, config)) {
+      if (familiesSatisfied(sourceArtifacts, families, config)) {
         break;
       }
     }
@@ -564,6 +588,9 @@ async function collectRepoArtifacts({ github, owner, repo, withRetry, options })
     ) {
       break;
     }
+  }
+  if (familiesSatisfied(artifacts, PRIORITY_METRICS_FAMILIES, config)) {
+    return dedupeArtifacts(artifacts);
   }
   const priorityArtifacts = await collectPriorityWorkflowArtifacts({
     github,
@@ -673,12 +700,14 @@ module.exports = {
   DEFAULT_MAX_TOTAL,
   DEFAULT_PRIORITY_WORKFLOW_RUNS_PER_SOURCE,
   PRIORITY_METRICS_FAMILIES,
+  PRIORITY_WORKFLOW_ARTIFACT_SOURCE_CANDIDATES,
   PRIORITY_WORKFLOW_ARTIFACT_SOURCES,
   SELECTION_SCHEMA,
   artifactFamily,
   buildSelectionErrorReport,
   collectPriorityWorkflowArtifacts,
   collectRepoArtifacts,
+  defaultPriorityWorkflowArtifactSources,
   dedupeArtifacts,
   familiesSatisfied,
   formatArtifactTsv,
