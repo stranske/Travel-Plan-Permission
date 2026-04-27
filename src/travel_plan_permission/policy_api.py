@@ -68,9 +68,7 @@ PlannerExecutionState = Literal[
 PolicyIssueContextValue = str | int | float | bool | None
 _PLANNER_POLICY_CONTRACT_VERSION = "2026-04-11"
 _PLANNER_POLICY_TTL = timedelta(hours=24)
-_DOCUMENTATION_RULE_IDS = frozenset(
-    {"fare_evidence", "hotel_comparison", "third_party_paid"}
-)
+_DOCUMENTATION_RULE_IDS = frozenset({"fare_evidence", "hotel_comparison", "third_party_paid"})
 
 __all__ = [
     "PolicyIssueSeverity",
@@ -137,9 +135,7 @@ class PolicyCheckResult(BaseModel):
     issues: list[PolicyIssue] = Field(
         default_factory=list, description="Policy issues raised by the check"
     )
-    policy_version: str = Field(
-        ..., description="Deterministic policy version identifier"
-    )
+    policy_version: str = Field(..., description="Deterministic policy version identifier")
 
 
 class PlannerPolicySnapshotRequest(BaseModel):
@@ -187,9 +183,7 @@ class PlannerAuthContract(BaseModel):
     """Authentication contract for the planner-facing policy snapshot seam."""
 
     endpoint: str = Field(..., description="Stable planner-facing endpoint identifier")
-    required_permission: str = Field(
-        ..., description="Permission required to read the snapshot"
-    )
+    required_permission: str = Field(..., description="Permission required to read the snapshot")
     auth_scheme: str = Field(..., description="Authentication scheme to use")
     supported_sso: list[str] = Field(
         default_factory=list,
@@ -292,9 +286,7 @@ class PlannerProposalExecutionStatus(BaseModel):
     state: PlannerExecutionState = Field(..., description="Current execution state")
     terminal: bool = Field(..., description="Whether the execution has finished")
     summary: str = Field(..., description="Human-readable execution summary")
-    external_status: str = Field(
-        ..., description="Transport or HTTP-style status summary"
-    )
+    external_status: str = Field(..., description="Transport or HTTP-style status summary")
     poll_after_seconds: float | None = Field(
         default=None, ge=0, description="Suggested poll interval for non-terminal states"
     )
@@ -433,6 +425,41 @@ class PlannerPreferredAlternative(BaseModel):
     )
 
 
+class PlannerPolicyScoreEffect(BaseModel):
+    """Single policy or preference effect applied to proposal scoring."""
+
+    code: str = Field(..., description="Stable policy or preference effect code")
+    category: Literal["hard_block", "soft_penalty", "preference_tradeoff"] = Field(
+        ..., description="How the effect changes proposal scoring"
+    )
+    score_delta: int = Field(
+        ..., description="Deterministic score movement applied to the base score"
+    )
+    blocking: bool = Field(
+        default=False, description="Whether this effect prevents approval regardless of score"
+    )
+    message: str = Field(..., description="Human-readable explanation for the effect")
+
+
+class PlannerPolicyScoreExplanation(BaseModel):
+    """Business-mode policy scoring explanation for planner proposal ranking."""
+
+    base_preference_score: int = Field(
+        ..., ge=0, le=100, description="Score before business policy effects"
+    )
+    final_preference_score: int = Field(
+        ..., ge=0, le=100, description="Score after business policy effects"
+    )
+    hard_blocked: bool = Field(
+        ..., description="Whether a hard policy constraint forced the final score to zero"
+    )
+    effects: list[PlannerPolicyScoreEffect] = Field(
+        default_factory=list,
+        description="Ordered hard-block, soft-penalty, and preference-tradeoff effects",
+    )
+    summary: str = Field(..., description="Short explanation of the final scoring posture")
+
+
 class PlannerExceptionRequirement(BaseModel):
     """Exception workflow requirement the planner must track or display."""
 
@@ -466,9 +493,7 @@ class PlannerProposalEvaluationResult(BaseModel):
     correlation_id: PlannerCorrelationId = Field(
         ..., description="Correlation identifier shared across proposal operations"
     )
-    outcome: PlannerEvaluationOutcome = Field(
-        ..., description="Planner-facing evaluation outcome"
-    )
+    outcome: PlannerEvaluationOutcome = Field(..., description="Planner-facing evaluation outcome")
     result_endpoint: str = Field(
         ..., description="Stable endpoint for re-fetching this evaluation result"
     )
@@ -485,6 +510,9 @@ class PlannerProposalEvaluationResult(BaseModel):
     preferred_alternatives: list[PlannerPreferredAlternative] = Field(
         default_factory=list,
         description="Preferred alternatives surfaced for non-compliant results",
+    )
+    score_explanation: PlannerPolicyScoreExplanation = Field(
+        ..., description="How business policy constraints modified proposal preference scoring"
     )
     exception_requirements: list[PlannerExceptionRequirement] = Field(
         default_factory=list,
@@ -505,9 +533,7 @@ class ReconciliationResult(BaseModel):
     planned_total: Decimal = Field(..., description="Estimated trip total")
     actual_total: Decimal = Field(..., description="Actual reconciled spend")
     variance: Decimal = Field(..., description="Actual minus planned spend variance")
-    status: ReconciliationStatus = Field(
-        ..., description="Budget reconciliation status"
-    )
+    status: ReconciliationStatus = Field(..., description="Budget reconciliation status")
     receipt_count: int = Field(..., ge=0, description="Number of receipts")
     receipts_by_type: dict[str, int] = Field(
         default_factory=dict, description="Receipt counts by file type"
@@ -567,9 +593,7 @@ def _default_template_path(template_file: str | None = None) -> Path:
         if candidate.exists():
             return candidate
     try:
-        resource = resources.files("travel_plan_permission").joinpath(
-            "templates", template_name
-        )
+        resource = resources.files("travel_plan_permission").joinpath("templates", template_name)
     except ModuleNotFoundError:
         resource = None
     if resource is not None and resource.is_file():
@@ -591,9 +615,7 @@ def _default_template_bytes(template_file: str | None = None) -> bytes:
         if candidate.exists():
             return candidate.read_bytes()
     try:
-        resource = resources.files("travel_plan_permission").joinpath(
-            "templates", template_name
-        )
+        resource = resources.files("travel_plan_permission").joinpath("templates", template_name)
     except ModuleNotFoundError:
         resource = None
     if resource is not None and resource.is_file():
@@ -636,12 +658,8 @@ def _plan_field_values(
             ),
             "city_state": city_state,
             "destination_zip": zip_code,
-            "depart_date": (
-                canonical_plan.depart_date if canonical_plan else plan.departure_date
-            ),
-            "return_date": (
-                canonical_plan.return_date if canonical_plan else plan.return_date
-            ),
+            "depart_date": (canonical_plan.depart_date if canonical_plan else plan.departure_date),
+            "return_date": (canonical_plan.return_date if canonical_plan else plan.return_date),
             "event_registration_cost": (
                 canonical_plan.event_registration_cost
                 if canonical_plan and canonical_plan.event_registration_cost is not None
@@ -823,7 +841,9 @@ def _planner_requirement(rule: dict[str, object]) -> PlannerPolicyRequirement:
         severity=(
             "error"
             if severity == Severity.BLOCKING
-            else "warning" if severity == Severity.ADVISORY else "info"
+            else "warning"
+            if severity == Severity.ADVISORY
+            else "info"
         ),
     )
 
@@ -854,10 +874,7 @@ def _planner_snapshot_etag(plan: TripPlan, *, policy_version: str) -> str:
         separators=(",", ":"),
     )
     plan_revision = sha256(plan_payload.encode("utf-8")).hexdigest()[:12]
-    return (
-        f"{plan.trip_id}:{policy_version}:{_PLANNER_POLICY_CONTRACT_VERSION}:"
-        f"{plan_revision}"
-    )
+    return f"{plan.trip_id}:{policy_version}:{_PLANNER_POLICY_CONTRACT_VERSION}:{plan_revision}"
 
 
 def _stable_operation_id(prefix: str, *parts: str) -> str:
@@ -875,9 +892,7 @@ def _proposal_request_id(
 ) -> str:
     if provided:
         return provided
-    return _stable_operation_id(
-        "req", operation, trip_id, proposal_id, proposal_version
-    )
+    return _stable_operation_id("req", operation, trip_id, proposal_id, proposal_version)
 
 
 def _proposal_correlation_id(
@@ -894,17 +909,13 @@ def _proposal_correlation_id(
     )
 
 
-def _proposal_execution_id(
-    *, trip_id: str, proposal_id: str, proposal_version: str
-) -> str:
+def _proposal_execution_id(*, trip_id: str, proposal_id: str, proposal_version: str) -> str:
     return _stable_operation_id("exec", trip_id, proposal_id, proposal_version)
 
 
 def _proposal_status_endpoint(*, proposal_id: str, execution_id: str) -> str:
-    return (
-        PLANNER_EXECUTION_STATUS_ENDPOINT.replace(":proposal_id", proposal_id).replace(
-            ":execution_id", execution_id
-        )
+    return PLANNER_EXECUTION_STATUS_ENDPOINT.replace(":proposal_id", proposal_id).replace(
+        ":execution_id", execution_id
     )
 
 
@@ -947,9 +958,7 @@ def _proposal_response_for_plan(
     execution_id = _proposal_execution_id(
         trip_id=trip_id, proposal_id=proposal_id, proposal_version=proposal_version
     )
-    status_endpoint = _proposal_status_endpoint(
-        proposal_id=proposal_id, execution_id=execution_id
-    )
+    status_endpoint = _proposal_status_endpoint(proposal_id=proposal_id, execution_id=execution_id)
     base_payload = _proposal_result_payload(
         trip_id=trip_id,
         proposal_id=proposal_id,
@@ -1033,14 +1042,8 @@ def _proposal_response_for_plan(
             status_endpoint=status_endpoint,
         )
 
-    pending_state: PlannerExecutionState = (
-        "running" if transport_pattern == "async" else "deferred"
-    )
-    queue_state = (
-        "running"
-        if transport_pattern == "async"
-        else "waiting_for_policy_engine"
-    )
+    pending_state: PlannerExecutionState = "running" if transport_pattern == "async" else "deferred"
+    queue_state = "running" if transport_pattern == "async" else "waiting_for_policy_engine"
     poll_after_seconds = 15.0 if transport_pattern == "async" else 30.0
 
     return PlannerProposalOperationResponse(
@@ -1145,6 +1148,91 @@ def _preferred_alternatives(plan: TripPlan) -> list[PlannerPreferredAlternative]
             )
         )
     return alternatives
+
+
+def _score_explanation(
+    *,
+    policy_result: PolicyCheckResult,
+    preferred_alternatives: Sequence[PlannerPreferredAlternative],
+) -> PlannerPolicyScoreExplanation:
+    base_score = 100
+    effects: list[PlannerPolicyScoreEffect] = []
+
+    for issue in policy_result.issues:
+        if issue.severity == "error":
+            effects.append(
+                PlannerPolicyScoreEffect(
+                    code=issue.code,
+                    category="hard_block",
+                    score_delta=-base_score,
+                    blocking=True,
+                    message=(
+                        f"Hard policy constraint '{issue.code}' blocks the proposal: "
+                        f"{issue.message}"
+                    ),
+                )
+            )
+        elif issue.severity == "warning":
+            effects.append(
+                PlannerPolicyScoreEffect(
+                    code=issue.code,
+                    category="soft_penalty",
+                    score_delta=-10,
+                    blocking=False,
+                    message=(
+                        f"Soft policy constraint '{issue.code}' reduces preference score by 10: "
+                        f"{issue.message}"
+                    ),
+                )
+            )
+
+    hard_blocked = any(effect.blocking for effect in effects)
+    blocking_codes = {effect.code for effect in effects if effect.category == "hard_block"}
+    for alternative in preferred_alternatives:
+        if alternative.category in {"airfare", "lodging"} and any(
+            code in blocking_codes
+            for code in ("fare_comparison", "fare_evidence", "hotel_comparison")
+        ):
+            continue
+        effects.append(
+            PlannerPolicyScoreEffect(
+                code=f"preference:{alternative.category}",
+                category="preference_tradeoff",
+                score_delta=-5,
+                blocking=False,
+                message=(
+                    f"Preference tradeoff favors '{alternative.title}': {alternative.rationale}"
+                ),
+            )
+        )
+
+    if hard_blocked:
+        final_score = 0
+        summary = "One or more hard policy constraints block the proposal; traveler preferences cannot override them."
+    else:
+        final_score = max(
+            0,
+            min(
+                100,
+                base_score + sum(effect.score_delta for effect in effects if not effect.blocking),
+            ),
+        )
+        if any(effect.category == "soft_penalty" for effect in effects):
+            summary = (
+                "Soft policy constraints reduced the preference score without blocking submission."
+            )
+        elif effects:
+            summary = "Preference tradeoffs changed the score while business policy still passed."
+        else:
+            summary = "Business policy did not modify the base preference score."
+
+    return PlannerPolicyScoreExplanation(
+        base_preference_score=base_score,
+        final_preference_score=final_score,
+        hard_blocked=hard_blocked,
+        effects=effects,
+        summary=summary,
+    )
 
 
 def _exception_requirements(
@@ -1318,8 +1406,7 @@ def get_policy_snapshot(
             contract_version=_PLANNER_POLICY_CONTRACT_VERSION,
             policy_version=policy_version,
             planner_known_policy_version=request.known_policy_version,
-            compatible_with_planner_cache=request.known_policy_version
-            in (None, policy_version),
+            compatible_with_planner_cache=request.known_policy_version in (None, policy_version),
             etag=_planner_snapshot_etag(plan, policy_version=policy_version),
         ),
     )
@@ -1462,6 +1549,10 @@ def get_evaluation_result(
     policy_result = check_trip_plan(plan)
     blocking_issues = _blocking_issues(policy_result)
     preferred_alternatives = _preferred_alternatives(plan)
+    score_explanation = _score_explanation(
+        policy_result=policy_result,
+        preferred_alternatives=preferred_alternatives,
+    )
     exception_requirements = _exception_requirements(plan.exception_requests)
     return PlannerProposalEvaluationResult(
         trip_id=request.trip_id,
@@ -1483,6 +1574,7 @@ def get_evaluation_result(
         policy_result=policy_result,
         blocking_issues=blocking_issues,
         preferred_alternatives=preferred_alternatives,
+        score_explanation=score_explanation,
         exception_requirements=exception_requirements,
         reoptimization_guidance=_reoptimization_guidance(
             blocking_issues=blocking_issues,
@@ -1504,9 +1596,7 @@ def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
         not result.passed and result.severity == Severity.BLOCKING for result in results
     )
     status: PolicyCheckStatus = "fail" if has_blocking else "pass"
-    return PolicyCheckResult(
-        status=status, issues=issues, policy_version=_policy_version(engine)
-    )
+    return PolicyCheckResult(status=status, issues=issues, policy_version=_policy_version(engine))
 
 
 def list_allowed_vendors(plan: TripPlan) -> list[str]:
@@ -1518,9 +1608,7 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
     providers = {
         provider.name
         for provider_type in ProviderType
-        for provider in registry.lookup(
-            provider_type, destination, reference_date=reference_date
-        )
+        for provider in registry.lookup(provider_type, destination, reference_date=reference_date)
     }
     return sorted(providers, key=str.lower)
 
@@ -1533,9 +1621,7 @@ def _allowed_vendors_for_type(plan: TripPlan, provider_type: ProviderType) -> li
     reference_date = plan.departure_date
     providers = {
         provider.name
-        for provider in registry.lookup(
-            provider_type, destination, reference_date=reference_date
-        )
+        for provider in registry.lookup(provider_type, destination, reference_date=reference_date)
     }
     return sorted(providers, key=str.lower)
 
@@ -1656,18 +1742,14 @@ def fill_travel_spreadsheet(
 
     output_path = Path(output_path)
     output_path.write_bytes(
-        render_travel_spreadsheet_bytes(
-            plan, canonical_plan=canonical_plan, report=report
-        )
+        render_travel_spreadsheet_bytes(plan, canonical_plan=canonical_plan, report=report)
     )
     return output_path
 
 
 def _expense_from_receipt(receipt: Receipt) -> ExpenseItem:
     explanation = (
-        "Third-party payment recorded on receipt."
-        if receipt.paid_by_third_party
-        else None
+        "Third-party payment recorded on receipt." if receipt.paid_by_third_party else None
     )
     return ExpenseItem(
         category=ExpenseCategory.OTHER,

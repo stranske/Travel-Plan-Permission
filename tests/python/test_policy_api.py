@@ -21,6 +21,7 @@ from travel_plan_permission import (
     PolicyCheckResult,
     PolicyContext,
     PolicyEngine,
+    PolicyIssue,
     PolicyResult,
     PolicyRule,
     Receipt,
@@ -130,9 +131,7 @@ def test_check_trip_plan_triggers_fare_comparison_when_inputs_present(
                     receipt_attached=True,
                 )
             ],
-            "third_party_payments": [
-                {"description": "Sponsor covered ticket", "itemized": True}
-            ],
+            "third_party_payments": [{"description": "Sponsor covered ticket", "itemized": True}],
         }
     )
 
@@ -144,9 +143,7 @@ def test_check_trip_plan_triggers_fare_comparison_when_inputs_present(
 def test_check_trip_plan_reports_pass_when_no_rules(
     trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(
-        PolicyEngine, "from_file", lambda *_args, **_kwargs: PolicyEngine([])
-    )
+    monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: PolicyEngine([]))
 
     result = check_trip_plan(trip_plan)
 
@@ -463,9 +460,7 @@ def test_get_policy_snapshot_returns_current_contract(trip_plan: TripPlan) -> No
     assert snapshot.versioning.contract_version == "2026-04-11"
     assert snapshot.auth.endpoint == "GET /api/planner/policy-snapshot"
     assert any(rule.code == "fare_evidence" for rule in snapshot.documentation_rules)
-    assert any(
-        trigger.code == "fare_evidence" for trigger in snapshot.approval_triggers
-    )
+    assert any(trigger.code == "fare_evidence" for trigger in snapshot.approval_triggers)
 
 
 def test_get_policy_snapshot_reports_stale_cache(trip_plan: TripPlan) -> None:
@@ -727,14 +722,95 @@ def test_get_evaluation_result_returns_non_compliant_contract(
         "fare_evidence",
     }
     assert any(
-        alternative.category == "airfare"
-        and alternative.suggested_value == "300.00"
+        alternative.category == "airfare" and alternative.suggested_value == "300.00"
         for alternative in result.preferred_alternatives
     )
+    assert any(guidance.code == "lower_trip_cost" for guidance in result.reoptimization_guidance)
+    assert result.score_explanation.hard_blocked is True
+    assert result.score_explanation.final_preference_score == 0
     assert any(
-        guidance.code == "lower_trip_cost"
-        for guidance in result.reoptimization_guidance
+        effect.category == "hard_block" and effect.code == "fare_comparison"
+        for effect in result.score_explanation.effects
     )
+
+
+def test_get_evaluation_result_applies_soft_policy_penalty(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        policy_api_module,
+        "check_trip_plan",
+        lambda _plan: PolicyCheckResult(
+            status="pass",
+            issues=[
+                PolicyIssue(
+                    code="advance_booking",
+                    message="Booked inside the preferred advance window.",
+                    severity="warning",
+                    context={"rule_id": "advance_booking", "severity": "advisory"},
+                )
+            ],
+            policy_version="v1",
+        ),
+    )
+    submit_response = submit_proposal(
+        trip_plan,
+        PlannerProposalSubmissionRequest(
+            trip_id=trip_plan.trip_id,
+            proposal_id="proposal-123",
+            proposal_version="proposal-v8-soft",
+        ),
+    )
+    request = PlannerProposalEvaluationRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-123",
+        proposal_version="proposal-v8-soft",
+        execution_id=str(submit_response.result_payload["execution_id"]),
+        requested_at=datetime(2026, 4, 11, 13, 6, tzinfo=UTC),
+    )
+
+    result = get_evaluation_result(trip_plan, request)
+
+    assert result.outcome == "compliant"
+    assert result.score_explanation.hard_blocked is False
+    assert result.score_explanation.final_preference_score == 90
+    assert result.score_explanation.effects[0].category == "soft_penalty"
+    assert result.score_explanation.effects[0].score_delta == -10
+
+
+def test_get_evaluation_result_scores_mixed_preference_tradeoff(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        policy_api_module,
+        "check_trip_plan",
+        lambda _plan: PolicyCheckResult(status="pass", issues=[], policy_version="v1"),
+    )
+    plan = trip_plan.model_copy(
+        update={"selected_fare": Decimal("325.00"), "lowest_fare": Decimal("300.00")}
+    )
+    submit_response = submit_proposal(
+        plan,
+        PlannerProposalSubmissionRequest(
+            trip_id=plan.trip_id,
+            proposal_id="proposal-123",
+            proposal_version="proposal-v8-tradeoff",
+        ),
+    )
+    request = PlannerProposalEvaluationRequest(
+        trip_id=plan.trip_id,
+        proposal_id="proposal-123",
+        proposal_version="proposal-v8-tradeoff",
+        execution_id=str(submit_response.result_payload["execution_id"]),
+        requested_at=datetime(2026, 4, 11, 13, 7, tzinfo=UTC),
+    )
+
+    result = get_evaluation_result(plan, request)
+
+    assert result.outcome == "compliant"
+    assert result.preferred_alternatives[0].category == "airfare"
+    assert result.score_explanation.final_preference_score == 95
+    assert result.score_explanation.effects[0].category == "preference_tradeoff"
 
 
 def test_get_evaluation_result_returns_compliant_contract(
@@ -814,8 +890,7 @@ def test_get_evaluation_result_returns_exception_required_contract(
     assert len(result.exception_requirements) == 1
     assert result.exception_requirements[0].type == "driving_vs_flying"
     assert any(
-        guidance.code == "route_exception_workflow"
-        for guidance in result.reoptimization_guidance
+        guidance.code == "route_exception_workflow" for guidance in result.reoptimization_guidance
     )
 
 

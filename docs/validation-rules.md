@@ -102,3 +102,19 @@ active rule IDs along with their required `PolicyContext` inputs.
 | `third_party_paid` | `blocking` | — | `third_party_payments` | Third-party paid items must be itemized and excluded from reimbursement. |
 
 Update `config/policy.yaml` to adjust thresholds or severities for your deployment. Rules are evaluated in the order shown above, and `PolicyEngine.blocking_results()` returns only failed blocking rules for submission gating.
+
+### Business-mode proposal scoring
+
+Planner proposal evaluation starts from a `100` point preference score and then
+applies explicit business-policy effects in `score_explanation`:
+
+- Failed blocking rules are hard blocks. They force the final score to `0`, so
+  traveler preferences or cheaper alternatives cannot override the constraint.
+- Failed advisory rules are soft penalties. Each warning subtracts `10` points
+  from the preference score but does not block submission.
+- Preference tradeoffs, such as a lower documented fare or lodging option,
+  subtract `5` points each when no hard block already owns that category.
+
+The result keeps every score effect with a stable code, category, delta,
+blocking flag, and message so planner callers can explain whether policy or
+traveler preference drove the final ranking.

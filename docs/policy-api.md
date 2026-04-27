@@ -266,6 +266,21 @@ Example JSON structure for planner-facing evaluation results:
       "suggested_value": "300.00"
     }
   ],
+  "score_explanation": {
+    "base_preference_score": 100,
+    "final_preference_score": 0,
+    "hard_blocked": true,
+    "effects": [
+      {
+        "code": "fare_comparison",
+        "category": "hard_block",
+        "score_delta": -100,
+        "blocking": true,
+        "message": "Hard policy constraint 'fare_comparison' blocks the proposal."
+      }
+    ],
+    "summary": "One or more hard policy constraints block the proposal; traveler preferences cannot override them."
+  },
   "exception_requirements": [],
   "reoptimization_guidance": [
     {
@@ -280,6 +295,20 @@ Example JSON structure for planner-facing evaluation results:
   "generated_at": "2026-04-11T12:31:00Z"
 }
 ```
+
+### Business-mode scoring semantics
+
+`score_explanation` makes policy effects explicit for ranking callers:
+
+- Hard policy errors are `hard_block` effects. They set
+  `hard_blocked=true` and force `final_preference_score` to `0`; traveler
+  preferences cannot outweigh them.
+- Soft policy warnings are `soft_penalty` effects. Each warning subtracts
+  `10` points from the base score without blocking submission.
+- Preference-only tradeoffs are `preference_tradeoff` effects. Each tradeoff
+  subtracts `5` points so compliant proposals can still be ranked against
+  lower-cost or preferred-provider alternatives.
+- Scores are capped to the inclusive `0..100` range.
 
 ## Functions
 
