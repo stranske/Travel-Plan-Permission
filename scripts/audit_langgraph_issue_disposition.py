@@ -16,6 +16,11 @@ DEFAULT_TRUSTED_ASSOCIATIONS = ("COLLABORATOR", "MEMBER", "OWNER")
 NEGATED_APPROVAL_PATTERNS = (
     re.compile(r"\b(?:do\s+not|don't|not|cannot|can't|no)\s+approve(?:d)?\b", re.IGNORECASE),
     re.compile(r"\b(?:do\s+not|don't|not|no)\s+lgtm\b", re.IGNORECASE),
+    re.compile(r"\blgtm\b[^\n]{0,20}\b(?:not|yet|pending|later)\b", re.IGNORECASE),
+    re.compile(
+        r"\bapprove(?:d)?\b[^\n]{0,20}\b(?:not|yet|pending|later|after|once)\b",
+        re.IGNORECASE,
+    ),
     re.compile(r"\bwithhold(?:ing)?\s+approval\b", re.IGNORECASE),
 )
 
