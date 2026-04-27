@@ -248,6 +248,40 @@ def test_ship_it_counts_as_approval() -> None:
     assert len(report["approvals"]) == 1
 
 
+def test_has_my_approval_counts_as_approval() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "maintainer-a"},
+            "body": "This has my approval and is ready to close.",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-26",
+            "author_association": "MEMBER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("maintainer-a",),
+        approval_regexes=(
+            r"\bapprove(?:d)?\b",
+            r"\blgtm\b",
+            r"\blooks\s+good\s+to\s+me\b",
+            r"\bship\s+it\b",
+            r"\b(?:has|have)\s+my\s+approval\b",
+        ),
+    )
+
+    assert report["summary"]["maintainer_approved"] is True
+    assert report["summary"]["ready_to_close"] is True
+    assert len(report["approvals"]) == 1
+
+
 def test_bot_member_approval_does_not_count() -> None:
     issue = {
         "number": 939,
@@ -646,6 +680,40 @@ def test_ship_it_not_yet_does_not_count() -> None:
             r"\blgtm\b",
             r"\blooks\s+good\s+to\s+me\b",
             r"\bship\s+it\b",
+        ),
+    )
+
+    assert report["summary"]["maintainer_approved"] is False
+    assert report["summary"]["ready_to_close"] is False
+    assert report["approvals"] == []
+
+
+def test_has_my_approval_question_does_not_count() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "maintainer-a"},
+            "body": "Does this have my approval?",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-27",
+            "author_association": "MEMBER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("maintainer-a",),
+        approval_regexes=(
+            r"\bapprove(?:d)?\b",
+            r"\blgtm\b",
+            r"\blooks\s+good\s+to\s+me\b",
+            r"\bship\s+it\b",
+            r"\b(?:has|have)\s+my\s+approval\b",
         ),
     )
 

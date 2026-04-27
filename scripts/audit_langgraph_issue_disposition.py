@@ -16,6 +16,7 @@ DEFAULT_APPROVAL_PATTERNS = (
     r"\blgtm\b",
     r"\blooks\s+good\s+to\s+me\b",
     r"\bship\s+it\b",
+    r"\b(?:has|have)\s+my\s+approval\b",
 )
 DEFAULT_TRUSTED_ASSOCIATIONS = ("COLLABORATOR", "MEMBER", "OWNER")
 NEGATED_APPROVAL_PATTERNS = (
@@ -54,6 +55,10 @@ NEGATED_APPROVAL_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(r"\bship\s+it\b[^\n]{0,40}\?", re.IGNORECASE),
+    re.compile(r"\b(?:has|have)\s+my\s+approval\b[^\n]{0,40}\?", re.IGNORECASE),
+    re.compile(
+        r"\b(?:need|needs|pending|request(?:ed|ing)?)\s+(?:my\s+)?approval\b", re.IGNORECASE
+    ),
 )
 
 
