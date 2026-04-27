@@ -126,6 +126,62 @@ def test_ready_to_close_when_checkboxes_complete_and_maintainer_approves() -> No
     assert report["approvals"][0]["association"] == "MEMBER"
 
 
+def test_generic_approval_without_closure_context_does_not_count() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "maintainer-a"},
+            "body": "Approved, thanks.",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-30",
+            "author_association": "MEMBER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("maintainer-a",),
+        approval_regexes=(r"\bapprove(?:d)?\b", r"\blgtm\b"),
+    )
+
+    assert report["summary"]["maintainer_approved"] is False
+    assert report["summary"]["ready_to_close"] is False
+    assert report["approvals"] == []
+
+
+def test_lgtm_without_closure_context_does_not_count() -> None:
+    issue = {
+        "number": 939,
+        "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939",
+        "state": "open",
+        "body": "## Tasks\n- [x] task one\n## Acceptance Criteria\n- [x] task two",
+    }
+    comments = [
+        {
+            "user": {"login": "maintainer-a"},
+            "body": "LGTM on the approach.",
+            "html_url": "https://github.com/stranske/Travel-Plan-Permission/issues/939#issuecomment-31",
+            "author_association": "MEMBER",
+        }
+    ]
+
+    report = build_disposition_report(
+        issue_json=issue,
+        comments_json=comments,
+        maintainers=("maintainer-a",),
+        approval_regexes=(r"\bapprove(?:d)?\b", r"\blgtm\b"),
+    )
+
+    assert report["summary"]["maintainer_approved"] is False
+    assert report["summary"]["ready_to_close"] is False
+    assert report["approvals"] == []
+
+
 def test_approval_requires_trusted_association_when_maintainer_list_not_set() -> None:
     issue = {
         "number": 939,

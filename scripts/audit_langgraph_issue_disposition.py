@@ -77,6 +77,12 @@ NEGATED_APPROVAL_PATTERNS = (
     ),
 )
 
+CLOSURE_CONTEXT_PATTERN = re.compile(
+    r"\b(?:close|closed|closing|closure|disposition|ready\s+to\s+close|safe\s+to\s+close|"
+    r"resolved?|complete(?:d)?|done)\b",
+    re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class CheckboxSummary:
@@ -221,6 +227,8 @@ def _collect_approval_evidence(
                 continue
             if any(negative.search(body) for negative in NEGATED_APPROVAL_PATTERNS):
                 continue
+            if not _has_closure_context(body, match.span()):
+                continue
             start = max(0, match.start() - 24)
             end = min(len(body), match.end() + 24)
             snippet = body[start:end].replace("\n", " ").strip()
@@ -239,6 +247,15 @@ def _collect_approval_evidence(
             break
 
     return tuple(evidence)
+
+
+def _has_closure_context(body: str, match_span: tuple[int, int]) -> bool:
+    """Require approval language to be tied to closure/disposition intent."""
+
+    window_start = max(0, match_span[0] - 120)
+    window_end = min(len(body), match_span[1] + 120)
+    window = body[window_start:window_end]
+    return CLOSURE_CONTEXT_PATTERN.search(window) is not None
 
 
 def _extract_human_comment_text(body: str) -> str:
