@@ -555,6 +555,31 @@ status = poll_execution_status(plan, status_request)
 print(status.execution_status.state if status.execution_status else "unavailable")
 ```
 
+For callers that need the HTTP transport instead of in-process policy helpers,
+use `travel_plan_permission.planner_client.TravelPlanPermissionClient`:
+
+```python
+from travel_plan_permission.planner_client import TravelPlanPermissionClient
+
+client = TravelPlanPermissionClient(
+    base_url="http://127.0.0.1:8000",
+    token="dev-token",
+    timeout=10.0,
+)
+submit = client.submit_proposal(trip_plan=trip_plan_json, request_payload=proposal_request)
+execution_id = str(submit.result_payload["execution_id"])
+status = client.wait_for_terminal_status(
+    proposal_id=proposal_request["proposal_id"],
+    execution_id=execution_id,
+    max_attempts=3,
+)
+evaluation = client.fetch_evaluation_result(execution_id=execution_id)
+```
+
+The same client is used by `tpp-planner-smoke`, which reads `TPP_BASE_URL`,
+`TPP_AUTH_MODE`, `TPP_OIDC_PROVIDER`, `TPP_ACCESS_TOKEN`, and
+`TPP_BOOTSTRAP_SIGNING_SECRET` for local deterministic smoke runs.
+
 ### get_evaluation_result
 
 **Signature**

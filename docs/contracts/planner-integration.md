@@ -40,6 +40,29 @@ handshake against a running TPP instance, checks `/readyz` before proceeding,
 and verifies that unauthenticated snapshot access is rejected before running
 the authorized planner flow.
 
+Planner callers should use the concrete transport wrapper in
+`travel_plan_permission.planner_client.TravelPlanPermissionClient` when they
+need the operational proposal lifecycle:
+
+- `submit_proposal(trip_plan=..., request_payload=...)` posts to
+  `POST /api/planner/proposals` and returns a typed
+  `PlannerProposalOperationResponse` with stable proposal and execution IDs.
+- `poll_status(proposal_id=..., execution_id=...)` reads
+  `GET /api/planner/proposals/{proposal_id}/executions/{execution_id}` without
+  discarding the response body.
+- `fetch_evaluation_result(execution_id=...)` reads
+  `GET /api/planner/executions/{execution_id}/evaluation-result` and validates
+  the typed evaluation contract.
+- `wait_for_terminal_status(...)` performs bounded polling and raises
+  `PlannerPollingTimeout` with the last non-terminal response when the execution
+  does not finish within the caller's attempt budget.
+
+The client uses `TPP_BASE_URL` and a bearer token from either
+`TPP_ACCESS_TOKEN` (`TPP_AUTH_MODE=static-token`) or a bootstrap token minted
+from `TPP_BOOTSTRAP_SIGNING_SECRET` (`TPP_AUTH_MODE=bootstrap-token`) when wired
+through `tpp-planner-smoke`. `PlannerAuthConfig.from_env` also requires
+`TPP_OIDC_PROVIDER`, including when `TPP_AUTH_MODE=static-token`.
+
 ## Transport Authentication
 
 ### Auth method

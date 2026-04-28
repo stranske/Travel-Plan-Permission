@@ -14,11 +14,8 @@ from typing import Any
 from urllib import error, request
 
 from .planner_auth import PlannerAuthConfig, PlannerAuthMode, mint_bootstrap_token
-from .policy_api import (
-    PlannerPolicySnapshot,
-    PlannerProposalEvaluationResult,
-    PlannerProposalOperationResponse,
-)
+from .planner_client import TravelPlanPermissionClient
+from .policy_api import PlannerPolicySnapshot
 from .security import Permission
 
 _DEFAULT_TIMEOUT_SECONDS = 10.0
@@ -267,20 +264,16 @@ def _validate_smoke_flow(
     snapshot = PlannerPolicySnapshot.model_validate(snapshot_payload)
     print(f"policy snapshot: ok for trip {snapshot.trip_id}")
 
-    proposal_request = _proposal_request(trip_plan)
-    submit_response = _request_json(
-        "POST",
-        f"{base_url}/api/planner/proposals",
+    planner_client = TravelPlanPermissionClient(
+        base_url=base_url,
+        token=token,
         timeout=timeout,
-        headers=headers,
-        json_body={"trip_plan": trip_plan, "request": proposal_request},
     )
-    submit_payload = _expect_json_object(submit_response, step="proposal submission")
-    if submit_response.status_code != 200:
-        raise PlannerSmokeError(
-            f"Proposal submission failed: status={submit_response.status_code} payload={submit_payload}"
-        )
-    submit = PlannerProposalOperationResponse.model_validate(submit_payload)
+    proposal_request = _proposal_request(trip_plan)
+    submit = planner_client.submit_proposal(
+        trip_plan=trip_plan,
+        request_payload=proposal_request,
+    )
     execution_id = submit.result_payload.get("execution_id")
     if not isinstance(execution_id, str) or not execution_id:
         raise PlannerSmokeError(
@@ -289,36 +282,17 @@ def _validate_smoke_flow(
     print(f"proposal submission: ok with execution {execution_id}")
 
     proposal_id = str(proposal_request["proposal_id"])
-    status_response = _request_json(
-        "GET",
-        f"{base_url}/api/planner/proposals/{proposal_id}/executions/{execution_id}",
-        timeout=timeout,
-        headers=headers,
+    status_model = planner_client.poll_status(
+        proposal_id=proposal_id,
+        execution_id=execution_id,
     )
-    status_payload = _expect_json_object(status_response, step="proposal status")
-    if status_response.status_code != 200:
-        raise PlannerSmokeError(
-            f"Proposal status failed: status={status_response.status_code} payload={status_payload}"
-        )
-    status_model = PlannerProposalOperationResponse.model_validate(status_payload)
     if status_model.result_payload.get("execution_id") != execution_id:
         raise PlannerSmokeError(
             "Proposal status response returned an execution_id that does not match submission."
         )
     print("proposal status: ok")
 
-    evaluation_response = _request_json(
-        "GET",
-        f"{base_url}/api/planner/executions/{execution_id}/evaluation-result",
-        timeout=timeout,
-        headers=headers,
-    )
-    evaluation_payload = _expect_json_object(evaluation_response, step="evaluation result")
-    if evaluation_response.status_code != 200:
-        raise PlannerSmokeError(
-            f"Evaluation result failed: status={evaluation_response.status_code} payload={evaluation_payload}"
-        )
-    evaluation = PlannerProposalEvaluationResult.model_validate(evaluation_payload)
+    evaluation = planner_client.fetch_evaluation_result(execution_id=execution_id)
     if evaluation.execution_id != execution_id:
         raise PlannerSmokeError(
             "Evaluation result response returned an execution_id that does not match submission."
