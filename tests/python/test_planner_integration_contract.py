@@ -32,6 +32,7 @@ def test_planner_contract_doc_references_all_supported_fixtures() -> None:
         "tests/fixtures/planner_integration/proposal_submission.json",
         "tests/fixtures/planner_integration/proposal_status.json",
         "tests/fixtures/planner_integration/evaluation_result_compliant.json",
+        "tests/fixtures/planner_integration/evaluation_result_soft_penalty.json",
         "tests/fixtures/planner_integration/evaluation_result_non_compliant.json",
         "tests/fixtures/planner_integration/evaluation_result_exception_required.json",
     ]
@@ -50,9 +51,7 @@ def test_policy_snapshot_request_fixture_matches_request_model() -> None:
 
 
 def test_policy_snapshot_response_fixture_matches_response_model() -> None:
-    response = PlannerPolicySnapshot.model_validate(
-        _load_fixture("policy_snapshot_response.json")
-    )
+    response = PlannerPolicySnapshot.model_validate(_load_fixture("policy_snapshot_response.json"))
 
     assert response.freshness == "current"
     assert response.auth.required_permission == "view"
@@ -81,6 +80,19 @@ def test_compliant_evaluation_result_fixture_matches_model() -> None:
 
     assert evaluation.outcome == "compliant"
     assert evaluation.policy_result.status == "pass"
+    assert evaluation.score_explanation.final_preference_score == 100
+    assert evaluation.score_explanation.effects == []
+
+
+def test_soft_penalty_evaluation_result_fixture_matches_model() -> None:
+    evaluation = PlannerProposalEvaluationResult.model_validate(
+        _load_fixture("evaluation_result_soft_penalty.json")
+    )
+
+    assert evaluation.outcome == "compliant"
+    assert evaluation.policy_result.status == "pass"
+    assert evaluation.score_explanation.final_preference_score == 90
+    assert evaluation.score_explanation.effects[0].category == "soft_penalty"
 
 
 def test_non_compliant_evaluation_result_fixture_matches_model() -> None:
@@ -93,6 +105,8 @@ def test_non_compliant_evaluation_result_fixture_matches_model() -> None:
         "fare_comparison",
         "fare_evidence",
     }
+    assert evaluation.score_explanation.hard_blocked is True
+    assert evaluation.score_explanation.final_preference_score == 0
 
 
 def test_exception_required_evaluation_result_fixture_matches_model() -> None:

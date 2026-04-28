@@ -180,6 +180,10 @@ current policy decision for a proposal.
 - `blocking_issues[].code` and `policy_result.issues[].context.rule_id` are the
   stable machine-readable join keys for UI copy, analytics, or follow-up
   handling.
+- `score_explanation` is the ranking contract for business-mode preferences:
+  hard policy errors set `hard_blocked=true` and force the final preference
+  score to `0`, soft policy warnings subtract `10` points each, and preference
+  tradeoffs subtract `5` points while the proposal remains rankable.
 
 ### 5. Persist planner-runtime follow-up state
 
@@ -211,6 +215,7 @@ examples:
 | Proposal submission | `tests/fixtures/planner_integration/proposal_submission.json` |
 | Proposal status | `tests/fixtures/planner_integration/proposal_status.json` |
 | Evaluation result (compliant) | `tests/fixtures/planner_integration/evaluation_result_compliant.json` |
+| Evaluation result (soft policy penalty) | `tests/fixtures/planner_integration/evaluation_result_soft_penalty.json` |
 | Evaluation result (non-compliant) | `tests/fixtures/planner_integration/evaluation_result_non_compliant.json` |
 | Evaluation result (exception-required) | `tests/fixtures/planner_integration/evaluation_result_exception_required.json` |
 
