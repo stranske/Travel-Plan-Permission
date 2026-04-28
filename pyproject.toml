@@ -18,6 +18,7 @@ classifiers = [
 
 dependencies = [
     "fastapi>=0.115.0",
+    "httpx>=0.28.1",
     "pydantic>=2.0",
     "pyyaml>=6.0.2",
     "openpyxl>=3.1.5",
@@ -28,7 +29,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "httpx>=0.28.1",
     "pytest==9.0.3",
     "pytest-cov==7.1.0",
     "ruff==0.15.10",
@@ -56,6 +56,7 @@ orchestration-demo = "travel_plan_permission.orchestration.example:main"
 tpp-planner-token = "travel_plan_permission.planner_auth:main"
 tpp-planner-service = "travel_plan_permission.http_service:main"
 tpp-planner-smoke = "travel_plan_permission.planner_smoke:main"
+tpp-cross-repo-smoke = "travel_plan_permission.cross_repo_smoke:main"
 
 [build-system]
 requires = []
