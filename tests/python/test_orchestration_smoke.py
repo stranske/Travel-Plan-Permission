@@ -15,9 +15,7 @@ from travel_plan_permission.orchestration import graph as orchestration_graph
 
 def _fixture_trip_input() -> tuple[TripPlan, CanonicalTripPlan | None]:
     fixture_path = (
-        Path(__file__).resolve().parents[1]
-        / "fixtures"
-        / "sample_trip_plan_minimal.json"
+        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_minimal.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
@@ -68,12 +66,60 @@ def test_policy_graph_records_missing_policy_inputs(tmp_path: Path) -> None:
     assert missing
     rule_ids = {entry.get("rule_id") for entry in missing}
     assert "advance_booking" in rule_ids
-    advance_booking = next(
-        entry for entry in missing if entry.get("rule_id") == "advance_booking"
-    )
+    advance_booking = next(entry for entry in missing if entry.get("rule_id") == "advance_booking")
     assert "booking_date" in advance_booking.get("missing_fields", [])
     assert isinstance(advance_booking.get("missing_fields"), list)
     assert advance_booking.get("message", "").startswith("Missing required inputs:")
+
+
+def test_policy_graph_persists_planner_runtime_seam(tmp_path: Path) -> None:
+    plan, canonical = _fixture_trip_input()
+    output_path = tmp_path / "travel_request.xlsx"
+    planner_turn = {
+        "source": "trip_planner",
+        "turn_id": "turn-948",
+        "operation": "submit_business_trip",
+        "message": "Book the conference trip and check policy.",
+    }
+    planner_feedback = {
+        "turn_id": "turn-948",
+        "accepted_policy_guidance": False,
+        "comment": "Show the policy blockers before booking.",
+    }
+
+    state = run_policy_graph(
+        plan,
+        canonical_plan=canonical,
+        output_path=output_path,
+        planner_turn=planner_turn,
+        planner_feedback=planner_feedback,
+        prefer_langgraph=False,
+    )
+
+    assert state.policy_result is not None
+    assert state.planner_turn == planner_turn
+    assert state.planner_feedback == planner_feedback
+    assert state.checkpoint_metadata is not None
+    assert state.follow_up_action is not None
+    assert state.checkpoint_metadata["state_model"] == "TripState"
+    assert state.checkpoint_metadata["trip_id"] == plan.trip_id
+    assert state.checkpoint_metadata["policy_status"] == state.policy_result["status"]
+    assert state.follow_up_action["source"] == "policy_check"
+    assert state.follow_up_action["policy_status"] == state.policy_result["status"]
+    assert state.follow_up_action["required"] is True
+    assert state.follow_up_action["next_step"] == "planner_revise_trip"
+
+    checkpoint_path = tmp_path / "planner_runtime_checkpoint.json"
+    checkpoint_path.write_text(state.model_dump_json(indent=2), encoding="utf-8")
+    restored = orchestration_graph.TripState.model_validate_json(
+        checkpoint_path.read_text(encoding="utf-8")
+    )
+
+    assert restored.planner_turn == planner_turn
+    assert restored.planner_feedback == planner_feedback
+    assert restored.policy_result == state.policy_result
+    assert restored.checkpoint_metadata == state.checkpoint_metadata
+    assert restored.follow_up_action == state.follow_up_action
 
 
 @pytest.mark.filterwarnings("ignore:Pydantic serializer warnings.*:UserWarning")

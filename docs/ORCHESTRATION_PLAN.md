@@ -286,6 +286,25 @@ class TripState(BaseModel):
 
 This state is persisted so workflows can span multiple sessions and support audit.
 
+The current repo-local orchestration seam is implemented by
+`travel_plan_permission.orchestration.graph.TripState`. Broader orchestration
+work must carry planner-runtime data through this state model rather than
+parallel service or UI shortcuts:
+
+- `planner_turn` records the planner input turn that initiated the policy call.
+- `policy_result` and `policy_missing_inputs` record the TPP policy evaluation.
+- `checkpoint_metadata` names the persisted `TripState` checkpoint and policy
+  status used for resume/audit.
+- `planner_feedback` carries user feedback from the planner loop.
+- `follow_up_action` records whether the planner must revise the trip or can
+  continue.
+
+The smoke contract for this seam lives in
+`tests/python/test_orchestration_smoke.py::test_policy_graph_persists_planner_runtime_seam`.
+Future planner autonomy, tool-calling, checkpoint persistence, and business
+policy follow-up should extend that state object instead of creating a separate
+advisory-only policy path.
+
 ### 6.2 Pre-Trip Workflow (Graph)
 
 1. Initial Plan Capture
