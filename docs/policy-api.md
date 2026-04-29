@@ -266,6 +266,21 @@ Example JSON structure for planner-facing evaluation results:
       "suggested_value": "300.00"
     }
   ],
+  "score_explanation": {
+    "base_preference_score": 100,
+    "final_preference_score": 0,
+    "hard_blocked": true,
+    "effects": [
+      {
+        "code": "fare_comparison",
+        "category": "hard_block",
+        "score_delta": -100,
+        "blocking": true,
+        "message": "Hard policy constraint 'fare_comparison' blocks the proposal."
+      }
+    ],
+    "summary": "One or more hard policy constraints block the proposal; traveler preferences cannot override them."
+  },
   "exception_requirements": [],
   "reoptimization_guidance": [
     {
@@ -280,6 +295,20 @@ Example JSON structure for planner-facing evaluation results:
   "generated_at": "2026-04-11T12:31:00Z"
 }
 ```
+
+### Business-mode scoring semantics
+
+`score_explanation` makes policy effects explicit for ranking callers:
+
+- Hard policy errors are `hard_block` effects. They set
+  `hard_blocked=true` and force `final_preference_score` to `0`; traveler
+  preferences cannot outweigh them.
+- Soft policy warnings are `soft_penalty` effects. Each warning subtracts
+  `10` points from the base score without blocking submission.
+- Preference-only tradeoffs are `preference_tradeoff` effects. Each tradeoff
+  subtracts `5` points so compliant proposals can still be ranked against
+  lower-cost or preferred-provider alternatives.
+- Scores are capped to the inclusive `0..100` range.
 
 ## Functions
 
@@ -554,6 +583,31 @@ status_request = PlannerProposalStatusRequest(
 status = poll_execution_status(plan, status_request)
 print(status.execution_status.state if status.execution_status else "unavailable")
 ```
+
+For callers that need the HTTP transport instead of in-process policy helpers,
+use `travel_plan_permission.planner_client.TravelPlanPermissionClient`:
+
+```python
+from travel_plan_permission.planner_client import TravelPlanPermissionClient
+
+client = TravelPlanPermissionClient(
+    base_url="http://127.0.0.1:8000",
+    token="dev-token",
+    timeout=10.0,
+)
+submit = client.submit_proposal(trip_plan=trip_plan_json, request_payload=proposal_request)
+execution_id = str(submit.result_payload["execution_id"])
+status = client.wait_for_terminal_status(
+    proposal_id=proposal_request["proposal_id"],
+    execution_id=execution_id,
+    max_attempts=3,
+)
+evaluation = client.fetch_evaluation_result(execution_id=execution_id)
+```
+
+The same client is used by `tpp-planner-smoke`, which reads `TPP_BASE_URL`,
+`TPP_AUTH_MODE`, `TPP_OIDC_PROVIDER`, `TPP_ACCESS_TOKEN`, and
+`TPP_BOOTSTRAP_SIGNING_SECRET` for local deterministic smoke runs.
 
 ### get_evaluation_result
 

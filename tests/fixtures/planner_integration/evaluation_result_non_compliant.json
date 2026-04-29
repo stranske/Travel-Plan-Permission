@@ -57,6 +57,28 @@
       "suggested_value": "300.00"
     }
   ],
+  "score_explanation": {
+    "base_preference_score": 100,
+    "final_preference_score": 0,
+    "hard_blocked": true,
+    "effects": [
+      {
+        "code": "fare_comparison",
+        "category": "hard_block",
+        "score_delta": -100,
+        "blocking": true,
+        "message": "Hard policy constraint 'fare_comparison' blocks the proposal: Selected fare exceeds the lowest comparable fare threshold."
+      },
+      {
+        "code": "fare_evidence",
+        "category": "hard_block",
+        "score_delta": -100,
+        "blocking": true,
+        "message": "Hard policy constraint 'fare_evidence' blocks the proposal: Attach fare evidence or a screenshot showing the compared fare."
+      }
+    ],
+    "summary": "One or more hard policy constraints block the proposal; traveler preferences cannot override them."
+  },
   "exception_requirements": [],
   "reoptimization_guidance": [
     {

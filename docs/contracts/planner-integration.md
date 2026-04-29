@@ -40,6 +40,29 @@ handshake against a running TPP instance, checks `/readyz` before proceeding,
 and verifies that unauthenticated snapshot access is rejected before running
 the authorized planner flow.
 
+Planner callers should use the concrete transport wrapper in
+`travel_plan_permission.planner_client.TravelPlanPermissionClient` when they
+need the operational proposal lifecycle:
+
+- `submit_proposal(trip_plan=..., request_payload=...)` posts to
+  `POST /api/planner/proposals` and returns a typed
+  `PlannerProposalOperationResponse` with stable proposal and execution IDs.
+- `poll_status(proposal_id=..., execution_id=...)` reads
+  `GET /api/planner/proposals/{proposal_id}/executions/{execution_id}` without
+  discarding the response body.
+- `fetch_evaluation_result(execution_id=...)` reads
+  `GET /api/planner/executions/{execution_id}/evaluation-result` and validates
+  the typed evaluation contract.
+- `wait_for_terminal_status(...)` performs bounded polling and raises
+  `PlannerPollingTimeout` with the last non-terminal response when the execution
+  does not finish within the caller's attempt budget.
+
+The client uses `TPP_BASE_URL` and a bearer token from either
+`TPP_ACCESS_TOKEN` (`TPP_AUTH_MODE=static-token`) or a bootstrap token minted
+from `TPP_BOOTSTRAP_SIGNING_SECRET` (`TPP_AUTH_MODE=bootstrap-token`) when wired
+through `tpp-planner-smoke`. `PlannerAuthConfig.from_env` also requires
+`TPP_OIDC_PROVIDER`, including when `TPP_AUTH_MODE=static-token`.
+
 ## Transport Authentication
 
 ### Auth method
@@ -157,6 +180,10 @@ current policy decision for a proposal.
 - `blocking_issues[].code` and `policy_result.issues[].context.rule_id` are the
   stable machine-readable join keys for UI copy, analytics, or follow-up
   handling.
+- `score_explanation` is the ranking contract for business-mode preferences:
+  hard policy errors set `hard_blocked=true` and force the final preference
+  score to `0`, soft policy warnings subtract `10` points each, and preference
+  tradeoffs subtract `5` points while the proposal remains rankable.
 
 ### 5. Persist planner-runtime follow-up state
 
@@ -188,6 +215,7 @@ examples:
 | Proposal submission | `tests/fixtures/planner_integration/proposal_submission.json` |
 | Proposal status | `tests/fixtures/planner_integration/proposal_status.json` |
 | Evaluation result (compliant) | `tests/fixtures/planner_integration/evaluation_result_compliant.json` |
+| Evaluation result (soft policy penalty) | `tests/fixtures/planner_integration/evaluation_result_soft_penalty.json` |
 | Evaluation result (non-compliant) | `tests/fixtures/planner_integration/evaluation_result_non_compliant.json` |
 | Evaluation result (exception-required) | `tests/fixtures/planner_integration/evaluation_result_exception_required.json` |
 

@@ -1,0 +1,162 @@
+version: 1
+issue: 951
+base: main
+branch: codex/issue-951
+tasks:
+  - id: task-01
+    title: 'Inspect the workflow files in `.github/workflows/**` from PR #943 to identify
+      all GitHub Action references with their versions'
+    status: done
+    started_at: '2026-04-26T21:42:51Z'
+    finished_at: '2026-04-26T21:43:04Z'
+    commit: e7254c7e4ce3b0167e1af7bb463b88da9f047527
+    notes: []
+  - id: task-02
+    title: Verify each identified GitHub Action reference exists and is accessible
+      in the public GitHub Actions marketplace
+    status: done
+    started_at: '2026-04-26T21:50:15Z'
+    finished_at: '2026-04-26T21:57:21Z'
+    commit: e0ac311dbf8f117df7c6f4714b2910646a2a878f
+    notes: []
+  - id: task-03
+    title: Document the validation results for each Action reference in this issue
+      as a comment
+    status: done
+    started_at: '2026-04-26T23:06:41Z'
+    finished_at: '2026-04-26T23:06:41Z'
+    commit: ''
+    notes:
+      - Posted issue evidence comment with action reference validation results.
+  - id: task-04
+    title: 'Locate and list all LangGraph runtime test files referenced by the merged
+      workflow in PR #943'
+    status: done
+    started_at: '2026-04-26T22:03:44Z'
+    finished_at: '2026-04-26T22:03:44Z'
+    commit: ''
+    notes:
+      - Verified with `python scripts/audit_langgraph_workflow_tests.py --format comment` (6 targets listed).
+  - id: task-05
+    title: Review the test code to verify it includes execution paths with `prefer_langgraph=True`
+      parameter
+    status: done
+    started_at: '2026-04-26T22:03:44Z'
+    finished_at: '2026-04-26T22:03:44Z'
+    commit: ''
+    notes:
+      - Verified with `python scripts/audit_langgraph_workflow_tests.py --format comment` (6/6 targets YES).
+  - id: task-06
+    title: Trace the workflow execution logs from the verifier run to confirm the
+      tests actually invoke the LangGraph code path during CI runs
+    status: done
+    started_at: '2026-04-26T23:06:41Z'
+    finished_at: '2026-04-26T23:06:41Z'
+    commit: ''
+    notes:
+      - CI run 24967432670 passed 4 LangGraph targets from the original #943 lane.
+      - CI run 24968471666 passed the same 4 LangGraph targets on follow-up PR #952.
+      - Gate run 24968471670 passed the 2 gate-scoped LangGraph targets on follow-up PR #952.
+  - id: task-07
+    title: Document the specific Anthropic provider concerns from the verifier run
+      with log excerpts in this issue as a comment
+    status: done
+    started_at: '2026-04-26T23:06:41Z'
+    finished_at: '2026-04-26T23:06:41Z'
+    commit: ''
+    notes:
+      - Posted issue evidence comment summarizing the Anthropic concerns and false-positive disposition.
+  - id: task-08
+    title: Fix test files to close identified gaps causing verifier concerns (if gaps
+      are found during investigation)
+    status: done
+    started_at: '2026-04-26T21:50:15Z'
+    finished_at: '2026-04-26T21:50:15Z'
+    commit: 61cbe1d9954f932de2470e76920d7498c448a289
+    notes: []
+  - id: task-09
+    title: Create a targeted validation check in test files to detect similar issues
+      in future CI runs
+    status: done
+    started_at: '2026-04-26T21:50:15Z'
+    finished_at: '2026-04-26T21:50:15Z'
+    commit: 61cbe1d9954f932de2470e76920d7498c448a289
+    notes: []
+  - id: task-10
+    title: Add test coverage to verify the validation check correctly identifies the
+      regression scenario
+    status: done
+    started_at: '2026-04-26T21:57:21Z'
+    finished_at: '2026-04-26T21:57:21Z'
+    commit: e0ac311dbf8f117df7c6f4714b2910646a2a878f
+    notes: []
+  - id: task-11
+    title: '**Update workflow files in `.github/workflows/**`** - If investigation
+      reveals workflow configuration issues, create a separate issue documenting the
+      required changes with specific file paths and line numbers'
+    status: done
+    started_at: '2026-04-26T23:06:41Z'
+    finished_at: '2026-04-26T23:06:41Z'
+    commit: ''
+    notes:
+      - No workflow configuration issue remained after action refs and runtime logs validated cleanly.
+  - id: task-12
+    title: '**Apply workflow fixes** - Implement any necessary changes to `.github/workflows/**`
+      files based on investigation findings'
+    status: done
+    started_at: '2026-04-26T23:06:41Z'
+    finished_at: '2026-04-26T23:06:41Z'
+    commit: ''
+    notes:
+      - Not applicable; the investigated workflow concerns validated as false positives.
+  - id: task-13
+    title: 'All verifier concerns from PR #943 are addressed with either: (a) merged
+      code/test changes that result in PASS status on re-run, or (b) documented analysis
+      in issue comments with links to at least 2 CI run logs showing the concern is
+      a false positive'
+    status: done
+    started_at: '2026-04-26T23:06:41Z'
+    finished_at: '2026-04-26T23:06:41Z'
+    commit: ''
+    notes:
+      - Evidence comment links two CI run logs and the Gate log showing the concern is a false positive.
+  - id: task-14
+    title: 'If code/test changes are made, a comment on this issue includes a link
+      to a CI run showing: (a) the LangGraph tests execute with `prefer_langgraph=True`,
+      (b) all LangGraph-related tests pass, and (c) the overall CI workflow completes
+      with exit code 0'
+    status: done
+    started_at: '2026-04-26T23:06:41Z'
+    finished_at: '2026-04-26T23:06:41Z'
+    commit: ''
+    notes:
+      - Evidence comment links PR #952 CI jobs and summarizes all LangGraph-related tests passing.
+  - id: task-15
+    title: 'Issue #939 remains open until: (a) all tasks in this issue are checked
+      complete, (b) all acceptance criteria are met with documented evidence, and
+      (c) at least one maintainer has reviewed and approved the disposition in comments'
+    status: todo
+    started_at: '2026-04-26T23:23:27Z'
+    finished_at: null
+    commit: ''
+    notes:
+      - Blocking on maintainer review/approval of the false-positive disposition before closing #939.
+      - Added stricter disposition audit validation so approval requires an explicitly listed maintainer or trusted GitHub association (OWNER/MEMBER/COLLABORATOR).
+  - id: task-16
+    title: 'All GitHub Action references from PR #943 are documented as valid or flagged
+      for replacement'
+    status: done
+    started_at: '2026-04-26T21:57:21Z'
+    finished_at: '2026-04-26T21:57:21Z'
+    commit: e0ac311dbf8f117df7c6f4714b2910646a2a878f
+    notes:
+      - Action validation script now emits issue-comment-ready PASS/REVIEW/UNVERIFIED tables.
+  - id: task-17
+    title: All LangGraph runtime test files are confirmed to exist and execute the
+      `prefer_langgraph=True` code path
+    status: done
+    started_at: '2026-04-26T22:03:44Z'
+    finished_at: '2026-04-26T22:03:44Z'
+    commit: ''
+    notes:
+      - Verified with `python scripts/audit_langgraph_workflow_tests.py --format comment` (existing=6, prefer=6).
