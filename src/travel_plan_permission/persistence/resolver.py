@@ -57,9 +57,7 @@ def resolve_portal_state_store(state_path: Path | None) -> PortalStateStore | No
     sqlite_store = SQLitePortalStateStore(sqlite_path)
     sqlite_store.initialize()
 
-    legacy_candidate = state_path
-    if not _looks_like_json(legacy_candidate):
-        legacy_candidate = legacy_candidate.with_suffix(".json")
+    legacy_candidate = state_path.with_suffix(".json")
     maybe_import_legacy_state(sqlite_store, legacy_candidate)
     return sqlite_store
 
@@ -81,6 +79,4 @@ def _looks_like_json(path: Path) -> bool:
 def _coerce_sqlite_path(path: Path) -> Path:
     if path.suffix.lower() == ".sqlite3":
         return path
-    if path.suffix == "":
-        return path.with_suffix(".sqlite3")
     return path.with_suffix(".sqlite3")
