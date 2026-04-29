@@ -49,16 +49,20 @@ def _oidc_token(
     audience: str = "trip-planner",
     issuer: str = "https://accounts.google.com",
     expires_delta: timedelta = timedelta(minutes=10),
+    include_nbf: bool = True,
+    nbf_offset: timedelta = timedelta(seconds=-5),
 ) -> str:
     now = datetime.now(UTC)
+    claims = {
+        "iss": issuer,
+        "aud": audience,
+        "sub": subject,
+        "exp": now + expires_delta,
+    }
+    if include_nbf:
+        claims["nbf"] = now + nbf_offset
     return jwt.encode(
-        {
-            "iss": issuer,
-            "aud": audience,
-            "sub": subject,
-            "exp": now + expires_delta,
-            "nbf": now - timedelta(seconds=5),
-        },
+        claims,
         private_key,
         algorithm="RS256",
         headers={"kid": kid},
@@ -167,6 +171,30 @@ def test_oidc_token_rejects_signature_mismatch(monkeypatch, oidc_keys) -> None:
     assert oidc_keys is not None
     other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     token = _oidc_token(other_key)
+
+    with pytest.raises(PermissionError, match="is invalid"):
+        authenticate_request(
+            f"Bearer {token}",
+            config=PlannerAuthConfig.from_env(),
+            required_permission=Permission.VIEW,
+        )
+
+
+def test_oidc_token_rejects_missing_nbf(monkeypatch, oidc_keys) -> None:
+    _set_oidc_env(monkeypatch)
+    token = _oidc_token(oidc_keys, include_nbf=False)
+
+    with pytest.raises(PermissionError, match="is invalid"):
+        authenticate_request(
+            f"Bearer {token}",
+            config=PlannerAuthConfig.from_env(),
+            required_permission=Permission.VIEW,
+        )
+
+
+def test_oidc_token_rejects_not_yet_valid_nbf(monkeypatch, oidc_keys) -> None:
+    _set_oidc_env(monkeypatch)
+    token = _oidc_token(oidc_keys, nbf_offset=timedelta(minutes=2))
 
     with pytest.raises(PermissionError, match="is invalid"):
         authenticate_request(
