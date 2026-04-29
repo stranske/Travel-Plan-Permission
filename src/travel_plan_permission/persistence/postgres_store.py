@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from .store import RECORD_NAMESPACES
 
 if TYPE_CHECKING:  # pragma: no cover — typing-only import
-    from psycopg import Connection
+    from psycopg import Connection  # type: ignore[import-not-found]
 
 SCHEMA_VERSION = 1
 
@@ -63,9 +63,7 @@ class PostgresPortalStateStore:
         if self._conn is None:
             try:
                 import psycopg
-            except (
-                ImportError
-            ) as exc:  # pragma: no cover — exercised only when extra missing
+            except ImportError as exc:  # pragma: no cover — exercised only when extra missing
                 raise RuntimeError(
                     "TPP_PORTAL_DATABASE_URL is set but the 'psycopg' driver is "
                     "not installed. Install the optional 'postgres' extra: "
@@ -88,9 +86,7 @@ class PostgresPortalStateStore:
     def load_snapshot(self) -> dict[str, object] | None:
         conn = self._connection()
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT namespace, record_key, payload_json FROM tpp.portal_records"
-            )
+            cur.execute("SELECT namespace, record_key, payload_json FROM tpp.portal_records")
             records = cur.fetchall()
             cur.execute("SELECT namespace, payload_json FROM tpp.portal_singletons")
             singletons = cur.fetchall()

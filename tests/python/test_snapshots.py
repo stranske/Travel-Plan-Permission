@@ -33,9 +33,7 @@ def _plan() -> TripPlan:
 
 
 def _validator(max_days: int = 10) -> PolicyValidator:
-    rule = DurationLimitRule(
-        name="duration_limit", code="DUR-001", max_consecutive_days=max_days
-    )
+    rule = DurationLimitRule(name="duration_limit", code="DUR-001", max_consecutive_days=max_days)
     return PolicyValidator([rule])
 
 

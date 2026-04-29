@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import warnings
 from pathlib import Path
+from typing import Any
 
 
 class JsonPortalStateStore:
@@ -39,7 +40,8 @@ class JsonPortalStateStore:
     def load_snapshot(self) -> dict[str, object] | None:
         if not self._path.exists():
             return None
-        return json.loads(self._path.read_text(encoding="utf-8"))
+        result: dict[str, Any] = json.loads(self._path.read_text(encoding="utf-8"))
+        return result
 
     def save_snapshot(self, snapshot: dict[str, object]) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)

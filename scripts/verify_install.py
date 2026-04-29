@@ -31,9 +31,7 @@ def install_and_verify(
 ) -> None:
     with tempfile.TemporaryDirectory(prefix=f"tpp-{label}-") as temp_dir:
         venv_dir = Path(temp_dir) / "venv"
-        EnvBuilder(with_pip=True, system_site_packages=system_site_packages).create(
-            venv_dir
-        )
+        EnvBuilder(with_pip=True, system_site_packages=system_site_packages).create(venv_dir)
         python = venv_python(venv_dir)
 
         install_cmd = [str(python), "-m", "pip", "install"]
@@ -68,9 +66,7 @@ def install_and_verify(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Verify editable and non-editable installs."
-    )
+    parser = argparse.ArgumentParser(description="Verify editable and non-editable installs.")
     parser.add_argument(
         "--path",
         type=Path,

@@ -86,8 +86,7 @@ class SQLitePortalStateStore:
             for stmt in _SCHEMA_STATEMENTS:
                 conn.execute(stmt)
             conn.execute(
-                "INSERT OR IGNORE INTO schema_version (version, applied_at) "
-                "VALUES (?, ?)",
+                "INSERT OR IGNORE INTO schema_version (version, applied_at) " "VALUES (?, ?)",
                 (SCHEMA_VERSION, _now_iso()),
             )
 

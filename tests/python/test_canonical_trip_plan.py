@@ -18,9 +18,7 @@ from travel_plan_permission.models import ExpenseCategory, TripPlan
 
 def _load_fixture() -> dict[str, object]:
     fixture_path = (
-        Path(__file__).resolve().parents[1]
-        / "fixtures"
-        / "sample_trip_plan_minimal.json"
+        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_minimal.json"
     )
     return json.loads(fixture_path.read_text(encoding="utf-8"))
 
@@ -46,13 +44,9 @@ def test_canonical_conversion_builds_trip_plan() -> None:
     assert trip_plan.departure_date == canonical_plan.depart_date
     assert trip_plan.return_date == canonical_plan.return_date
     assert ExpenseCategory.CONFERENCE_FEES in trip_plan.expense_breakdown
-    assert trip_plan.expense_breakdown[ExpenseCategory.CONFERENCE_FEES] == Decimal(
-        "350"
-    )
+    assert trip_plan.expense_breakdown[ExpenseCategory.CONFERENCE_FEES] == Decimal("350")
     assert trip_plan.expense_breakdown[ExpenseCategory.AIRFARE] == Decimal("550")
-    assert trip_plan.expense_breakdown[ExpenseCategory.GROUND_TRANSPORT] == Decimal(
-        "36"
-    )
+    assert trip_plan.expense_breakdown[ExpenseCategory.GROUND_TRANSPORT] == Decimal("36")
     assert trip_plan.expense_breakdown[ExpenseCategory.LODGING] == Decimal("630")
     assert trip_plan.estimated_cost == Decimal("1566")
 
@@ -112,9 +106,7 @@ def test_load_trip_plan_payload_delegates_to_loader(monkeypatch) -> None:
 def test_load_trip_plan_payload_returns_loader_plan(monkeypatch) -> None:
     payload = _load_fixture()
     base_plan = load_trip_plan_input(payload).plan
-    delegated_plan = base_plan.model_copy(
-        update={"traveler_name": "Delegated Traveler"}
-    )
+    delegated_plan = base_plan.model_copy(update={"traveler_name": "Delegated Traveler"})
 
     def _wrapped_loader(_payload_dict: dict[str, object]) -> TripPlanInput:
         return TripPlanInput(plan=delegated_plan)

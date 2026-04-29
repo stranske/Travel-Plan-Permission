@@ -24,9 +24,9 @@ if TYPE_CHECKING:  # pragma: no cover - import cycles avoided at runtime
 def _stable_hash(config: dict[str, Any]) -> str:
     """Return a deterministic hash for a policy configuration."""
 
-    normalized = json.dumps(
-        config, sort_keys=True, separators=(",", ":"), default=str
-    ).encode("utf-8")
+    normalized = json.dumps(config, sort_keys=True, separators=(",", ":"), default=str).encode(
+        "utf-8"
+    )
     return sha256(normalized).hexdigest()
 
 
@@ -55,9 +55,7 @@ class PolicyVersion:
     config_hash: str
 
     @classmethod
-    def from_config(
-        cls, version: str | None, rule_config: dict[str, Any]
-    ) -> PolicyVersion:
+    def from_config(cls, version: str | None, rule_config: dict[str, Any]) -> PolicyVersion:
         major, minor, patch = _parse_version(version)
         return cls(
             major=major,
@@ -99,9 +97,7 @@ class PolicyMigrationPlan:
 class PolicyMigrationPlanner:
     """Construct migration plans that avoid service interruption."""
 
-    def build_plan(
-        self, source: PolicyVersion, target: PolicyVersion
-    ) -> PolicyMigrationPlan:
+    def build_plan(self, source: PolicyVersion, target: PolicyVersion) -> PolicyMigrationPlan:
         breaking_change = target.major != source.major
         steps = [
             "Pin current policy version for in-flight approvals",

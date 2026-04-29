@@ -843,9 +843,7 @@ def _planner_requirement(rule: dict[str, object]) -> PlannerPolicyRequirement:
         severity=(
             "error"
             if severity == Severity.BLOCKING
-            else "warning"
-            if severity == Severity.ADVISORY
-            else "info"
+            else "warning" if severity == Severity.ADVISORY else "info"
         ),
     )
 

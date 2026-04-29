@@ -10,9 +10,7 @@ from travel_plan_permission.orchestration import graph as orchestration_graph
 
 
 def _fixture_trip_input() -> tuple[TripPlan, CanonicalTripPlan | None]:
-    fixture_path = (
-        Path(__file__).resolve().parent / "fixtures" / "sample_trip_plan_minimal.json"
-    )
+    fixture_path = Path(__file__).resolve().parent / "fixtures" / "sample_trip_plan_minimal.json"
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
     return trip_input.plan, trip_input.canonical
@@ -51,9 +49,7 @@ def test_langgraph_compiled_path_creates_spreadsheet(
     state = graph.invoke(
         orchestration_graph.TripState(
             plan_json=plan.model_dump(mode="json"),
-            canonical_plan=(
-                canonical.model_dump(mode="json") if canonical is not None else None
-            ),
+            canonical_plan=(canonical.model_dump(mode="json") if canonical is not None else None),
             spreadsheet_path=output_path,
         )
     )
