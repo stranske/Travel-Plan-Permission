@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from travel_plan_permission.cross_repo_smoke import main, run_cross_repo_smoke
+from travel_plan_permission.persistence import resolve_portal_state_store
 
 
 def _write_trip_planner_contracts(root: Path) -> None:
@@ -57,7 +58,7 @@ def _write_trip_planner_contracts(root: Path) -> None:
 def test_cross_repo_smoke_proves_submission_status_evaluation_and_reload(tmp_path: Path) -> None:
     trip_planner_root = tmp_path / "trip-planner"
     _write_trip_planner_contracts(trip_planner_root)
-    state_path = tmp_path / "tpp-state.json"
+    state_path = tmp_path / "tpp-state.sqlite3"
 
     result = run_cross_repo_smoke(
         trip_planner_root=trip_planner_root,
@@ -68,7 +69,11 @@ def test_cross_repo_smoke_proves_submission_status_evaluation_and_reload(tmp_pat
     assert result.proposal_id == "planner-proposal-123"
     assert result.execution_id
     assert result.outcome in {"compliant", "non_compliant", "exception_required"}
-    persisted = json.loads(state_path.read_text(encoding="utf-8"))
+    store = resolve_portal_state_store(state_path)
+    assert store is not None
+    persisted = store.load_snapshot()
+    store.close()
+    assert persisted is not None
     assert result.execution_id in persisted["proposals_by_execution_id"]
     assert persisted["plans_by_trip_id"][result.trip_id]["trip_id"] == result.trip_id
     stored = persisted["proposals_by_execution_id"][result.execution_id]

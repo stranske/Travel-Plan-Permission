@@ -18,6 +18,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from .http_service import PlannerProposalStore, create_app
+from .persistence import resolve_portal_state_store
 from .policy_api import PlannerProposalEvaluationResult, PlannerProposalOperationResponse
 
 _FIXTURE_ROOT: Traversable = resources.files("travel_plan_permission").joinpath(
@@ -278,16 +279,20 @@ def _expect_object(response: Any, *, step: str) -> dict[str, object]:
     return payload
 
 
-def _assert_state_file_reloads(
+def _assert_state_store_reloads(
     *,
     state_path: Path,
     proposal_id: str,
     execution_id: str,
     trip_id: str,
 ) -> None:
-    if not state_path.exists():
-        raise CrossRepoSmokeError(f"TPP proposal state file was not written: {state_path}")
-    persisted = _load_json(state_path)
+    store = resolve_portal_state_store(state_path)
+    if store is None:
+        raise CrossRepoSmokeError(f"No store configured for state path: {state_path}")
+    persisted = store.load_snapshot()
+    store.close()
+    if persisted is None:
+        raise CrossRepoSmokeError(f"TPP proposal state was not written: {state_path}")
     proposals = persisted.get("proposals_by_execution_id")
     if not isinstance(proposals, dict) or execution_id not in proposals:
         raise CrossRepoSmokeError(
@@ -349,7 +354,7 @@ def run_cross_repo_smoke(
         if not isinstance(execution_id, str) or not execution_id:
             raise CrossRepoSmokeError("Proposal submission did not return an execution_id.")
 
-        _assert_state_file_reloads(
+        _assert_state_store_reloads(
             state_path=state_path,
             proposal_id=proposal_id,
             execution_id=execution_id,
@@ -402,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
             with tempfile.TemporaryDirectory(prefix="tpp-cross-repo-smoke-") as temp_dir:
                 result = run_cross_repo_smoke(
                     trip_planner_root=trip_planner_root,
-                    state_path=Path(temp_dir) / "planner-state.json",
+                    state_path=Path(temp_dir) / "planner-state.sqlite3",
                 )
         print(f"trip-planner contracts: ok at {result.trip_planner_root}")
         print(f"proposal submission: ok for {result.proposal_id}")
