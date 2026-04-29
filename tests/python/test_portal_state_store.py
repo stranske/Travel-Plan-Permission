@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 import threading
+from datetime import UTC
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -279,7 +280,7 @@ class TestPlannerProposalStoreOnSqlite:
 
         first = PlannerProposalStore(state_path=path)
         draft = first.save_portal_draft({"traveler_name": "Jordan"})
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         response = PlannerProposalOperationResponse(
             operation="submit_proposal",
@@ -288,7 +289,7 @@ class TestPlannerProposalStoreOnSqlite:
             correlation_id=PlannerCorrelationId(value="corr-1"),
             transport_pattern="async",
             result_payload={"review_url": review_url},
-            received_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            received_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
         updated = first.record_portal_submission(draft.draft_id, response)
         assert updated is not None
