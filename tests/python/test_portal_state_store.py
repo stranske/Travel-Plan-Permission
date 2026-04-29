@@ -245,6 +245,71 @@ class TestPlannerProposalStoreOnSqlite:
         assert restored is not None
         assert restored.answers == {"traveler_name": "Riley"}
 
+    def test_submission_response_survives_restart(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Acceptance criterion: restart preserves draft and submission response (review URL)."""
+        from travel_plan_permission.policy_api import (
+            PlannerCorrelationId,
+            PlannerProposalOperationResponse,
+        )
+
+        monkeypatch.delenv(PORTAL_DATABASE_URL_ENV, raising=False)
+        monkeypatch.delenv(PORTAL_BACKEND_ENV, raising=False)
+        path = tmp_path / "portal-runtime-state.sqlite3"
+        review_url = "http://localhost/portal/review/test-draft"
+
+        first = PlannerProposalStore(state_path=path)
+        draft = first.save_portal_draft({"traveler_name": "Jordan"})
+        from datetime import datetime, timezone
+
+        response = PlannerProposalOperationResponse(
+            operation="submit_proposal",
+            submission_status="pending",
+            request_id="req-restart-test",
+            correlation_id=PlannerCorrelationId(value="corr-1"),
+            transport_pattern="async",
+            result_payload={"review_url": review_url},
+            received_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+        updated = first.record_portal_submission(draft.draft_id, response)
+        assert updated is not None
+        assert updated.submission_response is not None
+
+        second = PlannerProposalStore(state_path=path)
+        restored = second.lookup_portal_draft(draft.draft_id)
+        assert restored is not None
+        assert restored.answers == {"traveler_name": "Jordan"}
+        assert restored.submission_response is not None
+        assert restored.submission_response.result_payload["review_url"] == review_url
+
+    def test_legacy_json_imported_through_planner_store(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Acceptance criterion: legacy JSON is imported into SQL store on first start."""
+        monkeypatch.delenv(PORTAL_DATABASE_URL_ENV, raising=False)
+        monkeypatch.delenv(PORTAL_BACKEND_ENV, raising=False)
+        legacy = tmp_path / "portal-runtime-state.json"
+        legacy.write_text(
+            json.dumps(
+                {
+                    "portal_drafts_by_id": {
+                        "legacy-draft": _draft_payload({"traveler_name": "Legacy User"}),
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        store = PlannerProposalStore(state_path=tmp_path / "portal-runtime-state.sqlite3")
+        draft = store.lookup_portal_draft("legacy-draft")
+        assert draft is not None
+        assert draft.answers["traveler_name"] == "Legacy User"
+
+        second = PlannerProposalStore(state_path=tmp_path / "portal-runtime-state.sqlite3")
+        draft_again = second.lookup_portal_draft("legacy-draft")
+        assert draft_again is not None, "Legacy data survives on second open (not re-imported)"
+
 
 class TestSQLitePortalStateStoreExtras:
     def test_path_property(self, tmp_path: Path) -> None:
