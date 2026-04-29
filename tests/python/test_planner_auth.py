@@ -98,6 +98,46 @@ def test_oidc_auth_config_requires_audience(monkeypatch) -> None:
     assert config.missing_config == ("TPP_OIDC_AUDIENCE",)
 
 
+@pytest.mark.parametrize(
+    ("provider", "requires_override"), [("azure_ad", True), ("okta", True), ("google", False)]
+)
+def test_oidc_provider_registry_defaults(provider, requires_override) -> None:
+    config = PlannerAuthConfig(
+        base_url="http://127.0.0.1:8000",
+        oidc_provider=provider,
+        auth_mode=PlannerAuthMode.OIDC,
+        access_token_configured=False,
+        bootstrap_secret_configured=False,
+        bootstrap_ttl_seconds=900,
+        oidc_audience="trip-planner",
+        oidc_role_map_configured=False,
+        oidc_subject_claim="sub",
+        missing_config=(),
+        invalid_config=(),
+    )
+
+    if requires_override:
+        with pytest.raises(ValueError, match="requires TPP_OIDC_ISSUER and TPP_OIDC_JWKS_URL"):
+            planner_auth._oidc_provider_settings(config)
+    else:
+        settings = planner_auth._oidc_provider_settings(config)
+        assert settings == {
+            "issuer": "https://accounts.google.com",
+            "jwks_url": "https://www.googleapis.com/oauth2/v3/certs",
+        }
+
+    # Explicit values should always bypass placeholder defaults.
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setenv("TPP_OIDC_ISSUER", "https://issuer.example")
+        monkeypatch.setenv("TPP_OIDC_JWKS_URL", "https://issuer.example/jwks.json")
+        settings = planner_auth._oidc_provider_settings(config)
+
+    assert settings == {
+        "issuer": "https://issuer.example",
+        "jwks_url": "https://issuer.example/jwks.json",
+    }
+
+
 def test_oidc_token_authenticates_default_traveler_role(monkeypatch, oidc_keys) -> None:
     _set_oidc_env(monkeypatch)
     token = _oidc_token(oidc_keys)

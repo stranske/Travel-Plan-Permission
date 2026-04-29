@@ -18,7 +18,7 @@ from enum import StrEnum
 import httpx
 import jwt
 
-from .security import DEFAULT_ROLES, DEFAULT_SSO_PLANS, Permission, RoleName
+from .security import DEFAULT_ROLES, Permission, RoleName
 
 _SUPPORTED_OIDC_PROVIDERS = ("azure_ad", "okta", "google")
 _TOKEN_VERSION = "tppv1"
@@ -28,9 +28,19 @@ _MIN_SIGNING_SECRET_LENGTH = 16
 _PLANNER_TOKEN_AUDIENCE = "planner-service"
 _PLANNER_STATIC_TOKEN_SUBJECT = "planner-static-client"
 
-_OIDC_PROVIDER_REGISTRY = {
-    name: {"issuer": plan.issuer, "jwks_url": plan.jwks_uri}
-    for name, plan in DEFAULT_SSO_PLANS.items()
+_OIDC_PROVIDER_REGISTRY: dict[str, dict[str, str]] = {
+    "azure_ad": {
+        "issuer": "https://login.microsoftonline.com/{tenant_id}/v2.0",
+        "jwks_url": "https://login.microsoftonline.com/common/discovery/v2.0/keys",
+    },
+    "okta": {
+        "issuer": "https://{yourOktaDomain}/oauth2/default",
+        "jwks_url": "https://{yourOktaDomain}/oauth2/default/v1/keys",
+    },
+    "google": {
+        "issuer": "https://accounts.google.com",
+        "jwks_url": "https://www.googleapis.com/oauth2/v3/certs",
+    },
 }
 _JWKS_CACHE: dict[str, tuple[float, dict[str, object]]] = {}
 _JWKS_CACHE_LOCK = threading.Lock()
