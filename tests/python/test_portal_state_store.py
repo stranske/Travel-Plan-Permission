@@ -257,7 +257,7 @@ class TestSQLitePortalStateStoreExtras:
         store = SQLitePortalStateStore(tmp_path / "unused.sqlite3")
         store.close()  # must not raise
 
-    def test_transaction_rollback_on_exception(self, tmp_path: Path) -> None:
+    def test_transaction_rollback_on_exception(self) -> None:
         import sqlite3
 
         from travel_plan_permission.persistence.sqlite_store import _transaction
@@ -265,10 +265,9 @@ class TestSQLitePortalStateStoreExtras:
         conn = sqlite3.connect(":memory:", isolation_level=None)
         conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT NOT NULL)")
         conn.execute("PRAGMA journal_mode=WAL")
-        with pytest.raises(ValueError):
-            with _transaction(conn):
-                conn.execute("INSERT INTO t VALUES (1, 'a')")
-                raise ValueError("force rollback")
+        with pytest.raises(ValueError), _transaction(conn):
+            conn.execute("INSERT INTO t VALUES (1, 'a')")
+            raise ValueError("force rollback")
         row = conn.execute("SELECT * FROM t").fetchone()
         assert row is None
         conn.close()
@@ -363,7 +362,7 @@ class TestPostgresPortalStateStore:
         mock_cur.fetchall.return_value = []
 
         mock_tx = MagicMock()
-        mock_tx.__enter__ = lambda s: None
+        mock_tx.__enter__ = lambda _: None
         mock_tx.__exit__ = MagicMock(return_value=False)
 
         mock_conn = MagicMock()
