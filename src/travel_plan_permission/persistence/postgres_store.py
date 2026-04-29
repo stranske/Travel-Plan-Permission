@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from .store import RECORD_NAMESPACES
 
 if TYPE_CHECKING:  # pragma: no cover — typing-only import
-    from psycopg import Connection  # type: ignore[import-not-found]
+    from psycopg import Connection
 
 SCHEMA_VERSION = 1
 

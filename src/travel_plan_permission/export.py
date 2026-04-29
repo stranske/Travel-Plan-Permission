@@ -96,7 +96,7 @@ class ExportService:
     ) -> tuple[str, bytes]:
         """Return filename and Excel binary content."""
 
-        from openpyxl import Workbook  # type: ignore[import-untyped]
+        from openpyxl import Workbook
 
         current_time = now or datetime.now(UTC)
         materialized = self._validate_batch(reports)
