@@ -18,6 +18,13 @@
   },
   "blocking_issues": [],
   "preferred_alternatives": [],
+  "score_explanation": {
+    "base_preference_score": 100,
+    "final_preference_score": 100,
+    "hard_blocked": false,
+    "effects": [],
+    "summary": "Business policy did not modify the base preference score."
+  },
   "exception_requirements": [
     {
       "type": "driving_vs_flying",

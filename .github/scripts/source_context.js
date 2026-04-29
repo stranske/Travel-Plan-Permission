@@ -49,7 +49,7 @@ const CHECKBOX_SOURCE_PATTERNS = Object.freeze([
   [SOURCE_TYPES.DEPENDABOT, /\bdependabot\b|\bdependency\s+update\b/i],
 ]);
 
-const NO_AUTOMATION_CHECKBOX_PATTERN = /\bdo\s+not\s+automate\b/i;
+const NO_AUTOMATION_CHECKBOX_PATTERN = /\bdo\s+not\s+automate\b|\bhuman[- ]only\b/i;
 
 function cleanString(value) {
   return String(value || '').trim();
@@ -137,7 +137,8 @@ function workflowSourceSectionLines(body) {
 function startedFromLines(sectionLines) {
   const start = sectionLines.findIndex((line) => /^\s*Started from:\s*$/i.test(line));
   if (start < 0) {
-    return sectionLines;
+    const firstSubsection = sectionLines.findIndex((line) => /^\s*(Automation intent|Notes):\s*$/i.test(line));
+    return firstSubsection < 0 ? sectionLines : sectionLines.slice(0, firstSubsection);
   }
 
   const result = [];
@@ -155,25 +156,49 @@ function hasCheckedNoAutomationTemplate(body) {
   if (!sectionLines.length) {
     return false;
   }
-  return checkedLabels(startedFromLines(sectionLines)).some((label) => NO_AUTOMATION_CHECKBOX_PATTERN.test(label));
+  return checkedLabels(startedFromLines(sectionLines)).some((label) =>
+    NO_AUTOMATION_CHECKBOX_PATTERN.test(label)
+  );
 }
 
 function hasExplicitIssueReferencePrefix(value) {
-  const prefix = cleanString(value)
-    .replace(/[>_[\]()`*~]/g, ' ')
+  const rawPrefix = String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[_[\]()`~]/g, ' ');
+  const prefix = rawPrefix
+    .trim()
+    .replace(/[>*]/g, ' ')
     .replace(/\s+/g, ' ');
 
   if (/\b(?:pr|pull\s+request)\s*[:#-]?\s*$/i.test(prefix)) {
     return false;
   }
+  if (/\b(?:known|no)\s+(?:linked\s+)?issue\s*[:#-]?\s*$/i.test(prefix)) {
+    return false;
+  }
 
-  return /\b(?:close[sd]?|closing|fix(?:e[sd])?|fixing|resolve[sd]?|resolving|address(?:e[sd])?|addressing|relate[sd]?\s+to|refs?|references?|issue|source\s+issue|github\s+issue)\s*[:#-]?\s*$/i.test(
-    prefix
+  const issuePrefixPattern =
+    '(?:(?:close[sd]?|closing|fix(?:e[sd])?|fixing|resolve[sd]?|resolving|address(?:e[sd])?|addressing)(?:\\s+(?:issue|source\\s+issue|github\\s+issue))?|relate[sd]?\\s+to(?:\\s+(?:(?:[a-z-]+\\s+)?issue|source\\s+issue|github\\s+issue))?|refs?(?:\\s+(?:issue|source\\s+issue|github\\s+issue))?|references?(?:\\s+(?:issue|source\\s+issue|github\\s+issue))?|source(?:\\s*:\\s*|\\s+)issue|github\\s+issue|linked\\s+issue|issue)';
+  const inlinePattern = new RegExp(`\\b${issuePrefixPattern}\\s*[:#-]?\\s*$`, 'i');
+  if (inlinePattern.test(prefix)) {
+    return true;
+  }
+  const linePattern = new RegExp(
+    `(?:^|\\n)\\s*>?\\s*(?:[-*]\\s*)?(?:\\*\\*)?${issuePrefixPattern}(?:\\*\\*)?\\s*[:#-]?\\s*$`,
+    'i',
   );
+  return linePattern.test(rawPrefix);
 }
 
-function extractIssueNumberFromText(text) {
+function extractIssueNumbersFromText(text) {
   const value = String(text || '');
+  const issueNumbers = new Set();
+  for (const match of value.matchAll(/<!--\s*meta:issue:([0-9]+)\s*-->/gi)) {
+    const parsed = Number.parseInt(match[1], 10);
+    if (!Number.isNaN(parsed)) {
+      issueNumbers.add(parsed);
+    }
+  }
   for (const match of value.matchAll(/#([0-9]+)/g)) {
     if (!match[1]) {
       continue;
@@ -195,10 +220,15 @@ function extractIssueNumberFromText(text) {
     }
     const parsed = Number.parseInt(match[1], 10);
     if (!Number.isNaN(parsed)) {
-      return parsed;
+      issueNumbers.add(parsed);
     }
   }
-  return null;
+  return issueNumbers;
+}
+
+function extractIssueNumberFromText(text) {
+  const issueNumbers = extractIssueNumbersFromText(text);
+  return issueNumbers.size > 0 ? Array.from(issueNumbers)[0] : null;
 }
 
 function extractIssueNumberFromPull(pull = {}) {
@@ -333,10 +363,13 @@ function resolvePrSourceContext(pull = {}) {
   const checkboxType = sourceTypeFromCheckedTemplate(body);
   const labelType = sourceTypeFromLabels(pull);
   const inferredType = inferredSourceType(pull);
-  const sourceType = issueNumber
+  const detectedSourceType = issueNumber
     ? SOURCE_TYPES.GITHUB_ISSUE
     : [markerType, blockType, checkboxType, labelType, inferredType].find((type) => type !== SOURCE_TYPES.UNKNOWN)
       || SOURCE_TYPES.UNKNOWN;
+  const sourceType = noAutomation && detectedSourceType === SOURCE_TYPES.UNKNOWN
+    ? SOURCE_TYPES.MANUAL_REMOTE
+    : detectedSourceType;
 
   const sourceRef =
     cleanString(parseHtmlMarker(body, 'workflow-source-ref')) ||
@@ -362,7 +395,8 @@ function resolvePrSourceContext(pull = {}) {
         markerType !== SOURCE_TYPES.UNKNOWN ||
         blockType !== SOURCE_TYPES.UNKNOWN ||
         checkboxType !== SOURCE_TYPES.UNKNOWN ||
-        labelType !== SOURCE_TYPES.UNKNOWN
+        labelType !== SOURCE_TYPES.UNKNOWN ||
+        noAutomation
     ),
     requiresIssue: sourceType === SOURCE_TYPES.GITHUB_ISSUE,
     noAutomation,
@@ -395,6 +429,8 @@ module.exports = {
   SOURCE_TYPES,
   VALID_SOURCE_TYPES,
   normalizeSourceType,
+  extractIssueNumberFromText,
+  extractIssueNumbersFromText,
   extractIssueNumberFromPull,
   parseWorkflowSourceBlock,
   sourceTypeFromCheckedTemplate,

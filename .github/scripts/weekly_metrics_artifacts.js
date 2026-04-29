@@ -6,7 +6,8 @@ const DEFAULT_MAX_TOTAL = 80;
 const DEFAULT_MAX_PER_FAMILY = 20;
 const DEFAULT_MAX_SCAN_PAGES = 5;
 const DEFAULT_PER_PAGE = 100;
-const DEFAULT_PRIORITY_WORKFLOW_RUNS_PER_SOURCE = 10;
+const DEFAULT_PRIORITY_WORKFLOW_RUNS_PER_SOURCE = 3;
+const DEFAULT_PRIORITY_WORKFLOW_ARTIFACT_PAGES_PER_RUN = 2;
 
 const EXACT_METRICS_ARTIFACTS = new Set([
   'keepalive-metrics',
@@ -46,7 +47,7 @@ const PRIORITY_METRICS_FAMILIES = [
   'pr-source-context',
 ];
 
-const PRIORITY_WORKFLOW_ARTIFACT_SOURCES = [
+const PRIORITY_WORKFLOW_ARTIFACT_SOURCE_CANDIDATES = [
   {
     workflow_id: 'health-76-codex-cli-freshness.yml',
     families: ['codex-cli-freshness'],
@@ -77,6 +78,14 @@ const PRIORITY_WORKFLOW_ARTIFACT_SOURCES = [
   },
 ];
 
+function defaultPriorityWorkflowArtifactSources({
+  candidates = PRIORITY_WORKFLOW_ARTIFACT_SOURCE_CANDIDATES,
+} = {}) {
+  return candidates;
+}
+
+const PRIORITY_WORKFLOW_ARTIFACT_SOURCES = defaultPriorityWorkflowArtifactSources();
+
 function cleanString(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
@@ -85,6 +94,11 @@ function cleanString(value) {
 function parsePositiveInt(value, fallback) {
   const parsed = Number.parseInt(cleanString(value), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseNonNegativeInt(value, fallback) {
+  const parsed = Number.parseInt(cleanString(value), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function parseDateMs(value) {
@@ -134,11 +148,17 @@ function normalizeSelectionOptions(options = {}) {
     options.per_page ?? options.perPage ?? process.env.METRICS_ARTIFACTS_PER_PAGE,
     DEFAULT_PER_PAGE
   );
-  const priorityWorkflowRunsPerSource = parsePositiveInt(
+  const priorityWorkflowRunsPerSource = parseNonNegativeInt(
     options.priority_workflow_runs_per_source ??
       options.priorityWorkflowRunsPerSource ??
       process.env.METRICS_PRIORITY_WORKFLOW_RUNS_PER_SOURCE,
     DEFAULT_PRIORITY_WORKFLOW_RUNS_PER_SOURCE
+  );
+  const priorityWorkflowArtifactPagesPerRun = parseNonNegativeInt(
+    options.priority_workflow_artifact_pages_per_run ??
+      options.priorityWorkflowArtifactPagesPerRun ??
+      process.env.METRICS_PRIORITY_WORKFLOW_ARTIFACT_PAGES_PER_RUN,
+    DEFAULT_PRIORITY_WORKFLOW_ARTIFACT_PAGES_PER_RUN
   );
   const cutoffMs = nowMs - lookbackDays * 24 * 60 * 60 * 1000;
   return {
@@ -149,6 +169,7 @@ function normalizeSelectionOptions(options = {}) {
     max_scan_pages: maxScanPages,
     per_page: perPage,
     priority_workflow_runs_per_source: priorityWorkflowRunsPerSource,
+    priority_workflow_artifact_pages_per_run: priorityWorkflowArtifactPagesPerRun,
     cutoff_ms: cutoffMs,
   };
 }
@@ -336,6 +357,7 @@ function selectMetricsArtifacts(artifacts = [], options = {}) {
       max_scan_pages: config.max_scan_pages,
       per_page: config.per_page,
       priority_workflow_runs_per_source: config.priority_workflow_runs_per_source,
+      priority_workflow_artifact_pages_per_run: config.priority_workflow_artifact_pages_per_run,
       cutoff_iso: new Date(config.cutoff_ms).toISOString(),
     },
     ...stats,
@@ -372,6 +394,7 @@ function buildSelectionErrorReport(options = {}, error = {}) {
       max_scan_pages: config.max_scan_pages,
       per_page: config.per_page,
       priority_workflow_runs_per_source: config.priority_workflow_runs_per_source,
+      priority_workflow_artifact_pages_per_run: config.priority_workflow_artifact_pages_per_run,
       cutoff_iso: new Date(config.cutoff_ms).toISOString(),
     },
     scanned_count: 0,
@@ -409,7 +432,8 @@ function formatSelectionMarkdown(report) {
     `- Status: ${report.status || 'pass'}`,
     `- Lookback days: ${report.config.lookback_days}`,
     `- Scan cap: ${report.config.max_scan_pages} pages x ${report.config.per_page} artifacts`,
-    `- Priority producer scan cap: ${report.config.priority_workflow_runs_per_source} runs per source workflow`,
+    `- Priority producer scan cap: ${report.config.priority_workflow_runs_per_source} runs per source workflow, ` +
+      `${report.config.priority_workflow_artifact_pages_per_run} artifact pages per run`,
     `- Download cap: ${report.config.max_total} total, ${report.config.max_per_family} per family`,
     `- Scanned artifacts: ${report.scanned_count}`,
     `- Candidate artifacts: ${report.candidate_count}`,
@@ -491,10 +515,14 @@ async function collectPriorityWorkflowArtifacts({
 }) {
   const config = normalizeSelectionOptions(options);
   const artifacts = [];
+  if (config.priority_workflow_runs_per_source <= 0) {
+    return artifacts;
+  }
   for (const source of sources) {
     const workflowId = cleanString(source.workflow_id ?? source.workflowId);
     const families = (source.families || []).map(cleanString).filter(Boolean);
     if (!workflowId || families.length === 0) continue;
+    const sourceArtifacts = [];
     let runsResponse;
     try {
       runsResponse = await withRetry((client) => client.rest.actions.listWorkflowRuns({
@@ -516,27 +544,38 @@ async function collectPriorityWorkflowArtifacts({
       if (runTimestamp > 0 && runTimestamp < config.cutoff_ms) {
         continue;
       }
-      let artifactResponse;
-      try {
-        artifactResponse = await withRetry((client) =>
-          client.rest.actions.listWorkflowRunArtifacts({
-            owner,
-            repo,
-            run_id: run.id,
-            per_page: config.per_page,
-          })
+      for (let page = 1; page <= config.priority_workflow_artifact_pages_per_run; page += 1) {
+        let artifactResponse;
+        try {
+          artifactResponse = await withRetry((client) =>
+            client.rest.actions.listWorkflowRunArtifacts({
+              owner,
+              repo,
+              run_id: run.id,
+              per_page: config.per_page,
+              page,
+            })
+          );
+        } catch (error) {
+          if (isNotFoundError(error)) break;
+          throw error;
+        }
+        const pageArtifacts = artifactResponse?.data?.artifacts || [];
+        const matchingArtifacts = pageArtifacts.filter((artifact) =>
+          families.includes(artifactFamily(artifact.name))
         );
-      } catch (error) {
-        if (isNotFoundError(error)) continue;
-        throw error;
+        sourceArtifacts.push(...matchingArtifacts);
+        artifacts.push(...matchingArtifacts);
+        if (familiesSatisfied(sourceArtifacts, families, config) || pageArtifacts.length < config.per_page) {
+          break;
+        }
       }
-      const matchingArtifacts = (artifactResponse?.data?.artifacts || []).filter((artifact) =>
-        families.includes(artifactFamily(artifact.name))
-      );
-      artifacts.push(...matchingArtifacts);
-      if (familiesSatisfied(artifacts, families, config)) {
+      if (familiesSatisfied(sourceArtifacts, families, config)) {
         break;
       }
+    }
+    if (familiesSatisfied(artifacts, PRIORITY_METRICS_FAMILIES, config)) {
+      break;
     }
   }
   return dedupeArtifacts(artifacts);
@@ -564,6 +603,9 @@ async function collectRepoArtifacts({ github, owner, repo, withRetry, options })
     ) {
       break;
     }
+  }
+  if (familiesSatisfied(artifacts, PRIORITY_METRICS_FAMILIES, config)) {
+    return dedupeArtifacts(artifacts);
   }
   const priorityArtifacts = await collectPriorityWorkflowArtifacts({
     github,
@@ -671,14 +713,17 @@ module.exports = {
   DEFAULT_MAX_PER_FAMILY,
   DEFAULT_MAX_SCAN_PAGES,
   DEFAULT_MAX_TOTAL,
+  DEFAULT_PRIORITY_WORKFLOW_ARTIFACT_PAGES_PER_RUN,
   DEFAULT_PRIORITY_WORKFLOW_RUNS_PER_SOURCE,
   PRIORITY_METRICS_FAMILIES,
+  PRIORITY_WORKFLOW_ARTIFACT_SOURCE_CANDIDATES,
   PRIORITY_WORKFLOW_ARTIFACT_SOURCES,
   SELECTION_SCHEMA,
   artifactFamily,
   buildSelectionErrorReport,
   collectPriorityWorkflowArtifacts,
   collectRepoArtifacts,
+  defaultPriorityWorkflowArtifactSources,
   dedupeArtifacts,
   familiesSatisfied,
   formatArtifactTsv,

@@ -29,6 +29,7 @@ The repo-native entrypoints used below are:
 - `tpp-planner-service`
 - `tpp-planner-token`
 - `tpp-planner-smoke`
+- `tpp-cross-repo-smoke`
 
 If they are not on your shell `PATH`, run them via `uv run <command>`.
 
@@ -134,6 +135,22 @@ tpp-planner-smoke --fixtures-dir path/to/planner-fixtures
 ```
 
 The same override also works through `TPP_PLANNER_FIXTURES_DIR`.
+
+### 6. Run the deterministic cross-repo smoke
+
+When a sibling `trip-planner` checkout is available, run the local cross-repo
+smoke harness from this repo:
+
+```bash
+tpp-cross-repo-smoke --trip-planner-root ../trip-planner
+```
+
+The command validates the `trip-planner` TPP contract docs and proposal
+fixture, submits the packaged TPP proposal through a local FastAPI test client,
+polls proposal status, fetches the evaluation result, then reloads a second TPP
+store from the same state file to prove proposal/follow-up state survived
+persistence. Set `TRIP_PLANNER_REPO` instead of passing `--trip-planner-root`
+when the checkout is not a sibling directory.
 
 ## Preview or remote base URLs
 
