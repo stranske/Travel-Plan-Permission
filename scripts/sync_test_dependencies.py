@@ -220,6 +220,7 @@ PROJECT_MODULES: set[str] = set()
 
 # Module name to package name mappings for known exceptions
 MODULE_TO_PACKAGE = {
+    "jwt": "PyJWT",
     "yaml": "PyYAML",
     "PIL": "Pillow",
     "sklearn": "scikit-learn",
