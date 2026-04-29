@@ -438,7 +438,9 @@ class TestPostgresPortalStateStore:
         mock_pg.connect.return_value = mock_conn
         return mock_pg, mock_conn, mock_cur
 
-    def test_missing_psycopg_raises_runtime_error(self) -> None:
+    def test_missing_psycopg_raises_runtime_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(sys.modules, "psycopg", None)
+
         from travel_plan_permission.persistence.postgres_store import PostgresPortalStateStore
 
         store = PostgresPortalStateStore("postgresql://test/db")

@@ -63,7 +63,7 @@ class PostgresPortalStateStore:
         if self._conn is None:
             try:
                 import psycopg
-            except ImportError as exc:  # pragma: no cover — exercised only when extra missing
+            except ImportError as exc:
                 raise RuntimeError(
                     "TPP_PORTAL_DATABASE_URL is set but the 'psycopg' driver is "
                     "not installed. Install the optional 'postgres' extra: "
