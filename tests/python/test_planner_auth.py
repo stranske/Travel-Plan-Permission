@@ -244,6 +244,78 @@ def test_oidc_token_rejects_not_yet_valid_nbf(monkeypatch, oidc_keys) -> None:
         )
 
 
+def test_jwks_cache_reuses_document_within_ttl(monkeypatch) -> None:
+    planner_auth._JWKS_CACHE.clear()
+    fetch_calls: list[str] = []
+    document = {"keys": [{"kid": "one"}]}
+
+    monkeypatch.setattr(planner_auth.time, "monotonic", lambda: 100.0)
+
+    def _fetch(url: str) -> dict[str, object]:
+        fetch_calls.append(url)
+        return document
+
+    monkeypatch.setattr(planner_auth, "_fetch_jwks_document", _fetch)
+
+    first = planner_auth._get_cached_jwks("https://issuer.example/jwks.json")
+    second = planner_auth._get_cached_jwks("https://issuer.example/jwks.json")
+
+    assert first == document
+    assert second == document
+    assert fetch_calls == ["https://issuer.example/jwks.json"]
+
+
+def test_jwks_cache_refreshes_after_ttl_expiry(monkeypatch) -> None:
+    planner_auth._JWKS_CACHE.clear()
+    ticks = iter([100.0, 750.0])
+    fetch_counter = {"value": 0}
+
+    monkeypatch.setattr(planner_auth.time, "monotonic", lambda: next(ticks))
+
+    def _fetch(_url: str) -> dict[str, object]:
+        fetch_counter["value"] += 1
+        return {"keys": [{"kid": f"k{fetch_counter['value']}"}]}
+
+    monkeypatch.setattr(planner_auth, "_fetch_jwks_document", _fetch)
+
+    first = planner_auth._get_cached_jwks("https://issuer.example/jwks.json")
+    second = planner_auth._get_cached_jwks("https://issuer.example/jwks.json")
+
+    assert first["keys"][0]["kid"] == "k1"
+    assert second["keys"][0]["kid"] == "k2"
+    assert fetch_counter["value"] == 2
+
+
+def test_oidc_kid_miss_forces_jwks_refresh(monkeypatch) -> None:
+    _set_oidc_env(monkeypatch)
+    planner_auth._JWKS_CACHE.clear()
+
+    signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    token = _oidc_token(signing_key, kid="rotated")
+
+    stale_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    fresh_jwks = {"keys": [_rsa_jwk(signing_key, kid="rotated")]}
+    stale_jwks = {"keys": [_rsa_jwk(stale_key, kid="stale")]}
+    fetch_counter = {"value": 0}
+
+    def _fetch(_url: str) -> dict[str, object]:
+        fetch_counter["value"] += 1
+        if fetch_counter["value"] == 1:
+            return stale_jwks
+        return fresh_jwks
+
+    monkeypatch.setattr(planner_auth, "_fetch_jwks_document", _fetch)
+
+    context = authenticate_request(
+        f"Bearer {token}",
+        config=PlannerAuthConfig.from_env(),
+        required_permission=Permission.VIEW,
+    )
+
+    assert context.subject == "user@example.com"
+    assert fetch_counter["value"] == 2
+
+
 def test_bootstrap_token_authenticates_required_permission(monkeypatch) -> None:
     _set_bootstrap_env(monkeypatch)
     now = datetime(2026, 4, 14, 7, 0, tzinfo=UTC)
