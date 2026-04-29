@@ -204,7 +204,25 @@ class TestResolver:
     ) -> None:
         monkeypatch.delenv(PORTAL_DATABASE_URL_ENV, raising=False)
         monkeypatch.delenv(PORTAL_BACKEND_ENV, raising=False)
-        store = resolve_portal_state_store(tmp_path / "legacy.json")
+        with pytest.warns(DeprecationWarning, match="TPP_PORTAL_STATE_PATH"):
+            store = resolve_portal_state_store(tmp_path / "legacy.json")
+        assert isinstance(store, JsonPortalStateStore)
+
+    def test_json_suffix_deprecation_hints_sqlite_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv(PORTAL_DATABASE_URL_ENV, raising=False)
+        monkeypatch.delenv(PORTAL_BACKEND_ENV, raising=False)
+        with pytest.warns(DeprecationWarning, match=r"\.sqlite3"):
+            resolve_portal_state_store(tmp_path / "portal-runtime-state.json")
+
+    def test_backend_env_json_emits_deprecation_warning(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv(PORTAL_DATABASE_URL_ENV, raising=False)
+        monkeypatch.setenv(PORTAL_BACKEND_ENV, "json")
+        with pytest.warns(DeprecationWarning, match="TPP_PORTAL_STATE_PATH"):
+            store = resolve_portal_state_store(tmp_path / "explicit.json")
         assert isinstance(store, JsonPortalStateStore)
 
     def test_state_path_none_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:

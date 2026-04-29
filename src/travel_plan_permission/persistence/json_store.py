@@ -28,11 +28,12 @@ class JsonPortalStateStore:
 
     def initialize(self) -> None:
         if self._warn_on_use:
+            sqlite_hint = str(self._path.with_suffix(".sqlite3"))
             warnings.warn(
-                "TPP_PORTAL_STATE_PATH is using a JSON file backend; this "
-                "format is deprecated. Switch to SQLite (default for paths "
-                "without a .json suffix) or Postgres via "
-                "TPP_PORTAL_DATABASE_URL.",
+                f"TPP_PORTAL_STATE_PATH is set to a JSON file path ({self._path}); "
+                "the JSON backend is deprecated. Repurpose TPP_PORTAL_STATE_PATH to "
+                f"a .sqlite3 path (e.g. {sqlite_hint}) to use the default SQLite "
+                "backend, or set TPP_PORTAL_DATABASE_URL for Postgres.",
                 DeprecationWarning,
                 stacklevel=2,
             )
