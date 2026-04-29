@@ -15,10 +15,19 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
-from fastapi.testclient import TestClient
-
-from .http_service import PlannerProposalStore, create_app
-from .policy_api import PlannerProposalEvaluationResult, PlannerProposalOperationResponse
+from .http_service import PlannerProposalStore
+from .policy_api import (
+    PlannerPolicySnapshotRequest,
+    PlannerProposalEvaluationRequest,
+    PlannerProposalOperationResponse,
+    PlannerProposalStatusRequest,
+    PlannerProposalSubmissionRequest,
+    TripPlan,
+    get_evaluation_result,
+    get_policy_snapshot,
+    poll_execution_status,
+    submit_proposal,
+)
 
 _FIXTURE_ROOT: Traversable = resources.files("travel_plan_permission").joinpath(
     "fixtures", "planner_integration"
@@ -320,26 +329,22 @@ def run_cross_repo_smoke(
     snapshot_request["trip_id"] = trip_id
 
     with _planner_runtime_env():
-        first_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
-        snapshot = first_client.request(
-            "GET",
-            "/api/planner/policy-snapshot",
-            headers=_AUTH_HEADER,
-            json={"trip_plan": trip_plan, "request": snapshot_request},
-        )
-        _expect_object(snapshot, step="policy snapshot")
+        first_store = PlannerProposalStore(state_path=state_path)
+        trip_plan_model = TripPlan.model_validate(trip_plan)
+        snapshot_request_model = PlannerPolicySnapshotRequest.model_validate(snapshot_request)
+        get_policy_snapshot(trip_plan_model, snapshot_request_model)
 
-        submit = first_client.post(
-            "/api/planner/proposals",
-            headers=_AUTH_HEADER,
-            json={"trip_plan": trip_plan, "request": proposal_request},
-        )
-        submit_payload = _expect_object(submit, step="proposal submission")
-        submit_contract = PlannerProposalOperationResponse.model_validate(submit_payload)
+        proposal_request_model = PlannerProposalSubmissionRequest.model_validate(proposal_request)
+        submit_contract = submit_proposal(trip_plan_model, proposal_request_model)
         _assert_submit_echoes_planner_fixture(
             submit_contract=submit_contract,
             proposal_request=proposal_request,
             response_payload=response_payload,
+        )
+        first_store.record_submission(
+            trip_plan_model,
+            proposal_request_model,
+            submit_contract,
         )
         result_payload = submit_contract.result_payload
         proposal_id = result_payload.get("proposal_id")
@@ -356,24 +361,30 @@ def run_cross_repo_smoke(
             trip_id=trip_id,
         )
 
-        second_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
-        status_response = second_client.get(
-            f"/api/planner/proposals/{proposal_id}/executions/{execution_id}",
-            headers=_AUTH_HEADER,
+        second_store = PlannerProposalStore(state_path=state_path)
+        stored = second_store.lookup_submission(execution_id)
+        if stored is None:
+            raise CrossRepoSmokeError("Reloaded status could not find stored submission.")
+        status_contract = poll_execution_status(
+            stored.trip_plan,
+            PlannerProposalStatusRequest(
+                trip_id=stored.request.trip_id,
+                proposal_id=stored.request.proposal_id,
+                proposal_version=stored.request.proposal_version,
+                execution_id=execution_id,
+            ),
         )
-        status_payload = _expect_object(status_response, step="proposal status reload")
-        status_contract = PlannerProposalOperationResponse.model_validate(status_payload)
         _assert_status_contract(status_contract=status_contract, execution_id=execution_id)
 
-        evaluation_response = second_client.get(
-            f"/api/planner/executions/{execution_id}/evaluation-result",
-            headers=_AUTH_HEADER,
+        evaluation = get_evaluation_result(
+            stored.trip_plan,
+            PlannerProposalEvaluationRequest(
+                trip_id=stored.request.trip_id,
+                proposal_id=stored.request.proposal_id,
+                proposal_version=stored.request.proposal_version,
+                execution_id=execution_id,
+            ),
         )
-        evaluation_payload = _expect_object(
-            evaluation_response,
-            step="evaluation result reload",
-        )
-        evaluation = PlannerProposalEvaluationResult.model_validate(evaluation_payload)
         if evaluation.proposal_id != proposal_id or evaluation.execution_id != execution_id:
             raise CrossRepoSmokeError("Reloaded evaluation lost proposal/execution linkage.")
 
