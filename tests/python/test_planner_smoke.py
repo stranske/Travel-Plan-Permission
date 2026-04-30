@@ -45,7 +45,9 @@ def _run_live_service() -> Iterator[str]:
             log_level="warning",
         )
         server = uvicorn.Server(config)
-        thread = threading.Thread(target=server.run, kwargs={"sockets": [server_socket]}, daemon=True)
+        thread = threading.Thread(
+            target=server.run, kwargs={"sockets": [server_socket]}, daemon=True
+        )
         thread.start()
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:

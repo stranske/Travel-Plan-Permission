@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import argparse
 import base64
-import json
 import os
 import sys
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Any, cast
 from urllib.parse import parse_qs
 from uuid import uuid4
 
@@ -40,6 +40,7 @@ from .models import (
     ExpenseReport,
     TripPlan,
 )
+from .persistence import PortalStateStore, resolve_portal_state_store
 from .planner_auth import (
     OIDCAuthenticationError,
     PlannerAuthConfig,
@@ -193,7 +194,7 @@ _PORTAL_BOOLEAN_FIELDS = {
 }
 _PORTAL_MAX_DRAFTS = 64
 _PORTAL_STATE_ENV_VAR = "TPP_PORTAL_STATE_PATH"
-_PORTAL_STATE_DEFAULT_PATH = Path("var") / "portal-runtime-state.json"
+_PORTAL_STATE_DEFAULT_PATH = Path("var") / "portal-runtime-state.sqlite3"
 _EXPENSE_FIELDS: tuple[str, ...] = (
     "approved_request_id",
     "trip_id",
@@ -449,12 +450,15 @@ class PlannerProposalStore:
     )
     security: SecurityModel = field(default_factory=SecurityModel)
     state_path: Path | None = None
+    store: PortalStateStore | None = None
 
     def __post_init__(self) -> None:
-        if self.state_path is None:
-            return
-        self.state_path = Path(self.state_path).expanduser()
-        self._load_state()
+        if self.state_path is not None:
+            self.state_path = Path(self.state_path).expanduser()
+        if self.store is None and self.state_path is not None:
+            self.store = resolve_portal_state_store(self.state_path)
+        if self.store is not None:
+            self._load_state()
 
     def remember_plan(self, trip_plan: TripPlan) -> None:
         """Store the latest planner trip payload by trip identifier."""
@@ -835,20 +839,16 @@ class PlannerProposalStore:
         )
 
     def _persist_state(self) -> None:
-        if self.state_path is None:
+        if self.store is None:
             return
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = self.state_path.with_suffix(f"{self.state_path.suffix}.tmp")
-        temp_path.write_text(
-            json.dumps(self._serialize_state(), sort_keys=True),
-            encoding="utf-8",
-        )
-        temp_path.replace(self.state_path)
+        self.store.save_snapshot(self._serialize_state())
 
     def _load_state(self) -> None:
-        if self.state_path is None or not self.state_path.exists():
+        if self.store is None:
             return
-        payload = json.loads(self.state_path.read_text(encoding="utf-8"))
+        payload = cast(dict[str, Any], self.store.load_snapshot())
+        if not payload:
+            return
         self.plans_by_trip_id = {
             trip_id: TripPlan.model_validate(serialized)
             for trip_id, serialized in payload.get("plans_by_trip_id", {}).items()

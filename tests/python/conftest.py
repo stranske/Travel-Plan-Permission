@@ -17,4 +17,4 @@ if str(SRC_PATH) not in sys.path:
 def isolated_portal_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Keep default HTTP service state isolated across parallel test workers."""
 
-    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", str(tmp_path / "portal-runtime-state.json"))
+    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", str(tmp_path / "portal-runtime-state.sqlite3"))

@@ -98,19 +98,27 @@ copy is deliberate and that blocked actions do not silently succeed.
 
 ## Stage 5: Persistence And Restart Checks
 
-Because durable workflow state is still an active production-readiness gap, run
-at least one restart-oriented local check whenever you touch portal workflow
-state:
+Portal state now persists through a transactional SQL store. The default
+backend is SQLite at `var/portal-runtime-state.sqlite3` (WAL journal mode);
+override with `TPP_PORTAL_STATE_PATH` for a different local path or set
+`TPP_PORTAL_DATABASE_URL` to point the service at Postgres for shared
+staging. To force the deprecated single-file JSON backend, pass a
+`.json`-suffixed path or set `TPP_PORTAL_BACKEND=json`. Run at least one
+restart-oriented local check whenever you touch portal workflow state:
 
 1. Create a request draft and, if relevant, submit it for review.
 2. Create any relevant exception or expense draft.
 3. Stop the service.
 4. Restart the service.
-5. Re-open the same portal URLs and verify whether state is preserved, missing,
-   or intentionally reset.
+5. Re-open the same portal URLs and verify state is preserved.
 
-Until durable persistence lands, treat any restart-sensitive data loss as a
-known limitation to record explicitly in test notes, not as an ambiguous flake.
+For multi-instance staging, also exercise the same flow against a Postgres
+URL: two service instances pointing at the same database should each see the
+other instance's drafts after a refresh, since per-record upserts at the SQL
+layer prevent lost writes between processes.
+
+Treat any restart-sensitive data loss as a regression to file rather than as
+an ambiguous flake.
 
 ## Stage 6: Expense And Accounting Integrity Checks
 

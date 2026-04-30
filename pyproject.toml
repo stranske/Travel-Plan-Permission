@@ -51,6 +51,9 @@ ocr = [
 orchestration = [
     "langgraph>=0.2.0",
 ]
+postgres = [
+    "psycopg[binary]>=3.2",
+]
 
 [project.scripts]
 fill-spreadsheet = "travel_plan_permission.cli:main"
@@ -144,3 +147,7 @@ disallow_incomplete_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
 show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["reportlab", "reportlab.*", "openpyxl", "openpyxl.*", "psycopg", "psycopg.*"]
+ignore_missing_imports = true

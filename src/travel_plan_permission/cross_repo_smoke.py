@@ -15,6 +15,7 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 
 from .http_service import PlannerProposalStore
+from .persistence import resolve_portal_state_store
 from .policy_api import (
     PlannerPolicySnapshotRequest,
     PlannerProposalEvaluationRequest,
@@ -310,18 +311,20 @@ def _planner_runtime_env() -> Iterator[None]:
                 os.environ[key] = value
 
 
-def _assert_state_file_reloads(
+def _assert_state_store_reloads(
     *,
     state_path: Path,
     proposal_id: str,
     execution_id: str,
     trip_id: str,
 ) -> None:
-    if not state_path.exists():
-        raise CrossRepoSmokeError(
-            f"TPP proposal state file was not written: {state_path}"
-        )
-    persisted = _load_json(state_path)
+    store = resolve_portal_state_store(state_path)
+    if store is None:
+        raise CrossRepoSmokeError(f"No store configured for state path: {state_path}")
+    persisted = store.load_snapshot()
+    store.close()
+    if persisted is None:
+        raise CrossRepoSmokeError(f"TPP proposal state was not written: {state_path}")
     proposals = persisted.get("proposals_by_execution_id")
     if not isinstance(proposals, dict) or execution_id not in proposals:
         raise CrossRepoSmokeError(
@@ -398,7 +401,7 @@ def run_cross_repo_smoke(
                 "Proposal submission did not return an execution_id."
             )
 
-        _assert_state_file_reloads(
+        _assert_state_store_reloads(
             state_path=state_path,
             proposal_id=proposal_id,
             execution_id=execution_id,
@@ -468,7 +471,7 @@ def main(argv: list[str] | None = None) -> int:
             ) as temp_dir:
                 result = run_cross_repo_smoke(
                     trip_planner_root=trip_planner_root,
-                    state_path=Path(temp_dir) / "planner-state.json",
+                    state_path=Path(temp_dir) / "planner-state.sqlite3",
                 )
         print(f"trip-planner contracts: ok at {result.trip_planner_root}")
         print(f"proposal submission: ok for {result.proposal_id}")

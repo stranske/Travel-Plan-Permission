@@ -10,11 +10,11 @@ from decimal import Decimal
 
 from jinja2 import BaseLoader, Environment, select_autoescape
 from pydantic import BaseModel, Field
-from reportlab.lib import colors  # type: ignore[import-untyped]
-from reportlab.lib.pagesizes import letter  # type: ignore[import-untyped]
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # type: ignore[import-untyped]
-from reportlab.lib.units import inch  # type: ignore[import-untyped]
-from reportlab.platypus import (  # type: ignore[import-untyped]
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import (
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -222,8 +222,7 @@ def build_approval_packet(
 
     raw_costs = cost_breakdown or trip_plan.expense_breakdown
     costs = {
-        str(getattr(category, "value", category)): amount
-        for category, amount in raw_costs.items()
+        str(getattr(category, "value", category)): amount for category, amount in raw_costs.items()
     }
     if not costs and trip_plan.estimated_cost:
         costs["estimated_total"] = trip_plan.estimated_cost

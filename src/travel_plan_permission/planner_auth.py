@@ -488,9 +488,7 @@ def authenticate_request(
     if int(current_time.timestamp()) >= claims.exp:
         raise PermissionError("Bootstrap token has expired.")
     if required_permission not in claims.permissions:
-        raise PermissionError(
-            f"Bootstrap token does not grant '{required_permission.value}'."
-        )
+        raise PermissionError(f"Bootstrap token does not grant '{required_permission.value}'.")
     return PlannerAuthContext(
         subject=claims.sub,
         permissions=claims.permissions,
@@ -533,9 +531,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     config = PlannerAuthConfig.from_env()
     if config.auth_mode != PlannerAuthMode.BOOTSTRAP_TOKEN:
-        parser.error(
-            "TPP_AUTH_MODE must be set to 'bootstrap-token' to mint planner tokens."
-        )
+        parser.error("TPP_AUTH_MODE must be set to 'bootstrap-token' to mint planner tokens.")
     if not config.is_ready:
         parser.error(
             "Planner auth config is incomplete. Set TPP_BASE_URL, TPP_OIDC_PROVIDER, "
@@ -548,9 +544,7 @@ def main(argv: list[str] | None = None) -> int:
 
     permissions = tuple(
         Permission(permission)
-        for permission in (
-            args.permissions or [Permission.VIEW.value, Permission.CREATE.value]
-        )
+        for permission in (args.permissions or [Permission.VIEW.value, Permission.CREATE.value])
     )
     token = mint_bootstrap_token(
         subject=args.subject,

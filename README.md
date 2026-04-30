@@ -111,12 +111,21 @@ capture draft trip details, see missing canonical inputs before submission,
 review policy-lite posture, and download the generated itinerary and summary
 artifacts before triggering the existing proposal submission seam.
 
-Portal draft and submission state now persist to
-`var/portal-runtime-state.json` by default. Set `TPP_PORTAL_STATE_PATH` when
-you need a different local or preview-safe path. For restart verification,
-create a draft, copy the `/portal/review/{draft_id}` URL, restart the service,
-and reopen the same page to confirm the review state, submission result, and
-follow-on review link still render intentionally before rechecking artifacts.
+Portal draft and submission state now persist to a transactional SQL store.
+By default the service uses a local SQLite file at
+`var/portal-runtime-state.sqlite3` (with WAL journal mode enabled). Override
+the path with `TPP_PORTAL_STATE_PATH` for local or preview-safe layouts. For
+shared staging deployments, set `TPP_PORTAL_DATABASE_URL` (e.g.
+`postgresql://user:pass@host/db`) to switch to the Postgres backend; install
+the optional `postgres` extra to pull in the `psycopg` driver. Pre-existing
+local state at `var/portal-runtime-state.json` (the deprecated single-file
+backend) is imported once on first start when the sibling SQLite file is
+created. Pass a `.json`-suffixed path or set `TPP_PORTAL_BACKEND=json` to
+keep using the deprecated JSON file during migration. For restart
+verification, create a draft, copy the `/portal/review/{draft_id}` URL,
+restart the service, and reopen the same page to confirm the review state,
+submission result, and follow-on review link still render intentionally
+before rechecking artifacts.
 
 Run the repo-native live smoke command against a running service with:
 

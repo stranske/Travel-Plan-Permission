@@ -235,9 +235,7 @@ def test_fill_travel_spreadsheet_uses_template_metadata(tmp_path, monkeypatch) -
     )
 
     monkeypatch.setattr(policy_api, "load_template_mapping", lambda: mapping)
-    monkeypatch.setattr(
-        policy_api, "_default_template_bytes", fake_default_template_bytes
-    )
+    monkeypatch.setattr(policy_api, "_default_template_bytes", fake_default_template_bytes)
 
     fill_travel_spreadsheet(plan, output_path)
 
@@ -246,9 +244,7 @@ def test_fill_travel_spreadsheet_uses_template_metadata(tmp_path, monkeypatch) -
 
 def test_fill_travel_spreadsheet_uses_canonical_fields(tmp_path) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1]
-        / "fixtures"
-        / "sample_trip_plan_minimal.json"
+        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_minimal.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     canonical_plan = CanonicalTripPlan.model_validate(payload)
@@ -271,9 +267,7 @@ def test_fill_travel_spreadsheet_uses_canonical_fields(tmp_path) -> None:
 def test_fill_travel_spreadsheet_populates_flight_and_hotel_preferences(
     tmp_path,
 ) -> None:
-    fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_rich.json"
-    )
+    fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_rich.json"
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     canonical_plan = CanonicalTripPlan.model_validate(payload)
     trip_plan = canonical_trip_plan_to_model(canonical_plan)

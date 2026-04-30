@@ -16,8 +16,8 @@ from io import BytesIO
 from pathlib import Path
 from typing import Literal
 
-from openpyxl import load_workbook  # type: ignore[import-untyped]
-from openpyxl.workbook import Workbook  # type: ignore[import-untyped]
+from openpyxl import load_workbook
+from openpyxl.workbook import Workbook
 from pydantic import BaseModel, Field
 
 from .canonical import CanonicalTripPlan
@@ -843,9 +843,7 @@ def _planner_requirement(rule: dict[str, object]) -> PlannerPolicyRequirement:
         severity=(
             "error"
             if severity == Severity.BLOCKING
-            else "warning"
-            if severity == Severity.ADVISORY
-            else "info"
+            else "warning" if severity == Severity.ADVISORY else "info"
         ),
     )
 

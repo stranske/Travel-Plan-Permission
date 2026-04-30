@@ -76,9 +76,7 @@ PLANNER_PROPOSAL_SUBMISSION_ENDPOINT = "POST /api/planner/proposals"
 PLANNER_EXECUTION_STATUS_ENDPOINT = (
     "GET /api/planner/proposals/:proposal_id/executions/:execution_id"
 )
-PLANNER_EVALUATION_RESULT_ENDPOINT = (
-    "GET /api/planner/executions/:execution_id/evaluation-result"
-)
+PLANNER_EVALUATION_RESULT_ENDPOINT = "GET /api/planner/executions/:execution_id/evaluation-result"
 
 
 API_ENDPOINT_PERMISSIONS: dict[str, Permission] = {

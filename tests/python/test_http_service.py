@@ -1409,7 +1409,7 @@ def test_portal_review_surface_requires_bearer_token(monkeypatch) -> None:
 
 def test_portal_review_state_survives_restart(monkeypatch, tmp_path) -> None:
     _set_runtime_env(monkeypatch)
-    state_path = tmp_path / "portal-runtime-state.json"
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
 
     first_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
     draft_id, _location = _create_portal_draft(first_client)
@@ -1429,7 +1429,7 @@ def test_portal_review_state_survives_restart(monkeypatch, tmp_path) -> None:
 
 def test_portal_submission_result_survives_restart(monkeypatch, tmp_path) -> None:
     _set_runtime_env(monkeypatch)
-    state_path = tmp_path / "portal-runtime-state.json"
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
 
     first_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
     draft_id, _location = _create_portal_draft(first_client)
@@ -1452,7 +1452,7 @@ def test_portal_submission_result_survives_restart(monkeypatch, tmp_path) -> Non
 
 def test_submission_status_lookup_survives_restart(monkeypatch, tmp_path) -> None:
     _set_runtime_env(monkeypatch, provider="okta")
-    state_path = tmp_path / "portal-runtime-state.json"
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
     first_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
     trip_plan = _load_fixture("proposal_submission.json")
     request_payload = {
