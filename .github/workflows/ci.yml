@@ -68,9 +68,6 @@ jobs:
     name: Cross-Repo Smoke (trip-planner)
     runs-on: ubuntu-latest
     env:
-      # Single source of truth for the trip-planner ref this job exercises.
-      # Bump in lockstep with the corresponding trip-planner CI job pin.
-      TRIP_PLANNER_PINNED_REF: e0f90435302134fec36256640ca19009ff8204dd
       TPP_BASE_URL: http://127.0.0.1:8000
       TPP_OIDC_PROVIDER: google
       TPP_AUTH_MODE: bootstrap-token
@@ -80,6 +77,19 @@ jobs:
         uses: actions/checkout@v6
         with:
           path: travel-plan-permission
+
+      - name: Load TRIP_PLANNER_PINNED_REF from single-source pin file
+        # Single source of truth for the trip-planner ref this job exercises.
+        # Bump in lockstep with the corresponding trip-planner CI job pin
+        # by editing .github/trip-planner-pinned-ref only.
+        working-directory: travel-plan-permission
+        run: |
+          ref="$(tr -d '[:space:]' < .github/trip-planner-pinned-ref)"
+          if [ -z "${ref}" ]; then
+            echo "Pin file .github/trip-planner-pinned-ref is empty" >&2
+            exit 1
+          fi
+          echo "TRIP_PLANNER_PINNED_REF=${ref}" >> "$GITHUB_ENV"
 
       - name: Checkout trip-planner at pinned ref
         uses: actions/checkout@v6
