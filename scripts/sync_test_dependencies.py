@@ -75,6 +75,7 @@ STDLIB_MODULES = {
     "shlex",
     "shutil",
     "signal",
+    "secrets",
     "sitecustomize",
     "socket",
     "sqlite3",

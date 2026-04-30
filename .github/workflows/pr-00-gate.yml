@@ -75,9 +75,123 @@ jobs:
           # Broader orchestration coverage stays in the main Python test suite.
           pytest tests/orchestration_graph_test.py tests/python/test_langgraph_orchestration.py -v
 
+  cross-repo-smoke:
+    # Gates the planner integration contract against a pinned trip-planner ref.
+    # See docs/local-testing-plan.md "Stage 7" and the matching trip-planner job
+    # for how to advance TRIP_PLANNER_PINNED_REF as a coordinated pair.
+    name: Cross-Repo Smoke (trip-planner)
+    runs-on: ubuntu-latest
+    env:
+      # Single source of truth for the trip-planner ref this job exercises.
+      # Bump in lockstep with the corresponding trip-planner CI job pin.
+      TRIP_PLANNER_PINNED_REF: e0f90435302134fec36256640ca19009ff8204dd
+      TPP_BASE_URL: http://127.0.0.1:8000
+      TPP_OIDC_PROVIDER: google
+      TPP_AUTH_MODE: bootstrap-token
+      TPP_PORT: "8000"
+    steps:
+      - name: Checkout Travel-Plan-Permission (PR head)
+        uses: actions/checkout@v6
+        with:
+          path: travel-plan-permission
+
+      - name: Checkout trip-planner at pinned ref
+        uses: actions/checkout@v6
+        with:
+          repository: stranske/trip-planner
+          ref: ${{ env.TRIP_PLANNER_PINNED_REF }}
+          path: trip-planner
+
+      - name: Log resolved trip-planner SHA
+        working-directory: trip-planner
+        run: |
+          echo "TRIP_PLANNER_PINNED_REF input: ${TRIP_PLANNER_PINNED_REF}"
+          echo "Resolved SHA: $(git rev-parse HEAD)"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Travel-Plan-Permission dev extras
+        working-directory: travel-plan-permission
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,orchestration]"
+
+      - name: Generate bootstrap signing secret
+        run: |
+          secret="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+          echo "TPP_BOOTSTRAP_SIGNING_SECRET=${secret}" >> "$GITHUB_ENV"
+
+      - name: Mint planner bootstrap token
+        working-directory: travel-plan-permission
+        run: |
+          token="$(tpp-planner-token --subject ci-gate-cross-repo-smoke)"
+          if [ -z "${token}" ]; then
+            echo "tpp-planner-token returned empty token" >&2
+            exit 1
+          fi
+          echo "TPP_PLANNER_TOKEN=${token}" >> "$GITHUB_ENV"
+
+      - name: Start tpp-planner-service in background
+        working-directory: travel-plan-permission
+        run: |
+          mkdir -p "${{ github.workspace }}/_runtime"
+          nohup tpp-planner-service --host 127.0.0.1 --port "${TPP_PORT}" \
+            >"${{ github.workspace }}/_runtime/planner-service.log" 2>&1 &
+          echo "PLANNER_SERVICE_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for /readyz to return 200
+        run: |
+          for attempt in $(seq 1 60); do
+            status="$(curl -s -o /dev/null -w '%{http_code}' "${TPP_BASE_URL}/readyz" || echo '000')"
+            if [ "${status}" = "200" ]; then
+              echo "Planner service ready after ${attempt} attempt(s)."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Planner service never reported ready." >&2
+          tail -n 200 "${{ github.workspace }}/_runtime/planner-service.log" >&2 || true
+          exit 1
+
+      - name: Run tpp-cross-repo-smoke
+        working-directory: travel-plan-permission
+        env:
+          TRIP_PLANNER_REPO: ${{ github.workspace }}/trip-planner
+        run: |
+          tpp-cross-repo-smoke
+
+      - name: Run tpp-planner-smoke
+        working-directory: travel-plan-permission
+        run: |
+          tpp-planner-smoke --token "${TPP_PLANNER_TOKEN}"
+
+      - name: Tear down planner service
+        if: always()
+        run: |
+          if [ -n "${PLANNER_SERVICE_PID:-}" ] && kill -0 "${PLANNER_SERVICE_PID}" 2>/dev/null; then
+            kill "${PLANNER_SERVICE_PID}" || true
+            for _ in $(seq 1 5); do
+              kill -0 "${PLANNER_SERVICE_PID}" 2>/dev/null || break
+              sleep 1
+            done
+            kill -9 "${PLANNER_SERVICE_PID}" 2>/dev/null || true
+          fi
+
+      - name: Upload planner service log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-planner-service-log
+          path: ${{ github.workspace }}/_runtime/planner-service.log
+          if-no-files-found: ignore
+
   summary:
     name: gate-summary
-    needs: [python-ci, orchestration-tests]
+    needs: [python-ci, orchestration-tests, cross-repo-smoke]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
@@ -100,59 +214,47 @@ jobs:
         env:
           PYTHON_RESULT: ${{ needs.python-ci.result || 'skipped' }}
           ORCHESTRATION_RESULT: ${{ needs.orchestration-tests.result || 'skipped' }}
+          CROSS_REPO_SMOKE_RESULT: ${{ needs.cross-repo-smoke.result || 'skipped' }}
         run: |
           set -euo pipefail
 
           python_result="${PYTHON_RESULT:-skipped}"
           orchestration_result="${ORCHESTRATION_RESULT:-skipped}"
+          cross_repo_smoke_result="${CROSS_REPO_SMOKE_RESULT:-skipped}"
 
-          # Keep the gate mapping explicit so new result combinations stay auditable.
-          case "${python_result}:${orchestration_result}" in
-            failure:failure)
-              state="failure"
-              description="Python CI and orchestration tests failed"
-              ;;
-            failure:*)
-              state="failure"
-              description="Python CI failed"
-              ;;
-            *:failure)
-              state="failure"
-              description="Orchestration tests failed"
-              ;;
-            cancelled:cancelled)
-              state="error"
-              description="Python CI and orchestration tests were cancelled"
-              ;;
-            cancelled:*)
-              state="error"
-              description="Python CI was cancelled"
-              ;;
-            *:cancelled)
-              state="error"
-              description="Orchestration tests were cancelled"
-              ;;
-            success:success)
-              state="success"
-              description="All checks passed"
-              ;;
-            skipped:success)
-              state="success"
-              description="Orchestration tests passed (Python CI skipped)"
-              ;;
-            success:skipped)
-              state="success"
-              description="Python CI passed"
-              ;;
-            skipped:skipped)
-              state="success"
-              description="Python CI skipped (no relevant changes)"
-              ;;
-            *)
-              state="pending"
-              description="Gate status pending (python=${python_result}, orchestration=${orchestration_result})"
-              ;;
-          esac
+          # Collect failures and cancellations across all gate jobs.
+          failed_desc=""
+          cancelled_desc=""
+
+          [[ "${python_result}" == "failure" ]] && \
+            failed_desc="${failed_desc:+${failed_desc}; }Python CI failed"
+          [[ "${orchestration_result}" == "failure" ]] && \
+            failed_desc="${failed_desc:+${failed_desc}; }orchestration tests failed"
+          [[ "${cross_repo_smoke_result}" == "failure" ]] && \
+            failed_desc="${failed_desc:+${failed_desc}; }cross-repo smoke failed"
+
+          [[ "${python_result}" == "cancelled" ]] && \
+            cancelled_desc="${cancelled_desc:+${cancelled_desc}; }Python CI cancelled"
+          [[ "${orchestration_result}" == "cancelled" ]] && \
+            cancelled_desc="${cancelled_desc:+${cancelled_desc}; }orchestration tests cancelled"
+          [[ "${cross_repo_smoke_result}" == "cancelled" ]] && \
+            cancelled_desc="${cancelled_desc:+${cancelled_desc}; }cross-repo smoke cancelled"
+
+          if [[ -n "${failed_desc}" ]]; then
+            state="failure"
+            description="${failed_desc}"
+          elif [[ -n "${cancelled_desc}" ]]; then
+            state="error"
+            description="${cancelled_desc}"
+          elif [[ ("${python_result}" == "success" || "${python_result}" == "skipped") && \
+                  ("${orchestration_result}" == "success" || "${orchestration_result}" == "skipped") && \
+                  ("${cross_repo_smoke_result}" == "success" || "${cross_repo_smoke_result}" == "skipped") ]]; then
+            state="success"
+            description="All checks passed"
+          else
+            state="pending"
+            description="Gate status pending (python=${python_result}, orchestration=${orchestration_result}, cross-repo-smoke=${cross_repo_smoke_result})"
+          fi
 
           echo "state=${state}" >> "$GITHUB_OUTPUT"
           echo "description=${description}" >> "$GITHUB_OUTPUT"

@@ -60,3 +60,117 @@ jobs:
             tests/python/test_orchestration_smoke.py::test_policy_graph_langgraph_smoke \
             tests/python/test_orchestration_smoke.py::test_policy_graph_prefers_langgraph_when_available \
             -v
+
+  cross-repo-smoke:
+    # Gates the planner integration contract against a pinned trip-planner ref.
+    # See docs/local-testing-plan.md "Stage 7" and the matching trip-planner job
+    # for how to advance TRIP_PLANNER_PINNED_REF as a coordinated pair.
+    name: Cross-Repo Smoke (trip-planner)
+    runs-on: ubuntu-latest
+    env:
+      # Single source of truth for the trip-planner ref this job exercises.
+      # Bump in lockstep with the corresponding trip-planner CI job pin.
+      TRIP_PLANNER_PINNED_REF: e0f90435302134fec36256640ca19009ff8204dd
+      TPP_BASE_URL: http://127.0.0.1:8000
+      TPP_OIDC_PROVIDER: google
+      TPP_AUTH_MODE: bootstrap-token
+      TPP_PORT: "8000"
+    steps:
+      - name: Checkout Travel-Plan-Permission (PR head)
+        uses: actions/checkout@v6
+        with:
+          path: travel-plan-permission
+
+      - name: Checkout trip-planner at pinned ref
+        uses: actions/checkout@v6
+        with:
+          repository: stranske/trip-planner
+          ref: ${{ env.TRIP_PLANNER_PINNED_REF }}
+          path: trip-planner
+
+      - name: Log resolved trip-planner SHA
+        working-directory: trip-planner
+        run: |
+          echo "TRIP_PLANNER_PINNED_REF input: ${TRIP_PLANNER_PINNED_REF}"
+          echo "Resolved SHA: $(git rev-parse HEAD)"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Travel-Plan-Permission dev extras
+        working-directory: travel-plan-permission
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,orchestration]"
+
+      - name: Generate bootstrap signing secret
+        run: |
+          secret="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+          echo "TPP_BOOTSTRAP_SIGNING_SECRET=${secret}" >> "$GITHUB_ENV"
+
+      - name: Mint planner bootstrap token
+        working-directory: travel-plan-permission
+        run: |
+          token="$(tpp-planner-token --subject ci-cross-repo-smoke)"
+          if [ -z "${token}" ]; then
+            echo "tpp-planner-token returned empty token" >&2
+            exit 1
+          fi
+          echo "TPP_PLANNER_TOKEN=${token}" >> "$GITHUB_ENV"
+
+      - name: Start tpp-planner-service in background
+        working-directory: travel-plan-permission
+        run: |
+          mkdir -p "${{ github.workspace }}/_runtime"
+          nohup tpp-planner-service --host 127.0.0.1 --port "${TPP_PORT}" \
+            >"${{ github.workspace }}/_runtime/planner-service.log" 2>&1 &
+          echo "PLANNER_SERVICE_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for /readyz to return 200
+        run: |
+          for attempt in $(seq 1 60); do
+            status="$(curl -s -o /dev/null -w '%{http_code}' "${TPP_BASE_URL}/readyz" || echo '000')"
+            if [ "${status}" = "200" ]; then
+              echo "Planner service ready after ${attempt} attempt(s)."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Planner service never reported ready." >&2
+          tail -n 200 "${{ github.workspace }}/_runtime/planner-service.log" >&2 || true
+          exit 1
+
+      - name: Run tpp-cross-repo-smoke
+        working-directory: travel-plan-permission
+        env:
+          TRIP_PLANNER_REPO: ${{ github.workspace }}/trip-planner
+        run: |
+          tpp-cross-repo-smoke
+
+      - name: Run tpp-planner-smoke
+        working-directory: travel-plan-permission
+        run: |
+          tpp-planner-smoke --token "${TPP_PLANNER_TOKEN}"
+
+      - name: Tear down planner service
+        if: always()
+        run: |
+          if [ -n "${PLANNER_SERVICE_PID:-}" ] && kill -0 "${PLANNER_SERVICE_PID}" 2>/dev/null; then
+            kill "${PLANNER_SERVICE_PID}" || true
+            for _ in $(seq 1 5); do
+              kill -0 "${PLANNER_SERVICE_PID}" 2>/dev/null || break
+              sleep 1
+            done
+            kill -9 "${PLANNER_SERVICE_PID}" 2>/dev/null || true
+          fi
+
+      - name: Upload planner service log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: planner-service-log
+          path: ${{ github.workspace }}/_runtime/planner-service.log
+          if-no-files-found: ignore
