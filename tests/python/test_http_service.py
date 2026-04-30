@@ -16,7 +16,12 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
 from travel_plan_permission import audit, http_service, planner_auth, portal_review
-from travel_plan_permission.http_service import PlannerProposalStore, create_app, main
+from travel_plan_permission.http_service import (
+    PlannerProposalStore,
+    PortalArtifact,
+    create_app,
+    main,
+)
 from travel_plan_permission.planner_auth import mint_bootstrap_token
 from travel_plan_permission.policy_api import PlannerProposalOperationResponse
 from travel_plan_permission.security import AuditEventType, Permission
@@ -1462,6 +1467,28 @@ def test_expense_review_state_survives_restart(tmp_path) -> None:
     assert b"date,vendor,amount,category,cost_center,receipt_link" in csv_export.content
 
 
+def test_expense_drafts_round_trip_serialize_and_load(tmp_path) -> None:
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+    first_store = PlannerProposalStore(state_path=state_path)
+    draft = first_store.save_expense_draft(_expense_form_payload())
+    first_store.cache_expense_artifacts(
+        draft.draft_id,
+        {
+            "expense-csv": PortalArtifact(
+                filename=f"{draft.draft_id}.csv",
+                content=b"date,vendor,amount\n2026-01-15,Riverfront Hotel,249.00\n",
+                media_type="text/csv",
+            )
+        },
+    )
+
+    restored_store = PlannerProposalStore(state_path=state_path)
+    assert (
+        restored_store._serialize_state()["expense_drafts_by_id"]
+        == first_store._serialize_state()["expense_drafts_by_id"]
+    )
+
+
 def test_in_process_audit_log_survives_restart(tmp_path) -> None:
     state_path = tmp_path / "portal-runtime-state.sqlite3"
     first_store = PlannerProposalStore(state_path=state_path)
@@ -1476,8 +1503,12 @@ def test_in_process_audit_log_survives_restart(tmp_path) -> None:
         event_type=AuditEventType.REVIEW,
         actor="workflow-portal",
         subject="review-123",
-        outcome="submitted_for_manager_review",
-        metadata={"draft_id": "draft-123", "trip_id": "trip-123"},
+        outcome="proposal_status_change",
+        metadata={
+            "proposal_id": "prop-123",
+            "from_status": "submitted",
+            "to_status": "approved",
+        },
     )
     first_store.save_expense_draft(_expense_form_payload())
 
@@ -1496,8 +1527,13 @@ def test_in_process_audit_log_survives_restart(tmp_path) -> None:
         event.event_type == AuditEventType.REVIEW
         and event.actor == "workflow-portal"
         and event.subject == "review-123"
-        and event.outcome == "submitted_for_manager_review"
-        and event.metadata == {"draft_id": "draft-123", "trip_id": "trip-123"}
+        and event.outcome == "proposal_status_change"
+        and event.metadata
+        == {
+            "proposal_id": "prop-123",
+            "from_status": "submitted",
+            "to_status": "approved",
+        }
         for event in restored_events
     )
 
