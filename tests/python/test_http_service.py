@@ -1538,6 +1538,36 @@ def test_in_process_audit_log_survives_restart(tmp_path) -> None:
     )
 
 
+def test_audit_events_round_trip_serialize_and_load(tmp_path) -> None:
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+    first_store = PlannerProposalStore(state_path=state_path)
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.AUTHENTICATION,
+        actor="static-token",
+        subject="planner-admin",
+        outcome="success",
+        metadata={"provider": "static-token"},
+    )
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.REVIEW,
+        actor="workflow-portal",
+        subject="review-123",
+        outcome="proposal_status_change",
+        metadata={
+            "proposal_id": "prop-123",
+            "from_status": "submitted",
+            "to_status": "approved",
+        },
+    )
+    first_store.store.save_snapshot(first_store._serialize_state())
+
+    restored_store = PlannerProposalStore(state_path=state_path)
+    assert (
+        restored_store._serialize_state()["audit_events"]
+        == first_store._serialize_state()["audit_events"]
+    )
+
+
 def test_portal_submission_result_survives_restart(monkeypatch, tmp_path) -> None:
     _set_runtime_env(monkeypatch)
     state_path = tmp_path / "portal-runtime-state.sqlite3"
