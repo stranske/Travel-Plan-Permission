@@ -160,7 +160,7 @@ class NullAuditEventStore:
         if False:  # pragma: no cover - typing trick for empty generator
             yield AuditEvent(event_type="", actor_subject="", outcome="")
         return
-        yield  # type: ignore[unreachable]
+        yield
 
     def prune(self, older_than: datetime) -> int:  # noqa: ARG002
         return 0
@@ -645,8 +645,7 @@ def prune_main(argv: list[str] | None = None) -> int:
         type=int,
         default=None,
         help=(
-            "Override retention window. Defaults to TPP_AUDIT_RETENTION_DAYS "
-            "or 2555 (7 years)."
+            "Override retention window. Defaults to TPP_AUDIT_RETENTION_DAYS " "or 2555 (7 years)."
         ),
     )
     parser.add_argument(
