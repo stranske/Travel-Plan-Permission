@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -224,7 +224,7 @@ def _make_op_response(**kwargs) -> PlannerProposalOperationResponse:
         "request_id": "req-1",
         "correlation_id": PlannerCorrelationId(value="corr-1"),
         "transport_pattern": "deferred",
-        "received_at": datetime.now(timezone.utc),
+        "received_at": datetime.now(UTC),
     }
     defaults.update(kwargs)
     return PlannerProposalOperationResponse(**defaults)
