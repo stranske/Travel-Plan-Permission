@@ -147,16 +147,13 @@ jobs:
         working-directory: travel-plan-permission
         env:
           TRIP_PLANNER_REPO: ${{ github.workspace }}/trip-planner
-          TPP_ACCESS_TOKEN: ${{ env.TPP_PLANNER_TOKEN }}
         run: |
           tpp-cross-repo-smoke
 
       - name: Run tpp-planner-smoke
         working-directory: travel-plan-permission
-        env:
-          TPP_ACCESS_TOKEN: ${{ env.TPP_PLANNER_TOKEN }}
         run: |
-          tpp-planner-smoke
+          tpp-planner-smoke --token "${TPP_PLANNER_TOKEN}"
 
       - name: Tear down planner service
         if: always()

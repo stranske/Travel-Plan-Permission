@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 import uvicorn
 
+from travel_plan_permission.planner_auth import Permission, mint_bootstrap_token
 from travel_plan_permission.planner_smoke import main
 
 
@@ -67,6 +68,16 @@ def _run_live_service() -> Iterator[str]:
         if thread is not None:
             thread.join(timeout=10)
         server_socket.close()
+
+
+@contextlib.contextmanager
+def _reserved_closed_port() -> Iterator[int]:
+    reserved_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    reserved_socket.bind(("127.0.0.1", 0))
+    try:
+        yield int(reserved_socket.getsockname()[1])
+    finally:
+        reserved_socket.close()
 
 
 def test_planner_smoke_main_succeeds_against_live_service(
@@ -186,12 +197,13 @@ def test_planner_smoke_fails_on_connection_refused(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """URLError (connection refused) surfaces as a smoke failure, not an exception."""
-    monkeypatch.setenv("TPP_BASE_URL", "http://127.0.0.1:19999")
-    monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
-    monkeypatch.setenv("TPP_ACCESS_TOKEN", "test-token")
-    monkeypatch.setenv("TPP_OIDC_PROVIDER", "google")
+    with _reserved_closed_port() as port:
+        monkeypatch.setenv("TPP_BASE_URL", f"http://127.0.0.1:{port}")
+        monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
+        monkeypatch.setenv("TPP_ACCESS_TOKEN", "test-token")
+        monkeypatch.setenv("TPP_OIDC_PROVIDER", "google")
 
-    exit_code = main([])
+        exit_code = main([])
 
     captured = capsys.readouterr()
     assert exit_code == 1
@@ -202,19 +214,27 @@ def test_planner_smoke_succeeds_with_bootstrap_token_mode(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """bootstrap-token auth mode mints a token at runtime and succeeds against a live service.
+    """bootstrap-token auth mode accepts an explicitly minted token.
 
-    This mirrors the CI cross-repo-smoke job which uses TPP_AUTH_MODE=bootstrap-token.
+    This mirrors the CI cross-repo-smoke job which mints a token before running the
+    planner smoke command against a live service.
     """
     with _run_live_service() as base_url:
         signing_secret = secrets.token_hex(32)
+        token = mint_bootstrap_token(
+            subject="ci-cross-repo-smoke",
+            permissions=(Permission.VIEW, Permission.CREATE),
+            provider="google",
+            secret=signing_secret,
+            expires_in_seconds=900,
+        )
         monkeypatch.setenv("TPP_BASE_URL", base_url)
         monkeypatch.setenv("TPP_AUTH_MODE", "bootstrap-token")
         monkeypatch.setenv("TPP_OIDC_PROVIDER", "google")
         monkeypatch.setenv("TPP_BOOTSTRAP_SIGNING_SECRET", signing_secret)
         monkeypatch.delenv("TPP_ACCESS_TOKEN", raising=False)
 
-        exit_code = main([])
+        exit_code = main(["--token", token])
 
     captured = capsys.readouterr()
     assert exit_code == 0
