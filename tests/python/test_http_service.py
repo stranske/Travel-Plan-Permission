@@ -1518,6 +1518,15 @@ def test_in_process_audit_log_survives_restart(tmp_path) -> None:
 
     restored_store = PlannerProposalStore(state_path=state_path)
     restored_events = restored_store.list_audit_events()
+    assert len(restored_events) >= 2
+    assert {
+        (event.event_type, event.outcome) for event in restored_events
+    }.issuperset(
+        {
+        (AuditEventType.AUTHENTICATION, "success"),
+        (AuditEventType.REVIEW, "proposal_status_change"),
+        }
+    )
 
     assert any(
         event.event_type == AuditEventType.AUTHENTICATION
