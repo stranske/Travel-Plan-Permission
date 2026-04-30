@@ -125,7 +125,9 @@ keep using the deprecated JSON file during migration. For restart
 verification, create a draft, copy the `/portal/review/{draft_id}` URL,
 restart the service, and reopen the same page to confirm the review state,
 submission result, and follow-on review link still render intentionally
-before rechecking artifacts.
+before rechecking artifacts. Expense review drafts and the in-process security
+audit history use the same restart-safe snapshot path, so `/portal/expenses/{draft_id}`
+and the admin audit surface can be rechecked after restart as well.
 
 Run the repo-native live smoke command against a running service with:
 

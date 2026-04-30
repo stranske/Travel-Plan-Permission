@@ -914,29 +914,12 @@ class PlannerProposalStore:
             for execution_id, serialized in payload.get("proposals_by_execution_id", {}).items()
         }
         self.portal_drafts_by_id = {
-            draft_id: PortalDraft(
-                draft_id=draft_id,
-                answers=dict(serialized["answers"]),
-                updated_at=datetime.fromisoformat(serialized["updated_at"]),
-                cached_artifacts={
-                    artifact_name: PortalArtifact(
-                        filename=artifact_payload["filename"],
-                        content=base64.b64decode(artifact_payload["content"]),
-                        media_type=artifact_payload["media_type"],
-                    )
-                    for artifact_name, artifact_payload in serialized.get(
-                        "cached_artifacts", {}
-                    ).items()
-                },
-                submission_response=(
-                    PlannerProposalOperationResponse.model_validate(
-                        serialized["submission_response"]
-                    )
-                    if serialized.get("submission_response") is not None
-                    else None
-                ),
-            )
+            draft_id: _portal_draft_from_state(draft_id, serialized)
             for draft_id, serialized in payload.get("portal_drafts_by_id", {}).items()
+        }
+        self.expense_drafts_by_id = {
+            draft_id: _portal_draft_from_state(draft_id, serialized)
+            for draft_id, serialized in payload.get("expense_drafts_by_id", {}).items()
         }
         self.manager_reviews = ReviewWorkflowStore(
             reviews_by_id={
@@ -972,6 +955,10 @@ class PlannerProposalStore:
                 "exception_requests_by_draft_id", {}
             ).items()
         }
+        self.security.audit_log.events = [
+            _audit_log_event_from_state(serialized)
+            for serialized in payload.get("audit_events", [])
+        ]
 
     def _serialize_state(self) -> dict[str, object]:
         return {
@@ -988,24 +975,12 @@ class PlannerProposalStore:
                 for execution_id, stored in self.proposals_by_execution_id.items()
             },
             "portal_drafts_by_id": {
-                draft_id: {
-                    "answers": dict(draft.answers),
-                    "updated_at": draft.updated_at.isoformat(),
-                    "cached_artifacts": {
-                        artifact_name: {
-                            "filename": artifact.filename,
-                            "content": base64.b64encode(artifact.content).decode("ascii"),
-                            "media_type": artifact.media_type,
-                        }
-                        for artifact_name, artifact in draft.cached_artifacts.items()
-                    },
-                    "submission_response": (
-                        draft.submission_response.model_dump(mode="json")
-                        if draft.submission_response is not None
-                        else None
-                    ),
-                }
+                draft_id: _portal_draft_to_state(draft)
                 for draft_id, draft in self.portal_drafts_by_id.items()
+            },
+            "expense_drafts_by_id": {
+                draft_id: _portal_draft_to_state(draft)
+                for draft_id, draft in self.expense_drafts_by_id.items()
             },
             "manager_reviews": {
                 review_id: {
@@ -1034,7 +1009,73 @@ class PlannerProposalStore:
                 draft_id: [request.model_dump(mode="json") for request in requests]
                 for draft_id, requests in self.exception_requests_by_draft_id.items()
             },
+            "audit_events": [
+                _audit_log_event_to_state(event) for event in self.security.audit_log.events
+            ],
         }
+
+
+def _portal_draft_to_state(draft: PortalDraft) -> dict[str, object]:
+    return {
+        "answers": dict(draft.answers),
+        "updated_at": draft.updated_at.isoformat(),
+        "cached_artifacts": {
+            artifact_name: {
+                "filename": artifact.filename,
+                "content": base64.b64encode(artifact.content).decode("ascii"),
+                "media_type": artifact.media_type,
+            }
+            for artifact_name, artifact in draft.cached_artifacts.items()
+        },
+        "submission_response": (
+            draft.submission_response.model_dump(mode="json")
+            if draft.submission_response is not None
+            else None
+        ),
+    }
+
+
+def _portal_draft_from_state(draft_id: str, serialized: dict[str, Any]) -> PortalDraft:
+    return PortalDraft(
+        draft_id=draft_id,
+        answers=dict(serialized["answers"]),
+        updated_at=datetime.fromisoformat(serialized["updated_at"]),
+        cached_artifacts={
+            artifact_name: PortalArtifact(
+                filename=artifact_payload["filename"],
+                content=base64.b64decode(artifact_payload["content"]),
+                media_type=artifact_payload["media_type"],
+            )
+            for artifact_name, artifact_payload in serialized.get("cached_artifacts", {}).items()
+        },
+        submission_response=(
+            PlannerProposalOperationResponse.model_validate(serialized["submission_response"])
+            if serialized.get("submission_response") is not None
+            else None
+        ),
+    )
+
+
+def _audit_log_event_to_state(event: AuditLogEvent) -> dict[str, object]:
+    return {
+        "event_type": event.event_type.value,
+        "actor": event.actor,
+        "subject": event.subject,
+        "outcome": event.outcome,
+        "metadata": dict(event.metadata),
+        "timestamp": event.timestamp.isoformat(),
+    }
+
+
+def _audit_log_event_from_state(serialized: dict[str, Any]) -> AuditLogEvent:
+    return AuditLogEvent(
+        event_type=AuditEventType(serialized["event_type"]),
+        actor=serialized["actor"],
+        subject=serialized.get("subject"),
+        outcome=serialized["outcome"],
+        metadata=dict(serialized.get("metadata", {})),
+        timestamp=datetime.fromisoformat(serialized["timestamp"]),
+    )
 
 
 def _readiness_response() -> PlannerReadinessResponse:

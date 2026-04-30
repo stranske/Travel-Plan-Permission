@@ -19,7 +19,7 @@ from travel_plan_permission import audit, http_service, planner_auth, portal_rev
 from travel_plan_permission.http_service import PlannerProposalStore, create_app, main
 from travel_plan_permission.planner_auth import mint_bootstrap_token
 from travel_plan_permission.policy_api import PlannerProposalOperationResponse
-from travel_plan_permission.security import Permission
+from travel_plan_permission.security import AuditEventType, Permission
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "planner_integration"
 AUTH_HEADER = {"Authorization": "Bearer dev-token"}
@@ -1433,6 +1433,73 @@ def test_portal_review_state_survives_restart(monkeypatch, tmp_path) -> None:
     assert 'data-template="review-summary"' in restored.text
     assert f"Draft {draft_id}" in restored.text
     assert "Generated artifacts" in restored.text
+
+
+def test_expense_review_state_survives_restart(tmp_path) -> None:
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+
+    first_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
+    review = first_client.post(
+        "/portal/expenses/review",
+        data=_expense_form_payload(),
+        follow_redirects=True,
+    )
+
+    assert review.status_code == 200
+    match = re.search(r"/portal/expenses/([^/]+)/artifacts/expense-csv", review.text)
+    assert match is not None
+    draft_id = match.group(1)
+
+    second_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
+    restored = second_client.get(f"/portal/expenses/{draft_id}")
+    csv_export = second_client.get(f"/portal/expenses/{draft_id}/artifacts/expense-csv")
+
+    assert restored.status_code == 200
+    assert f"Expense draft {draft_id}" in restored.text
+    assert "Download CSV" in restored.text
+    assert csv_export.status_code == 200
+    assert f"{draft_id}.csv" in csv_export.headers["content-disposition"]
+    assert b"date,vendor,amount,category,cost_center,receipt_link" in csv_export.content
+
+
+def test_in_process_audit_log_survives_restart(tmp_path) -> None:
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+    first_store = PlannerProposalStore(state_path=state_path)
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.AUTHENTICATION,
+        actor="static-token",
+        subject="planner-admin",
+        outcome="success",
+        metadata={"provider": "static-token"},
+    )
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.REVIEW,
+        actor="workflow-portal",
+        subject="review-123",
+        outcome="submitted_for_manager_review",
+        metadata={"draft_id": "draft-123", "trip_id": "trip-123"},
+    )
+    first_store.save_expense_draft(_expense_form_payload())
+
+    restored_store = PlannerProposalStore(state_path=state_path)
+    restored_events = restored_store.list_audit_events()
+
+    assert any(
+        event.event_type == AuditEventType.AUTHENTICATION
+        and event.actor == "static-token"
+        and event.subject == "planner-admin"
+        and event.outcome == "success"
+        and event.metadata == {"provider": "static-token"}
+        for event in restored_events
+    )
+    assert any(
+        event.event_type == AuditEventType.REVIEW
+        and event.actor == "workflow-portal"
+        and event.subject == "review-123"
+        and event.outcome == "submitted_for_manager_review"
+        and event.metadata == {"draft_id": "draft-123", "trip_id": "trip-123"}
+        for event in restored_events
+    )
 
 
 def test_portal_submission_result_survives_restart(monkeypatch, tmp_path) -> None:
