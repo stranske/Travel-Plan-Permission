@@ -29,6 +29,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 
+from . import audit
 from .approval import ApprovalEngine
 from .export import ExportService
 from .models import (
@@ -338,10 +339,17 @@ class PlannerRuntimeConfig(BaseModel):
         )
 
 
+def _route_identifier(request: Request) -> str:
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", None)
+    return f"{request.method} {route_path or request.url.path}"
+
+
 def _authorize_request(
     authorization: str | None,
     *,
     required_permission: Permission,
+    route: str | None = None,
 ) -> PlannerAuthContext:
     config = PlannerAuthConfig.from_env()
     if not config.is_ready:
@@ -354,6 +362,7 @@ def _authorize_request(
             authorization,
             config=config,
             required_permission=required_permission,
+            route=route,
         )
     except OIDCAuthenticationError as exc:
         raise HTTPException(
@@ -432,6 +441,20 @@ def _default_portal_state_path() -> Path:
     return Path.cwd() / _PORTAL_STATE_DEFAULT_PATH
 
 
+def _install_audit_store_from_env() -> None:
+    """Install a SQLite-backed durable audit store when configured via env.
+
+    Honors ``TPP_AUDIT_STATE_PATH``. When unset, the module-level default
+    remains a :class:`audit.NullAuditEventStore`, which sinks all writes —
+    matching legacy in-memory behavior.
+    """
+
+    raw = os.getenv(audit.AUDIT_PATH_ENV_VAR)
+    if not raw:
+        return
+    audit.open_default_store(Path(raw).expanduser())
+
+
 @dataclass
 class PlannerProposalStore:
     """In-memory proposal store for local and preview live testing."""
@@ -484,6 +507,30 @@ class PlannerProposalStore:
             trip_plan=trip_plan.model_copy(deep=True),
             request=request.model_copy(deep=True),
             response=response.model_copy(deep=True),
+        )
+        audit.write_audit_event(
+            audit.EVENT_PROPOSAL_CREATED,
+            actor_subject="planner-service",
+            outcome=audit.OUTCOME_SUCCESS,
+            target_kind="proposal",
+            target_id=request.proposal_id,
+            metadata={
+                "trip_id": trip_plan.trip_id,
+                "execution_id": execution_id,
+            },
+        )
+        audit.write_audit_event(
+            audit.EVENT_PROPOSAL_STATUS_CHANGE,
+            actor_subject="planner-service",
+            outcome="submitted",
+            target_kind="proposal",
+            target_id=request.proposal_id,
+            metadata={
+                "trip_id": trip_plan.trip_id,
+                "execution_id": execution_id,
+                "from_status": None,
+                "to_status": "submitted",
+            },
         )
         self._persist_state()
 
@@ -695,6 +742,8 @@ class PlannerProposalStore:
     ) -> ReviewRequest:
         """Persist a manager decision against an existing review request."""
 
+        prior = self.manager_reviews.lookup(review_id)
+        from_status = prior.status.value if prior is not None else None
         updated = self.manager_reviews.apply_action(
             review_id,
             action=action,
@@ -707,6 +756,19 @@ class PlannerProposalStore:
             subject=review_id,
             outcome=action.value,
             metadata={"draft_id": updated.draft_id, "status": updated.status.value},
+        )
+        audit.write_audit_event(
+            audit.EVENT_PROPOSAL_STATUS_CHANGE,
+            actor_subject=actor_id,
+            outcome=updated.status.value,
+            target_kind="manager_review",
+            target_id=review_id,
+            metadata={
+                "draft_id": updated.draft_id,
+                "action": action.value,
+                "from_status": from_status,
+                "to_status": updated.status.value,
+            },
         )
         self._persist_state()
         return updated
@@ -1384,6 +1446,7 @@ def _admin_dashboard_context(
 def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     """Create the planner-facing ASGI application."""
 
+    _install_audit_store_from_env()
     proposal_store = store or PlannerProposalStore(state_path=_default_portal_state_path())
     app = FastAPI(
         title="Travel Plan Permission Planner Service",
@@ -1478,6 +1541,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
@@ -1611,6 +1675,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.CREATE,
+            route=_route_identifier(request),
         )
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
@@ -1675,6 +1740,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         role_view = _resolve_role_view(actor_role)
         return _TEMPLATES.TemplateResponse(
@@ -1702,6 +1768,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         role_view = _resolve_role_view(actor_role)
         review = proposal_store.lookup_manager_review(review_id)
@@ -1737,6 +1804,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.APPROVE,
+            route=_route_identifier(request),
         )
         role_view = _resolve_role_view(actor_role)
         parsed = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
@@ -1813,6 +1881,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         _authorize_request(
             authorization,
             required_permission=Permission.APPROVE,
+            route=_route_identifier(request),
         )
         parsed = parse_qs(
             (await request.body()).decode("utf-8"),
@@ -1863,6 +1932,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         role_view = _resolve_role_view(actor_role)
         return _TEMPLATES.TemplateResponse(
@@ -1881,6 +1951,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
 
     @app.get("/portal/review/{draft_id}/artifacts/{artifact_name}")
     def portal_artifact(
+        request: Request,
         draft_id: str,
         artifact_name: str,
         authorization: str | None = Header(default=None),
@@ -1888,6 +1959,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
@@ -1981,6 +2053,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
 
     @app.get("/api/planner/policy-snapshot", response_model=PlannerPolicySnapshot)
     def policy_snapshot(
+        request: Request,
         trip_id: str | None = Query(default=None),
         request_body: PlannerPolicySnapshotHttpRequest | None = _OPTIONAL_SNAPSHOT_BODY,
         authorization: str | None = Header(default=None),
@@ -1988,6 +2061,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         trip_plan: TripPlan | None = None
         snapshot_request: PlannerPolicySnapshotRequest | None = None
@@ -2026,12 +2100,14 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         response_model=PlannerProposalOperationResponse,
     )
     def proposal_submission(
+        request: Request,
         payload: PlannerProposalSubmissionHttpRequest,
         authorization: str | None = Header(default=None),
     ) -> PlannerProposalOperationResponse:
         _authorize_request(
             authorization,
             required_permission=Permission.CREATE,
+            route=_route_identifier(request),
         )
         try:
             planner_response = submit_proposal(payload.trip_plan, payload.request)
@@ -2052,6 +2128,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         response_model=PlannerProposalOperationResponse,
     )
     def proposal_status(
+        request: Request,
         proposal_id: str,
         execution_id: str,
         authorization: str | None = Header(default=None),
@@ -2059,6 +2136,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         stored = proposal_store.lookup_submission(execution_id)
         if stored is None:
@@ -2089,12 +2167,14 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         response_model=PlannerProposalEvaluationResult,
     )
     def evaluation_result(
+        request: Request,
         execution_id: str,
         authorization: str | None = Header(default=None),
     ) -> PlannerProposalEvaluationResult:
         _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         stored = proposal_store.lookup_submission(execution_id)
         if stored is None:

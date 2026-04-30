@@ -15,7 +15,7 @@ import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
-from travel_plan_permission import http_service, planner_auth, portal_review
+from travel_plan_permission import audit, http_service, planner_auth, portal_review
 from travel_plan_permission.http_service import PlannerProposalStore, create_app, main
 from travel_plan_permission.planner_auth import mint_bootstrap_token
 from travel_plan_permission.policy_api import PlannerProposalOperationResponse
@@ -367,6 +367,33 @@ def test_planner_routes_require_bearer_token(monkeypatch) -> None:
     assert missing.json()["detail"] == "Missing bearer token."
     assert invalid.status_code == 403
     assert invalid.json()["detail"] == "Invalid bearer token."
+
+
+def test_planner_route_audit_events_include_route_identifier(monkeypatch, tmp_path) -> None:
+    _set_runtime_env(monkeypatch)
+    store_path = tmp_path / "audit.sqlite3"
+    monkeypatch.setenv(audit.AUDIT_PATH_ENV_VAR, str(store_path))
+    client = TestClient(create_app())
+    trip_plan = _load_fixture("proposal_submission.json")
+    snapshot_request = _load_fixture("policy_snapshot_request.json")
+
+    response = client.request(
+        "GET",
+        "/api/planner/policy-snapshot",
+        headers=AUTH_HEADER,
+        json={"trip_plan": trip_plan, "request": snapshot_request},
+    )
+
+    assert response.status_code == 200
+    audit.get_default_store().close()
+    audit.reset_default_store()
+    store = audit.SQLiteAuditEventStore(store_path)
+    store.initialize()
+    try:
+        rows = list(store.query(event_type=audit.EVENT_AUTH_REQUEST))
+    finally:
+        store.close()
+    assert [row.target_id for row in rows] == ["GET /api/planner/policy-snapshot"]
 
 
 def test_bootstrap_token_allows_planner_routes(monkeypatch) -> None:

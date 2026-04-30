@@ -18,6 +18,7 @@ from enum import StrEnum
 import httpx
 import jwt
 
+from . import audit
 from .security import DEFAULT_ROLES, Permission, RoleName
 
 _SUPPORTED_OIDC_PROVIDERS = ("azure_ad", "okta", "google")
@@ -77,6 +78,14 @@ class PlannerAuthContext:
         """Return whether the caller has the required permission."""
 
         return permission in self.permissions
+
+
+class KnownSubjectPermissionError(PermissionError):
+    """Authorization failure where the caller identity was authenticated."""
+
+    def __init__(self, message: str, *, context: PlannerAuthContext) -> None:
+        super().__init__(message)
+        self.context = context
 
 
 @dataclass(frozen=True)
@@ -249,7 +258,23 @@ def mint_bootstrap_token(
         "provider": provider,
         "sub": subject,
     }
-    return _signed_token(payload, secret)
+    token = _signed_token(payload, secret)
+    audit.write_audit_event(
+        audit.EVENT_AUTH_BOOTSTRAP_MINT,
+        actor_subject=subject,
+        outcome=audit.OUTCOME_SUCCESS,
+        target_kind="planner_bootstrap_token",
+        target_id=None,
+        metadata={
+            "provider": provider,
+            "permissions": [permission.value for permission in permissions],
+            "issued_at": issued_at,
+            "expires_at": expires_at,
+            "audience": _PLANNER_TOKEN_AUDIENCE,
+        },
+        occurred_at=current_time,
+    )
+    return token
 
 
 def _parse_bootstrap_token(token: str, *, secret: str) -> PlannerBootstrapTokenClaims:
@@ -428,9 +453,70 @@ def authenticate_request(
     config: PlannerAuthConfig,
     required_permission: Permission,
     now: datetime | None = None,
+    route: str | None = None,
 ) -> PlannerAuthContext:
     """Validate the request bearer token against the configured planner auth mode."""
 
+    occurred_at = now or datetime.now(UTC)
+    auth_mode_label = config.auth_mode.value if config.auth_mode is not None else "unconfigured"
+    try:
+        context = _authenticate_request_inner(
+            authorization,
+            config=config,
+            required_permission=required_permission,
+            now=now,
+        )
+    except (PermissionError, ValueError) as exc:
+        known_context = exc.context if isinstance(exc, KnownSubjectPermissionError) else None
+        metadata: dict[str, object] = {
+            "auth_mode": auth_mode_label,
+            "required_permission": required_permission.value,
+            "reason": str(exc),
+            "reason_code": _failure_reason_code(exc),
+        }
+        if known_context is not None:
+            metadata.update(
+                {
+                    "provider": known_context.provider,
+                    "permissions": [
+                        permission.value for permission in known_context.permissions
+                    ],
+                }
+            )
+        audit.write_audit_event(
+            audit.EVENT_AUTH_REQUEST,
+            actor_subject=known_context.subject if known_context is not None else "unauthenticated",
+            outcome=audit.OUTCOME_FAILURE,
+            target_kind="planner_route",
+            target_id=route,
+            metadata=metadata,
+            occurred_at=occurred_at,
+        )
+        raise
+    audit.write_audit_event(
+        audit.EVENT_AUTH_REQUEST,
+        actor_subject=context.subject,
+        outcome=audit.OUTCOME_SUCCESS,
+        target_kind="planner_route",
+        target_id=route,
+        metadata={
+            "auth_mode": context.auth_mode.value,
+            "required_permission": required_permission.value,
+            "provider": context.provider,
+            "permissions": [permission.value for permission in context.permissions],
+        },
+        occurred_at=occurred_at,
+    )
+    return context
+
+
+def _authenticate_request_inner(
+    authorization: str | None,
+    *,
+    config: PlannerAuthConfig,
+    required_permission: Permission,
+    now: datetime | None = None,
+) -> PlannerAuthContext:
     if not config.is_ready:
         raise ValueError("Planner auth config is not ready.")
     if authorization is None or not authorization.startswith("Bearer "):
@@ -442,24 +528,29 @@ def authenticate_request(
         if expected is None or not secrets.compare_digest(token, expected):
             raise PermissionError("Invalid bearer token.")
         permissions = (Permission.VIEW, Permission.CREATE)
-        if required_permission not in permissions:
-            raise PermissionError(
-                f"Static planner token does not grant '{required_permission.value}'."
-            )
         if config.oidc_provider is None:
             raise ValueError("Planner auth config is not ready.")
-        return PlannerAuthContext(
+        context = PlannerAuthContext(
             subject=_PLANNER_STATIC_TOKEN_SUBJECT,
             permissions=permissions,
             provider=config.oidc_provider,
             expires_at=None,
             auth_mode=PlannerAuthMode.STATIC_TOKEN,
         )
+        if required_permission not in context.permissions:
+            raise KnownSubjectPermissionError(
+                f"Static planner token does not grant '{required_permission.value}'.",
+                context=context,
+            )
+        return context
 
     if config.auth_mode == PlannerAuthMode.OIDC:
         context = _verify_oidc_token(token, config=config)
         if required_permission not in context.permissions:
-            raise PermissionError(f"OIDC token role does not grant '{required_permission.value}'.")
+            raise KnownSubjectPermissionError(
+                f"OIDC token role does not grant '{required_permission.value}'.",
+                context=context,
+            )
         return context
 
     if config.auth_mode != PlannerAuthMode.BOOTSTRAP_TOKEN:
@@ -478,15 +569,47 @@ def authenticate_request(
     current_time = now or datetime.now(UTC)
     if int(current_time.timestamp()) >= claims.exp:
         raise PermissionError("Bootstrap token has expired.")
-    if required_permission not in claims.permissions:
-        raise PermissionError(f"Bootstrap token does not grant '{required_permission.value}'.")
-    return PlannerAuthContext(
+    context = PlannerAuthContext(
         subject=claims.sub,
         permissions=claims.permissions,
         provider=claims.provider,
         expires_at=datetime.fromtimestamp(claims.exp, tz=UTC),
         auth_mode=PlannerAuthMode.BOOTSTRAP_TOKEN,
     )
+    if required_permission not in context.permissions:
+        raise KnownSubjectPermissionError(
+            f"Bootstrap token does not grant '{required_permission.value}'.",
+            context=context,
+        )
+    return context
+
+
+def _failure_reason_code(exc: Exception) -> str:
+    """Map an exception raised inside authenticate_request to a stable code."""
+
+    if isinstance(exc, OIDCAuthenticationError):
+        return f"oidc.{exc.error_code}"
+    if isinstance(exc, ValueError):
+        message = str(exc).lower()
+        if "not ready" in message:
+            return "config.not_ready"
+        if "unsupported" in message:
+            return "config.unsupported_mode"
+        return "config.error"
+    message = str(exc).lower()
+    if "missing bearer" in message:
+        return "auth.missing_bearer"
+    if "expired" in message:
+        return "auth.expired"
+    if "audience" in message:
+        return "auth.bad_audience"
+    if "provider" in message:
+        return "auth.bad_provider"
+    if "does not grant" in message:
+        return "auth.insufficient_permission"
+    if "invalid bearer" in message:
+        return "auth.invalid_bearer"
+    return "auth.denied"
 
 
 def _build_parser() -> argparse.ArgumentParser:

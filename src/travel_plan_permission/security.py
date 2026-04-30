@@ -8,6 +8,8 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
+from . import audit as _audit
+
 
 class Permission(StrEnum):
     """Supported permissions for API endpoints."""
@@ -316,6 +318,18 @@ class SecurityModel:
             outcome=RoleChangeState.PENDING_APPROVAL.value,
             metadata={"new_role": new_role.value},
         )
+        _audit.write_audit_event(
+            _audit.EVENT_RBAC_ROLE_CHANGE,
+            actor_subject=requester,
+            outcome=RoleChangeState.PENDING_APPROVAL.value,
+            target_kind="user",
+            target_id=target_user,
+            metadata={
+                "request_id": request.request_id,
+                "new_role": new_role.value,
+                "transition": "requested",
+            },
+        )
         return request
 
     def approve_role_change(
@@ -324,6 +338,18 @@ class SecurityModel:
         """Approve a pending role change; only admins may approve."""
 
         if admin_role not in {RoleName.SYSTEM_ADMIN, RoleName.POLICY_ADMIN}:
+            _audit.write_audit_event(
+                _audit.EVENT_RBAC_ROLE_CHANGE,
+                actor_subject=admin_actor,
+                outcome=_audit.OUTCOME_FAILURE,
+                actor_role=admin_role.value,
+                target_kind="role_change_request",
+                target_id=request_id,
+                metadata={
+                    "transition": "approve",
+                    "reason_code": "rbac.role_admin_required",
+                },
+            )
             raise PermissionError("Only admin roles may approve role changes")
 
         request = self.pending_role_changes.get(request_id)
@@ -338,6 +364,19 @@ class SecurityModel:
             outcome=request.state.value,
             metadata={"new_role": request.new_role.value},
         )
+        _audit.write_audit_event(
+            _audit.EVENT_RBAC_ROLE_CHANGE,
+            actor_subject=admin_actor,
+            outcome=request.state.value,
+            actor_role=admin_role.value,
+            target_kind="user",
+            target_id=request.target_user,
+            metadata={
+                "request_id": request.request_id,
+                "new_role": request.new_role.value,
+                "transition": "approved",
+            },
+        )
         return request
 
     def reject_role_change(
@@ -346,6 +385,18 @@ class SecurityModel:
         """Reject a pending role change; only admins may reject."""
 
         if admin_role not in {RoleName.SYSTEM_ADMIN, RoleName.POLICY_ADMIN}:
+            _audit.write_audit_event(
+                _audit.EVENT_RBAC_ROLE_CHANGE,
+                actor_subject=admin_actor,
+                outcome=_audit.OUTCOME_FAILURE,
+                actor_role=admin_role.value,
+                target_kind="role_change_request",
+                target_id=request_id,
+                metadata={
+                    "transition": "reject",
+                    "reason_code": "rbac.role_admin_required",
+                },
+            )
             raise PermissionError("Only admin roles may reject role changes")
 
         request = self.pending_role_changes.get(request_id)
@@ -359,5 +410,18 @@ class SecurityModel:
             subject=request.target_user,
             outcome=request.state.value,
             metadata={"new_role": request.new_role.value},
+        )
+        _audit.write_audit_event(
+            _audit.EVENT_RBAC_ROLE_CHANGE,
+            actor_subject=admin_actor,
+            outcome=request.state.value,
+            actor_role=admin_role.value,
+            target_kind="user",
+            target_id=request.target_user,
+            metadata={
+                "request_id": request.request_id,
+                "new_role": request.new_role.value,
+                "transition": "rejected",
+            },
         )
         return request
