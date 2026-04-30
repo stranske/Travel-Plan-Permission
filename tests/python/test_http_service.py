@@ -1519,12 +1519,10 @@ def test_in_process_audit_log_survives_restart(tmp_path) -> None:
     restored_store = PlannerProposalStore(state_path=state_path)
     restored_events = restored_store.list_audit_events()
     assert len(restored_events) >= 2
-    assert {
-        (event.event_type, event.outcome) for event in restored_events
-    }.issuperset(
+    assert {(event.event_type, event.outcome) for event in restored_events}.issuperset(
         {
-        (AuditEventType.AUTHENTICATION, "success"),
-        (AuditEventType.REVIEW, "proposal_status_change"),
+            (AuditEventType.AUTHENTICATION, "success"),
+            (AuditEventType.REVIEW, "proposal_status_change"),
         }
     )
 
@@ -1579,6 +1577,38 @@ def test_audit_events_round_trip_serialize_and_load(tmp_path) -> None:
         restored_store._serialize_state()["audit_events"]
         == first_store._serialize_state()["audit_events"]
     )
+
+
+def test_serialize_state_uses_security_audit_log_events(tmp_path) -> None:
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    store.security.audit_log.record(
+        event_type=AuditEventType.AUTHENTICATION,
+        actor="static-token",
+        subject="planner-admin",
+        outcome="success",
+        metadata={"provider": "static-token"},
+    )
+    store.security.audit_log.record(
+        event_type=AuditEventType.REVIEW,
+        actor="workflow-portal",
+        subject="review-123",
+        outcome="proposal_status_change",
+        metadata={"proposal_id": "prop-123"},
+    )
+
+    serialized = store._serialize_state()
+    serialized_events = serialized["audit_events"]
+
+    assert hasattr(store, "security")
+    assert hasattr(store.security, "audit_log")
+    assert len(serialized_events) == len(store.security.audit_log.events)
+    assert [(event["event_type"], event["outcome"]) for event in serialized_events] == [
+        ("authentication", "success"),
+        ("review", "proposal_status_change"),
+    ]
+    assert serialized_events[0]["metadata"] == {"provider": "static-token"}
+    assert serialized_events[1]["metadata"] == {"proposal_id": "prop-123"}
 
 
 def test_portal_submission_result_survives_restart(monkeypatch, tmp_path) -> None:
