@@ -84,8 +84,11 @@ The shipped vocabulary is intentionally small; new types must be added to
   `auth.invalid_bearer`, `auth.bad_audience`, `auth.bad_provider`,
   `auth.insufficient_permission`, `oidc.<error_code>`).
 - `auth.bootstrap_mint` — every call to `mint_bootstrap_token`.
-- `rbac.role_change` — `request`, `approved`, and `rejected` transitions
-  through `SecurityModel.{request,approve,reject}_role_change`.
+- `rbac.role_change` — successful `requested`, `approved`, and
+  `rejected` transitions through
+  `SecurityModel.{request,approve,reject}_role_change`; failed
+  approval/rejection attempts use `approve` or `reject` plus
+  `metadata.reason_code`.
 - `rbac.permission_change` — reserved for granular permission edits;
   emitted when explicit permission mutations land.
 - `proposal.created` — written by `PlannerProposalStore.record_submission`.

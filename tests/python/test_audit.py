@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -333,6 +334,28 @@ class TestExportCLI:
         )
         assert rc == 3
 
+    def test_export_main_returns_3_when_audit_events_columns_mismatch(
+        self, tmp_path: Path
+    ) -> None:
+        store_path = tmp_path / "bad-schema.sqlite3"
+        conn = sqlite3.connect(store_path)
+        try:
+            conn.execute("CREATE TABLE audit_events (id TEXT PRIMARY KEY, occurred_at TEXT)")
+        finally:
+            conn.close()
+
+        rc = audit.export_main(
+            [
+                "--since",
+                "2026-04-01",
+                "--until",
+                "2026-04-30",
+                "--store-path",
+                str(store_path),
+            ]
+        )
+        assert rc == 3
+
     def test_export_main_writes_to_stdout_by_default(
         self,
         tmp_path: Path,
@@ -481,6 +504,36 @@ class TestEmitPoints:
         assert rows[0].outcome == audit.OUTCOME_SUCCESS
         assert rows[0].target_id == "GET /api/itineraries"
         assert rows[0].metadata["auth_mode"] == "static-token"
+
+    def test_authenticate_request_known_subject_failure_records_subject(
+        self,
+        store: audit.SQLiteAuditEventStore,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from travel_plan_permission import planner_auth
+
+        audit.set_default_store(store)
+        monkeypatch.setenv("TPP_BASE_URL", "https://tpp.example/")
+        monkeypatch.setenv("TPP_OIDC_PROVIDER", "azure_ad")
+        monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
+        monkeypatch.setenv("TPP_ACCESS_TOKEN", "secret-token")
+
+        config = planner_auth.PlannerAuthConfig.from_env()
+        with pytest.raises(PermissionError):
+            planner_auth.authenticate_request(
+                "Bearer secret-token",
+                config=config,
+                required_permission=planner_auth.Permission.APPROVE,
+                route="POST /portal/manager/reviews/{review_id}/decision",
+            )
+
+        rows = list(store.query(event_type=audit.EVENT_AUTH_REQUEST))
+        assert len(rows) == 1
+        assert rows[0].outcome == audit.OUTCOME_FAILURE
+        assert rows[0].actor_subject == "planner-static-client"
+        assert rows[0].metadata["reason_code"] == "auth.insufficient_permission"
+        assert rows[0].metadata["permissions"] == ["view", "create"]
+        assert rows[0].target_id == "POST /portal/manager/reviews/{review_id}/decision"
 
     def test_authenticate_request_config_error_emits_failure_event(
         self,

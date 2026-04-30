@@ -80,6 +80,14 @@ class PlannerAuthContext:
         return permission in self.permissions
 
 
+class KnownSubjectPermissionError(PermissionError):
+    """Authorization failure where the caller identity was authenticated."""
+
+    def __init__(self, message: str, *, context: PlannerAuthContext) -> None:
+        super().__init__(message)
+        self.context = context
+
+
 @dataclass(frozen=True)
 class PlannerBootstrapTokenClaims:
     """Claims encoded inside a bounded bootstrap token."""
@@ -459,18 +467,29 @@ def authenticate_request(
             now=now,
         )
     except (PermissionError, ValueError) as exc:
+        known_context = exc.context if isinstance(exc, KnownSubjectPermissionError) else None
+        metadata: dict[str, object] = {
+            "auth_mode": auth_mode_label,
+            "required_permission": required_permission.value,
+            "reason": str(exc),
+            "reason_code": _failure_reason_code(exc),
+        }
+        if known_context is not None:
+            metadata.update(
+                {
+                    "provider": known_context.provider,
+                    "permissions": [
+                        permission.value for permission in known_context.permissions
+                    ],
+                }
+            )
         audit.write_audit_event(
             audit.EVENT_AUTH_REQUEST,
-            actor_subject="unauthenticated",
+            actor_subject=known_context.subject if known_context is not None else "unauthenticated",
             outcome=audit.OUTCOME_FAILURE,
             target_kind="planner_route",
             target_id=route,
-            metadata={
-                "auth_mode": auth_mode_label,
-                "required_permission": required_permission.value,
-                "reason": str(exc),
-                "reason_code": _failure_reason_code(exc),
-            },
+            metadata=metadata,
             occurred_at=occurred_at,
         )
         raise
@@ -509,24 +528,29 @@ def _authenticate_request_inner(
         if expected is None or not secrets.compare_digest(token, expected):
             raise PermissionError("Invalid bearer token.")
         permissions = (Permission.VIEW, Permission.CREATE)
-        if required_permission not in permissions:
-            raise PermissionError(
-                f"Static planner token does not grant '{required_permission.value}'."
-            )
         if config.oidc_provider is None:
             raise ValueError("Planner auth config is not ready.")
-        return PlannerAuthContext(
+        context = PlannerAuthContext(
             subject=_PLANNER_STATIC_TOKEN_SUBJECT,
             permissions=permissions,
             provider=config.oidc_provider,
             expires_at=None,
             auth_mode=PlannerAuthMode.STATIC_TOKEN,
         )
+        if required_permission not in context.permissions:
+            raise KnownSubjectPermissionError(
+                f"Static planner token does not grant '{required_permission.value}'.",
+                context=context,
+            )
+        return context
 
     if config.auth_mode == PlannerAuthMode.OIDC:
         context = _verify_oidc_token(token, config=config)
         if required_permission not in context.permissions:
-            raise PermissionError(f"OIDC token role does not grant '{required_permission.value}'.")
+            raise KnownSubjectPermissionError(
+                f"OIDC token role does not grant '{required_permission.value}'.",
+                context=context,
+            )
         return context
 
     if config.auth_mode != PlannerAuthMode.BOOTSTRAP_TOKEN:
@@ -545,15 +569,19 @@ def _authenticate_request_inner(
     current_time = now or datetime.now(UTC)
     if int(current_time.timestamp()) >= claims.exp:
         raise PermissionError("Bootstrap token has expired.")
-    if required_permission not in claims.permissions:
-        raise PermissionError(f"Bootstrap token does not grant '{required_permission.value}'.")
-    return PlannerAuthContext(
+    context = PlannerAuthContext(
         subject=claims.sub,
         permissions=claims.permissions,
         provider=claims.provider,
         expires_at=datetime.fromtimestamp(claims.exp, tz=UTC),
         auth_mode=PlannerAuthMode.BOOTSTRAP_TOKEN,
     )
+    if required_permission not in context.permissions:
+        raise KnownSubjectPermissionError(
+            f"Bootstrap token does not grant '{required_permission.value}'.",
+            context=context,
+        )
+    return context
 
 
 def _failure_reason_code(exc: Exception) -> str:

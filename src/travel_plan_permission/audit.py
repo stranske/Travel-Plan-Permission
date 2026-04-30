@@ -77,6 +77,7 @@ CSV_FIELDS: tuple[str, ...] = (
     "target_id",
     "metadata_json",
 )
+_AUDIT_SCHEMA_COLUMNS: tuple[str, ...] = CSV_FIELDS
 
 
 @dataclass(frozen=True)
@@ -226,6 +227,7 @@ class SQLiteAuditEventStore:
             try:
                 for stmt in _AUDIT_SCHEMA_STATEMENTS:
                     conn.execute(stmt)
+                _validate_audit_events_schema(conn)
                 conn.execute("COMMIT")
             except Exception:
                 conn.execute("ROLLBACK")
@@ -270,12 +272,14 @@ class SQLiteAuditEventStore:
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY occurred_at ASC, id ASC"
-        cursor = conn.execute(sql, params)
-        try:
-            for row in cursor:
-                yield _row_to_event(row)
-        finally:
-            cursor.close()
+        with self._lock:
+            cursor = conn.execute(sql, params)
+            try:
+                rows = cursor.fetchall()
+            finally:
+                cursor.close()
+        for row in rows:
+            yield _row_to_event(row)
 
     def prune(self, older_than: datetime) -> int:
         conn = self._connection()
@@ -291,6 +295,20 @@ class SQLiteAuditEventStore:
         if self._conn is not None:
             self._conn.close()
             self._conn = None
+
+
+def _validate_audit_events_schema(conn: sqlite3.Connection) -> None:
+    cursor = conn.execute("PRAGMA table_info(audit_events)")
+    try:
+        columns = tuple(str(row[1]) for row in cursor.fetchall())
+    finally:
+        cursor.close()
+    if columns != _AUDIT_SCHEMA_COLUMNS:
+        expected = ", ".join(_AUDIT_SCHEMA_COLUMNS)
+        actual = ", ".join(columns) if columns else "<missing>"
+        raise sqlite3.DatabaseError(
+            f"audit_events schema mismatch: expected columns [{expected}], got [{actual}]"
+        )
 
 
 def _row_to_event(row: tuple[object, ...]) -> AuditEvent:

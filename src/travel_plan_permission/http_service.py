@@ -339,10 +339,17 @@ class PlannerRuntimeConfig(BaseModel):
         )
 
 
+def _route_identifier(request: Request) -> str:
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", None)
+    return f"{request.method} {route_path or request.url.path}"
+
+
 def _authorize_request(
     authorization: str | None,
     *,
     required_permission: Permission,
+    route: str | None = None,
 ) -> PlannerAuthContext:
     config = PlannerAuthConfig.from_env()
     if not config.is_ready:
@@ -355,6 +362,7 @@ def _authorize_request(
             authorization,
             config=config,
             required_permission=required_permission,
+            route=route,
         )
     except OIDCAuthenticationError as exc:
         raise HTTPException(
@@ -1533,6 +1541,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
@@ -1666,6 +1675,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.CREATE,
+            route=_route_identifier(request),
         )
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
@@ -1730,6 +1740,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         role_view = _resolve_role_view(actor_role)
         return _TEMPLATES.TemplateResponse(
@@ -1757,6 +1768,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         role_view = _resolve_role_view(actor_role)
         review = proposal_store.lookup_manager_review(review_id)
@@ -1792,6 +1804,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.APPROVE,
+            route=_route_identifier(request),
         )
         role_view = _resolve_role_view(actor_role)
         parsed = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
@@ -1868,6 +1881,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         _authorize_request(
             authorization,
             required_permission=Permission.APPROVE,
+            route=_route_identifier(request),
         )
         parsed = parse_qs(
             (await request.body()).decode("utf-8"),
@@ -1918,6 +1932,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         role_view = _resolve_role_view(actor_role)
         return _TEMPLATES.TemplateResponse(
@@ -1936,6 +1951,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
 
     @app.get("/portal/review/{draft_id}/artifacts/{artifact_name}")
     def portal_artifact(
+        request: Request,
         draft_id: str,
         artifact_name: str,
         authorization: str | None = Header(default=None),
@@ -1943,6 +1959,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
@@ -2036,6 +2053,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
 
     @app.get("/api/planner/policy-snapshot", response_model=PlannerPolicySnapshot)
     def policy_snapshot(
+        request: Request,
         trip_id: str | None = Query(default=None),
         request_body: PlannerPolicySnapshotHttpRequest | None = _OPTIONAL_SNAPSHOT_BODY,
         authorization: str | None = Header(default=None),
@@ -2043,6 +2061,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         trip_plan: TripPlan | None = None
         snapshot_request: PlannerPolicySnapshotRequest | None = None
@@ -2081,12 +2100,14 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         response_model=PlannerProposalOperationResponse,
     )
     def proposal_submission(
+        request: Request,
         payload: PlannerProposalSubmissionHttpRequest,
         authorization: str | None = Header(default=None),
     ) -> PlannerProposalOperationResponse:
         _authorize_request(
             authorization,
             required_permission=Permission.CREATE,
+            route=_route_identifier(request),
         )
         try:
             planner_response = submit_proposal(payload.trip_plan, payload.request)
@@ -2107,6 +2128,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         response_model=PlannerProposalOperationResponse,
     )
     def proposal_status(
+        request: Request,
         proposal_id: str,
         execution_id: str,
         authorization: str | None = Header(default=None),
@@ -2114,6 +2136,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         stored = proposal_store.lookup_submission(execution_id)
         if stored is None:
@@ -2144,12 +2167,14 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         response_model=PlannerProposalEvaluationResult,
     )
     def evaluation_result(
+        request: Request,
         execution_id: str,
         authorization: str | None = Header(default=None),
     ) -> PlannerProposalEvaluationResult:
         _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
+            route=_route_identifier(request),
         )
         stored = proposal_store.lookup_submission(execution_id)
         if stored is None:
