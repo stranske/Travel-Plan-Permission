@@ -39,10 +39,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
@@ -74,7 +74,7 @@ jobs:
       TPP_PORT: "8000"
     steps:
       - name: Checkout Travel-Plan-Permission (PR head)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           path: travel-plan-permission
 
@@ -92,7 +92,7 @@ jobs:
           echo "TRIP_PLANNER_PINNED_REF=${ref}" >> "$GITHUB_ENV"
 
       - name: Checkout trip-planner at pinned ref
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           repository: stranske/trip-planner
           ref: ${{ env.TRIP_PLANNER_PINNED_REF }}
@@ -105,7 +105,7 @@ jobs:
           echo "Resolved SHA: $(git rev-parse HEAD)"
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
@@ -115,6 +115,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev,orchestration]"
+
+      - name: Install trip-planner dev extras
+        working-directory: trip-planner
+        run: |
+          pip install -e ".[dev]" || pip install -e "."
 
       - name: Generate bootstrap signing secret
         run: |
