@@ -54,7 +54,9 @@ def _write_trip_planner_contracts(root: Path) -> None:
     )
 
 
-def test_cross_repo_smoke_proves_submission_status_evaluation_and_reload(tmp_path: Path) -> None:
+def test_cross_repo_smoke_proves_submission_status_evaluation_and_reload(
+    tmp_path: Path,
+) -> None:
     trip_planner_root = tmp_path / "trip-planner"
     _write_trip_planner_contracts(trip_planner_root)
     state_path = tmp_path / "tpp-state.json"
@@ -86,4 +88,6 @@ def test_cross_repo_smoke_cli_reports_missing_trip_planner_checkout(
 
     captured = capsys.readouterr()
     assert exit_code == 1
-    assert "trip-planner checkout is missing required TPP contract files" in captured.err
+    assert (
+        "trip-planner checkout is missing required TPP contract files" in captured.err
+    )

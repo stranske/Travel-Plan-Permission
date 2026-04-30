@@ -47,6 +47,9 @@ The expected deployment config shape is:
 - `TPP_ACCESS_TOKEN` when `TPP_AUTH_MODE=static-token`
 - `TPP_BOOTSTRAP_SIGNING_SECRET` when `TPP_AUTH_MODE=bootstrap-token`
 - `TPP_BOOTSTRAP_TOKEN_TTL_SECONDS` optionally bounds local or preview bootstrap tokens
+- `TPP_OIDC_AUDIENCE` when `TPP_AUTH_MODE=oidc`
+- `TPP_OIDC_ROLE_MAP` optionally maps verified subjects to existing roles
+- `TPP_OIDC_ISSUER` and `TPP_OIDC_JWKS_URL` optionally override provider defaults
 
 ### Supported auth modes
 
@@ -55,6 +58,10 @@ The expected deployment config shape is:
 - `bootstrap-token` is the preferred local or preview mode. Operators mint a
   short-lived token with `tpp-planner-token`, and the service validates its
   signature, provider, expiry, and required endpoint permission.
+- `oidc` is the resource-server mode for Azure AD, Okta, and Google bearer
+  tokens. The service fetches the provider JWKS, caches it for at least 10
+  minutes, validates the token signature plus `iss`, `aud`, `exp`, `nbf`, and
+  `sub`, then maps the verified subject onto the existing RBAC roles.
 
 The planner-facing endpoints currently require:
 
@@ -64,6 +71,17 @@ The planner-facing endpoints currently require:
 The snapshot response advertises the currently supported SSO providers
 (`azure_ad`, `okta`, `google`) and the required `view` permission so planner
 runtime config can be checked against the published seam.
+
+OIDC role mapping is intentionally small for v1. Without
+`TPP_OIDC_ROLE_MAP`, every verified subject receives the `traveler` role. To
+grant a different role, provide JSON such as:
+
+```bash
+export TPP_OIDC_ROLE_MAP='{"sub:user@example.com":"approver"}'
+```
+
+Accepted role values are the existing security model roles: `traveler`,
+`approver`, `finance_admin`, `policy_admin`, and `system_admin`.
 
 For local and preview live tests, `TPP_ACCESS_TOKEN` is a bounded bootstrap
 credential, not an auth bypass. Startup fails unless the token is paired with a
