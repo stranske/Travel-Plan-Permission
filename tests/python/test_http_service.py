@@ -52,9 +52,7 @@ def _set_oidc_runtime_env(monkeypatch) -> None:
     monkeypatch.setenv("TPP_OIDC_JWKS_URL", "https://issuer.example/jwks.json")
 
 
-def _build_oidc_token_and_jwks(
-    *, audience: str = "trip-planner"
-) -> tuple[str, dict[str, object]]:
+def _build_oidc_token_and_jwks(*, audience: str = "trip-planner") -> tuple[str, dict[str, object]]:
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key()))
     jwk.update({"kid": "planner-key", "alg": "RS256", "use": "sig"})
@@ -713,12 +711,8 @@ def test_expense_portal_missing_approval_rules_returns_validation_error(
     client = TestClient(create_app())
     payload = _expense_form_payload()
 
-    monkeypatch.setattr(
-        "travel_plan_permission.approval._default_rules_path", lambda: None
-    )
-    monkeypatch.setattr(
-        "travel_plan_permission.approval._package_rules_resource", lambda: None
-    )
+    monkeypatch.setattr("travel_plan_permission.approval._default_rules_path", lambda: None)
+    monkeypatch.setattr("travel_plan_permission.approval._package_rules_resource", lambda: None)
 
     response = client.post("/portal/expenses/review", data=payload)
 
@@ -781,9 +775,7 @@ def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
 
     assert response.status_code == 400
     assert 'data-template="validation-feedback"' in response.text
-    assert (
-        "Complete the missing details before this draft can be saved." in response.text
-    )
+    assert "Complete the missing details before this draft can be saved." in response.text
     assert store.portal_drafts_by_id == {}
     assert re.search(
         r'<ul class="missing-fields">.*?<li><code>destination_zip</code></li>',
@@ -793,9 +785,7 @@ def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
     assert "Where are you headed and what" in response.text
 
 
-def test_portal_draft_validation_rejects_invalid_present_payload_without_saving() -> (
-    None
-):
+def test_portal_draft_validation_rejects_invalid_present_payload_without_saving() -> None:
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
     payload = _portal_form_payload()
@@ -1096,9 +1086,7 @@ def test_portal_admin_console_surfaces_permissions_runtime_and_audit_history(
         data={
             "exception_type": "advance_booking",
             "amount": "6000",
-            "justification": (
-                "Need to lock in the only compliant conference fare. " * 2
-            ),
+            "justification": ("Need to lock in the only compliant conference fare. " * 2),
             "supporting_doc": "docs/approval-workflow.md",
         },
         follow_redirects=False,
@@ -1175,9 +1163,7 @@ def test_exception_decision_updates_review_detail_and_audit_log(monkeypatch) -> 
         data={
             "exception_type": "advance_booking",
             "amount": "6000",
-            "justification": (
-                "Need to lock in the only compliant conference fare. " * 2
-            ),
+            "justification": ("Need to lock in the only compliant conference fare. " * 2),
             "supporting_doc": "docs/approval-workflow.md",
         },
         follow_redirects=False,
@@ -1223,9 +1209,7 @@ def test_exception_rejection_keeps_notes_in_audit_log(monkeypatch) -> None:
         data={
             "exception_type": "advance_booking",
             "amount": "6000",
-            "justification": (
-                "Need to lock in the only compliant conference fare. " * 2
-            ),
+            "justification": ("Need to lock in the only compliant conference fare. " * 2),
             "supporting_doc": "docs/approval-workflow.md",
         },
         follow_redirects=False,
@@ -1259,9 +1243,7 @@ def test_portal_submit_exception_request_returns_400_for_invalid_payload(
     monkeypatch,
 ) -> None:
     _set_runtime_env(monkeypatch)
-    client = TestClient(
-        create_app(PlannerProposalStore()), raise_server_exceptions=False
-    )
+    client = TestClient(create_app(PlannerProposalStore()), raise_server_exceptions=False)
 
     draft_id, _location = _create_portal_draft(client)
 
@@ -1315,8 +1297,7 @@ def test_save_portal_draft_evicts_exception_state_with_oldest_draft() -> None:
         old_draft.draft_id,
         http_service.ExceptionRequest(
             type=http_service.ExceptionType.ADVANCE_BOOKING,
-            justification="Need to keep the first bounded exception state attached. "
-            * 2,
+            justification="Need to keep the first bounded exception state attached. " * 2,
             requestor="traveler-1",
             amount="100",
         ),
@@ -1538,10 +1519,7 @@ def test_portal_review_shows_auth_posture_and_hides_submit_for_view_only(
     assert "via google" in view_only.text
     assert "Permission posture:" in view_only.text
     assert "Submit request" not in view_only.text
-    assert (
-        "Submission stays hidden until the caller has `create` permission."
-        in view_only.text
-    )
+    assert "Submission stays hidden until the caller has `create` permission." in view_only.text
     assert creator.status_code == 200
     assert "planner-author" in creator.text
     assert "Submit request" in creator.text
@@ -1592,9 +1570,7 @@ def test_portal_artifacts_raise_runtime_error_without_bundle_mappings(
     monkeypatch,
 ) -> None:
     _set_runtime_env(monkeypatch)
-    client = TestClient(
-        create_app(PlannerProposalStore()), raise_server_exceptions=False
-    )
+    client = TestClient(create_app(PlannerProposalStore()), raise_server_exceptions=False)
 
     def invalid_bundle(**_kwargs):
         return {"itinerary_excel": "bad", "summary_pdf": "bad"}

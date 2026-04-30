@@ -188,8 +188,7 @@ class PlannerAuthConfig:
             auth_mode=auth_mode,
             access_token_configured=bool(access_token),
             bootstrap_secret_configured=bool(bootstrap_secret),
-            bootstrap_ttl_seconds=bootstrap_ttl_seconds
-            or _DEFAULT_BOOTSTRAP_TTL_SECONDS,
+            bootstrap_ttl_seconds=bootstrap_ttl_seconds or _DEFAULT_BOOTSTRAP_TTL_SECONDS,
             oidc_audience=oidc_audience,
             oidc_role_map_configured=bool(oidc_role_map),
             oidc_subject_claim=oidc_subject_claim,
@@ -296,9 +295,7 @@ def _oidc_provider_settings(config: PlannerAuthConfig) -> dict[str, str]:
     issuer = os.getenv("TPP_OIDC_ISSUER", settings["issuer"])
     jwks_url = os.getenv("TPP_OIDC_JWKS_URL", settings["jwks_url"])
     if "{" in issuer or "{" in jwks_url:
-        raise ValueError(
-            "Planner OIDC provider requires TPP_OIDC_ISSUER and TPP_OIDC_JWKS_URL."
-        )
+        raise ValueError("Planner OIDC provider requires TPP_OIDC_ISSUER and TPP_OIDC_JWKS_URL.")
     return {"issuer": issuer, "jwks_url": jwks_url}
 
 
@@ -316,9 +313,7 @@ def _fetch_jwks_document(jwks_url: str) -> dict[str, object]:
     return document
 
 
-def _get_cached_jwks(
-    jwks_url: str, *, force_refresh: bool = False
-) -> dict[str, object]:
+def _get_cached_jwks(jwks_url: str, *, force_refresh: bool = False) -> dict[str, object]:
     now = time.monotonic()
     with _JWKS_CACHE_LOCK:
         cached = _JWKS_CACHE.get(jwks_url)
@@ -356,9 +351,7 @@ def _role_permissions_for_claims(
             mapped = role_map.get(f"{config.oidc_subject_claim}:{subject}")
         if mapped is not None:
             role_name = RoleName(str(mapped))
-    return tuple(
-        sorted(DEFAULT_ROLES[role_name].permissions, key=lambda item: item.value)
-    )
+    return tuple(sorted(DEFAULT_ROLES[role_name].permissions, key=lambda item: item.value))
 
 
 def _verify_oidc_token(
@@ -466,9 +459,7 @@ def authenticate_request(
     if config.auth_mode == PlannerAuthMode.OIDC:
         context = _verify_oidc_token(token, config=config)
         if required_permission not in context.permissions:
-            raise PermissionError(
-                f"OIDC token role does not grant '{required_permission.value}'."
-            )
+            raise PermissionError(f"OIDC token role does not grant '{required_permission.value}'.")
         return context
 
     if config.auth_mode != PlannerAuthMode.BOOTSTRAP_TOKEN:
