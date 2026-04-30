@@ -9,6 +9,7 @@ import pytest
 
 from travel_plan_permission.cross_repo_smoke import (
     CrossRepoSmokeError,
+    _assert_state_store_reloads,
     _assert_status_contract,
     _assert_submit_echoes_planner_fixture,
     _load_json,
@@ -557,3 +558,140 @@ def test_cross_repo_smoke_cli_accepts_explicit_state_path(tmp_path: Path, capsys
     assert exit_code == 0
     assert "trip-planner contracts: ok" in captured.out
     assert state_path.exists()
+
+
+# -- _assert_state_store_reloads error branches --------------------------------
+
+
+class _StubStore:
+    """Minimal stub that returns a fixed snapshot without touching the filesystem."""
+
+    def __init__(self, snapshot: dict | None) -> None:
+        self._snapshot = snapshot
+        self.closed = False
+
+    def load_snapshot(self) -> dict | None:
+        return self._snapshot
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_assert_state_store_reloads_raises_when_store_is_none(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "travel_plan_permission.cross_repo_smoke.resolve_portal_state_store",
+        lambda _path: None,
+    )
+    with pytest.raises(CrossRepoSmokeError, match="No store configured"):
+        _assert_state_store_reloads(
+            state_path=tmp_path / "state.sqlite3",
+            proposal_id="p1",
+            execution_id="e1",
+            trip_id="t1",
+        )
+
+
+def test_assert_state_store_reloads_raises_when_snapshot_is_none(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "travel_plan_permission.cross_repo_smoke.resolve_portal_state_store",
+        lambda _path: _StubStore(None),
+    )
+    with pytest.raises(CrossRepoSmokeError, match="was not written"):
+        _assert_state_store_reloads(
+            state_path=tmp_path / "state.sqlite3",
+            proposal_id="p1",
+            execution_id="e1",
+            trip_id="t1",
+        )
+
+
+def test_assert_state_store_reloads_raises_when_execution_id_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "travel_plan_permission.cross_repo_smoke.resolve_portal_state_store",
+        lambda _path: _StubStore({"proposals_by_execution_id": {}}),
+    )
+    with pytest.raises(CrossRepoSmokeError, match="does not contain the submitted execution_id"):
+        _assert_state_store_reloads(
+            state_path=tmp_path / "state.sqlite3",
+            proposal_id="p1",
+            execution_id="e1",
+            trip_id="t1",
+        )
+
+
+def test_assert_state_store_reloads_raises_when_stored_entry_is_not_dict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "travel_plan_permission.cross_repo_smoke.resolve_portal_state_store",
+        lambda _path: _StubStore({"proposals_by_execution_id": {"e1": "not-a-dict"}}),
+    )
+    with pytest.raises(CrossRepoSmokeError, match="invalid entry shape"):
+        _assert_state_store_reloads(
+            state_path=tmp_path / "state.sqlite3",
+            proposal_id="p1",
+            execution_id="e1",
+            trip_id="t1",
+        )
+
+
+def test_assert_state_store_reloads_raises_when_proposal_id_wrong(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "travel_plan_permission.cross_repo_smoke.resolve_portal_state_store",
+        lambda _path: _StubStore(
+            {
+                "proposals_by_execution_id": {
+                    "e1": {
+                        "request": {"proposal_id": "wrong-proposal"},
+                        "trip_plan": {"trip_id": "t1"},
+                    }
+                }
+            }
+        ),
+    )
+    with pytest.raises(CrossRepoSmokeError, match="lost the proposal_id"):
+        _assert_state_store_reloads(
+            state_path=tmp_path / "state.sqlite3",
+            proposal_id="p1",
+            execution_id="e1",
+            trip_id="t1",
+        )
+
+
+def test_assert_state_store_reloads_raises_when_trip_id_wrong(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "travel_plan_permission.cross_repo_smoke.resolve_portal_state_store",
+        lambda _path: _StubStore(
+            {
+                "proposals_by_execution_id": {
+                    "e1": {
+                        "request": {"proposal_id": "p1"},
+                        "trip_plan": {"trip_id": "wrong-trip"},
+                    }
+                }
+            }
+        ),
+    )
+    with pytest.raises(CrossRepoSmokeError, match="lost the trip/workspace id"):
+        _assert_state_store_reloads(
+            state_path=tmp_path / "state.sqlite3",
+            proposal_id="p1",
+            execution_id="e1",
+            trip_id="t1",
+        )
