@@ -200,6 +200,58 @@ class TestCSVExport:
         assert tuple(header) == audit.CSV_FIELDS
 
 
+class TestPruneMainCLI:
+    def test_prune_main_removes_events_outside_retention_window(
+        self, tmp_path: Path, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        store_path = tmp_path / "audit.sqlite3"
+        store = audit.SQLiteAuditEventStore(store_path)
+        store.initialize()
+        # 2019-01-01 is well beyond any reasonable retention window from "now"
+        store.write(_event(occurred_at=datetime(2019, 1, 1, tzinfo=UTC)))
+        store.write(_event(occurred_at=datetime(2026, 4, 28, tzinfo=UTC)))
+        store.close()
+
+        rc = audit.prune_main(["--retention-days", "365", "--store-path", str(store_path)])
+        assert rc == 0
+        captured = capfd.readouterr()
+        assert "pruned 1 audit events" in captured.err
+
+        store2 = audit.SQLiteAuditEventStore(store_path)
+        store2.initialize()
+        remaining = list(store2.query())
+        store2.close()
+        assert len(remaining) == 1
+        assert remaining[0].occurred_at.year == 2026
+
+    def test_prune_main_uses_default_store_path_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        store_path = tmp_path / "audit.sqlite3"
+        store = audit.SQLiteAuditEventStore(store_path)
+        store.initialize()
+        store.write(_event(occurred_at=datetime(2019, 1, 1, tzinfo=UTC)))
+        store.close()
+
+        monkeypatch.setenv(audit.AUDIT_PATH_ENV_VAR, str(store_path))
+        rc = audit.prune_main(["--retention-days", "365"])
+        assert rc == 0
+
+    def test_prune_main_no_events_pruned_when_all_recent(
+        self, tmp_path: Path, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        store_path = tmp_path / "audit.sqlite3"
+        store = audit.SQLiteAuditEventStore(store_path)
+        store.initialize()
+        store.write(_event(occurred_at=datetime(2026, 4, 28, tzinfo=UTC)))
+        store.close()
+
+        rc = audit.prune_main(["--retention-days", "365", "--store-path", str(store_path)])
+        assert rc == 0
+        captured = capfd.readouterr()
+        assert "pruned 0 audit events" in captured.err
+
+
 class TestExportCLI:
     def test_export_main_writes_csv_for_window(
         self,
@@ -264,6 +316,77 @@ class TestExportCLI:
             ]
         )
         assert rc == 2
+
+    def test_export_main_returns_3_on_schema_mismatch(self, tmp_path: Path) -> None:
+        store_path = tmp_path / "bad.sqlite3"
+        store_path.write_bytes(b"not a valid sqlite database file")
+
+        rc = audit.export_main(
+            [
+                "--since",
+                "2026-04-01",
+                "--until",
+                "2026-04-30",
+                "--store-path",
+                str(store_path),
+            ]
+        )
+        assert rc == 3
+
+    def test_export_main_writes_to_stdout_by_default(
+        self,
+        tmp_path: Path,
+        capfd: pytest.CaptureFixture[str],
+    ) -> None:
+        store_path = tmp_path / "audit.sqlite3"
+        store = audit.SQLiteAuditEventStore(store_path)
+        store.initialize()
+        try:
+            store.write(_event(occurred_at=datetime(2026, 4, 15, tzinfo=UTC)))
+        finally:
+            store.close()
+
+        rc = audit.export_main(
+            [
+                "--since",
+                "2026-04-01",
+                "--until",
+                "2026-04-30",
+                "--store-path",
+                str(store_path),
+                # --output defaults to "-" (stdout)
+            ]
+        )
+        assert rc == 0
+        captured = capfd.readouterr()
+        assert "event_type" in captured.out
+
+    def test_export_main_warns_on_unknown_event_type(
+        self,
+        tmp_path: Path,
+        capfd: pytest.CaptureFixture[str],
+    ) -> None:
+        store_path = tmp_path / "audit.sqlite3"
+        store = audit.SQLiteAuditEventStore(store_path)
+        store.initialize()
+        store.close()
+
+        rc = audit.export_main(
+            [
+                "--since",
+                "2026-04-01",
+                "--until",
+                "2026-04-30",
+                "--store-path",
+                str(store_path),
+                "--event-type",
+                "unknown.custom_type",
+            ]
+        )
+        assert rc == 0
+        captured = capfd.readouterr()
+        assert "warning" in captured.err
+        assert "unknown.custom_type" in captured.err
 
 
 class TestEmitPoints:
