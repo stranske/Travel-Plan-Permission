@@ -84,11 +84,29 @@ jobs:
         # by editing .github/trip-planner-pinned-ref only.
         working-directory: travel-plan-permission
         run: |
-          ref="$(tr -d '[:space:]' < .github/trip-planner-pinned-ref)"
-          if [ -z "${ref}" ]; then
-            echo "Pin file .github/trip-planner-pinned-ref is empty" >&2
+          pin_file=".github/trip-planner-pinned-ref"
+
+          if [ ! -f "${pin_file}" ]; then
+            echo "Pin file ${pin_file} does not exist" >&2
             exit 1
           fi
+
+          if [ ! -r "${pin_file}" ]; then
+            echo "Pin file ${pin_file} is not readable" >&2
+            exit 1
+          fi
+
+          ref="$(tr -d '[:space:]' < "${pin_file}")"
+          if [ -z "${ref}" ]; then
+            echo "Pin file ${pin_file} is empty or contains only whitespace" >&2
+            exit 1
+          fi
+
+          if ! printf '%s\n' "${ref}" | grep -Eq '^[0-9a-fA-F]{40}$'; then
+            echo "Pin file ${pin_file} must contain exactly one 40-character hexadecimal commit SHA" >&2
+            exit 1
+          fi
+
           echo "TRIP_PLANNER_PINNED_REF=${ref}" >> "$GITHUB_ENV"
 
       - name: Checkout trip-planner at pinned ref
