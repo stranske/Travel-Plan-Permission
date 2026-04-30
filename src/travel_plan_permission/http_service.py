@@ -29,6 +29,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 
+from . import audit
 from .approval import ApprovalEngine
 from .export import ExportService
 from .models import (
@@ -436,6 +437,20 @@ def _default_portal_state_path() -> Path:
     return Path.cwd() / _PORTAL_STATE_DEFAULT_PATH
 
 
+def _install_audit_store_from_env() -> None:
+    """Install a SQLite-backed durable audit store when configured via env.
+
+    Honors ``TPP_AUDIT_STATE_PATH``. When unset, the module-level default
+    remains a :class:`audit.NullAuditEventStore`, which sinks all writes —
+    matching legacy in-memory behavior.
+    """
+
+    raw = os.getenv(audit.AUDIT_PATH_ENV_VAR)
+    if not raw:
+        return
+    audit.open_default_store(Path(raw).expanduser())
+
+
 @dataclass
 class PlannerProposalStore:
     """In-memory proposal store for local and preview live testing."""
@@ -492,6 +507,30 @@ class PlannerProposalStore:
             trip_plan=trip_plan.model_copy(deep=True),
             request=request.model_copy(deep=True),
             response=response.model_copy(deep=True),
+        )
+        audit.write_audit_event(
+            audit.EVENT_PROPOSAL_CREATED,
+            actor_subject="planner-service",
+            outcome=audit.OUTCOME_SUCCESS,
+            target_kind="proposal",
+            target_id=request.proposal_id,
+            metadata={
+                "trip_id": trip_plan.trip_id,
+                "execution_id": execution_id,
+            },
+        )
+        audit.write_audit_event(
+            audit.EVENT_PROPOSAL_STATUS_CHANGE,
+            actor_subject="planner-service",
+            outcome="submitted",
+            target_kind="proposal",
+            target_id=request.proposal_id,
+            metadata={
+                "trip_id": trip_plan.trip_id,
+                "execution_id": execution_id,
+                "from_status": None,
+                "to_status": "submitted",
+            },
         )
         self._persist_state()
 
@@ -715,6 +754,18 @@ class PlannerProposalStore:
             subject=review_id,
             outcome=action.value,
             metadata={"draft_id": updated.draft_id, "status": updated.status.value},
+        )
+        audit.write_audit_event(
+            audit.EVENT_PROPOSAL_STATUS_CHANGE,
+            actor_subject=actor_id,
+            outcome=updated.status.value,
+            target_kind="manager_review",
+            target_id=review_id,
+            metadata={
+                "draft_id": updated.draft_id,
+                "action": action.value,
+                "to_status": updated.status.value,
+            },
         )
         self._persist_state()
         return updated
@@ -1422,6 +1473,7 @@ def _admin_dashboard_context(
 def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     """Create the planner-facing ASGI application."""
 
+    _install_audit_store_from_env()
     proposal_store = store or PlannerProposalStore(
         state_path=_default_portal_state_path()
     )

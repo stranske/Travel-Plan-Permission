@@ -62,6 +62,8 @@ tpp-planner-token = "travel_plan_permission.planner_auth:main"
 tpp-planner-service = "travel_plan_permission.http_service:main"
 tpp-planner-smoke = "travel_plan_permission.planner_smoke:main"
 tpp-cross-repo-smoke = "travel_plan_permission.cross_repo_smoke:main"
+tpp-audit-export = "travel_plan_permission.audit:export_main"
+tpp-audit-prune = "travel_plan_permission.audit:prune_main"
 
 [build-system]
 requires = []

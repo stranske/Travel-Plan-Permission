@@ -18,6 +18,7 @@ from enum import StrEnum
 import httpx
 import jwt
 
+from . import audit
 from .security import DEFAULT_ROLES, Permission, RoleName
 
 _SUPPORTED_OIDC_PROVIDERS = ("azure_ad", "okta", "google")
@@ -250,7 +251,23 @@ def mint_bootstrap_token(
         "provider": provider,
         "sub": subject,
     }
-    return _signed_token(payload, secret)
+    token = _signed_token(payload, secret)
+    audit.write_audit_event(
+        audit.EVENT_AUTH_BOOTSTRAP_MINT,
+        actor_subject=subject,
+        outcome=audit.OUTCOME_SUCCESS,
+        target_kind="planner_bootstrap_token",
+        target_id=None,
+        metadata={
+            "provider": provider,
+            "permissions": [permission.value for permission in permissions],
+            "issued_at": issued_at,
+            "expires_at": expires_at,
+            "audience": _PLANNER_TOKEN_AUDIENCE,
+        },
+        occurred_at=current_time,
+    )
+    return token
 
 
 def _parse_bootstrap_token(token: str, *, secret: str) -> PlannerBootstrapTokenClaims:
@@ -435,9 +452,59 @@ def authenticate_request(
     config: PlannerAuthConfig,
     required_permission: Permission,
     now: datetime | None = None,
+    route: str | None = None,
 ) -> PlannerAuthContext:
     """Validate the request bearer token against the configured planner auth mode."""
 
+    occurred_at = now or datetime.now(UTC)
+    auth_mode_label = config.auth_mode.value if config.auth_mode is not None else "unconfigured"
+    try:
+        context = _authenticate_request_inner(
+            authorization,
+            config=config,
+            required_permission=required_permission,
+            now=now,
+        )
+    except PermissionError as exc:
+        audit.write_audit_event(
+            audit.EVENT_AUTH_REQUEST,
+            actor_subject="unauthenticated",
+            outcome=audit.OUTCOME_FAILURE,
+            target_kind="planner_route",
+            target_id=route,
+            metadata={
+                "auth_mode": auth_mode_label,
+                "required_permission": required_permission.value,
+                "reason": str(exc),
+                "reason_code": _failure_reason_code(exc),
+            },
+            occurred_at=occurred_at,
+        )
+        raise
+    audit.write_audit_event(
+        audit.EVENT_AUTH_REQUEST,
+        actor_subject=context.subject,
+        outcome=audit.OUTCOME_SUCCESS,
+        target_kind="planner_route",
+        target_id=route,
+        metadata={
+            "auth_mode": context.auth_mode.value,
+            "required_permission": required_permission.value,
+            "provider": context.provider,
+            "permissions": [permission.value for permission in context.permissions],
+        },
+        occurred_at=occurred_at,
+    )
+    return context
+
+
+def _authenticate_request_inner(
+    authorization: str | None,
+    *,
+    config: PlannerAuthConfig,
+    required_permission: Permission,
+    now: datetime | None = None,
+) -> PlannerAuthContext:
     if not config.is_ready:
         raise ValueError("Planner auth config is not ready.")
     if authorization is None or not authorization.startswith("Bearer "):
@@ -496,6 +563,27 @@ def authenticate_request(
         expires_at=datetime.fromtimestamp(claims.exp, tz=UTC),
         auth_mode=PlannerAuthMode.BOOTSTRAP_TOKEN,
     )
+
+
+def _failure_reason_code(exc: PermissionError) -> str:
+    """Map a PermissionError raised inside authenticate_request to a stable code."""
+
+    if isinstance(exc, OIDCAuthenticationError):
+        return f"oidc.{exc.error_code}"
+    message = str(exc).lower()
+    if "missing bearer" in message:
+        return "auth.missing_bearer"
+    if "expired" in message:
+        return "auth.expired"
+    if "audience" in message:
+        return "auth.bad_audience"
+    if "provider" in message:
+        return "auth.bad_provider"
+    if "does not grant" in message:
+        return "auth.insufficient_permission"
+    if "invalid bearer" in message:
+        return "auth.invalid_bearer"
+    return "auth.denied"
 
 
 def _build_parser() -> argparse.ArgumentParser:
