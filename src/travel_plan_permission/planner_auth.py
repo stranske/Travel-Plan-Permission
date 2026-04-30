@@ -27,6 +27,7 @@ _DEFAULT_JWKS_CACHE_TTL_SECONDS = 600
 _MIN_SIGNING_SECRET_LENGTH = 16
 _PLANNER_TOKEN_AUDIENCE = "planner-service"
 _PLANNER_STATIC_TOKEN_SUBJECT = "planner-static-client"
+_OIDC_ALLOWED_ALGORITHMS = frozenset({"RS256"})
 
 _OIDC_PROVIDER_REGISTRY: dict[str, dict[str, str]] = {
     "azure_ad": {
@@ -157,6 +158,14 @@ class PlannerAuthConfig:
         if auth_mode == PlannerAuthMode.OIDC:
             if not oidc_audience:
                 missing.append("TPP_OIDC_AUDIENCE")
+            if oidc_provider in _OIDC_PROVIDER_REGISTRY:
+                settings = _OIDC_PROVIDER_REGISTRY[oidc_provider]
+                issuer = os.getenv("TPP_OIDC_ISSUER", settings["issuer"])
+                jwks_url = os.getenv("TPP_OIDC_JWKS_URL", settings["jwks_url"])
+                if "{" in issuer:
+                    missing.append("TPP_OIDC_ISSUER")
+                if "{" in jwks_url:
+                    missing.append("TPP_OIDC_JWKS_URL")
             if oidc_role_map:
                 try:
                     parsed_role_map = json.loads(oidc_role_map)
@@ -179,7 +188,8 @@ class PlannerAuthConfig:
             auth_mode=auth_mode,
             access_token_configured=bool(access_token),
             bootstrap_secret_configured=bool(bootstrap_secret),
-            bootstrap_ttl_seconds=bootstrap_ttl_seconds or _DEFAULT_BOOTSTRAP_TTL_SECONDS,
+            bootstrap_ttl_seconds=bootstrap_ttl_seconds
+            or _DEFAULT_BOOTSTRAP_TTL_SECONDS,
             oidc_audience=oidc_audience,
             oidc_role_map_configured=bool(oidc_role_map),
             oidc_subject_claim=oidc_subject_claim,
@@ -286,20 +296,29 @@ def _oidc_provider_settings(config: PlannerAuthConfig) -> dict[str, str]:
     issuer = os.getenv("TPP_OIDC_ISSUER", settings["issuer"])
     jwks_url = os.getenv("TPP_OIDC_JWKS_URL", settings["jwks_url"])
     if "{" in issuer or "{" in jwks_url:
-        raise ValueError("Planner OIDC provider requires TPP_OIDC_ISSUER and TPP_OIDC_JWKS_URL.")
+        raise ValueError(
+            "Planner OIDC provider requires TPP_OIDC_ISSUER and TPP_OIDC_JWKS_URL."
+        )
     return {"issuer": issuer, "jwks_url": jwks_url}
 
 
 def _fetch_jwks_document(jwks_url: str) -> dict[str, object]:
-    response = httpx.get(jwks_url, timeout=5.0)
-    response.raise_for_status()
-    document = response.json()
+    try:
+        response = httpx.get(jwks_url, timeout=5.0)
+        response.raise_for_status()
+        document = response.json()
+    except httpx.HTTPError as exc:
+        raise OIDCAuthenticationError("OIDC JWKS endpoint is unavailable.") from exc
+    except ValueError as exc:
+        raise OIDCAuthenticationError("OIDC JWKS document is malformed.") from exc
     if not isinstance(document, dict) or not isinstance(document.get("keys"), list):
         raise OIDCAuthenticationError("OIDC JWKS document is malformed.")
     return document
 
 
-def _get_cached_jwks(jwks_url: str, *, force_refresh: bool = False) -> dict[str, object]:
+def _get_cached_jwks(
+    jwks_url: str, *, force_refresh: bool = False
+) -> dict[str, object]:
     now = time.monotonic()
     with _JWKS_CACHE_LOCK:
         cached = _JWKS_CACHE.get(jwks_url)
@@ -337,7 +356,9 @@ def _role_permissions_for_claims(
             mapped = role_map.get(f"{config.oidc_subject_claim}:{subject}")
         if mapped is not None:
             role_name = RoleName(str(mapped))
-    return tuple(sorted(DEFAULT_ROLES[role_name].permissions, key=lambda item: item.value))
+    return tuple(
+        sorted(DEFAULT_ROLES[role_name].permissions, key=lambda item: item.value)
+    )
 
 
 def _verify_oidc_token(
@@ -354,7 +375,7 @@ def _verify_oidc_token(
     except jwt.InvalidTokenError as exc:
         raise OIDCAuthenticationError("OIDC bearer token is malformed.") from exc
     alg = header.get("alg")
-    if not isinstance(alg, str) or alg == "none":
+    if not isinstance(alg, str) or alg not in _OIDC_ALLOWED_ALGORITHMS:
         raise OIDCAuthenticationError("OIDC bearer token algorithm is unsupported.")
     kid = header.get("kid")
     if kid is not None and not isinstance(kid, str):
@@ -367,6 +388,13 @@ def _verify_oidc_token(
         jwk = _select_jwk(jwks, kid)
     if jwk is None:
         raise OIDCAuthenticationError("OIDC bearer token key id was not found.")
+
+    jwk_alg = jwk.get("alg")
+    if jwk_alg is not None and jwk_alg != alg:
+        raise OIDCAuthenticationError("OIDC bearer token algorithm does not match key.")
+    jwk_key_type = jwk.get("kty")
+    if jwk_key_type is not None and jwk_key_type != "RSA":
+        raise OIDCAuthenticationError("OIDC bearer token key type is unsupported.")
 
     try:
         signing_key = jwt.PyJWK.from_dict(jwk).key
@@ -385,6 +413,8 @@ def _verify_oidc_token(
     except jwt.InvalidIssuerError as exc:
         raise OIDCAuthenticationError("OIDC bearer token issuer is invalid.") from exc
     except jwt.InvalidTokenError as exc:
+        raise OIDCAuthenticationError("OIDC bearer token is invalid.") from exc
+    except (jwt.PyJWTError, TypeError, ValueError) as exc:
         raise OIDCAuthenticationError("OIDC bearer token is invalid.") from exc
 
     subject = str(claims.get(config.oidc_subject_claim) or claims["sub"])
@@ -436,7 +466,9 @@ def authenticate_request(
     if config.auth_mode == PlannerAuthMode.OIDC:
         context = _verify_oidc_token(token, config=config)
         if required_permission not in context.permissions:
-            raise PermissionError(f"OIDC token role does not grant '{required_permission.value}'.")
+            raise PermissionError(
+                f"OIDC token role does not grant '{required_permission.value}'."
+            )
         return context
 
     if config.auth_mode != PlannerAuthMode.BOOTSTRAP_TOKEN:
@@ -456,7 +488,9 @@ def authenticate_request(
     if int(current_time.timestamp()) >= claims.exp:
         raise PermissionError("Bootstrap token has expired.")
     if required_permission not in claims.permissions:
-        raise PermissionError(f"Bootstrap token does not grant '{required_permission.value}'.")
+        raise PermissionError(
+            f"Bootstrap token does not grant '{required_permission.value}'."
+        )
     return PlannerAuthContext(
         subject=claims.sub,
         permissions=claims.permissions,
@@ -499,7 +533,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     config = PlannerAuthConfig.from_env()
     if config.auth_mode != PlannerAuthMode.BOOTSTRAP_TOKEN:
-        parser.error("TPP_AUTH_MODE must be set to 'bootstrap-token' to mint planner tokens.")
+        parser.error(
+            "TPP_AUTH_MODE must be set to 'bootstrap-token' to mint planner tokens."
+        )
     if not config.is_ready:
         parser.error(
             "Planner auth config is incomplete. Set TPP_BASE_URL, TPP_OIDC_PROVIDER, "
@@ -512,7 +548,9 @@ def main(argv: list[str] | None = None) -> int:
 
     permissions = tuple(
         Permission(permission)
-        for permission in (args.permissions or [Permission.VIEW.value, Permission.CREATE.value])
+        for permission in (
+            args.permissions or [Permission.VIEW.value, Permission.CREATE.value]
+        )
     )
     token = mint_bootstrap_token(
         subject=args.subject,

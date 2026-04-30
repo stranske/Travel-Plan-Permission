@@ -4,7 +4,11 @@ import json
 import re
 import subprocess
 import sys
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import jwt
@@ -48,16 +52,12 @@ def _set_oidc_runtime_env(monkeypatch) -> None:
     monkeypatch.setenv("TPP_OIDC_JWKS_URL", "https://issuer.example/jwks.json")
 
 
-def _oidc_auth_header(monkeypatch, *, audience: str = "trip-planner") -> dict[str, str]:
-    planner_auth._JWKS_CACHE.clear()
+def _build_oidc_token_and_jwks(
+    *, audience: str = "trip-planner"
+) -> tuple[str, dict[str, object]]:
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key()))
     jwk.update({"kid": "planner-key", "alg": "RS256", "use": "sig"})
-    monkeypatch.setattr(
-        planner_auth,
-        "_fetch_jwks_document",
-        lambda _url: {"keys": [jwk]},
-    )
     now = datetime.now(UTC)
     token = jwt.encode(
         {
@@ -71,7 +71,44 @@ def _oidc_auth_header(monkeypatch, *, audience: str = "trip-planner") -> dict[st
         algorithm="RS256",
         headers={"kid": "planner-key"},
     )
+    return token, {"keys": [jwk]}
+
+
+def _oidc_auth_header(monkeypatch, *, audience: str = "trip-planner") -> dict[str, str]:
+    planner_auth._JWKS_CACHE.clear()
+    token, jwks = _build_oidc_token_and_jwks(audience=audience)
+    monkeypatch.setattr(
+        planner_auth,
+        "_fetch_jwks_document",
+        lambda _url: jwks,
+    )
     return {"Authorization": f"Bearer {token}"}
+
+
+@contextmanager
+def _serve_jwks(document: dict[str, object]) -> Iterator[str]:
+    payload = json.dumps(document).encode("utf-8")
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - stdlib hook name
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/jwks.json"
+    finally:
+        server.shutdown()
+        thread.join(timeout=2)
+        server.server_close()
 
 
 def _bootstrap_auth_header(
@@ -290,6 +327,26 @@ def test_readyz_reports_invalid_oidc_provider(monkeypatch) -> None:
     assert payload["config"]["invalid_config"] == ["TPP_OIDC_PROVIDER"]
 
 
+def test_readyz_reports_oidc_provider_placeholder_overrides(monkeypatch) -> None:
+    monkeypatch.setenv("TPP_BASE_URL", "http://127.0.0.1:8000")
+    monkeypatch.setenv("TPP_OIDC_PROVIDER", "okta")
+    monkeypatch.setenv("TPP_AUTH_MODE", "oidc")
+    monkeypatch.setenv("TPP_OIDC_AUDIENCE", "trip-planner")
+    monkeypatch.delenv("TPP_OIDC_ISSUER", raising=False)
+    monkeypatch.delenv("TPP_OIDC_JWKS_URL", raising=False)
+
+    client = TestClient(create_app())
+    response = client.get("/readyz")
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "misconfigured"
+    assert payload["config"]["missing_config"] == [
+        "TPP_OIDC_ISSUER",
+        "TPP_OIDC_JWKS_URL",
+    ]
+
+
 def test_planner_routes_require_bearer_token(monkeypatch) -> None:
     _set_runtime_env(monkeypatch)
     client = TestClient(create_app())
@@ -353,6 +410,26 @@ def test_oidc_token_allows_planner_routes(monkeypatch) -> None:
     assert response.status_code == 200
 
 
+def test_oidc_token_fetches_jwks_over_http(monkeypatch) -> None:
+    _set_oidc_runtime_env(monkeypatch)
+    planner_auth._JWKS_CACHE.clear()
+    token, jwks = _build_oidc_token_and_jwks()
+    with _serve_jwks(jwks) as jwks_url:
+        monkeypatch.setenv("TPP_OIDC_JWKS_URL", jwks_url)
+        client = TestClient(create_app())
+        trip_plan = _load_fixture("proposal_submission.json")
+        snapshot_request = _load_fixture("policy_snapshot_request.json")
+
+        response = client.request(
+            "GET",
+            "/api/planner/policy-snapshot",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"trip_plan": trip_plan, "request": snapshot_request},
+        )
+
+    assert response.status_code == 200
+
+
 def test_oidc_invalid_audience_returns_structured_bearer_error(monkeypatch) -> None:
     _set_oidc_runtime_env(monkeypatch)
     client = TestClient(create_app())
@@ -363,6 +440,90 @@ def test_oidc_invalid_audience_returns_structured_bearer_error(monkeypatch) -> N
         "GET",
         "/api/planner/policy-snapshot",
         headers=_oidc_auth_header(monkeypatch, audience="wrong-audience"),
+        json={"trip_plan": trip_plan, "request": snapshot_request},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == 'Bearer error="invalid_token"'
+    assert response.json()["detail"]["error_code"] == "invalid_token"
+
+
+def test_oidc_unsupported_algorithm_returns_structured_bearer_error(
+    monkeypatch,
+) -> None:
+    _set_oidc_runtime_env(monkeypatch)
+    planner_auth._JWKS_CACHE.clear()
+    token = jwt.encode(
+        {
+            "iss": "https://accounts.google.com",
+            "aud": "trip-planner",
+            "sub": "planner@example.com",
+            "exp": datetime.now(UTC) + timedelta(minutes=10),
+            "nbf": datetime.now(UTC) - timedelta(seconds=5),
+        },
+        "shared-secret",
+        algorithm="HS256",
+        headers={"kid": "planner-key"},
+    )
+    monkeypatch.setattr(
+        planner_auth,
+        "_fetch_jwks_document",
+        lambda _url: {"keys": [{"kid": "planner-key", "kty": "oct", "alg": "HS256"}]},
+    )
+    client = TestClient(create_app())
+    trip_plan = _load_fixture("proposal_submission.json")
+    snapshot_request = _load_fixture("policy_snapshot_request.json")
+
+    response = client.request(
+        "GET",
+        "/api/planner/policy-snapshot",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"trip_plan": trip_plan, "request": snapshot_request},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == 'Bearer error="invalid_token"'
+    assert response.json()["detail"]["error_code"] == "invalid_token"
+
+
+def test_oidc_jwks_fetch_failure_returns_structured_bearer_error(monkeypatch) -> None:
+    _set_oidc_runtime_env(monkeypatch)
+    planner_auth._JWKS_CACHE.clear()
+    token, _jwks = _build_oidc_token_and_jwks()
+    monkeypatch.setenv("TPP_OIDC_JWKS_URL", "http://127.0.0.1:1/jwks.json")
+    client = TestClient(create_app())
+    trip_plan = _load_fixture("proposal_submission.json")
+    snapshot_request = _load_fixture("policy_snapshot_request.json")
+
+    response = client.request(
+        "GET",
+        "/api/planner/policy-snapshot",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"trip_plan": trip_plan, "request": snapshot_request},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == 'Bearer error="invalid_token"'
+    assert response.json()["detail"]["error_code"] == "invalid_token"
+
+
+def test_oidc_malformed_jwk_returns_structured_bearer_error(monkeypatch) -> None:
+    _set_oidc_runtime_env(monkeypatch)
+    planner_auth._JWKS_CACHE.clear()
+    token, _jwks = _build_oidc_token_and_jwks()
+    monkeypatch.setattr(
+        planner_auth,
+        "_fetch_jwks_document",
+        lambda _url: {"keys": [{"kid": "planner-key", "kty": "RSA", "alg": "RS256"}]},
+    )
+    client = TestClient(create_app())
+    trip_plan = _load_fixture("proposal_submission.json")
+    snapshot_request = _load_fixture("policy_snapshot_request.json")
+
+    response = client.request(
+        "GET",
+        "/api/planner/policy-snapshot",
+        headers={"Authorization": f"Bearer {token}"},
         json={"trip_plan": trip_plan, "request": snapshot_request},
     )
 
