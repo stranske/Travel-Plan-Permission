@@ -86,6 +86,20 @@ Use the emitted value as `Authorization: Bearer <token>` when calling planner
 routes. `TPP_AUTH_MODE="static-token"` plus `TPP_ACCESS_TOKEN` remains
 available for simple fixed-token environments.
 
+For a live identity-provider boundary, switch the same service to OIDC mode:
+
+```bash
+export TPP_AUTH_MODE="oidc"
+export TPP_OIDC_PROVIDER="google"
+export TPP_OIDC_AUDIENCE="<registered-client-id-or-api-audience>"
+export TPP_OIDC_ROLE_MAP='{"sub:user@example.com":"traveler"}'
+```
+
+OIDC mode validates the bearer JWT against the provider JWKS, issuer, audience,
+expiry, not-before, and subject claims before resolving the subject to a TPP
+role. Azure AD and Okta deployments can override discovery defaults with
+`TPP_OIDC_ISSUER` and `TPP_OIDC_JWKS_URL`.
+
 For a browser-facing draft flow on top of the same runtime, open:
 
 ```text

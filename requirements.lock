@@ -16,6 +16,8 @@ certifi==2026.2.25
     #   httpcore
     #   httpx
     #   requests
+cffi==2.0.0 ; platform_python_implementation != 'PyPy'
+    # via cryptography
 charset-normalizer==3.4.7
     # via
     #   reportlab
@@ -31,6 +33,8 @@ colorama==0.4.6 ; sys_platform == 'win32'
     #   uvicorn
 coverage==7.13.5
     # via pytest-cov
+cryptography==47.0.0
+    # via pyjwt
 et-xmlfile==2.0.0
     # via openpyxl
 fastapi==0.135.3
@@ -133,6 +137,8 @@ psycopg-binary==3.3.3 ; implementation_name != 'pypy'
     # via psycopg
 pyarrow==23.0.1
     # via travel-plan-permission (pyproject.toml)
+pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+    # via cffi
 pydantic==2.13.0
     # via
     #   travel-plan-permission (pyproject.toml)
@@ -144,6 +150,8 @@ pydantic-core==2.46.0
     # via pydantic
 pygments==2.20.0
     # via pytest
+pyjwt==2.12.1
+    # via travel-plan-permission (pyproject.toml)
 pytesseract==0.3.13
     # via travel-plan-permission (pyproject.toml)
 pytest==9.0.3
