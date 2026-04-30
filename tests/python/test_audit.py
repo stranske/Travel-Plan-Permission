@@ -87,9 +87,7 @@ class TestSQLiteAuditEventStore:
         all_auth = list(store.query(event_type=audit.EVENT_AUTH_REQUEST))
         assert len(all_auth) == 2
 
-    def test_query_results_are_ordered_ascending(
-        self, store: audit.SQLiteAuditEventStore
-    ) -> None:
+    def test_query_results_are_ordered_ascending(self, store: audit.SQLiteAuditEventStore) -> None:
         store.write(_event(occurred_at=datetime(2026, 5, 1, tzinfo=UTC)))
         store.write(_event(occurred_at=datetime(2026, 4, 1, tzinfo=UTC)))
         store.write(_event(occurred_at=datetime(2026, 4, 15, tzinfo=UTC)))
@@ -139,9 +137,7 @@ class TestWriteAuditEventHelper:
 
 
 class TestRetentionPrune:
-    def test_default_retention_is_seven_years(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_default_retention_is_seven_years(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(audit.RETENTION_ENV_VAR, raising=False)
         assert audit.configured_retention_days() == 365 * 7
 
@@ -168,9 +164,7 @@ class TestRetentionPrune:
 
 
 class TestCSVExport:
-    def test_export_to_csv_filters_by_window(
-        self, store: audit.SQLiteAuditEventStore
-    ) -> None:
+    def test_export_to_csv_filters_by_window(self, store: audit.SQLiteAuditEventStore) -> None:
         store.write(_event(occurred_at=datetime(2026, 3, 1, tzinfo=UTC)))
         store.write(
             _event(
@@ -308,9 +302,7 @@ class TestEmitPoints:
         monkeypatch.setenv("TPP_OIDC_PROVIDER", "azure_ad")
         monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
         monkeypatch.setenv("TPP_ACCESS_TOKEN", "secret-token")
-        monkeypatch.setenv(
-            "TPP_OIDC_ISSUER", "https://login.microsoftonline.com/tenant/v2.0"
-        )
+        monkeypatch.setenv("TPP_OIDC_ISSUER", "https://login.microsoftonline.com/tenant/v2.0")
         monkeypatch.setenv(
             "TPP_OIDC_JWKS_URL",
             "https://login.microsoftonline.com/common/discovery/v2.0/keys",
@@ -345,9 +337,7 @@ class TestEmitPoints:
         monkeypatch.setenv("TPP_OIDC_PROVIDER", "azure_ad")
         monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
         monkeypatch.setenv("TPP_ACCESS_TOKEN", "secret-token")
-        monkeypatch.setenv(
-            "TPP_OIDC_ISSUER", "https://login.microsoftonline.com/tenant/v2.0"
-        )
+        monkeypatch.setenv("TPP_OIDC_ISSUER", "https://login.microsoftonline.com/tenant/v2.0")
         monkeypatch.setenv(
             "TPP_OIDC_JWKS_URL",
             "https://login.microsoftonline.com/common/discovery/v2.0/keys",
@@ -369,9 +359,7 @@ class TestEmitPoints:
         assert rows[0].target_id == "GET /api/itineraries"
         assert rows[0].metadata["auth_mode"] == "static-token"
 
-    def test_role_change_request_emits_event(
-        self, store: audit.SQLiteAuditEventStore
-    ) -> None:
+    def test_role_change_request_emits_event(self, store: audit.SQLiteAuditEventStore) -> None:
         from travel_plan_permission.security import RoleName, SecurityModel
 
         audit.set_default_store(store)
@@ -385,9 +373,7 @@ class TestEmitPoints:
         assert rows[0].metadata["transition"] == "requested"
         assert rows[0].metadata["request_id"] == request.request_id
 
-    def test_role_change_approve_emits_event(
-        self, store: audit.SQLiteAuditEventStore
-    ) -> None:
+    def test_role_change_approve_emits_event(self, store: audit.SQLiteAuditEventStore) -> None:
         from travel_plan_permission.security import RoleName, SecurityModel
 
         audit.set_default_store(store)
@@ -402,3 +388,74 @@ class TestEmitPoints:
         ]
         assert len(approvals) == 1
         assert approvals[0].actor_role == RoleName.SYSTEM_ADMIN.value
+
+    def test_proposal_status_change_emits_from_to_status(
+        self, store: audit.SQLiteAuditEventStore
+    ) -> None:
+        from decimal import Decimal
+
+        from travel_plan_permission.http_service import PlannerProposalStore
+        from travel_plan_permission.models import TripPlan
+        from travel_plan_permission.policy_api import (
+            PlannerPolicySnapshot,
+            PolicyCheckResult,
+        )
+        from travel_plan_permission.review_workflow import ReviewAction, ReviewStatus
+
+        audit.set_default_store(store)
+
+        trip = TripPlan(
+            trip_id="T-001",
+            traveler_name="Alice",
+            destination="New York",
+            departure_date=datetime(2026, 5, 1, tzinfo=UTC).date(),
+            return_date=datetime(2026, 5, 5, tzinfo=UTC).date(),
+            purpose="Conference",
+            estimated_cost=Decimal("1500.00"),
+        )
+        policy_result = PolicyCheckResult(status="pass", issues=[], policy_version="v1")
+        from travel_plan_permission.policy_api import PlannerAuthContract, PlannerVersionContract
+
+        policy_snapshot = PlannerPolicySnapshot(
+            trip_id="T-001",
+            freshness="current",
+            generated_at=datetime(2026, 4, 30, tzinfo=UTC),
+            expires_at=datetime(2026, 5, 30, tzinfo=UTC),
+            policy_status="pass",
+            auth=PlannerAuthContract(
+                endpoint="/planner/policy/snapshot",
+                required_permission="view",
+                auth_scheme="bearer",
+            ),
+            versioning=PlannerVersionContract(
+                contract_version="1.0",
+                policy_version="v1",
+                compatible_with_planner_cache=True,
+                etag="abc123",
+            ),
+        )
+
+        proposal_store = PlannerProposalStore()
+        review = proposal_store.manager_reviews.create_or_get(
+            draft_id="draft-001",
+            trip_plan=trip,
+            policy_snapshot=policy_snapshot,
+            policy_result=policy_result,
+        )
+        assert review.status == ReviewStatus.PENDING_MANAGER_REVIEW
+
+        proposal_store.apply_manager_review_action(
+            review.review_id,
+            action=ReviewAction.APPROVE,
+            actor_id="manager-alice",
+            rationale="Approved per budget policy.",
+        )
+
+        rows = list(store.query(event_type=audit.EVENT_PROPOSAL_STATUS_CHANGE))
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.outcome == ReviewStatus.APPROVED.value
+        assert row.metadata["from_status"] == ReviewStatus.PENDING_MANAGER_REVIEW.value
+        assert row.metadata["to_status"] == ReviewStatus.APPROVED.value
+        assert row.target_kind == "manager_review"
+        assert row.target_id == review.review_id
