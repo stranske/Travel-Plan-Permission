@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import secrets
 import socket
 import threading
 import time
@@ -129,3 +130,93 @@ def test_planner_smoke_fails_when_fixture_override_is_missing(
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "Planner smoke fixtures are unavailable" in captured.err
+
+
+def test_planner_smoke_fails_when_static_token_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("TPP_BASE_URL", "http://127.0.0.1:9999")
+    monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
+    monkeypatch.setenv("TPP_OIDC_PROVIDER", "google")
+    monkeypatch.delenv("TPP_ACCESS_TOKEN", raising=False)
+
+    exit_code = main([])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "TPP_ACCESS_TOKEN" in captured.err
+
+
+def test_planner_smoke_fails_when_bootstrap_secret_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("TPP_BASE_URL", "http://127.0.0.1:9999")
+    monkeypatch.setenv("TPP_AUTH_MODE", "bootstrap-token")
+    monkeypatch.setenv("TPP_OIDC_PROVIDER", "google")
+    monkeypatch.delenv("TPP_BOOTSTRAP_SIGNING_SECRET", raising=False)
+
+    exit_code = main([])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "TPP_BOOTSTRAP_SIGNING_SECRET" in captured.err
+
+
+def test_planner_smoke_fails_when_auth_mode_is_unconfigured(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("TPP_BASE_URL", "http://127.0.0.1:9999")
+    monkeypatch.delenv("TPP_AUTH_MODE", raising=False)
+    monkeypatch.setenv("TPP_OIDC_PROVIDER", "google")
+    monkeypatch.delenv("TPP_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("TPP_BOOTSTRAP_SIGNING_SECRET", raising=False)
+
+    exit_code = main([])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "TPP_AUTH_MODE" in captured.err
+
+
+def test_planner_smoke_fails_on_connection_refused(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """URLError (connection refused) surfaces as a smoke failure, not an exception."""
+    monkeypatch.setenv("TPP_BASE_URL", "http://127.0.0.1:19999")
+    monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
+    monkeypatch.setenv("TPP_ACCESS_TOKEN", "test-token")
+    monkeypatch.setenv("TPP_OIDC_PROVIDER", "google")
+
+    exit_code = main([])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "failed" in captured.err.lower()
+
+
+def test_planner_smoke_succeeds_with_bootstrap_token_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """bootstrap-token auth mode mints a token at runtime and succeeds against a live service.
+
+    This mirrors the CI cross-repo-smoke job which uses TPP_AUTH_MODE=bootstrap-token.
+    """
+    with _run_live_service() as base_url:
+        signing_secret = secrets.token_hex(32)
+        monkeypatch.setenv("TPP_BASE_URL", base_url)
+        monkeypatch.setenv("TPP_AUTH_MODE", "bootstrap-token")
+        monkeypatch.setenv("TPP_OIDC_PROVIDER", "google")
+        monkeypatch.setenv("TPP_BOOTSTRAP_SIGNING_SECRET", signing_secret)
+        monkeypatch.delenv("TPP_ACCESS_TOKEN", raising=False)
+
+        exit_code = main([])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Planner HTTP smoke passed" in captured.out
+    assert "unauthorized probe" in captured.out
