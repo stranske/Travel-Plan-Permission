@@ -94,6 +94,25 @@ class TestSQLitePortalStateStore:
         store_b.close()
         loaded.close()
 
+    def test_expense_drafts_use_per_record_upserts(self, tmp_path: Path) -> None:
+        path = tmp_path / "expense-concurrent.sqlite3"
+        store_a = SQLitePortalStateStore(path)
+        store_a.initialize()
+        store_a.save_snapshot({"expense_drafts_by_id": {"exp-a": _draft_payload({"who": "a"})}})
+
+        store_b = SQLitePortalStateStore(path)
+        store_b.initialize()
+        store_b.save_snapshot({"expense_drafts_by_id": {"exp-b": _draft_payload({"who": "b"})}})
+
+        loaded = SQLitePortalStateStore(path)
+        loaded.initialize()
+        snapshot = loaded.load_snapshot()
+        assert snapshot is not None
+        assert set(snapshot["expense_drafts_by_id"].keys()) == {"exp-a", "exp-b"}
+        store_a.close()
+        store_b.close()
+        loaded.close()
+
     def test_threaded_writers_dont_lose_records(self, tmp_path: Path) -> None:
         path = tmp_path / "threads.sqlite3"
         bootstrap = SQLitePortalStateStore(path)
