@@ -147,6 +147,48 @@ If the change affects the planner-facing API contract:
 
 Use this stage for contract and behavior changes, not every small local edit.
 
+### CI gate: `cross-repo-smoke`
+
+The same contract is gated automatically in CI by the `cross-repo-smoke` job in
+`.github/workflows/ci.yml`. The job:
+
+1. Checks out this repo (PR head).
+2. Checks out `stranske/trip-planner` at `TRIP_PLANNER_PINNED_REF` into a
+   sibling-like path (`${{ github.workspace }}/trip-planner`).
+3. Installs this repo's `[dev,orchestration]` extras.
+4. Generates a fresh `TPP_BOOTSTRAP_SIGNING_SECRET` and mints a bootstrap token
+   via `tpp-planner-token`.
+5. Starts `tpp-planner-service` on `127.0.0.1:8000` in the background and waits
+   for `/readyz` to return `200`.
+6. Runs `tpp-cross-repo-smoke` against the live local service, with
+   `TRIP_PLANNER_REPO` pointed at the trip-planner checkout so the harness's
+   contract-doc and proposal-fixture lookups succeed.
+7. Runs `tpp-planner-smoke` against the same service.
+8. Tears down the background service in an `if: always()` step and uploads the
+   service log on failure.
+
+The job runs on every pull request and push to `main` and is intended to be
+configured as a required check in branch protection so a TPP-side schema or
+auth change cannot land green when it breaks the planner contract.
+
+#### Bumping `TRIP_PLANNER_PINNED_REF`
+
+The pin is a single env var on the `cross-repo-smoke` job. To advance it:
+
+1. Pick a known-good `stranske/trip-planner` commit on `main` whose
+   `docs/contracts/tpp-proposal-execution.md`,
+   `docs/contracts/tpp-execution-contracts.md`, and
+   `tests/fixtures/integrations/tpp/proposal_submit_deferred.json` are
+   compatible with the changes in your TPP PR.
+2. Update `TRIP_PLANNER_PINNED_REF` in `.github/workflows/ci.yml` to that SHA.
+3. In parallel, update the matching pin on the `trip-planner` side so the two
+   advance together (the trip-planner counterpart is tracked by a paired issue).
+4. Push and let `cross-repo-smoke` validate the pair on the PR.
+
+If `cross_repo_smoke.py` ever needs to look up new files in the
+trip-planner checkout, update `_TRIP_PLANNER_REQUIRED_FILES` in
+`src/travel_plan_permission/cross_repo_smoke.py` and the pin in lockstep.
+
 ## Bug Report Minimums
 
 When you find a problem, capture:
