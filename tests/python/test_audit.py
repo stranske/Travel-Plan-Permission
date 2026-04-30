@@ -362,7 +362,6 @@ class TestEmitPoints:
     def test_authenticate_request_config_error_emits_failure_event(
         self,
         store: audit.SQLiteAuditEventStore,
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from travel_plan_permission import planner_auth
 
