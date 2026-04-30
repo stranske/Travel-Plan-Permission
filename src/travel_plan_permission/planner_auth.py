@@ -458,7 +458,7 @@ def authenticate_request(
             required_permission=required_permission,
             now=now,
         )
-    except PermissionError as exc:
+    except (PermissionError, ValueError) as exc:
         audit.write_audit_event(
             audit.EVENT_AUTH_REQUEST,
             actor_subject="unauthenticated",
@@ -556,11 +556,18 @@ def _authenticate_request_inner(
     )
 
 
-def _failure_reason_code(exc: PermissionError) -> str:
-    """Map a PermissionError raised inside authenticate_request to a stable code."""
+def _failure_reason_code(exc: Exception) -> str:
+    """Map an exception raised inside authenticate_request to a stable code."""
 
     if isinstance(exc, OIDCAuthenticationError):
         return f"oidc.{exc.error_code}"
+    if isinstance(exc, ValueError):
+        message = str(exc).lower()
+        if "not ready" in message:
+            return "config.not_ready"
+        if "unsupported" in message:
+            return "config.unsupported_mode"
+        return "config.error"
     message = str(exc).lower()
     if "missing bearer" in message:
         return "auth.missing_bearer"

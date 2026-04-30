@@ -214,8 +214,55 @@ Compare the live output to the canonical examples under
 `tests/fixtures/planner_integration/` and the contract in
 [`docs/contracts/planner-integration.md`](./contracts/planner-integration.md).
 
+## Audit-Event Log Maintenance
+
+The durable audit-event log is backed by a SQLite file at
+`$TPP_AUDIT_STATE_PATH` (default: `var/portal-audit-events.sqlite3`).
+
+### Exporting events
+
+Pull a time-windowed CSV for compliance review without direct database access:
+
+```bash
+TPP_AUDIT_STATE_PATH=/var/lib/tpp/audit-events.sqlite3 \
+  tpp-audit-export --since 2026-04-01 --until 2026-05-01 --output report.csv
+```
+
+Use `--output -` (the default) to write to stdout, or `--event-type` to filter
+to a specific event type (e.g. `auth.request`).
+
+Exit codes: `0` on success, `2` when the store path does not exist, `3` on
+SQLite schema error.
+
+### Periodic retention prune
+
+The default retention window is **7 years** (configurable via
+`TPP_AUDIT_RETENTION_DAYS`). Only the `tpp-audit-prune` task removes rows;
+there is no other delete path.
+
+Schedule this command as a weekly cron job on the host that owns the audit
+store:
+
+```bash
+TPP_AUDIT_STATE_PATH=/var/lib/tpp/audit-events.sqlite3 \
+  tpp-audit-prune
+```
+
+To override the retention window for a one-off prune (e.g. during a data
+migration), pass `--retention-days`:
+
+```bash
+tpp-audit-prune --retention-days 1825 \
+  --store-path /var/lib/tpp/audit-events.sqlite3
+```
+
+Rows whose age is exactly equal to the configured window are kept; only
+strictly older rows are removed. This ensures a row written on day N is kept
+until day N+retention+1.
+
 ## Related References
 
 - [`README.md`](../README.md)
 - [`docs/policy-api.md`](./policy-api.md)
 - [`docs/contracts/planner-integration.md`](./contracts/planner-integration.md)
+- [`docs/audit-trail.md`](./audit-trail.md)

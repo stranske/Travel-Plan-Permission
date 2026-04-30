@@ -359,6 +359,44 @@ class TestEmitPoints:
         assert rows[0].target_id == "GET /api/itineraries"
         assert rows[0].metadata["auth_mode"] == "static-token"
 
+    def test_authenticate_request_config_error_emits_failure_event(
+        self,
+        store: audit.SQLiteAuditEventStore,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from travel_plan_permission import planner_auth
+
+        audit.set_default_store(store)
+        # Build a config that is not ready (auth_mode is None → config.is_ready is False)
+        config = planner_auth.PlannerAuthConfig(
+            base_url="https://tpp.example/",
+            oidc_provider="google",
+            auth_mode=None,
+            access_token_configured=False,
+            bootstrap_secret_configured=False,
+            bootstrap_ttl_seconds=900,
+            oidc_audience=None,
+            oidc_role_map_configured=False,
+            oidc_subject_claim="sub",
+            missing_config=("TPP_AUTH_MODE",),
+            invalid_config=(),
+        )
+
+        with pytest.raises(ValueError, match="not ready"):
+            planner_auth.authenticate_request(
+                "Bearer some-token",
+                config=config,
+                required_permission=planner_auth.Permission.VIEW,
+                route="GET /planner/policy/snapshot",
+            )
+
+        rows = list(store.query(event_type=audit.EVENT_AUTH_REQUEST))
+        assert len(rows) == 1
+        assert rows[0].outcome == audit.OUTCOME_FAILURE
+        assert rows[0].metadata["reason_code"] == "config.not_ready"
+        assert rows[0].metadata["auth_mode"] == "unconfigured"
+        assert rows[0].target_id == "GET /planner/policy/snapshot"
+
     def test_role_change_request_emits_event(self, store: audit.SQLiteAuditEventStore) -> None:
         from travel_plan_permission.security import RoleName, SecurityModel
 
