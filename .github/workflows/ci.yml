@@ -65,6 +65,9 @@ jobs:
     # Gates the planner integration contract against a pinned trip-planner ref.
     # See docs/local-testing-plan.md "Stage 7" and the matching trip-planner job
     # for how to advance TRIP_PLANNER_PINNED_REF as a coordinated pair.
+    #
+    # To bump the pin: edit TRIP_PLANNER_PINNED_REF below (and optionally the
+    # pin file .github/trip-planner-pinned-ref to keep them in sync).
     name: Cross-Repo Smoke (trip-planner)
     runs-on: ubuntu-latest
     env:
@@ -72,23 +75,24 @@ jobs:
       TPP_OIDC_PROVIDER: google
       TPP_AUTH_MODE: bootstrap-token
       TPP_PORT: "8000"
+      # Known-good trip-planner SHA. Update this (and the pin file) together.
+      TRIP_PLANNER_PINNED_REF: e0f90435302134fec36256640ca19009ff8204dd
     steps:
       - name: Checkout Travel-Plan-Permission (PR head)
         uses: actions/checkout@v4
         with:
           path: travel-plan-permission
 
-      - name: Load TRIP_PLANNER_PINNED_REF from single-source pin file
-        # Single source of truth for the trip-planner ref this job exercises.
-        # Bump in lockstep with the corresponding trip-planner CI job pin
-        # by editing .github/trip-planner-pinned-ref only.
+      - name: Override TRIP_PLANNER_PINNED_REF from pin file (if present)
+        # If .github/trip-planner-pinned-ref exists it takes precedence over the
+        # env-block default above, giving a single editable location for SHA bumps.
         working-directory: travel-plan-permission
         run: |
           pin_file=".github/trip-planner-pinned-ref"
 
           if [ ! -f "${pin_file}" ]; then
-            echo "Pin file ${pin_file} does not exist" >&2
-            exit 1
+            echo "Pin file ${pin_file} absent; using env-block default: ${TRIP_PLANNER_PINNED_REF}"
+            exit 0
           fi
 
           if [ ! -r "${pin_file}" ]; then
@@ -108,6 +112,7 @@ jobs:
           fi
 
           echo "TRIP_PLANNER_PINNED_REF=${ref}" >> "$GITHUB_ENV"
+          echo "TRIP_PLANNER_PINNED_REF overridden from pin file: ${ref}"
 
       - name: Checkout trip-planner at pinned ref
         uses: actions/checkout@v4
