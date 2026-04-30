@@ -173,14 +173,17 @@ auth change cannot land green when it breaks the planner contract.
 
 #### Bumping `TRIP_PLANNER_PINNED_REF`
 
-The pin is a single env var on the `cross-repo-smoke` job. To advance it:
+The pin is stored once in `.github/trip-planner-pinned-ref`. The
+`cross-repo-smoke` job in both `.github/workflows/ci.yml` and
+`.github/workflows/pr-00-gate.yml` reads that file at runtime, so a bump is
+a single-file edit. To advance it:
 
 1. Pick a known-good `stranske/trip-planner` commit on `main` whose
    `docs/contracts/tpp-proposal-execution.md`,
    `docs/contracts/tpp-execution-contracts.md`, and
    `tests/fixtures/integrations/tpp/proposal_submit_deferred.json` are
    compatible with the changes in your TPP PR.
-2. Update `TRIP_PLANNER_PINNED_REF` in `.github/workflows/ci.yml` to that SHA.
+2. Replace the SHA in `.github/trip-planner-pinned-ref` with that commit.
 3. In parallel, update the matching pin on the `trip-planner` side so the two
    advance together (the trip-planner counterpart is tracked by a paired issue).
 4. Push and let `cross-repo-smoke` validate the pair on the PR.
