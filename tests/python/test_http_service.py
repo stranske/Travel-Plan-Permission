@@ -1458,6 +1458,7 @@ def test_expense_review_state_survives_restart(tmp_path) -> None:
     second_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
     restored = second_client.get(f"/portal/expenses/{draft_id}")
     csv_export = second_client.get(f"/portal/expenses/{draft_id}/artifacts/expense-csv")
+    excel_export = second_client.get(f"/portal/expenses/{draft_id}/artifacts/expense-xlsx")
 
     assert restored.status_code == 200
     assert f"Expense draft {draft_id}" in restored.text
@@ -1465,6 +1466,9 @@ def test_expense_review_state_survives_restart(tmp_path) -> None:
     assert csv_export.status_code == 200
     assert f"{draft_id}.csv" in csv_export.headers["content-disposition"]
     assert b"date,vendor,amount,category,cost_center,receipt_link" in csv_export.content
+    assert excel_export.status_code == 200
+    assert f"{draft_id}.xlsx" in excel_export.headers["content-disposition"]
+    assert excel_export.content.startswith(b"PK")
 
 
 def test_expense_drafts_round_trip_serialize_and_load(tmp_path) -> None:
