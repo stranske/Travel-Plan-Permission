@@ -8,6 +8,7 @@ import sys
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -814,6 +815,42 @@ def test_expense_portal_caches_artifacts_with_persisted_draft_id() -> None:
     assert b"EXP-PREVIEW" not in draft.cached_artifacts["expense-csv"].content
 
 
+def test_expense_artifact_download_revalidates_cached_linkage() -> None:
+    store = PlannerProposalStore()
+    review = _seed_manager_review(store)
+    client = TestClient(create_app(store))
+
+    response = client.post(
+        "/portal/expenses/review",
+        data=_expense_form_payload(),
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    match = re.search(r"/portal/expenses/([^/]+)/artifacts/expense-csv", response.text)
+    assert match is not None
+    draft_id = match.group(1)
+    draft = store.lookup_expense_draft(draft_id)
+    assert draft is not None
+    assert set(draft.cached_artifacts) == {"expense-csv", "expense-xlsx"}
+
+    store.manager_reviews.reviews_by_id[review.review_id] = replace(
+        review,
+        status=http_service.ReviewStatus.REJECTED,
+        updated_at=datetime.now(UTC),
+    )
+    csv_export = client.get(f"/portal/expenses/{draft_id}/artifacts/expense-csv")
+    excel_export = client.get(f"/portal/expenses/{draft_id}/artifacts/expense-xlsx")
+
+    assert csv_export.status_code == 403
+    assert excel_export.status_code == 403
+    assert csv_export.json()["detail"] == (
+        "Expense export is blocked: Approved request id 'REQ-410' was found "
+        "in the manager_review store but its status is 'rejected', not approved."
+    )
+    assert excel_export.json() == csv_export.json()
+
+
 def test_expense_portal_rejects_invalid_decimal_input_without_saving() -> None:
     store = PlannerProposalStore()
     _seed_manager_review(store)
@@ -899,6 +936,22 @@ def test_expense_portal_blocks_export_when_trip_id_mismatch() -> None:
         "Approved request id 'REQ-410' is for trip 'TRIP-OTHER', but the "
         "expense draft lists trip 'TRIP-410'." in html.unescape(response.text)
     )
+    assert not store.expense_drafts_by_id
+
+
+def test_expense_portal_bad_linkage_response_hides_export_actions() -> None:
+    """Portal review route should not render export actions when linkage validation fails."""
+    store = PlannerProposalStore()
+    _seed_manager_review(store, traveler_name="Jamie Park")
+    client = TestClient(create_app(store))
+
+    response = client.post("/portal/expenses/review", data=_expense_form_payload())
+
+    assert response.status_code == 400
+    body = html.unescape(response.text)
+    assert "Validation notes" in body
+    assert "Download CSV" not in body
+    assert "Download Excel" not in body
     assert not store.expense_drafts_by_id
 
 
@@ -996,6 +1049,100 @@ def _seed_exception_request(
     raw = store.exception_requests_by_draft_id[portal_draft.draft_id][0]
     raw.status = status
     return portal_draft.draft_id
+
+
+def test_expense_linkage_validation_marks_unapproved_exception_as_export_blocking() -> None:
+    store = PlannerProposalStore()
+    draft_id = _seed_exception_request(store, status=http_service.ExceptionStatus.REJECTED)
+    answers = _expense_form_payload()
+    answers["approved_request_id"] = draft_id
+
+    validation = http_service._validate_expense_linkage(store, answers)
+
+    assert validation.blocks_export is True
+    assert validation.errors == (
+        f"Approved request id '{draft_id}' was found in the exception_request "
+        "store but its status is 'rejected', not approved.",
+    )
+
+
+def test_expense_linkage_validation_marks_missing_linkage_as_export_blocking() -> None:
+    store = PlannerProposalStore()
+    answers = _expense_form_payload()
+    answers["approved_request_id"] = "REQ-404"
+
+    validation = http_service._validate_expense_linkage(store, answers)
+
+    assert validation.blocks_export is True
+    assert validation.errors == (
+        "Approved request id 'REQ-404' was not found in the manager-review or "
+        "exception-request stores.",
+    )
+
+
+@pytest.mark.parametrize(
+    "exception_status",
+    [
+        http_service.ExceptionStatus.PENDING,
+        http_service.ExceptionStatus.REJECTED,
+        http_service.ExceptionStatus.WITHDRAWN,
+    ],
+)
+def test_expense_linkage_validation_marks_unapproved_exception_statuses_as_export_blocking(
+    exception_status: http_service.ExceptionStatus,
+) -> None:
+    store = PlannerProposalStore()
+    draft_id = _seed_exception_request(store, status=exception_status)
+    answers = _expense_form_payload()
+    answers["approved_request_id"] = draft_id
+
+    validation = http_service._validate_expense_linkage(store, answers)
+
+    assert validation.blocks_export is True
+    assert validation.errors == (
+        f"Approved request id '{draft_id}' was found in the exception_request "
+        f"store but its status is '{exception_status.value}', not approved.",
+    )
+
+
+def test_expense_linkage_validation_allows_approved_manager_review_exports() -> None:
+    store = PlannerProposalStore()
+    _seed_manager_review(store)
+
+    validation = http_service._validate_expense_linkage(store, _expense_form_payload())
+
+    assert validation.blocks_export is False
+    assert validation.errors == ()
+
+
+def test_expense_linkage_validation_marks_exception_traveler_mismatch_as_export_blocking() -> None:
+    store = PlannerProposalStore()
+    draft_id = _seed_exception_request(store, traveler_name="Jamie Park")
+    answers = _expense_form_payload()
+    answers["approved_request_id"] = draft_id
+
+    validation = http_service._validate_expense_linkage(store, answers)
+
+    assert validation.blocks_export is True
+    assert validation.errors == (
+        f"Approved request id '{draft_id}' is for traveler 'Jamie Park', but the "
+        "expense draft lists traveler 'Alex Rivera'.",
+    )
+
+
+def test_expense_linkage_validation_marks_exception_trip_mismatch_as_export_blocking() -> None:
+    store = PlannerProposalStore()
+    draft_id = _seed_exception_request(store, trip_id="TRIP-OTHER")
+    answers = _expense_form_payload()
+    answers["approved_request_id"] = draft_id
+
+    validation = http_service._validate_expense_linkage(store, answers)
+
+    assert validation.blocks_export is True
+    assert validation.errors == (
+        f"Approved request id '{draft_id}' is for trip 'TRIP-OTHER', but the "
+        "expense draft lists trip 'TRIP-410'.",
+    )
 
 
 def test_expense_review_state_blocks_artifacts_when_linkage_missing() -> None:
