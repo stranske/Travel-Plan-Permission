@@ -1080,6 +1080,22 @@ def test_expense_linkage_validation_marks_missing_linkage_as_export_blocking() -
     )
 
 
+def test_expense_linkage_validation_marks_unknown_id_missing_across_both_stores() -> None:
+    store = PlannerProposalStore()
+    _seed_manager_review(store)
+    _seed_exception_request(store)
+    answers = _expense_form_payload()
+    answers["approved_request_id"] = "REQ-NOT-SEEDED"
+
+    validation = http_service._validate_expense_linkage(store, answers)
+
+    assert validation.blocks_export is True
+    assert validation.errors == (
+        "Approved request id 'REQ-NOT-SEEDED' was not found in the manager-review or "
+        "exception-request stores.",
+    )
+
+
 @pytest.mark.parametrize(
     "exception_status",
     [
