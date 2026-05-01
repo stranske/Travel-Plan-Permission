@@ -998,6 +998,31 @@ def _seed_exception_request(
     return portal_draft.draft_id
 
 
+def test_expense_linkage_validation_marks_unapproved_exception_as_export_blocking() -> None:
+    store = PlannerProposalStore()
+    draft_id = _seed_exception_request(store, status=http_service.ExceptionStatus.REJECTED)
+    answers = _expense_form_payload()
+    answers["approved_request_id"] = draft_id
+
+    validation = http_service._validate_expense_linkage(store, answers)
+
+    assert validation.blocks_export is True
+    assert validation.errors == (
+        f"Approved request id '{draft_id}' was found in the exception_request "
+        "store but its status is 'rejected', not approved.",
+    )
+
+
+def test_expense_linkage_validation_allows_approved_manager_review_exports() -> None:
+    store = PlannerProposalStore()
+    _seed_manager_review(store)
+
+    validation = http_service._validate_expense_linkage(store, _expense_form_payload())
+
+    assert validation.blocks_export is False
+    assert validation.errors == ()
+
+
 def test_expense_review_state_blocks_artifacts_when_linkage_missing() -> None:
     store = PlannerProposalStore()
     answers = _expense_form_payload()

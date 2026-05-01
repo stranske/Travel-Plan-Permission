@@ -1191,6 +1191,14 @@ class _ExpenseLinkageResolution:
     trip_id: str | None
 
 
+@dataclass(frozen=True)
+class _ExpenseLinkageValidation:
+    """Validation result that also declares whether exports must be suppressed."""
+
+    errors: tuple[str, ...] = ()
+    blocks_export: bool = False
+
+
 def _resolve_expense_linkage(
     proposal_store: PlannerProposalStore | None,
     approved_request_id: str,
@@ -1240,19 +1248,20 @@ def _resolve_expense_linkage(
 def _validate_expense_linkage(
     proposal_store: PlannerProposalStore | None,
     answers: dict[str, object],
-) -> list[str]:
+) -> _ExpenseLinkageValidation:
     raw = answers.get("approved_request_id")
     if not isinstance(raw, str) or not raw.strip():
-        return []
+        return _ExpenseLinkageValidation()
     if proposal_store is None:
-        return []
+        return _ExpenseLinkageValidation()
     approved_request_id = raw.strip()
     resolution = _resolve_expense_linkage(proposal_store, approved_request_id)
     if resolution is None:
-        return [
+        errors = (
             f"Approved request id '{approved_request_id}' was not found in the "
-            "manager-review or exception-request stores."
-        ]
+            "manager-review or exception-request stores.",
+        )
+        return _ExpenseLinkageValidation(errors=errors, blocks_export=True)
     errors: list[str] = []
     if not resolution.is_approved:
         errors.append(
@@ -1284,7 +1293,10 @@ def _validate_expense_linkage(
             f"'{resolution.trip_id}', but the expense draft lists trip "
             f"'{trip_value}'."
         )
-    return errors
+    return _ExpenseLinkageValidation(
+        errors=tuple(errors),
+        blocks_export=bool(errors),
+    )
 
 
 def _expense_review_state(
@@ -1303,9 +1315,8 @@ def _expense_review_state(
     expense_report: ExpenseReport | None = None
     artifacts: dict[str, PortalArtifact] = {}
 
-    linkage_errors = _validate_expense_linkage(proposal_store, answers)
-    validation_errors.extend(linkage_errors)
-    linkage_blocks_export = bool(linkage_errors)
+    linkage_validation = _validate_expense_linkage(proposal_store, answers)
+    validation_errors.extend(linkage_validation.errors)
 
     ocr_text = answers.get("receipt_ocr_text")
     if isinstance(ocr_text, str) and ocr_text.strip():
@@ -1369,7 +1380,7 @@ def _expense_review_state(
                     "Receipt missing: reviewers should hold reimbursement until the traveler uploads support."
                 )
 
-            if not linkage_blocks_export:
+            if not linkage_validation.blocks_export:
                 expense = ExpenseItem(
                     category=category,
                     description=str(answers["expense_description"]),
