@@ -8,6 +8,7 @@ import sys
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -812,6 +813,42 @@ def test_expense_portal_caches_artifacts_with_persisted_draft_id() -> None:
     assert "preview" not in draft.cached_artifacts["expense-csv"].filename.lower()
     assert "preview" not in draft.cached_artifacts["expense-xlsx"].filename.lower()
     assert b"EXP-PREVIEW" not in draft.cached_artifacts["expense-csv"].content
+
+
+def test_expense_artifact_download_revalidates_cached_linkage() -> None:
+    store = PlannerProposalStore()
+    review = _seed_manager_review(store)
+    client = TestClient(create_app(store))
+
+    response = client.post(
+        "/portal/expenses/review",
+        data=_expense_form_payload(),
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    match = re.search(r"/portal/expenses/([^/]+)/artifacts/expense-csv", response.text)
+    assert match is not None
+    draft_id = match.group(1)
+    draft = store.lookup_expense_draft(draft_id)
+    assert draft is not None
+    assert set(draft.cached_artifacts) == {"expense-csv", "expense-xlsx"}
+
+    store.manager_reviews.reviews_by_id[review.review_id] = replace(
+        review,
+        status=http_service.ReviewStatus.REJECTED,
+        updated_at=datetime.now(UTC),
+    )
+    csv_export = client.get(f"/portal/expenses/{draft_id}/artifacts/expense-csv")
+    excel_export = client.get(f"/portal/expenses/{draft_id}/artifacts/expense-xlsx")
+
+    assert csv_export.status_code == 403
+    assert excel_export.status_code == 403
+    assert csv_export.json()["detail"] == (
+        "Expense export is blocked: Approved request id 'REQ-410' was found "
+        "in the manager_review store but its status is 'rejected', not approved."
+    )
+    assert excel_export.json() == csv_export.json()
 
 
 def test_expense_portal_rejects_invalid_decimal_input_without_saving() -> None:

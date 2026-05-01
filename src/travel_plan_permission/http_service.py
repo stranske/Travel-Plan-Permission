@@ -2143,6 +2143,12 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No expense portal draft found for '{draft_id}'.",
             )
+        linkage_validation = _validate_expense_linkage(proposal_store, draft.answers)
+        if linkage_validation.blocks_export:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Expense export is blocked: " + "; ".join(linkage_validation.errors),
+            )
         artifacts = draft.cached_artifacts
         if not artifacts:
             review = _expense_review_state(
