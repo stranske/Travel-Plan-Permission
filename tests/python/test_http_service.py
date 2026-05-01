@@ -1549,6 +1549,55 @@ def test_in_process_audit_log_survives_restart(tmp_path) -> None:
     )
 
 
+def test_audit_events_queryable_after_restart_for_auth_and_status_change(tmp_path) -> None:
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+
+    first_store = PlannerProposalStore(state_path=state_path)
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.AUTHENTICATION,
+        actor="static-token",
+        subject="planner-admin",
+        outcome="success",
+        metadata={"provider": "static-token"},
+    )
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.REVIEW,
+        actor="workflow-portal",
+        subject="review-123",
+        outcome="proposal_status_change",
+        metadata={
+            "proposal_id": "prop-123",
+            "from_status": "submitted",
+            "to_status": "approved",
+        },
+    )
+    first_store.store.save_snapshot(first_store._serialize_state())
+
+    second_store = PlannerProposalStore(state_path=state_path)
+    restored = second_store.list_audit_events()
+    assert any(
+        event.event_type == AuditEventType.AUTHENTICATION
+        and event.outcome == "success"
+        and event.actor == "static-token"
+        and event.subject == "planner-admin"
+        and event.metadata == {"provider": "static-token"}
+        for event in restored
+    )
+    assert any(
+        event.event_type == AuditEventType.REVIEW
+        and event.outcome == "proposal_status_change"
+        and event.actor == "workflow-portal"
+        and event.subject == "review-123"
+        and event.metadata
+        == {
+            "proposal_id": "prop-123",
+            "from_status": "submitted",
+            "to_status": "approved",
+        }
+        for event in restored
+    )
+
+
 def test_audit_events_round_trip_serialize_and_load(tmp_path) -> None:
     state_path = tmp_path / "portal-runtime-state.sqlite3"
     first_store = PlannerProposalStore(state_path=state_path)
