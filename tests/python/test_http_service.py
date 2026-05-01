@@ -902,6 +902,22 @@ def test_expense_portal_blocks_export_when_trip_id_mismatch() -> None:
     assert not store.expense_drafts_by_id
 
 
+def test_expense_portal_bad_linkage_response_hides_export_actions() -> None:
+    """Portal review route should not render export actions when linkage validation fails."""
+    store = PlannerProposalStore()
+    _seed_manager_review(store, traveler_name="Jamie Park")
+    client = TestClient(create_app(store))
+
+    response = client.post("/portal/expenses/review", data=_expense_form_payload())
+
+    assert response.status_code == 400
+    body = html.unescape(response.text)
+    assert "Validation notes" in body
+    assert "Download CSV" not in body
+    assert "Download Excel" not in body
+    assert not store.expense_drafts_by_id
+
+
 def test_expense_portal_resolves_linkage_via_exception_request_store() -> None:
     store = PlannerProposalStore()
     portal_draft = store.save_portal_draft({"traveler_name": "Alex Rivera", "trip_id": "TRIP-410"})
