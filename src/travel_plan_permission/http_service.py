@@ -1257,11 +1257,11 @@ def _validate_expense_linkage(
     approved_request_id = raw.strip()
     resolution = _resolve_expense_linkage(proposal_store, approved_request_id)
     if resolution is None:
-        errors = (
+        missing_linkage_errors = (
             f"Approved request id '{approved_request_id}' was not found in the "
             "manager-review or exception-request stores.",
         )
-        return _ExpenseLinkageValidation(errors=errors, blocks_export=True)
+        return _ExpenseLinkageValidation(errors=missing_linkage_errors, blocks_export=True)
     errors: list[str] = []
     if not resolution.is_approved:
         errors.append(
