@@ -1029,6 +1029,45 @@ def test_expense_linkage_validation_marks_unapproved_exception_as_export_blockin
     )
 
 
+def test_expense_linkage_validation_marks_missing_linkage_as_export_blocking() -> None:
+    store = PlannerProposalStore()
+    answers = _expense_form_payload()
+    answers["approved_request_id"] = "REQ-404"
+
+    validation = http_service._validate_expense_linkage(store, answers)
+
+    assert validation.blocks_export is True
+    assert validation.errors == (
+        "Approved request id 'REQ-404' was not found in the manager-review or "
+        "exception-request stores.",
+    )
+
+
+@pytest.mark.parametrize(
+    "exception_status",
+    [
+        http_service.ExceptionStatus.PENDING,
+        http_service.ExceptionStatus.REJECTED,
+        http_service.ExceptionStatus.WITHDRAWN,
+    ],
+)
+def test_expense_linkage_validation_marks_unapproved_exception_statuses_as_export_blocking(
+    exception_status: http_service.ExceptionStatus,
+) -> None:
+    store = PlannerProposalStore()
+    draft_id = _seed_exception_request(store, status=exception_status)
+    answers = _expense_form_payload()
+    answers["approved_request_id"] = draft_id
+
+    validation = http_service._validate_expense_linkage(store, answers)
+
+    assert validation.blocks_export is True
+    assert validation.errors == (
+        f"Approved request id '{draft_id}' was found in the exception_request "
+        f"store but its status is '{exception_status.value}', not approved.",
+    )
+
+
 def test_expense_linkage_validation_allows_approved_manager_review_exports() -> None:
     store = PlannerProposalStore()
     _seed_manager_review(store)
