@@ -1115,6 +1115,36 @@ def test_expense_linkage_validation_allows_approved_manager_review_exports() -> 
     assert validation.errors == ()
 
 
+def test_expense_linkage_validation_marks_exception_traveler_mismatch_as_export_blocking() -> None:
+    store = PlannerProposalStore()
+    draft_id = _seed_exception_request(store, traveler_name="Jamie Park")
+    answers = _expense_form_payload()
+    answers["approved_request_id"] = draft_id
+
+    validation = http_service._validate_expense_linkage(store, answers)
+
+    assert validation.blocks_export is True
+    assert validation.errors == (
+        f"Approved request id '{draft_id}' is for traveler 'Jamie Park', but the "
+        "expense draft lists traveler 'Alex Rivera'.",
+    )
+
+
+def test_expense_linkage_validation_marks_exception_trip_mismatch_as_export_blocking() -> None:
+    store = PlannerProposalStore()
+    draft_id = _seed_exception_request(store, trip_id="TRIP-OTHER")
+    answers = _expense_form_payload()
+    answers["approved_request_id"] = draft_id
+
+    validation = http_service._validate_expense_linkage(store, answers)
+
+    assert validation.blocks_export is True
+    assert validation.errors == (
+        f"Approved request id '{draft_id}' is for trip 'TRIP-OTHER', but the "
+        "expense draft lists trip 'TRIP-410'.",
+    )
+
+
 def test_expense_review_state_blocks_artifacts_when_linkage_missing() -> None:
     store = PlannerProposalStore()
     answers = _expense_form_payload()
