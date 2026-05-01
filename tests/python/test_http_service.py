@@ -1055,6 +1055,36 @@ def test_expense_review_state_blocks_artifacts_when_exception_request_rejected()
     assert state.artifacts == {}
 
 
+@pytest.mark.parametrize(
+    "exception_status",
+    [
+        http_service.ExceptionStatus.PENDING,
+        http_service.ExceptionStatus.REJECTED,
+        http_service.ExceptionStatus.WITHDRAWN,
+    ],
+)
+def test_expense_review_state_blocks_artifacts_when_exception_request_unapproved(
+    exception_status: http_service.ExceptionStatus,
+) -> None:
+    store = PlannerProposalStore()
+    draft_id = _seed_exception_request(store, status=exception_status)
+    answers = _expense_form_payload()
+    answers["approved_request_id"] = draft_id
+
+    state = http_service._expense_review_state(
+        "draft-410",
+        answers,
+        proposal_store=store,
+    )
+
+    assert any(
+        f"exception_request store but its status is '{exception_status.value}'" in error
+        for error in state.validation_errors
+    )
+    assert state.expense_report is None
+    assert state.artifacts == {}
+
+
 def test_expense_review_state_blocks_artifacts_on_traveler_mismatch() -> None:
     store = PlannerProposalStore()
     _seed_manager_review(store, traveler_name="Jamie Park")

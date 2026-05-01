@@ -1699,9 +1699,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No expense portal draft found for '{draft_id}'.",
             )
-        review = _expense_review_state(
-            draft.draft_id, draft.answers, proposal_store=proposal_store
-        )
+        review = _expense_review_state(draft.draft_id, draft.answers, proposal_store=proposal_store)
         if review.artifacts and not draft.cached_artifacts:
             proposal_store.cache_expense_artifacts(draft.draft_id, review.artifacts)
         return _TEMPLATES.TemplateResponse(

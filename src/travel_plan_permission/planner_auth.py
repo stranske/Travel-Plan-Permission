@@ -478,9 +478,7 @@ def authenticate_request(
             metadata.update(
                 {
                     "provider": known_context.provider,
-                    "permissions": [
-                        permission.value for permission in known_context.permissions
-                    ],
+                    "permissions": [permission.value for permission in known_context.permissions],
                 }
             )
         audit.write_audit_event(
