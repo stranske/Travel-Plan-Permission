@@ -867,8 +867,7 @@ def test_expense_portal_blocks_export_when_linkage_not_approved(
     assert response.status_code == 400
     assert (
         f"Approved request id 'REQ-410' was found in the manager_review store but "
-        f"its status is '{status_value.value}', not approved."
-        in html.unescape(response.text)
+        f"its status is '{status_value.value}', not approved." in html.unescape(response.text)
     )
     assert not store.expense_drafts_by_id
 
@@ -883,8 +882,7 @@ def test_expense_portal_blocks_export_when_traveler_name_mismatch() -> None:
     assert response.status_code == 400
     assert (
         "Approved request id 'REQ-410' is for traveler 'Jamie Park', but the "
-        "expense draft lists traveler 'Alex Rivera'."
-        in html.unescape(response.text)
+        "expense draft lists traveler 'Alex Rivera'." in html.unescape(response.text)
     )
     assert not store.expense_drafts_by_id
 
@@ -899,17 +897,14 @@ def test_expense_portal_blocks_export_when_trip_id_mismatch() -> None:
     assert response.status_code == 400
     assert (
         "Approved request id 'REQ-410' is for trip 'TRIP-OTHER', but the "
-        "expense draft lists trip 'TRIP-410'."
-        in html.unescape(response.text)
+        "expense draft lists trip 'TRIP-410'." in html.unescape(response.text)
     )
     assert not store.expense_drafts_by_id
 
 
 def test_expense_portal_resolves_linkage_via_exception_request_store() -> None:
     store = PlannerProposalStore()
-    portal_draft = store.save_portal_draft(
-        {"traveler_name": "Alex Rivera", "trip_id": "TRIP-410"}
-    )
+    portal_draft = store.save_portal_draft({"traveler_name": "Alex Rivera", "trip_id": "TRIP-410"})
     store.create_exception_request(
         portal_draft.draft_id,
         http_service.ExceptionRequest(
@@ -940,9 +935,7 @@ def test_expense_portal_resolves_linkage_via_exception_request_store() -> None:
 
 def test_expense_portal_blocks_export_when_exception_request_pending() -> None:
     store = PlannerProposalStore()
-    portal_draft = store.save_portal_draft(
-        {"traveler_name": "Alex Rivera", "trip_id": "TRIP-410"}
-    )
+    portal_draft = store.save_portal_draft({"traveler_name": "Alex Rivera", "trip_id": "TRIP-410"})
     store.create_exception_request(
         portal_draft.draft_id,
         http_service.ExceptionRequest(
@@ -965,6 +958,38 @@ def test_expense_portal_blocks_export_when_exception_request_pending() -> None:
     assert (
         f"Approved request id '{portal_draft.draft_id}' was found in the "
         "exception_request store but its status is 'pending', not approved."
+        in html.unescape(response.text)
+    )
+    assert not store.expense_drafts_by_id
+
+
+def test_expense_portal_blocks_export_when_exception_request_withdrawn() -> None:
+    store = PlannerProposalStore()
+    portal_draft = store.save_portal_draft({"traveler_name": "Alex Rivera", "trip_id": "TRIP-410"})
+    store.create_exception_request(
+        portal_draft.draft_id,
+        http_service.ExceptionRequest(
+            type=http_service.ExceptionType.ADVANCE_BOOKING,
+            justification=(
+                "Withdrawn exception request that must not unlock reimbursement "
+                "exports even though it was previously submitted."
+            ),
+            requestor="alex.rivera",
+            amount="100",
+        ),
+    )
+    raw = store.exception_requests_by_draft_id[portal_draft.draft_id][0]
+    raw.status = http_service.ExceptionStatus.WITHDRAWN
+    payload = _expense_form_payload()
+    payload["approved_request_id"] = portal_draft.draft_id
+    client = TestClient(create_app(store))
+
+    response = client.post("/portal/expenses/review", data=payload)
+
+    assert response.status_code == 400
+    assert (
+        f"Approved request id '{portal_draft.draft_id}' was found in the "
+        "exception_request store but its status is 'withdrawn', not approved."
         in html.unescape(response.text)
     )
     assert not store.expense_drafts_by_id
