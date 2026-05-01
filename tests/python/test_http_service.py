@@ -1138,6 +1138,32 @@ def test_expense_review_state_emits_artifacts_when_linkage_valid() -> None:
     assert state.artifacts != {}
 
 
+def test_expense_portal_detail_surfaces_validation_errors_when_approval_rescinded() -> None:
+    """GET detail page re-validates linkage and renders errors even for saved drafts."""
+    store = PlannerProposalStore()
+    _seed_manager_review(store)
+    client = TestClient(create_app(store))
+
+    # Save a valid expense draft while approval is still active.
+    save_response = client.post(
+        "/portal/expenses/review",
+        data=_expense_form_payload(),
+        follow_redirects=False,
+    )
+    assert save_response.status_code == 303
+    location = save_response.headers["location"]
+    draft_id = location.rstrip("/").split("/")[-1]
+
+    # Rescind the approval by overwriting the stored review with REJECTED status.
+    _seed_manager_review(store, status=http_service.ReviewStatus.REJECTED)
+
+    # GET the detail page — must re-validate and surface the new linkage error.
+    detail_response = client.get(f"/portal/expenses/{draft_id}")
+    assert detail_response.status_code == 200
+    assert "Validation notes" in detail_response.text
+    assert "status is 'rejected', not approved" in html.unescape(detail_response.text)
+
+
 def test_portal_draft_validation_returns_bad_request_without_saving() -> None:
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
