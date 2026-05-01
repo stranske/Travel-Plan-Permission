@@ -1315,14 +1315,15 @@ def _expense_review_state(
     expense_report: ExpenseReport | None = None
     artifacts: dict[str, PortalArtifact] = {}
 
-    linkage_validation = _validate_expense_linkage(proposal_store, answers)
-    validation_errors.extend(linkage_validation.errors)
+    linkage_validation = _ExpenseLinkageValidation()
 
     ocr_text = answers.get("receipt_ocr_text")
     if isinstance(ocr_text, str) and ocr_text.strip():
         receipt_extraction = ReceiptProcessor.extract_from_text(ocr_text)
 
     if not missing_fields:
+        linkage_validation = _validate_expense_linkage(proposal_store, answers)
+        validation_errors.extend(linkage_validation.errors)
         try:
             category = ExpenseCategory(str(answers["expense_category"]))
             expense_amount = Decimal(str(answers["expense_amount"]))
