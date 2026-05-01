@@ -160,6 +160,7 @@ class ExceptionStatus(StrEnum):
     APPROVED = "approved"
     REJECTED = "rejected"
     ESCALATED = "escalated"
+    WITHDRAWN = "withdrawn"
 
 
 class ExceptionApprovalRecord(BaseModel):

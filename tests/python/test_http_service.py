@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import re
 import subprocess
@@ -12,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import jwt
+import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
@@ -222,6 +224,37 @@ def _expense_form_payload() -> dict[str, str]:
         "manager_disposition": "Need lodging policy confirmation",
         "accounting_disposition": "Queue next export batch",
     }
+
+
+def _seed_manager_review(
+    store: PlannerProposalStore,
+    *,
+    review_id: str = "REQ-410",
+    draft_id: str = "draft-410",
+    traveler_name: str = "Alex Rivera",
+    trip_id: str = "TRIP-410",
+    status: http_service.ReviewStatus = http_service.ReviewStatus.APPROVED,
+) -> http_service.ReviewRequest:
+    fixture = _load_fixture("proposal_submission.json")
+    trip_plan = http_service.TripPlan.model_validate(fixture)
+    trip_plan = trip_plan.model_copy(update={"trip_id": trip_id, "traveler_name": traveler_name})
+    snapshot = http_service.get_policy_snapshot(trip_plan)
+    result = http_service.check_trip_plan(trip_plan)
+    timestamp = datetime.now(UTC)
+    review = http_service.ReviewRequest(
+        review_id=review_id,
+        draft_id=draft_id,
+        trip_plan=trip_plan,
+        policy_snapshot=snapshot,
+        policy_result=result,
+        status=status,
+        submitted_at=timestamp,
+        updated_at=timestamp,
+        history=(),
+    )
+    store.manager_reviews.reviews_by_id[review_id] = review
+    store.manager_reviews.review_ids_by_draft_id[draft_id] = review_id
+    return review
 
 
 def test_readyz_reports_missing_runtime_config(monkeypatch) -> None:
@@ -662,6 +695,7 @@ def test_expense_portal_form_renders() -> None:
 
 def test_expense_portal_review_surfaces_missing_receipt_warning() -> None:
     store = PlannerProposalStore()
+    _seed_manager_review(store)
     client = TestClient(create_app(store))
     payload = _expense_form_payload()
     payload.pop("receipt_file_reference")
@@ -688,6 +722,7 @@ def test_expense_portal_review_surfaces_missing_receipt_warning() -> None:
 
 def test_expense_portal_generates_exports_and_policy_warning() -> None:
     store = PlannerProposalStore()
+    _seed_manager_review(store)
     client = TestClient(create_app(store))
     payload = _expense_form_payload()
     payload["expense_amount"] = "7500.00"
@@ -722,7 +757,9 @@ def test_expense_portal_generates_exports_and_policy_warning() -> None:
 
 
 def test_expense_portal_invalid_amount_returns_validation_error() -> None:
-    client = TestClient(create_app())
+    store = PlannerProposalStore()
+    _seed_manager_review(store)
+    client = TestClient(create_app(store))
     payload = _expense_form_payload()
     payload["expense_amount"] = "not-a-decimal"
 
@@ -735,7 +772,9 @@ def test_expense_portal_invalid_amount_returns_validation_error() -> None:
 def test_expense_portal_missing_approval_rules_returns_validation_error(
     monkeypatch,
 ) -> None:
-    client = TestClient(create_app())
+    store = PlannerProposalStore()
+    _seed_manager_review(store)
+    client = TestClient(create_app(store))
     payload = _expense_form_payload()
 
     monkeypatch.setattr("travel_plan_permission.approval._default_rules_path", lambda: None)
@@ -752,6 +791,7 @@ def test_expense_portal_missing_approval_rules_returns_validation_error(
 
 def test_expense_portal_caches_artifacts_with_persisted_draft_id() -> None:
     store = PlannerProposalStore()
+    _seed_manager_review(store)
     client = TestClient(create_app(store))
 
     response = client.post(
@@ -776,6 +816,7 @@ def test_expense_portal_caches_artifacts_with_persisted_draft_id() -> None:
 
 def test_expense_portal_rejects_invalid_decimal_input_without_saving() -> None:
     store = PlannerProposalStore()
+    _seed_manager_review(store)
     client = TestClient(create_app(store))
     payload = _expense_form_payload()
     payload["expense_amount"] = "not-a-decimal"
@@ -788,6 +829,169 @@ def test_expense_portal_rejects_invalid_decimal_input_without_saving() -> None:
 
     assert response.status_code == 400
     assert "not-a-decimal" in response.text
+    assert not store.expense_drafts_by_id
+
+
+def test_expense_portal_blocks_export_when_approved_request_id_unknown() -> None:
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+    payload = _expense_form_payload()
+
+    response = client.post("/portal/expenses/review", data=payload)
+
+    assert response.status_code == 400
+    assert (
+        "Approved request id 'REQ-410' was not found in the manager-review or "
+        "exception-request stores." in html.unescape(response.text)
+    )
+    assert not store.expense_drafts_by_id
+
+
+@pytest.mark.parametrize(
+    "status_value",
+    [
+        http_service.ReviewStatus.PENDING_MANAGER_REVIEW,
+        http_service.ReviewStatus.REJECTED,
+        http_service.ReviewStatus.CHANGES_REQUESTED,
+    ],
+)
+def test_expense_portal_blocks_export_when_linkage_not_approved(
+    status_value: http_service.ReviewStatus,
+) -> None:
+    store = PlannerProposalStore()
+    _seed_manager_review(store, status=status_value)
+    client = TestClient(create_app(store))
+
+    response = client.post("/portal/expenses/review", data=_expense_form_payload())
+
+    assert response.status_code == 400
+    assert (
+        f"Approved request id 'REQ-410' was found in the manager_review store but "
+        f"its status is '{status_value.value}', not approved." in html.unescape(response.text)
+    )
+    assert not store.expense_drafts_by_id
+
+
+def test_expense_portal_blocks_export_when_traveler_name_mismatch() -> None:
+    store = PlannerProposalStore()
+    _seed_manager_review(store, traveler_name="Jamie Park")
+    client = TestClient(create_app(store))
+
+    response = client.post("/portal/expenses/review", data=_expense_form_payload())
+
+    assert response.status_code == 400
+    assert (
+        "Approved request id 'REQ-410' is for traveler 'Jamie Park', but the "
+        "expense draft lists traveler 'Alex Rivera'." in html.unescape(response.text)
+    )
+    assert not store.expense_drafts_by_id
+
+
+def test_expense_portal_blocks_export_when_trip_id_mismatch() -> None:
+    store = PlannerProposalStore()
+    _seed_manager_review(store, trip_id="TRIP-OTHER")
+    client = TestClient(create_app(store))
+
+    response = client.post("/portal/expenses/review", data=_expense_form_payload())
+
+    assert response.status_code == 400
+    assert (
+        "Approved request id 'REQ-410' is for trip 'TRIP-OTHER', but the "
+        "expense draft lists trip 'TRIP-410'." in html.unescape(response.text)
+    )
+    assert not store.expense_drafts_by_id
+
+
+def test_expense_portal_resolves_linkage_via_exception_request_store() -> None:
+    store = PlannerProposalStore()
+    portal_draft = store.save_portal_draft({"traveler_name": "Alex Rivera", "trip_id": "TRIP-410"})
+    store.create_exception_request(
+        portal_draft.draft_id,
+        http_service.ExceptionRequest(
+            type=http_service.ExceptionType.ADVANCE_BOOKING,
+            justification=(
+                "Reimbursement cycle requires the prior advance-booking exception "
+                "to ride alongside the receipt batch for this trip."
+            ),
+            requestor="alex.rivera",
+            amount="100",
+        ),
+    )
+    raw = store.exception_requests_by_draft_id[portal_draft.draft_id][0]
+    raw.status = http_service.ExceptionStatus.APPROVED
+    payload = _expense_form_payload()
+    payload["approved_request_id"] = portal_draft.draft_id
+    client = TestClient(create_app(store))
+
+    response = client.post(
+        "/portal/expenses/review",
+        data=payload,
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Download CSV" in response.text
+
+
+def test_expense_portal_blocks_export_when_exception_request_pending() -> None:
+    store = PlannerProposalStore()
+    portal_draft = store.save_portal_draft({"traveler_name": "Alex Rivera", "trip_id": "TRIP-410"})
+    store.create_exception_request(
+        portal_draft.draft_id,
+        http_service.ExceptionRequest(
+            type=http_service.ExceptionType.ADVANCE_BOOKING,
+            justification=(
+                "Pending exception request that should not unlock reimbursement "
+                "exports until manager approval is recorded."
+            ),
+            requestor="alex.rivera",
+            amount="100",
+        ),
+    )
+    payload = _expense_form_payload()
+    payload["approved_request_id"] = portal_draft.draft_id
+    client = TestClient(create_app(store))
+
+    response = client.post("/portal/expenses/review", data=payload)
+
+    assert response.status_code == 400
+    assert (
+        f"Approved request id '{portal_draft.draft_id}' was found in the "
+        "exception_request store but its status is 'pending', not approved."
+        in html.unescape(response.text)
+    )
+    assert not store.expense_drafts_by_id
+
+
+def test_expense_portal_blocks_export_when_exception_request_withdrawn() -> None:
+    store = PlannerProposalStore()
+    portal_draft = store.save_portal_draft({"traveler_name": "Alex Rivera", "trip_id": "TRIP-410"})
+    store.create_exception_request(
+        portal_draft.draft_id,
+        http_service.ExceptionRequest(
+            type=http_service.ExceptionType.ADVANCE_BOOKING,
+            justification=(
+                "Withdrawn exception request that must not unlock reimbursement "
+                "exports even though it was previously submitted."
+            ),
+            requestor="alex.rivera",
+            amount="100",
+        ),
+    )
+    raw = store.exception_requests_by_draft_id[portal_draft.draft_id][0]
+    raw.status = http_service.ExceptionStatus.WITHDRAWN
+    payload = _expense_form_payload()
+    payload["approved_request_id"] = portal_draft.draft_id
+    client = TestClient(create_app(store))
+
+    response = client.post("/portal/expenses/review", data=payload)
+
+    assert response.status_code == 400
+    assert (
+        f"Approved request id '{portal_draft.draft_id}' was found in the "
+        "exception_request store but its status is 'withdrawn', not approved."
+        in html.unescape(response.text)
+    )
     assert not store.expense_drafts_by_id
 
 
