@@ -1163,9 +1163,19 @@ def test_expense_review_state_blocks_artifacts_when_linkage_missing() -> None:
     assert state.artifacts == {}
 
 
-def test_expense_review_state_blocks_artifacts_when_manager_review_unapproved() -> None:
+@pytest.mark.parametrize(
+    "review_status",
+    [
+        http_service.ReviewStatus.PENDING_MANAGER_REVIEW,
+        http_service.ReviewStatus.REJECTED,
+        http_service.ReviewStatus.CHANGES_REQUESTED,
+    ],
+)
+def test_expense_review_state_blocks_artifacts_when_manager_review_unapproved(
+    review_status: http_service.ReviewStatus,
+) -> None:
     store = PlannerProposalStore()
-    _seed_manager_review(store, status=http_service.ReviewStatus.PENDING_MANAGER_REVIEW)
+    _seed_manager_review(store, status=review_status)
     answers = _expense_form_payload()
 
     state = http_service._expense_review_state(
@@ -1175,7 +1185,7 @@ def test_expense_review_state_blocks_artifacts_when_manager_review_unapproved() 
     )
 
     assert any(
-        "manager_review store but its status is 'pending_manager_review'" in error
+        f"manager_review store but its status is '{review_status.value}'" in error
         for error in state.validation_errors
     )
     assert state.expense_report is None
