@@ -1163,6 +1163,25 @@ def test_expense_review_state_blocks_artifacts_when_linkage_missing() -> None:
     assert state.artifacts == {}
 
 
+def test_expense_review_state_surfaces_linkage_errors_via_validation_channel() -> None:
+    store = PlannerProposalStore()
+    answers = _expense_form_payload()
+    answers["approved_request_id"] = "REQ-DOES-NOT-EXIST"
+
+    state = http_service._expense_review_state(
+        "draft-410",
+        answers,
+        proposal_store=store,
+    )
+
+    assert state.validation_errors == [
+        "Approved request id 'REQ-DOES-NOT-EXIST' was not found in the manager-review or "
+        "exception-request stores."
+    ]
+    assert state.expense_report is None
+    assert state.artifacts == {}
+
+
 @pytest.mark.parametrize(
     "review_status",
     [

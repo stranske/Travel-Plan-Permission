@@ -1324,7 +1324,6 @@ def _expense_review_state(
     if not missing_fields:
         linkage_validation = _validate_expense_linkage(proposal_store, answers)
         validation_errors.extend(linkage_validation.errors)
-        linkage_has_errors = bool(linkage_validation.errors)
         try:
             category = ExpenseCategory(str(answers["expense_category"]))
             expense_amount = Decimal(str(answers["expense_amount"]))
@@ -1382,7 +1381,7 @@ def _expense_review_state(
                     "Receipt missing: reviewers should hold reimbursement until the traveler uploads support."
                 )
 
-            if not linkage_has_errors:
+            if not linkage_validation.blocks_export:
                 expense = ExpenseItem(
                     category=category,
                     description=str(answers["expense_description"]),
