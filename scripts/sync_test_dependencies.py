@@ -51,12 +51,11 @@ STDLIB_MODULES = {
     "datetime",
     "decimal",
     "fractions",
+    "fnmatch",
     "functools",
     "gc",
     "glob",
     "hashlib",
-    "html",
-    "http",
     "importlib",
     "inspect",
     "io",
@@ -76,7 +75,6 @@ STDLIB_MODULES = {
     "shlex",
     "shutil",
     "signal",
-    "secrets",
     "sitecustomize",
     "socket",
     "sqlite3",
@@ -223,7 +221,6 @@ PROJECT_MODULES: set[str] = set()
 
 # Module name to package name mappings for known exceptions
 MODULE_TO_PACKAGE = {
-    "jwt": "PyJWT",
     "yaml": "PyYAML",
     "PIL": "Pillow",
     "sklearn": "scikit-learn",
