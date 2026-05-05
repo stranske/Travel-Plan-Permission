@@ -620,6 +620,30 @@ def test_readyz_reports_conflicting_oidc_role_map_sources(monkeypatch, tmp_path:
     assert payload["config"]["oidc_role_map_configured"] is True
 
 
+def test_planner_route_returns_503_when_oidc_role_map_sources_conflict(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _set_oidc_runtime_env(monkeypatch)
+    role_map_file = tmp_path / "oidc-role-map.json"
+    role_map_file.write_text('{"sub:planner@example.com":"approver"}', encoding="utf-8")
+    monkeypatch.setenv("TPP_OIDC_ROLE_MAP", '{"sub:planner@example.com":"traveler"}')
+    monkeypatch.setenv("TPP_OIDC_ROLE_MAP_FILE", str(role_map_file))
+
+    client = TestClient(create_app())
+    trip_plan = _load_fixture("proposal_submission.json")
+    snapshot_request = _load_fixture("policy_snapshot_request.json")
+
+    response = client.request(
+        "GET",
+        "/api/planner/policy-snapshot",
+        headers={"Authorization": "Bearer dev-token"},
+        json={"trip_plan": trip_plan, "request": snapshot_request},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Planner auth config is not ready."
+
+
 def test_oidc_http_401_contract_includes_message_and_bearer_challenge(
     monkeypatch,
 ) -> None:
