@@ -51,6 +51,7 @@ STDLIB_MODULES = {
     "datetime",
     "decimal",
     "fractions",
+    "fnmatch",
     "functools",
     "gc",
     "glob",
@@ -73,10 +74,11 @@ STDLIB_MODULES = {
     "random",
     "re",
     "runpy",
+    "email",
+    "secrets",
     "shlex",
     "shutil",
     "signal",
-    "secrets",
     "sitecustomize",
     "socket",
     "sqlite3",
@@ -107,6 +109,8 @@ STDLIB_MODULES = {
     "traceback",
     "pprint",
 }
+if hasattr(sys, "stdlib_module_names"):
+    STDLIB_MODULES.update(sys.stdlib_module_names)
 
 # Known test framework modules
 TEST_FRAMEWORK_MODULES = {
