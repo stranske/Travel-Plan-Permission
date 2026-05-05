@@ -690,6 +690,35 @@ def test_oidc_http_401_contract_for_malformed_token_includes_bearer_challenge(
     }
 
 
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("GET", "/api/planner/proposals/proposal-123/executions/execution-123"),
+        ("GET", "/api/planner/executions/execution-123/evaluation-result"),
+    ],
+)
+def test_oidc_http_401_contract_for_malformed_token_across_planner_routes(
+    monkeypatch,
+    method: str,
+    path: str,
+) -> None:
+    _set_oidc_runtime_env(monkeypatch)
+    client = TestClient(create_app())
+
+    response = client.request(
+        method,
+        path,
+        headers={"Authorization": "Bearer not-a-jwt"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == 'Bearer error="invalid_token"'
+    assert response.json()["detail"] == {
+        "error_code": "invalid_token",
+        "message": "OIDC bearer token is malformed.",
+    }
+
+
 def test_bootstrap_token_rejects_missing_create_permission(monkeypatch) -> None:
     _set_bootstrap_runtime_env(monkeypatch)
     client = TestClient(create_app())
