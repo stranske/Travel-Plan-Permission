@@ -97,8 +97,11 @@ export TPP_OIDC_ROLE_MAP='{"sub:user@example.com":"traveler"}'
 
 OIDC mode validates the bearer JWT against the provider JWKS, issuer, audience,
 expiry, not-before, and subject claims before resolving the subject to a TPP
-role. Azure AD and Okta deployments can override discovery defaults with
-`TPP_OIDC_ISSUER` and `TPP_OIDC_JWKS_URL`.
+role. The role map can also be loaded from `TPP_OIDC_ROLE_MAP_FILE` when the
+JSON mapping should live in a mounted config file instead of an environment
+variable. Set `TPP_OIDC_SUBJECT_CLAIM` to use a verified claim other than `sub`
+as the role-map lookup key. Azure AD and Okta deployments can override
+discovery defaults with `TPP_OIDC_ISSUER` and `TPP_OIDC_JWKS_URL`.
 
 For a browser-facing draft flow on top of the same runtime, open:
 

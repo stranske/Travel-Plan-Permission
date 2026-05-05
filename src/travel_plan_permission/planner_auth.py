@@ -126,6 +126,7 @@ class PlannerAuthConfig:
         ttl_raw = os.getenv("TPP_BOOTSTRAP_TOKEN_TTL_SECONDS")
         oidc_audience = os.getenv("TPP_OIDC_AUDIENCE")
         oidc_role_map = os.getenv("TPP_OIDC_ROLE_MAP")
+        oidc_role_map_file = os.getenv("TPP_OIDC_ROLE_MAP_FILE")
         oidc_subject_claim = os.getenv("TPP_OIDC_SUBJECT_CLAIM", "sub")
 
         missing: list[str] = []
@@ -175,21 +176,30 @@ class PlannerAuthConfig:
                     missing.append("TPP_OIDC_ISSUER")
                 if "{" in jwks_url:
                     missing.append("TPP_OIDC_JWKS_URL")
-            if oidc_role_map:
+            role_map_sources_conflict = bool(oidc_role_map and oidc_role_map_file)
+            if role_map_sources_conflict:
+                invalid.append("TPP_OIDC_ROLE_MAP_FILE")
+            if (oidc_role_map or oidc_role_map_file) and not role_map_sources_conflict:
                 try:
-                    parsed_role_map = json.loads(oidc_role_map)
-                except json.JSONDecodeError:
-                    invalid.append("TPP_OIDC_ROLE_MAP")
+                    parsed_role_map = _load_oidc_role_map(
+                        raw_role_map=oidc_role_map,
+                        role_map_file=oidc_role_map_file,
+                    )
+                except (OSError, ValueError):
+                    invalid.append(
+                        "TPP_OIDC_ROLE_MAP_FILE" if oidc_role_map_file else "TPP_OIDC_ROLE_MAP"
+                    )
                 else:
-                    if not isinstance(parsed_role_map, dict):
-                        invalid.append("TPP_OIDC_ROLE_MAP")
-                    else:
-                        for role_name in parsed_role_map.values():
-                            try:
-                                RoleName(str(role_name))
-                            except ValueError:
-                                invalid.append("TPP_OIDC_ROLE_MAP")
-                                break
+                    for role_name in parsed_role_map.values():
+                        try:
+                            RoleName(str(role_name))
+                        except ValueError:
+                            invalid.append(
+                                "TPP_OIDC_ROLE_MAP_FILE"
+                                if oidc_role_map_file
+                                else "TPP_OIDC_ROLE_MAP"
+                            )
+                            break
 
         return cls(
             base_url=base_url,
@@ -199,7 +209,7 @@ class PlannerAuthConfig:
             bootstrap_secret_configured=bool(bootstrap_secret),
             bootstrap_ttl_seconds=bootstrap_ttl_seconds or _DEFAULT_BOOTSTRAP_TTL_SECONDS,
             oidc_audience=oidc_audience,
-            oidc_role_map_configured=bool(oidc_role_map),
+            oidc_role_map_configured=bool(oidc_role_map or oidc_role_map_file),
             oidc_subject_claim=oidc_subject_claim,
             missing_config=tuple(missing),
             invalid_config=tuple(invalid),
@@ -363,14 +373,34 @@ def _select_jwk(jwks: dict[str, object], kid: str | None) -> dict[str, object] |
     return None
 
 
+def _load_oidc_role_map(
+    *,
+    raw_role_map: str | None = None,
+    role_map_file: str | None = None,
+) -> dict[str, object]:
+    if raw_role_map and role_map_file:
+        raise ValueError("Set either TPP_OIDC_ROLE_MAP or TPP_OIDC_ROLE_MAP_FILE, not both.")
+    if role_map_file:
+        with open(role_map_file, encoding="utf-8") as handle:
+            parsed = json.load(handle)
+    elif raw_role_map:
+        parsed = json.loads(raw_role_map)
+    else:
+        return {}
+    if not isinstance(parsed, dict):
+        raise ValueError("OIDC role map must be a JSON object.")
+    return parsed
+
+
 def _role_permissions_for_claims(
     claims: dict[str, object], config: PlannerAuthConfig
 ) -> tuple[Permission, ...]:
     subject = str(claims.get(config.oidc_subject_claim) or claims["sub"])
     raw_role_map = os.getenv("TPP_OIDC_ROLE_MAP")
+    role_map_file = os.getenv("TPP_OIDC_ROLE_MAP_FILE")
     role_name = RoleName.TRAVELER
-    if raw_role_map:
-        role_map = json.loads(raw_role_map)
+    if raw_role_map or role_map_file:
+        role_map = _load_oidc_role_map(raw_role_map=raw_role_map, role_map_file=role_map_file)
         mapped = role_map.get(f"sub:{subject}", role_map.get(subject))
         if mapped is None:
             mapped = role_map.get(f"{config.oidc_subject_claim}:{subject}")
@@ -422,7 +452,7 @@ def _verify_oidc_token(
             algorithms=[alg],
             audience=config.oidc_audience,
             issuer=settings["issuer"],
-            options={"require": ["exp", "nbf", "sub"]},
+            options={"require": ["iss", "aud", "exp", "nbf", "sub"]},
         )
     except jwt.ExpiredSignatureError as exc:
         raise OIDCAuthenticationError("OIDC bearer token has expired.") from exc

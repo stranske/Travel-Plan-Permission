@@ -46,19 +46,21 @@ def _oidc_token(
     *,
     kid: str = "planner-key",
     subject: str = "user@example.com",
-    audience: str = "trip-planner",
-    issuer: str = "https://accounts.google.com",
+    audience: str | None = "trip-planner",
+    issuer: str | None = "https://accounts.google.com",
     expires_delta: timedelta = timedelta(minutes=10),
     include_nbf: bool = True,
     nbf_offset: timedelta = timedelta(seconds=-5),
 ) -> str:
     now = datetime.now(UTC)
     claims = {
-        "iss": issuer,
-        "aud": audience,
         "sub": subject,
         "exp": now + expires_delta,
     }
+    if issuer is not None:
+        claims["iss"] = issuer
+    if audience is not None:
+        claims["aud"] = audience
     if include_nbf:
         claims["nbf"] = now + nbf_offset
     return jwt.encode(
@@ -169,12 +171,43 @@ def test_oidc_token_uses_role_mapping(monkeypatch, oidc_keys) -> None:
     assert context.can(Permission.EXPORT)
 
 
+def test_oidc_token_uses_role_mapping_file(monkeypatch, tmp_path, oidc_keys) -> None:
+    _set_oidc_env(monkeypatch)
+    role_map_file = tmp_path / "oidc-role-map.json"
+    role_map_file.write_text('{"sub:user@example.com": "finance_admin"}', encoding="utf-8")
+    monkeypatch.setenv("TPP_OIDC_ROLE_MAP_FILE", str(role_map_file))
+    token = _oidc_token(oidc_keys)
+
+    context = authenticate_request(
+        f"Bearer {token}",
+        config=PlannerAuthConfig.from_env(),
+        required_permission=Permission.EXPORT,
+    )
+
+    assert PlannerAuthConfig.from_env().oidc_role_map_configured is True
+    assert context.can(Permission.EXPORT)
+
+
+def test_oidc_auth_config_rejects_conflicting_role_map_sources(monkeypatch, tmp_path) -> None:
+    _set_oidc_env(monkeypatch)
+    role_map_file = tmp_path / "oidc-role-map.json"
+    role_map_file.write_text('{"sub:user@example.com": "finance_admin"}', encoding="utf-8")
+    monkeypatch.setenv("TPP_OIDC_ROLE_MAP", '{"sub:user@example.com": "traveler"}')
+    monkeypatch.setenv("TPP_OIDC_ROLE_MAP_FILE", str(role_map_file))
+
+    config = PlannerAuthConfig.from_env()
+
+    assert config.invalid_config == ("TPP_OIDC_ROLE_MAP_FILE",)
+
+
 @pytest.mark.parametrize(
     ("token_kwargs", "message"),
     [
         ({"expires_delta": timedelta(seconds=-30)}, "has expired"),
         ({"audience": "wrong-audience"}, "audience is invalid"),
         ({"issuer": "https://issuer.example"}, "issuer is invalid"),
+        ({"audience": None}, "is invalid"),
+        ({"issuer": None}, "is invalid"),
     ],
 )
 def test_oidc_token_rejects_invalid_standard_claims(
