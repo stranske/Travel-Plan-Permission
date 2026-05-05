@@ -119,6 +119,7 @@ def test_oidc_provider_registry_defaults(provider, requires_override) -> None:
         bootstrap_ttl_seconds=900,
         oidc_audience="trip-planner",
         oidc_role_map_configured=False,
+        oidc_role_map={},
         oidc_subject_claim="sub",
         missing_config=(),
         invalid_config=(),
@@ -211,16 +212,52 @@ def test_oidc_token_uses_role_mapping_file(monkeypatch, tmp_path, oidc_keys) -> 
     role_map_file = tmp_path / "oidc-role-map.json"
     role_map_file.write_text('{"sub:user@example.com": "finance_admin"}', encoding="utf-8")
     monkeypatch.setenv("TPP_OIDC_ROLE_MAP_FILE", str(role_map_file))
+    config = PlannerAuthConfig.from_env()
+    role_map_file.write_text('{"sub:user@example.com": "traveler"}', encoding="utf-8")
     token = _oidc_token(oidc_keys)
 
     context = authenticate_request(
         f"Bearer {token}",
-        config=PlannerAuthConfig.from_env(),
+        config=config,
         required_permission=Permission.EXPORT,
     )
 
-    assert PlannerAuthConfig.from_env().oidc_role_map_configured is True
+    assert config.oidc_role_map_configured is True
     assert context.can(Permission.EXPORT)
+
+
+def test_oidc_auth_config_rejects_missing_role_map_file(monkeypatch, tmp_path) -> None:
+    _set_oidc_env(monkeypatch)
+    monkeypatch.setenv("TPP_OIDC_ROLE_MAP_FILE", str(tmp_path / "missing-role-map.json"))
+
+    config = PlannerAuthConfig.from_env()
+
+    assert config.invalid_config == ("TPP_OIDC_ROLE_MAP_FILE",)
+    assert config.oidc_role_map == {}
+
+
+def test_oidc_auth_config_rejects_invalid_role_map_file_json(monkeypatch, tmp_path) -> None:
+    _set_oidc_env(monkeypatch)
+    role_map_file = tmp_path / "oidc-role-map.json"
+    role_map_file.write_text("{not-json", encoding="utf-8")
+    monkeypatch.setenv("TPP_OIDC_ROLE_MAP_FILE", str(role_map_file))
+
+    config = PlannerAuthConfig.from_env()
+
+    assert config.invalid_config == ("TPP_OIDC_ROLE_MAP_FILE",)
+    assert config.oidc_role_map == {}
+
+
+def test_oidc_auth_config_rejects_non_object_role_map_file(monkeypatch, tmp_path) -> None:
+    _set_oidc_env(monkeypatch)
+    role_map_file = tmp_path / "oidc-role-map.json"
+    role_map_file.write_text('["finance_admin"]', encoding="utf-8")
+    monkeypatch.setenv("TPP_OIDC_ROLE_MAP_FILE", str(role_map_file))
+
+    config = PlannerAuthConfig.from_env()
+
+    assert config.invalid_config == ("TPP_OIDC_ROLE_MAP_FILE",)
+    assert config.oidc_role_map == {}
 
 
 def test_oidc_auth_config_rejects_conflicting_role_map_sources(monkeypatch, tmp_path) -> None:

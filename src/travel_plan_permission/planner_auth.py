@@ -119,6 +119,7 @@ class PlannerAuthConfig:
     bootstrap_ttl_seconds: int | None
     oidc_audience: str | None
     oidc_role_map_configured: bool
+    oidc_role_map: dict[str, RoleName]
     oidc_subject_claim: str
     missing_config: tuple[str, ...]
     invalid_config: tuple[str, ...]
@@ -138,6 +139,7 @@ class PlannerAuthConfig:
 
         missing: list[str] = []
         invalid: list[str] = []
+        parsed_oidc_role_map: dict[str, RoleName] = {}
 
         if not base_url:
             missing.append("TPP_BASE_URL")
@@ -188,7 +190,7 @@ class PlannerAuthConfig:
                 invalid.append("TPP_OIDC_ROLE_MAP_FILE")
             if (oidc_role_map or oidc_role_map_file) and not role_map_sources_conflict:
                 try:
-                    parsed_role_map = _load_oidc_role_map(
+                    loaded_role_map = _load_oidc_role_map(
                         raw_role_map=oidc_role_map,
                         role_map_file=oidc_role_map_file,
                     )
@@ -197,9 +199,9 @@ class PlannerAuthConfig:
                         "TPP_OIDC_ROLE_MAP_FILE" if oidc_role_map_file else "TPP_OIDC_ROLE_MAP"
                     )
                 else:
-                    for role_name in parsed_role_map.values():
+                    for subject_claim, role_name in loaded_role_map.items():
                         try:
-                            RoleName(str(role_name))
+                            parsed_oidc_role_map[str(subject_claim)] = RoleName(str(role_name))
                         except ValueError:
                             invalid.append(
                                 "TPP_OIDC_ROLE_MAP_FILE"
@@ -217,6 +219,7 @@ class PlannerAuthConfig:
             bootstrap_ttl_seconds=bootstrap_ttl_seconds or _DEFAULT_BOOTSTRAP_TTL_SECONDS,
             oidc_audience=oidc_audience,
             oidc_role_map_configured=bool(oidc_role_map or oidc_role_map_file),
+            oidc_role_map=parsed_oidc_role_map,
             oidc_subject_claim=oidc_subject_claim,
             missing_config=tuple(missing),
             invalid_config=tuple(invalid),
@@ -412,16 +415,13 @@ def _role_permissions_for_claims(
     subject = str(subject_value)
     if not subject:
         raise OIDCAuthenticationError("OIDC bearer token subject is invalid.")
-    raw_role_map = os.getenv("TPP_OIDC_ROLE_MAP")
-    role_map_file = os.getenv("TPP_OIDC_ROLE_MAP_FILE")
     role_name = RoleName.TRAVELER
-    if raw_role_map or role_map_file:
-        role_map = _load_oidc_role_map(raw_role_map=raw_role_map, role_map_file=role_map_file)
-        mapped = role_map.get(f"sub:{subject}", role_map.get(subject))
+    if config.oidc_role_map:
+        mapped = config.oidc_role_map.get(f"sub:{subject}", config.oidc_role_map.get(subject))
         if mapped is None:
-            mapped = role_map.get(f"{config.oidc_subject_claim}:{subject}")
+            mapped = config.oidc_role_map.get(f"{config.oidc_subject_claim}:{subject}")
         if mapped is not None:
-            role_name = RoleName(str(mapped))
+            role_name = mapped
     return tuple(sorted(DEFAULT_ROLES[role_name].permissions, key=lambda item: item.value))
 
 
