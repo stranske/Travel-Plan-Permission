@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+import httpx
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -442,6 +443,33 @@ def test_oidc_kid_miss_forces_jwks_refresh(monkeypatch) -> None:
 
     assert context.subject == "user@example.com"
     assert fetch_counter["value"] == 2
+
+
+@pytest.mark.integration
+def test_oidc_token_authenticates_against_stubbed_jwks_transport(monkeypatch) -> None:
+    _set_oidc_env(monkeypatch)
+    planner_auth._JWKS_CACHE.clear()
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    token = _oidc_token(private_key)
+    jwks = {"keys": [_rsa_jwk(private_key, kid="planner-key")]}
+
+    def _fake_get(url: str, *, timeout: float) -> httpx.Response:
+        assert timeout == 5.0
+        request = httpx.Request("GET", url)
+        return httpx.Response(200, json=jwks, request=request)
+
+    monkeypatch.setenv("TPP_OIDC_JWKS_URL", "https://issuer.example/jwks.json")
+    monkeypatch.setattr(planner_auth.httpx, "get", _fake_get)
+    context = authenticate_request(
+        f"Bearer {token}",
+        config=PlannerAuthConfig.from_env(),
+        required_permission=Permission.VIEW,
+    )
+
+    assert context.subject == "user@example.com"
+    assert context.auth_mode == PlannerAuthMode.OIDC
+    cached = planner_auth._get_cached_jwks("https://issuer.example/jwks.json")
+    assert cached == jwks
 
 
 def test_bootstrap_token_authenticates_required_permission(monkeypatch) -> None:
