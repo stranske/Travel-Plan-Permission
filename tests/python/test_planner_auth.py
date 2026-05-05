@@ -306,7 +306,7 @@ def test_jwks_cache_reuses_document_within_ttl(monkeypatch) -> None:
 
 def test_jwks_cache_refreshes_after_ttl_expiry(monkeypatch) -> None:
     planner_auth._JWKS_CACHE.clear()
-    ticks = iter([100.0, 750.0])
+    ticks = iter([100.0, 100.0, 750.0, 750.0])
     fetch_counter = {"value": 0}
 
     monkeypatch.setattr(planner_auth.time, "monotonic", lambda: next(ticks))
@@ -319,6 +319,29 @@ def test_jwks_cache_refreshes_after_ttl_expiry(monkeypatch) -> None:
 
     first = planner_auth._get_cached_jwks("https://issuer.example/jwks.json")
     second = planner_auth._get_cached_jwks("https://issuer.example/jwks.json")
+
+    assert first["keys"][0]["kid"] == "k1"
+    assert second["keys"][0]["kid"] == "k2"
+    assert fetch_counter["value"] == 2
+
+
+def test_jwks_cache_force_refresh_bypasses_ttl(monkeypatch) -> None:
+    planner_auth._JWKS_CACHE.clear()
+    fetch_counter = {"value": 0}
+
+    monkeypatch.setattr(planner_auth.time, "monotonic", lambda: 100.0)
+
+    def _fetch(_url: str) -> dict[str, object]:
+        fetch_counter["value"] += 1
+        return {"keys": [{"kid": f"k{fetch_counter['value']}"}]}
+
+    monkeypatch.setattr(planner_auth, "_fetch_jwks_document", _fetch)
+
+    first = planner_auth._get_cached_jwks("https://issuer.example/jwks.json")
+    second = planner_auth._get_cached_jwks(
+        "https://issuer.example/jwks.json",
+        force_refresh=True,
+    )
 
     assert first["keys"][0]["kid"] == "k1"
     assert second["keys"][0]["kid"] == "k2"

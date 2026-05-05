@@ -364,7 +364,11 @@ def _get_cached_jwks(jwks_url: str, *, force_refresh: bool = False) -> dict[str,
 
     document = _fetch_jwks_document(jwks_url)
     with _JWKS_CACHE_LOCK:
-        _JWKS_CACHE[jwks_url] = (now + _DEFAULT_JWKS_CACHE_TTL_SECONDS, document)
+        # Start the TTL when we write the fetched document into cache.
+        _JWKS_CACHE[jwks_url] = (
+            time.monotonic() + _DEFAULT_JWKS_CACHE_TTL_SECONDS,
+            document,
+        )
     return document
 
 
