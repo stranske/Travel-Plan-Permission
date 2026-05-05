@@ -49,6 +49,10 @@ The expected deployment config shape is:
 - `TPP_BOOTSTRAP_TOKEN_TTL_SECONDS` optionally bounds local or preview bootstrap tokens
 - `TPP_OIDC_AUDIENCE` when `TPP_AUTH_MODE=oidc`
 - `TPP_OIDC_ROLE_MAP` optionally maps verified subjects to existing roles
+- `TPP_OIDC_ROLE_MAP_FILE` optionally points at the same JSON role-map shape
+  when the mapping is provided as a mounted config file
+- `TPP_OIDC_SUBJECT_CLAIM` optionally selects the verified token claim used as
+  the authenticated subject and role-map lookup key; it defaults to `sub`
 - `TPP_OIDC_ISSUER` and `TPP_OIDC_JWKS_URL` optionally override provider defaults
 
 ### Supported auth modes
@@ -82,6 +86,10 @@ export TPP_OIDC_ROLE_MAP='{"sub:user@example.com":"approver"}'
 
 Accepted role values are the existing security model roles: `traveler`,
 `approver`, `finance_admin`, `policy_admin`, and `system_admin`.
+Use `TPP_OIDC_ROLE_MAP_FILE` instead of `TPP_OIDC_ROLE_MAP` to load the same
+JSON object from disk. Do not set both sources at once. `TPP_OIDC_SUBJECT_CLAIM`
+changes the subject claim used for lookup, so role maps may key entries as
+`<claim>:<value>` when matching on something other than `sub`.
 
 For local and preview live tests, `TPP_ACCESS_TOKEN` is a bounded bootstrap
 credential, not an auth bypass. Startup fails unless the token is paired with a

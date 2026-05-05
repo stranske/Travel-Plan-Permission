@@ -30,30 +30,37 @@ _PLANNER_TOKEN_AUDIENCE = "planner-service"
 _PLANNER_STATIC_TOKEN_SUBJECT = "planner-static-client"
 _OIDC_ALLOWED_ALGORITHMS = frozenset({"RS256"})
 
+_AZURE_AD_OIDC_SETTINGS = {
+    "issuer": "https://login.microsoftonline.com/{tenant_id}/v2.0",
+    "jwks_url": "https://login.microsoftonline.com/common/discovery/v2.0/keys",
+}
+_OKTA_OIDC_SETTINGS = {
+    "issuer": "https://{yourOktaDomain}/oauth2/default",
+    "jwks_url": "https://{yourOktaDomain}/oauth2/default/v1/keys",
+}
+_GOOGLE_OIDC_SETTINGS = {
+    "issuer": "https://accounts.google.com",
+    "jwks_url": "https://www.googleapis.com/oauth2/v3/certs",
+}
 _OIDC_PROVIDER_REGISTRY: dict[str, dict[str, str]] = {
-    "azure_ad": {
-        "issuer": "https://login.microsoftonline.com/{tenant_id}/v2.0",
-        "jwks_url": "https://login.microsoftonline.com/common/discovery/v2.0/keys",
-    },
-    "okta": {
-        "issuer": "https://{yourOktaDomain}/oauth2/default",
-        "jwks_url": "https://{yourOktaDomain}/oauth2/default/v1/keys",
-    },
-    "google": {
-        "issuer": "https://accounts.google.com",
-        "jwks_url": "https://www.googleapis.com/oauth2/v3/certs",
-    },
+    "azure_ad": _AZURE_AD_OIDC_SETTINGS,
+    "okta": _OKTA_OIDC_SETTINGS,
+    "google": _GOOGLE_OIDC_SETTINGS,
 }
 _JWKS_CACHE: dict[str, tuple[float, dict[str, object]]] = {}
 _JWKS_CACHE_LOCK = threading.Lock()
 
 
-class PlannerAuthMode(StrEnum):
+class AuthMode(StrEnum):
     """Configured planner-facing authentication mode."""
 
     STATIC_TOKEN = "static-token"
     BOOTSTRAP_TOKEN = "bootstrap-token"
     OIDC = "oidc"
+
+
+# Backward-compatible alias for existing imports.
+PlannerAuthMode = AuthMode
 
 
 class OIDCAuthenticationError(PermissionError):
@@ -112,6 +119,7 @@ class PlannerAuthConfig:
     bootstrap_ttl_seconds: int | None
     oidc_audience: str | None
     oidc_role_map_configured: bool
+    oidc_role_map: dict[str, RoleName]
     oidc_subject_claim: str
     missing_config: tuple[str, ...]
     invalid_config: tuple[str, ...]
@@ -126,10 +134,12 @@ class PlannerAuthConfig:
         ttl_raw = os.getenv("TPP_BOOTSTRAP_TOKEN_TTL_SECONDS")
         oidc_audience = os.getenv("TPP_OIDC_AUDIENCE")
         oidc_role_map = os.getenv("TPP_OIDC_ROLE_MAP")
+        oidc_role_map_file = os.getenv("TPP_OIDC_ROLE_MAP_FILE")
         oidc_subject_claim = os.getenv("TPP_OIDC_SUBJECT_CLAIM", "sub")
 
         missing: list[str] = []
         invalid: list[str] = []
+        parsed_oidc_role_map: dict[str, RoleName] = {}
 
         if not base_url:
             missing.append("TPP_BASE_URL")
@@ -175,21 +185,30 @@ class PlannerAuthConfig:
                     missing.append("TPP_OIDC_ISSUER")
                 if "{" in jwks_url:
                     missing.append("TPP_OIDC_JWKS_URL")
-            if oidc_role_map:
+            role_map_sources_conflict = bool(oidc_role_map and oidc_role_map_file)
+            if role_map_sources_conflict:
+                invalid.append("TPP_OIDC_ROLE_MAP_FILE")
+            if (oidc_role_map or oidc_role_map_file) and not role_map_sources_conflict:
                 try:
-                    parsed_role_map = json.loads(oidc_role_map)
-                except json.JSONDecodeError:
-                    invalid.append("TPP_OIDC_ROLE_MAP")
+                    loaded_role_map = _load_oidc_role_map(
+                        raw_role_map=oidc_role_map,
+                        role_map_file=oidc_role_map_file,
+                    )
+                except (OSError, ValueError):
+                    invalid.append(
+                        "TPP_OIDC_ROLE_MAP_FILE" if oidc_role_map_file else "TPP_OIDC_ROLE_MAP"
+                    )
                 else:
-                    if not isinstance(parsed_role_map, dict):
-                        invalid.append("TPP_OIDC_ROLE_MAP")
-                    else:
-                        for role_name in parsed_role_map.values():
-                            try:
-                                RoleName(str(role_name))
-                            except ValueError:
-                                invalid.append("TPP_OIDC_ROLE_MAP")
-                                break
+                    for subject_claim, role_name in loaded_role_map.items():
+                        try:
+                            parsed_oidc_role_map[str(subject_claim)] = RoleName(str(role_name))
+                        except ValueError:
+                            invalid.append(
+                                "TPP_OIDC_ROLE_MAP_FILE"
+                                if oidc_role_map_file
+                                else "TPP_OIDC_ROLE_MAP"
+                            )
+                            break
 
         return cls(
             base_url=base_url,
@@ -199,7 +218,8 @@ class PlannerAuthConfig:
             bootstrap_secret_configured=bool(bootstrap_secret),
             bootstrap_ttl_seconds=bootstrap_ttl_seconds or _DEFAULT_BOOTSTRAP_TTL_SECONDS,
             oidc_audience=oidc_audience,
-            oidc_role_map_configured=bool(oidc_role_map),
+            oidc_role_map_configured=bool(oidc_role_map or oidc_role_map_file),
+            oidc_role_map=parsed_oidc_role_map,
             oidc_subject_claim=oidc_subject_claim,
             missing_config=tuple(missing),
             invalid_config=tuple(invalid),
@@ -347,7 +367,11 @@ def _get_cached_jwks(jwks_url: str, *, force_refresh: bool = False) -> dict[str,
 
     document = _fetch_jwks_document(jwks_url)
     with _JWKS_CACHE_LOCK:
-        _JWKS_CACHE[jwks_url] = (now + _DEFAULT_JWKS_CACHE_TTL_SECONDS, document)
+        # Start the TTL when we write the fetched document into cache.
+        _JWKS_CACHE[jwks_url] = (
+            time.monotonic() + _DEFAULT_JWKS_CACHE_TTL_SECONDS,
+            document,
+        )
     return document
 
 
@@ -363,19 +387,41 @@ def _select_jwk(jwks: dict[str, object], kid: str | None) -> dict[str, object] |
     return None
 
 
+def _load_oidc_role_map(
+    *,
+    raw_role_map: str | None = None,
+    role_map_file: str | None = None,
+) -> dict[str, object]:
+    if raw_role_map and role_map_file:
+        raise ValueError("Set either TPP_OIDC_ROLE_MAP or TPP_OIDC_ROLE_MAP_FILE, not both.")
+    if role_map_file:
+        with open(role_map_file, encoding="utf-8") as handle:
+            parsed = json.load(handle)
+    elif raw_role_map:
+        parsed = json.loads(raw_role_map)
+    else:
+        return {}
+    if not isinstance(parsed, dict):
+        raise ValueError("OIDC role map must be a JSON object.")
+    return parsed
+
+
 def _role_permissions_for_claims(
     claims: dict[str, object], config: PlannerAuthConfig
 ) -> tuple[Permission, ...]:
-    subject = str(claims.get(config.oidc_subject_claim) or claims["sub"])
-    raw_role_map = os.getenv("TPP_OIDC_ROLE_MAP")
+    subject_value = claims.get(config.oidc_subject_claim)
+    if subject_value is None:
+        subject_value = claims["sub"]
+    subject = str(subject_value)
+    if not subject:
+        raise OIDCAuthenticationError("OIDC bearer token subject is invalid.")
     role_name = RoleName.TRAVELER
-    if raw_role_map:
-        role_map = json.loads(raw_role_map)
-        mapped = role_map.get(f"sub:{subject}", role_map.get(subject))
+    if config.oidc_role_map:
+        mapped = config.oidc_role_map.get(f"sub:{subject}", config.oidc_role_map.get(subject))
         if mapped is None:
-            mapped = role_map.get(f"{config.oidc_subject_claim}:{subject}")
+            mapped = config.oidc_role_map.get(f"{config.oidc_subject_claim}:{subject}")
         if mapped is not None:
-            role_name = RoleName(str(mapped))
+            role_name = mapped
     return tuple(sorted(DEFAULT_ROLES[role_name].permissions, key=lambda item: item.value))
 
 
@@ -422,7 +468,11 @@ def _verify_oidc_token(
             algorithms=[alg],
             audience=config.oidc_audience,
             issuer=settings["issuer"],
-            options={"require": ["exp", "nbf", "sub"]},
+            options={
+                "require": ["iss", "aud", "exp", "nbf", "sub"],
+                "verify_exp": True,
+                "verify_nbf": True,
+            },
         )
     except jwt.ExpiredSignatureError as exc:
         raise OIDCAuthenticationError("OIDC bearer token has expired.") from exc
@@ -435,7 +485,12 @@ def _verify_oidc_token(
     except (jwt.PyJWTError, TypeError, ValueError) as exc:
         raise OIDCAuthenticationError("OIDC bearer token is invalid.") from exc
 
-    subject = str(claims.get(config.oidc_subject_claim) or claims["sub"])
+    subject_value = claims.get(config.oidc_subject_claim)
+    if subject_value is None:
+        subject_value = claims["sub"]
+    subject = str(subject_value)
+    if not subject:
+        raise OIDCAuthenticationError("OIDC bearer token subject is invalid.")
     permissions = _role_permissions_for_claims(claims, config)
     expires_at = datetime.fromtimestamp(int(claims["exp"]), tz=UTC)
     return PlannerAuthContext(

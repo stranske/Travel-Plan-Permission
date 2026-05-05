@@ -33,6 +33,7 @@ from .models import (
     determine_exception_approval_level,
 )
 from .planner_auth import (
+    AuthMode,
     PlannerAuthConfig,
     PlannerAuthContext,
     PlannerAuthMode,
@@ -228,6 +229,7 @@ __all__ = [
     "PlannerExecutionState",
     "PlannerOperationType",
     "PlannerApprovalTrigger",
+    "AuthMode",
     "PlannerAuthConfig",
     "PlannerAuthContext",
     "PlannerAuthMode",
