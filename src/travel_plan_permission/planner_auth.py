@@ -187,6 +187,7 @@ class PlannerAuthConfig:
                     missing.append("TPP_OIDC_JWKS_URL")
             role_map_sources_conflict = bool(oidc_role_map and oidc_role_map_file)
             if role_map_sources_conflict:
+                invalid.append("TPP_OIDC_ROLE_MAP")
                 invalid.append("TPP_OIDC_ROLE_MAP_FILE")
             if (oidc_role_map or oidc_role_map_file) and not role_map_sources_conflict:
                 try:

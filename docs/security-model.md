@@ -87,9 +87,18 @@ export TPP_OIDC_ROLE_MAP='{"sub:user@example.com":"approver"}'
 Accepted role values are the existing security model roles: `traveler`,
 `approver`, `finance_admin`, `policy_admin`, and `system_admin`.
 Use `TPP_OIDC_ROLE_MAP_FILE` instead of `TPP_OIDC_ROLE_MAP` to load the same
-JSON object from disk. Do not set both sources at once. `TPP_OIDC_SUBJECT_CLAIM`
-changes the subject claim used for lookup, so role maps may key entries as
-`<claim>:<value>` when matching on something other than `sub`.
+JSON object from disk. Do not set both sources at once; the service reports
+`/readyz` as `misconfigured` with both `TPP_OIDC_ROLE_MAP` and
+`TPP_OIDC_ROLE_MAP_FILE` listed in `invalid_config` when both are present, and
+planner routes return 503 until the conflict is fixed.
+`TPP_OIDC_SUBJECT_CLAIM` changes the subject claim used for lookup, so role maps
+may key entries as `<claim>:<value>` when matching on something other than
+`sub`.
+
+OIDC authentication failures are exposed as HTTP 401 responses with a
+structured detail body containing `error_code` and `message`, plus a
+`WWW-Authenticate: Bearer error="invalid_token"` challenge header. Permission
+failures after a valid token continue to return role-aware authorization errors.
 
 For local and preview live tests, `TPP_ACCESS_TOKEN` is a bounded bootstrap
 credential, not an auth bypass. Startup fails unless the token is paired with a

@@ -602,6 +602,94 @@ def test_readyz_reports_missing_oidc_audience(monkeypatch) -> None:
     assert response.json()["config"]["missing_config"] == ["TPP_OIDC_AUDIENCE"]
 
 
+def test_readyz_reports_conflicting_oidc_role_map_sources(monkeypatch, tmp_path: Path) -> None:
+    _set_oidc_runtime_env(monkeypatch)
+    role_map_file = tmp_path / "oidc-role-map.json"
+    role_map_file.write_text('{"sub:planner@example.com":"approver"}', encoding="utf-8")
+    monkeypatch.setenv("TPP_OIDC_ROLE_MAP", '{"sub:planner@example.com":"traveler"}')
+    monkeypatch.setenv("TPP_OIDC_ROLE_MAP_FILE", str(role_map_file))
+
+    client = TestClient(create_app())
+    response = client.get("/readyz")
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "misconfigured"
+    assert payload["config"]["missing_config"] == []
+    assert payload["config"]["invalid_config"] == ["TPP_OIDC_ROLE_MAP", "TPP_OIDC_ROLE_MAP_FILE"]
+    assert payload["config"]["oidc_role_map_configured"] is True
+
+
+def test_planner_route_returns_503_when_oidc_role_map_sources_conflict(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _set_oidc_runtime_env(monkeypatch)
+    role_map_file = tmp_path / "oidc-role-map.json"
+    role_map_file.write_text('{"sub:planner@example.com":"approver"}', encoding="utf-8")
+    monkeypatch.setenv("TPP_OIDC_ROLE_MAP", '{"sub:planner@example.com":"traveler"}')
+    monkeypatch.setenv("TPP_OIDC_ROLE_MAP_FILE", str(role_map_file))
+
+    client = TestClient(create_app())
+    trip_plan = _load_fixture("proposal_submission.json")
+    snapshot_request = _load_fixture("policy_snapshot_request.json")
+
+    response = client.request(
+        "GET",
+        "/api/planner/policy-snapshot",
+        headers={"Authorization": "Bearer dev-token"},
+        json={"trip_plan": trip_plan, "request": snapshot_request},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Planner auth config is not ready."
+
+
+def test_oidc_http_401_contract_includes_message_and_bearer_challenge(
+    monkeypatch,
+) -> None:
+    _set_oidc_runtime_env(monkeypatch)
+    client = TestClient(create_app())
+    trip_plan = _load_fixture("proposal_submission.json")
+    snapshot_request = _load_fixture("policy_snapshot_request.json")
+
+    response = client.request(
+        "GET",
+        "/api/planner/policy-snapshot",
+        headers=_oidc_auth_header(monkeypatch, audience="wrong-audience"),
+        json={"trip_plan": trip_plan, "request": snapshot_request},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == 'Bearer error="invalid_token"'
+    assert response.json()["detail"] == {
+        "error_code": "invalid_token",
+        "message": "OIDC bearer token audience is invalid.",
+    }
+
+
+def test_oidc_http_401_contract_for_malformed_token_includes_bearer_challenge(
+    monkeypatch,
+) -> None:
+    _set_oidc_runtime_env(monkeypatch)
+    client = TestClient(create_app())
+    trip_plan = _load_fixture("proposal_submission.json")
+    snapshot_request = _load_fixture("policy_snapshot_request.json")
+
+    response = client.request(
+        "GET",
+        "/api/planner/policy-snapshot",
+        headers={"Authorization": "Bearer not-a-jwt"},
+        json={"trip_plan": trip_plan, "request": snapshot_request},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == 'Bearer error="invalid_token"'
+    assert response.json()["detail"] == {
+        "error_code": "invalid_token",
+        "message": "OIDC bearer token is malformed.",
+    }
+
+
 def test_bootstrap_token_rejects_missing_create_permission(monkeypatch) -> None:
     _set_bootstrap_runtime_env(monkeypatch)
     client = TestClient(create_app())
