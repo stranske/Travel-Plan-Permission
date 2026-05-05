@@ -98,8 +98,9 @@ export TPP_OIDC_ROLE_MAP='{"sub:user@example.com":"traveler"}'
 OIDC mode validates the bearer JWT against the provider JWKS, issuer, audience,
 expiry, not-before, and subject claims before resolving the subject to a TPP
 role. Invalid OIDC bearer tokens are rejected at the HTTP boundary with a
-structured `{"error_code": "invalid_token", "message": "..."}` response body
-and a `WWW-Authenticate: Bearer error="invalid_token"` challenge header. The
+structured `{"detail": {"error_code": "invalid_token", "message": "..."}}`
+response body (FastAPI wraps the error fields under `detail`) and a
+`WWW-Authenticate: Bearer error="invalid_token"` challenge header. The
 role map can also be loaded from `TPP_OIDC_ROLE_MAP_FILE` when the JSON mapping
 should live in a mounted config file instead of an environment variable. Set
 exactly one of `TPP_OIDC_ROLE_MAP` or `TPP_OIDC_ROLE_MAP_FILE`; `/readyz`

@@ -616,7 +616,7 @@ def test_readyz_reports_conflicting_oidc_role_map_sources(monkeypatch, tmp_path:
     payload = response.json()
     assert payload["status"] == "misconfigured"
     assert payload["config"]["missing_config"] == []
-    assert payload["config"]["invalid_config"] == ["TPP_OIDC_ROLE_MAP/TPP_OIDC_ROLE_MAP_FILE"]
+    assert payload["config"]["invalid_config"] == ["TPP_OIDC_ROLE_MAP", "TPP_OIDC_ROLE_MAP_FILE"]
     assert payload["config"]["oidc_role_map_configured"] is True
 
 

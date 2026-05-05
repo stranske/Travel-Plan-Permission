@@ -88,9 +88,9 @@ Accepted role values are the existing security model roles: `traveler`,
 `approver`, `finance_admin`, `policy_admin`, and `system_admin`.
 Use `TPP_OIDC_ROLE_MAP_FILE` instead of `TPP_OIDC_ROLE_MAP` to load the same
 JSON object from disk. Do not set both sources at once; the service reports
-`/readyz` as `misconfigured` with
-`TPP_OIDC_ROLE_MAP/TPP_OIDC_ROLE_MAP_FILE` in `invalid_config` when both are
-present, and planner routes return 503 until the conflict is fixed.
+`/readyz` as `misconfigured` with both `TPP_OIDC_ROLE_MAP` and
+`TPP_OIDC_ROLE_MAP_FILE` listed in `invalid_config` when both are present, and
+planner routes return 503 until the conflict is fixed.
 `TPP_OIDC_SUBJECT_CLAIM` changes the subject claim used for lookup, so role maps
 may key entries as `<claim>:<value>` when matching on something other than
 `sub`.

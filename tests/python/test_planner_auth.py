@@ -271,7 +271,7 @@ def test_oidc_auth_config_rejects_conflicting_role_map_sources(monkeypatch, tmp_
 
     config = PlannerAuthConfig.from_env()
 
-    assert config.invalid_config == ("TPP_OIDC_ROLE_MAP/TPP_OIDC_ROLE_MAP_FILE",)
+    assert config.invalid_config == ("TPP_OIDC_ROLE_MAP", "TPP_OIDC_ROLE_MAP_FILE")
 
 
 @pytest.mark.parametrize(
