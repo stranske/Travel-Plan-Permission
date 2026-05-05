@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 import travel_plan_permission.planner_auth as planner_auth
 from travel_plan_permission.planner_auth import (
     AuthMode,
+    OIDCAuthenticationError,
     PlannerAuthConfig,
     PlannerAuthMode,
     authenticate_request,
@@ -324,6 +325,63 @@ def test_oidc_token_rejects_signature_mismatch(monkeypatch, oidc_keys) -> None:
             config=PlannerAuthConfig.from_env(),
             required_permission=Permission.VIEW,
         )
+
+
+@pytest.mark.parametrize(
+    ("token_kwargs", "expected_message"),
+    [
+        ({"expires_delta": timedelta(seconds=-30)}, "has expired"),
+        ({"audience": "wrong-audience"}, "audience is invalid"),
+        ({"issuer": "https://issuer.example"}, "issuer is invalid"),
+    ],
+)
+def test_oidc_standard_claim_failures_raise_structured_invalid_token(
+    monkeypatch,
+    oidc_keys,
+    token_kwargs,
+    expected_message,
+) -> None:
+    _set_oidc_env(monkeypatch)
+    token = _oidc_token(oidc_keys, **token_kwargs)
+
+    with pytest.raises(OIDCAuthenticationError, match=expected_message) as excinfo:
+        authenticate_request(
+            f"Bearer {token}",
+            config=PlannerAuthConfig.from_env(),
+            required_permission=Permission.VIEW,
+        )
+
+    assert excinfo.value.error_code == "invalid_token"
+
+
+def test_oidc_kid_miss_raises_structured_invalid_token(monkeypatch, oidc_keys) -> None:
+    _set_oidc_env(monkeypatch)
+    token = _oidc_token(oidc_keys, kid="missing-key")
+
+    with pytest.raises(OIDCAuthenticationError, match="key id was not found") as excinfo:
+        authenticate_request(
+            f"Bearer {token}",
+            config=PlannerAuthConfig.from_env(),
+            required_permission=Permission.VIEW,
+        )
+
+    assert excinfo.value.error_code == "invalid_token"
+
+
+def test_oidc_signature_mismatch_raises_structured_invalid_token(monkeypatch, oidc_keys) -> None:
+    _set_oidc_env(monkeypatch)
+    assert oidc_keys is not None
+    other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    token = _oidc_token(other_key)
+
+    with pytest.raises(OIDCAuthenticationError, match="is invalid") as excinfo:
+        authenticate_request(
+            f"Bearer {token}",
+            config=PlannerAuthConfig.from_env(),
+            required_permission=Permission.VIEW,
+        )
+
+    assert excinfo.value.error_code == "invalid_token"
 
 
 def test_oidc_token_rejects_missing_nbf(monkeypatch, oidc_keys) -> None:
