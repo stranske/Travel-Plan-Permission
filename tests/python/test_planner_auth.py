@@ -592,3 +592,8 @@ def test_bootstrap_token_rejects_expired_token(monkeypatch) -> None:
             required_permission=Permission.VIEW,
             now=issued_at + timedelta(seconds=45),
         )
+
+
+def test_failure_reason_code_maps_oidc_errors() -> None:
+    exc = OIDCAuthenticationError("OIDC bearer token audience is invalid.")
+    assert planner_auth._failure_reason_code(exc) == "oidc.invalid_token"
