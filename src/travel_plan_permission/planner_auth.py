@@ -48,12 +48,16 @@ _JWKS_CACHE: dict[str, tuple[float, dict[str, object]]] = {}
 _JWKS_CACHE_LOCK = threading.Lock()
 
 
-class PlannerAuthMode(StrEnum):
+class AuthMode(StrEnum):
     """Configured planner-facing authentication mode."""
 
     STATIC_TOKEN = "static-token"
     BOOTSTRAP_TOKEN = "bootstrap-token"
     OIDC = "oidc"
+
+
+# Backward-compatible alias for existing imports.
+PlannerAuthMode = AuthMode
 
 
 class OIDCAuthenticationError(PermissionError):

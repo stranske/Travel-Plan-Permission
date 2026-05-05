@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 import travel_plan_permission.planner_auth as planner_auth
 from travel_plan_permission.planner_auth import (
+    AuthMode,
     PlannerAuthConfig,
     PlannerAuthMode,
     authenticate_request,
@@ -87,6 +88,11 @@ def test_bootstrap_auth_config_requires_explicit_mode(monkeypatch) -> None:
 
     assert config.auth_mode is None
     assert config.missing_config == ("TPP_AUTH_MODE",)
+
+
+def test_auth_mode_alias_includes_oidc() -> None:
+    assert AuthMode.OIDC.value == "oidc"
+    assert PlannerAuthMode is AuthMode
 
 
 def test_oidc_auth_config_requires_audience(monkeypatch) -> None:
