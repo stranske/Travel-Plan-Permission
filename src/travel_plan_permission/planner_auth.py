@@ -30,19 +30,22 @@ _PLANNER_TOKEN_AUDIENCE = "planner-service"
 _PLANNER_STATIC_TOKEN_SUBJECT = "planner-static-client"
 _OIDC_ALLOWED_ALGORITHMS = frozenset({"RS256"})
 
+_AZURE_AD_OIDC_SETTINGS = {
+    "issuer": "https://login.microsoftonline.com/{tenant_id}/v2.0",
+    "jwks_url": "https://login.microsoftonline.com/common/discovery/v2.0/keys",
+}
+_OKTA_OIDC_SETTINGS = {
+    "issuer": "https://{yourOktaDomain}/oauth2/default",
+    "jwks_url": "https://{yourOktaDomain}/oauth2/default/v1/keys",
+}
+_GOOGLE_OIDC_SETTINGS = {
+    "issuer": "https://accounts.google.com",
+    "jwks_url": "https://www.googleapis.com/oauth2/v3/certs",
+}
 _OIDC_PROVIDER_REGISTRY: dict[str, dict[str, str]] = {
-    "azure_ad": {
-        "issuer": "https://login.microsoftonline.com/{tenant_id}/v2.0",
-        "jwks_url": "https://login.microsoftonline.com/common/discovery/v2.0/keys",
-    },
-    "okta": {
-        "issuer": "https://{yourOktaDomain}/oauth2/default",
-        "jwks_url": "https://{yourOktaDomain}/oauth2/default/v1/keys",
-    },
-    "google": {
-        "issuer": "https://accounts.google.com",
-        "jwks_url": "https://www.googleapis.com/oauth2/v3/certs",
-    },
+    "azure_ad": _AZURE_AD_OIDC_SETTINGS,
+    "okta": _OKTA_OIDC_SETTINGS,
+    "google": _GOOGLE_OIDC_SETTINGS,
 }
 _JWKS_CACHE: dict[str, tuple[float, dict[str, object]]] = {}
 _JWKS_CACHE_LOCK = threading.Lock()
