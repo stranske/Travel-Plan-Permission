@@ -177,6 +177,35 @@ def test_oidc_token_uses_role_mapping(monkeypatch, oidc_keys) -> None:
     assert context.can(Permission.EXPORT)
 
 
+def test_oidc_token_uses_custom_subject_claim_for_role_mapping(monkeypatch, oidc_keys) -> None:
+    _set_oidc_env(monkeypatch)
+    monkeypatch.setenv("TPP_OIDC_SUBJECT_CLAIM", "email")
+    monkeypatch.setenv("TPP_OIDC_ROLE_MAP", '{"email:user@example.com": "finance_admin"}')
+    now = datetime.now(UTC)
+    token = jwt.encode(
+        {
+            "sub": "opaque-subject",
+            "email": "user@example.com",
+            "iss": "https://accounts.google.com",
+            "aud": "trip-planner",
+            "nbf": now - timedelta(seconds=5),
+            "exp": now + timedelta(minutes=10),
+        },
+        oidc_keys,
+        algorithm="RS256",
+        headers={"kid": "planner-key"},
+    )
+
+    context = authenticate_request(
+        f"Bearer {token}",
+        config=PlannerAuthConfig.from_env(),
+        required_permission=Permission.EXPORT,
+    )
+
+    assert context.subject == "user@example.com"
+    assert context.can(Permission.EXPORT)
+
+
 def test_oidc_token_uses_role_mapping_file(monkeypatch, tmp_path, oidc_keys) -> None:
     _set_oidc_env(monkeypatch)
     role_map_file = tmp_path / "oidc-role-map.json"

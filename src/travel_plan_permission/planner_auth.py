@@ -406,7 +406,12 @@ def _load_oidc_role_map(
 def _role_permissions_for_claims(
     claims: dict[str, object], config: PlannerAuthConfig
 ) -> tuple[Permission, ...]:
-    subject = str(claims.get(config.oidc_subject_claim) or claims["sub"])
+    subject_value = claims.get(config.oidc_subject_claim)
+    if subject_value is None:
+        subject_value = claims["sub"]
+    subject = str(subject_value)
+    if not subject:
+        raise OIDCAuthenticationError("OIDC bearer token subject is invalid.")
     raw_role_map = os.getenv("TPP_OIDC_ROLE_MAP")
     role_map_file = os.getenv("TPP_OIDC_ROLE_MAP_FILE")
     role_name = RoleName.TRAVELER
@@ -463,7 +468,11 @@ def _verify_oidc_token(
             algorithms=[alg],
             audience=config.oidc_audience,
             issuer=settings["issuer"],
-            options={"require": ["iss", "aud", "exp", "nbf", "sub"]},
+            options={
+                "require": ["iss", "aud", "exp", "nbf", "sub"],
+                "verify_exp": True,
+                "verify_nbf": True,
+            },
         )
     except jwt.ExpiredSignatureError as exc:
         raise OIDCAuthenticationError("OIDC bearer token has expired.") from exc
@@ -476,7 +485,12 @@ def _verify_oidc_token(
     except (jwt.PyJWTError, TypeError, ValueError) as exc:
         raise OIDCAuthenticationError("OIDC bearer token is invalid.") from exc
 
-    subject = str(claims.get(config.oidc_subject_claim) or claims["sub"])
+    subject_value = claims.get(config.oidc_subject_claim)
+    if subject_value is None:
+        subject_value = claims["sub"]
+    subject = str(subject_value)
+    if not subject:
+        raise OIDCAuthenticationError("OIDC bearer token subject is invalid.")
     permissions = _role_permissions_for_claims(claims, config)
     expires_at = datetime.fromtimestamp(int(claims["exp"]), tz=UTC)
     return PlannerAuthContext(
