@@ -1768,7 +1768,9 @@ def _build_why_section(
     if verification_data.structural_issues:
         parts.append("The original issue had structural problems that may have hindered progress.")
 
-    if _has_mixed_repo_and_workflow_acceptance_criteria(original_issue):
+    if _has_mixed_repo_and_workflow_acceptance_criteria(
+        original_issue
+    ) and not _verification_feedback_mentions_workflow_sync(verification_data):
         parts.append(
             "Workflow-sync acceptance criteria were de-emphasized so this follow-up stays "
             "focused on the repo-local verifier concerns."
@@ -1782,27 +1784,83 @@ def _build_why_section(
     return " ".join(parts)
 
 
-WORKFLOW_SYNC_ACCEPTANCE_MARKERS = (
-    ".github/",
-    "agent",
-    "autofix",
+WORKFLOW_SYNC_CONTEXT_MARKERS = (
     "consumer sync",
-    "gate workflow",
+    "consumer-sync",
+    "consumer",
+    "consumers",
+    "from the template",
     "maint-68",
+    "synced",
     "sync pr",
     "sync-generated",
-    "template",
-    "workflow",
+    "template sync",
+    "workflow template sync",
+    "workflow-template",
+    "workflow-owned",
+    "workflows-owned",
 )
+
+WORKFLOW_SYNC_PATH_MARKERS = (
+    ".github/actions",
+    ".github/scripts",
+    ".github/sync-manifest.yml",
+    ".github/workflows",
+)
+
+WORKFLOW_SYNC_ACCEPTANCE_MARKERS = (
+    "workflow file",
+    "workflow files",
+    "workflow-owned",
+    "workflows-owned",
+    "workflows-owned scripts",
+    "gate workflow",
+    "maint-68",
+    "synced automation",
+    "synced script",
+    "synced scripts",
+    "synced workflow",
+    "sync pr",
+    "sync-generated",
+    "sync workflow templates",
+    "template sync",
+    "workflow template sync",
+    "workflow-template",
+)
+
+WORKFLOW_SYNC_REPO_LOCAL_MARKERS = (
+    "repo-local",
+    "repository-local",
+    "local-only",
+    "project-specific",
+    "this repository",
+    "this repo",
+)
+
+
+def _acceptance_criteria_from_original_issue(
+    original_issue: OriginalIssueData | list[str],
+) -> list[str]:
+    if isinstance(original_issue, OriginalIssueData):
+        raw_criteria = original_issue.acceptance_criteria
+    else:
+        raw_criteria = original_issue
+    return [criterion for criterion in raw_criteria if criterion]
 
 
 def _is_workflow_sync_acceptance_criterion(criterion: str) -> bool:
     normalized = str(criterion or "").strip().lower()
-    return any(marker in normalized for marker in WORKFLOW_SYNC_ACCEPTANCE_MARKERS)
+    if any(marker in normalized for marker in WORKFLOW_SYNC_ACCEPTANCE_MARKERS):
+        return True
+    if any(marker in normalized for marker in WORKFLOW_SYNC_PATH_MARKERS):
+        return not any(marker in normalized for marker in WORKFLOW_SYNC_REPO_LOCAL_MARKERS)
+    return False
 
 
-def _has_mixed_repo_and_workflow_acceptance_criteria(original_issue: OriginalIssueData) -> bool:
-    criteria = [criterion for criterion in original_issue.acceptance_criteria if criterion]
+def _has_mixed_repo_and_workflow_acceptance_criteria(
+    original_issue: OriginalIssueData | list[str],
+) -> bool:
+    criteria = _acceptance_criteria_from_original_issue(original_issue)
     if not criteria:
         return False
     has_workflow = any(_is_workflow_sync_acceptance_criterion(criterion) for criterion in criteria)
@@ -1812,9 +1870,19 @@ def _has_mixed_repo_and_workflow_acceptance_criteria(original_issue: OriginalIss
     return has_workflow and has_repo_local
 
 
+def _verification_feedback_mentions_workflow_sync(verification_data: VerificationData) -> bool:
+    parts = [
+        *verification_data.concerns,
+        *verification_data.non_pass_output,
+        *verification_data.non_pass_findings,
+        *verification_data.structural_issues,
+    ]
+    return any(_is_workflow_sync_acceptance_criterion(part) for part in parts)
+
+
 def _select_followup_acceptance_criteria(
-    original_issue: OriginalIssueData,
-    verification_data: VerificationData,  # noqa: ARG001 - retained for future signal-aware filtering
+    original_issue: OriginalIssueData | list[str],
+    verification_data: VerificationData,
     *,
     limit: int = 10,
 ) -> list[str]:
@@ -1826,9 +1894,15 @@ def _select_followup_acceptance_criteria(
     avoid restating workflow-sync rollout criteria as if they were local tasks.
     """
 
-    criteria = [criterion for criterion in original_issue.acceptance_criteria if criterion]
+    criteria = _acceptance_criteria_from_original_issue(original_issue)
     if not criteria:
         return []
+
+    if not _has_mixed_repo_and_workflow_acceptance_criteria(original_issue):
+        return criteria[:limit]
+
+    if _verification_feedback_mentions_workflow_sync(verification_data):
+        return criteria[:limit]
 
     filtered = [
         criterion for criterion in criteria if not _is_workflow_sync_acceptance_criterion(criterion)
