@@ -19,10 +19,15 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
 from travel_plan_permission import audit, http_service, planner_auth, portal_review
-from travel_plan_permission.http_service import PlannerProposalStore, create_app, main
+from travel_plan_permission.http_service import (
+    PlannerProposalStore,
+    PortalArtifact,
+    create_app,
+    main,
+)
 from travel_plan_permission.planner_auth import mint_bootstrap_token
 from travel_plan_permission.policy_api import PlannerProposalOperationResponse
-from travel_plan_permission.security import Permission
+from travel_plan_permission.security import AuditEventType, Permission
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "planner_integration"
 AUTH_HEADER = {"Authorization": "Bearer dev-token"}
@@ -2041,6 +2046,226 @@ def test_portal_review_state_survives_restart(monkeypatch, tmp_path) -> None:
     assert 'data-template="review-summary"' in restored.text
     assert f"Draft {draft_id}" in restored.text
     assert "Generated artifacts" in restored.text
+
+
+def test_expense_review_state_survives_restart(tmp_path) -> None:
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+
+    first_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
+    review = first_client.post(
+        "/portal/expenses/review",
+        data=_expense_form_payload(),
+        follow_redirects=True,
+    )
+
+    assert review.status_code == 200
+    match = re.search(r"/portal/expenses/([^/]+)/artifacts/expense-csv", review.text)
+    assert match is not None
+    draft_id = match.group(1)
+
+    second_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
+    restored = second_client.get(f"/portal/expenses/{draft_id}")
+    csv_export = second_client.get(f"/portal/expenses/{draft_id}/artifacts/expense-csv")
+    excel_export = second_client.get(f"/portal/expenses/{draft_id}/artifacts/expense-xlsx")
+
+    assert restored.status_code == 200
+    assert f"Expense draft {draft_id}" in restored.text
+    assert "Download CSV" in restored.text
+    assert csv_export.status_code == 200
+    assert f"{draft_id}.csv" in csv_export.headers["content-disposition"]
+    assert b"date,vendor,amount,category,cost_center,receipt_link" in csv_export.content
+    assert excel_export.status_code == 200
+    assert f"{draft_id}.xlsx" in excel_export.headers["content-disposition"]
+    assert excel_export.content.startswith(b"PK")
+
+
+def test_expense_drafts_round_trip_serialize_and_load(tmp_path) -> None:
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+    first_store = PlannerProposalStore(state_path=state_path)
+    draft = first_store.save_expense_draft(_expense_form_payload())
+    first_store.cache_expense_artifacts(
+        draft.draft_id,
+        {
+            "expense-csv": PortalArtifact(
+                filename=f"{draft.draft_id}.csv",
+                content=b"date,vendor,amount\n2026-01-15,Riverfront Hotel,249.00\n",
+                media_type="text/csv",
+            )
+        },
+    )
+
+    restored_store = PlannerProposalStore(state_path=state_path)
+    assert (
+        restored_store._serialize_state()["expense_drafts_by_id"]
+        == first_store._serialize_state()["expense_drafts_by_id"]
+    )
+
+
+def test_in_process_audit_log_survives_restart(tmp_path) -> None:
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+    first_store = PlannerProposalStore(state_path=state_path)
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.AUTHENTICATION,
+        actor="static-token",
+        subject="planner-admin",
+        outcome="success",
+        metadata={"provider": "static-token"},
+    )
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.REVIEW,
+        actor="workflow-portal",
+        subject="review-123",
+        outcome="proposal_status_change",
+        metadata={
+            "proposal_id": "prop-123",
+            "from_status": "submitted",
+            "to_status": "approved",
+        },
+    )
+    first_store.save_expense_draft(_expense_form_payload())
+
+    restored_store = PlannerProposalStore(state_path=state_path)
+    restored_events = restored_store.list_audit_events()
+    assert len(restored_events) >= 2
+    assert {(event.event_type, event.outcome) for event in restored_events}.issuperset(
+        {
+            (AuditEventType.AUTHENTICATION, "success"),
+            (AuditEventType.REVIEW, "proposal_status_change"),
+        }
+    )
+
+    assert any(
+        event.event_type == AuditEventType.AUTHENTICATION
+        and event.actor == "static-token"
+        and event.subject == "planner-admin"
+        and event.outcome == "success"
+        and event.metadata == {"provider": "static-token"}
+        for event in restored_events
+    )
+    assert any(
+        event.event_type == AuditEventType.REVIEW
+        and event.actor == "workflow-portal"
+        and event.subject == "review-123"
+        and event.outcome == "proposal_status_change"
+        and event.metadata
+        == {
+            "proposal_id": "prop-123",
+            "from_status": "submitted",
+            "to_status": "approved",
+        }
+        for event in restored_events
+    )
+
+
+def test_audit_events_queryable_after_restart_for_auth_and_status_change(tmp_path) -> None:
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+
+    first_store = PlannerProposalStore(state_path=state_path)
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.AUTHENTICATION,
+        actor="static-token",
+        subject="planner-admin",
+        outcome="success",
+        metadata={"provider": "static-token"},
+    )
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.REVIEW,
+        actor="workflow-portal",
+        subject="review-123",
+        outcome="proposal_status_change",
+        metadata={
+            "proposal_id": "prop-123",
+            "from_status": "submitted",
+            "to_status": "approved",
+        },
+    )
+    first_store.store.save_snapshot(first_store._serialize_state())
+
+    second_store = PlannerProposalStore(state_path=state_path)
+    restored = second_store.list_audit_events()
+    assert any(
+        event.event_type == AuditEventType.AUTHENTICATION
+        and event.outcome == "success"
+        and event.actor == "static-token"
+        and event.subject == "planner-admin"
+        and event.metadata == {"provider": "static-token"}
+        for event in restored
+    )
+    assert any(
+        event.event_type == AuditEventType.REVIEW
+        and event.outcome == "proposal_status_change"
+        and event.actor == "workflow-portal"
+        and event.subject == "review-123"
+        and event.metadata
+        == {
+            "proposal_id": "prop-123",
+            "from_status": "submitted",
+            "to_status": "approved",
+        }
+        for event in restored
+    )
+
+
+def test_audit_events_round_trip_serialize_and_load(tmp_path) -> None:
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+    first_store = PlannerProposalStore(state_path=state_path)
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.AUTHENTICATION,
+        actor="static-token",
+        subject="planner-admin",
+        outcome="success",
+        metadata={"provider": "static-token"},
+    )
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.REVIEW,
+        actor="workflow-portal",
+        subject="review-123",
+        outcome="proposal_status_change",
+        metadata={
+            "proposal_id": "prop-123",
+            "from_status": "submitted",
+            "to_status": "approved",
+        },
+    )
+    first_store.store.save_snapshot(first_store._serialize_state())
+
+    restored_store = PlannerProposalStore(state_path=state_path)
+    assert (
+        restored_store._serialize_state()["audit_events"]
+        == first_store._serialize_state()["audit_events"]
+    )
+
+
+def test_serialize_state_uses_security_audit_log_events(tmp_path) -> None:
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    store.security.audit_log.record(
+        event_type=AuditEventType.AUTHENTICATION,
+        actor="static-token",
+        subject="planner-admin",
+        outcome="success",
+        metadata={"provider": "static-token"},
+    )
+    store.security.audit_log.record(
+        event_type=AuditEventType.REVIEW,
+        actor="workflow-portal",
+        subject="review-123",
+        outcome="proposal_status_change",
+        metadata={"proposal_id": "prop-123"},
+    )
+
+    serialized = store._serialize_state()
+    serialized_events = serialized["audit_events"]
+
+    assert hasattr(store, "security")
+    assert hasattr(store.security, "audit_log")
+    assert len(serialized_events) == len(store.security.audit_log.events)
+    assert [(event["event_type"], event["outcome"]) for event in serialized_events] == [
+        ("authentication", "success"),
+        ("review", "proposal_status_change"),
+    ]
+    assert serialized_events[0]["metadata"] == {"provider": "static-token"}
+    assert serialized_events[1]["metadata"] == {"proposal_id": "prop-123"}
 
 
 def test_portal_submission_result_survives_restart(monkeypatch, tmp_path) -> None:
