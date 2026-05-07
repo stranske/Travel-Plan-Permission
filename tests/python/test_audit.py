@@ -550,6 +550,7 @@ class TestEmitPoints:
             bootstrap_ttl_seconds=900,
             oidc_audience=None,
             oidc_role_map_configured=False,
+            oidc_role_map={},
             oidc_subject_claim="sub",
             missing_config=("TPP_AUTH_MODE",),
             invalid_config=(),
