@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import ast
+import inspect
 import json
 import os
+import textwrap
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -193,6 +196,57 @@ def test_cross_repo_smoke_proves_submission_status_evaluation_and_reload(
     stored = persisted["proposals_by_execution_id"][result.execution_id]
     assert stored["request"]["proposal_version"] == "planner-proposal-v2"
     assert stored["request"]["payload"] == {"proposal_ref": "planner-proposal-123"}
+
+
+def test_run_cross_repo_smoke_uses_live_client_instead_of_direct_policy_calls() -> None:
+    source = textwrap.dedent(inspect.getsource(cross_repo_smoke.run_cross_repo_smoke))
+    tree = ast.parse(source)
+    client_variables = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not isinstance(node.value, ast.Call):
+            continue
+        if not isinstance(node.value.func, ast.Name):
+            continue
+        if node.value.func.id != "TravelPlanPermissionClient":
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                client_variables.add(target.id)
+
+    client_method_calls = set()
+    forbidden_direct_calls = set()
+    forbidden_non_client_method_calls = set()
+    forbidden_policy_calls = {
+        "get_policy_snapshot",
+        "submit_proposal",
+        "poll_execution_status",
+        "get_evaluation_result",
+    }
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name):
+            if node.func.id in forbidden_policy_calls:
+                forbidden_direct_calls.add(node.func.id)
+            continue
+        if not isinstance(node.func, ast.Attribute):
+            continue
+        if isinstance(node.func.value, ast.Name) and node.func.value.id in client_variables:
+            client_method_calls.add(node.func.attr)
+            continue
+        if node.func.attr in forbidden_policy_calls:
+            forbidden_non_client_method_calls.add(node.func.attr)
+
+    assert client_variables == {"client"}
+    assert {
+        "submit_proposal",
+        "poll_status",
+        "fetch_evaluation_result",
+    }.issubset(client_method_calls)
+    assert not forbidden_direct_calls
+    assert not forbidden_non_client_method_calls
 
 
 def test_cross_repo_smoke_cli_reports_missing_trip_planner_checkout(
