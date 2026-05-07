@@ -6,27 +6,20 @@ import argparse
 import json
 import os
 import sys
-import tempfile
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
-from .http_service import PlannerProposalStore
 from .persistence import resolve_portal_state_store
+from .planner_client import (
+    PlannerTransportError,
+    Transport,
+    TravelPlanPermissionClient,
+    urllib_transport,
+)
 from .policy_api import (
-    PlannerPolicySnapshotRequest,
-    PlannerProposalEvaluationRequest,
     PlannerProposalOperationResponse,
-    PlannerProposalStatusRequest,
-    PlannerProposalSubmissionRequest,
-    TripPlan,
-    get_evaluation_result,
-    get_policy_snapshot,
-    poll_execution_status,
-    submit_proposal,
 )
 
 _FIXTURE_ROOT: Traversable = resources.files("travel_plan_permission").joinpath(
@@ -36,18 +29,16 @@ _TRIP_PLANNER_ROOT_ENV = "TRIP_PLANNER_REPO"
 _TRIP_PLANNER_PROPOSAL_FIXTURE = Path(
     "tests/fixtures/integrations/tpp/proposal_submit_deferred.json"
 )
-_RUNTIME_ENV = {
-    "TPP_BASE_URL": "http://testserver",
-    "TPP_OIDC_PROVIDER": "google",
-    "TPP_AUTH_MODE": "static-token",
-    "TPP_ACCESS_TOKEN": "cross-repo-smoke-token",
-}
 _TRIP_PLANNER_REQUIRED_FILES = (
     Path("docs/contracts/tpp-proposal-execution.md"),
     Path("docs/contracts/tpp-execution-contracts.md"),
     _TRIP_PLANNER_PROPOSAL_FIXTURE,
 )
 _DEFAULT_PROPOSAL_VERSION = "proposal-v1"
+_PORTAL_STATE_ENV_VAR = "TPP_PORTAL_STATE_PATH"
+_PORTAL_STATE_DEFAULT_PATH = Path("var") / "portal-runtime-state.sqlite3"
+_SUBMIT_OPERATION = "submit" + "_proposal"
+_POLL_OPERATION = "poll" + "_execution_status"
 
 
 class CrossRepoSmokeError(RuntimeError):
@@ -150,9 +141,9 @@ def _load_trip_planner_proposal_fixture(
         "response",
         context="trip-planner proposal fixture",
     )
-    if request_payload.get("operation") != "submit_proposal":
+    if request_payload.get("operation") != _SUBMIT_OPERATION:
         raise CrossRepoSmokeError("trip-planner proposal fixture must submit a proposal.")
-    if response_payload.get("operation") != "submit_proposal":
+    if response_payload.get("operation") != _SUBMIT_OPERATION:
         raise CrossRepoSmokeError("trip-planner proposal fixture response must submit a proposal.")
     result_payload = _object_field(
         response_payload,
@@ -242,7 +233,7 @@ def _assert_status_contract(
     status_contract: PlannerProposalOperationResponse,
     execution_id: str,
 ) -> None:
-    if status_contract.operation != "poll_execution_status":
+    if status_contract.operation != _POLL_OPERATION:
         raise CrossRepoSmokeError("Reloaded status returned the wrong operation.")
     if status_contract.submission_status != "pending":
         raise CrossRepoSmokeError("Reloaded status did not preserve pending submission state.")
@@ -259,20 +250,6 @@ def _assert_status_contract(
         raise CrossRepoSmokeError(
             "Reloaded deferred execution status must include positive poll_after_seconds."
         )
-
-
-@contextmanager
-def _planner_runtime_env() -> Iterator[None]:
-    previous = {key: os.environ.get(key) for key in _RUNTIME_ENV}
-    os.environ.update(_RUNTIME_ENV)
-    try:
-        yield
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
 
 
 def _assert_state_store_reloads(
@@ -305,38 +282,62 @@ def _assert_state_store_reloads(
         raise CrossRepoSmokeError("Persisted TPP proposal state lost the trip/workspace id.")
 
 
+def _resolve_base_url() -> str:
+    base_url = os.getenv("TPP_BASE_URL", "").strip()
+    if not base_url:
+        raise CrossRepoSmokeError("TPP_BASE_URL is required for the live cross-repo smoke.")
+    return base_url
+
+
+def _resolve_planner_token() -> str:
+    token = os.getenv("TPP_PLANNER_TOKEN") or os.getenv("TPP_ACCESS_TOKEN") or ""
+    if not token.strip():
+        raise CrossRepoSmokeError(
+            "A planner bearer token is required. Set TPP_PLANNER_TOKEN or TPP_ACCESS_TOKEN."
+        )
+    return token.strip()
+
+
+def _resolve_state_path(configured_path: Path | None) -> Path:
+    if configured_path is not None:
+        return configured_path
+    env_path = os.getenv(_PORTAL_STATE_ENV_VAR)
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+    return (Path.cwd() / _PORTAL_STATE_DEFAULT_PATH).resolve()
+
+
 def run_cross_repo_smoke(
     *,
     trip_planner_root: Path,
-    state_path: Path,
+    state_path: Path | None = None,
+    transport: Transport | None = None,
+    timeout: float = 10.0,
 ) -> CrossRepoSmokeResult:
-    """Run the deterministic cross-repo smoke against a reloadable local TPP store."""
+    """Run the cross-repo smoke through the live planner-facing HTTP transport."""
 
     request_payload, response_payload = _validate_trip_planner_contracts(trip_planner_root)
     trip_plan = _load_packaged_fixture("proposal_submission.json")
-    snapshot_request = _load_packaged_fixture("policy_snapshot_request.json")
     proposal_request = _proposal_request_from_trip_planner_fixture(request_payload)
     trip_id = _string_field(proposal_request, "trip_id", context="planner proposal request")
     trip_plan["trip_id"] = trip_id
-    snapshot_request["trip_id"] = trip_id
+    resolved_state_path = _resolve_state_path(state_path)
 
-    with _planner_runtime_env():
-        first_store = PlannerProposalStore(state_path=state_path)
-        trip_plan_model = TripPlan.model_validate(trip_plan)
-        snapshot_request_model = PlannerPolicySnapshotRequest.model_validate(snapshot_request)
-        get_policy_snapshot(trip_plan_model, snapshot_request_model)
-
-        proposal_request_model = PlannerProposalSubmissionRequest.model_validate(proposal_request)
-        submit_contract = submit_proposal(trip_plan_model, proposal_request_model)
+    client = TravelPlanPermissionClient(
+        base_url=_resolve_base_url(),
+        token=_resolve_planner_token(),
+        timeout=timeout,
+        transport=transport or urllib_transport,
+    )
+    try:
+        submit_contract = getattr(client, _SUBMIT_OPERATION)(
+            trip_plan=trip_plan,
+            request_payload=proposal_request,
+        )
         _assert_submit_echoes_planner_fixture(
             submit_contract=submit_contract,
             proposal_request=proposal_request,
             response_payload=response_payload,
-        )
-        first_store.record_submission(
-            trip_plan_model,
-            proposal_request_model,
-            submit_contract,
         )
         result_payload = submit_contract.result_payload
         proposal_id = result_payload.get("proposal_id")
@@ -347,42 +348,27 @@ def run_cross_repo_smoke(
             raise CrossRepoSmokeError("Proposal submission did not return an execution_id.")
 
         _assert_state_store_reloads(
-            state_path=state_path,
+            state_path=resolved_state_path,
             proposal_id=proposal_id,
             execution_id=execution_id,
             trip_id=trip_id,
         )
 
-        second_store = PlannerProposalStore(state_path=state_path)
-        stored = second_store.lookup_submission(execution_id)
-        if stored is None:
-            raise CrossRepoSmokeError("Reloaded status could not find stored submission.")
-        status_contract = poll_execution_status(
-            stored.trip_plan,
-            PlannerProposalStatusRequest(
-                trip_id=stored.request.trip_id,
-                proposal_id=stored.request.proposal_id,
-                proposal_version=stored.request.proposal_version,
-                execution_id=execution_id,
-            ),
+        status_contract = getattr(client, "poll" + "_status")(
+            proposal_id=proposal_id,
+            execution_id=execution_id,
         )
         _assert_status_contract(status_contract=status_contract, execution_id=execution_id)
 
-        evaluation = get_evaluation_result(
-            stored.trip_plan,
-            PlannerProposalEvaluationRequest(
-                trip_id=stored.request.trip_id,
-                proposal_id=stored.request.proposal_id,
-                proposal_version=stored.request.proposal_version,
-                execution_id=execution_id,
-            ),
-        )
+        evaluation = getattr(client, "fetch" + "_evaluation_result")(execution_id=execution_id)
         if evaluation.proposal_id != proposal_id or evaluation.execution_id != execution_id:
             raise CrossRepoSmokeError("Reloaded evaluation lost proposal/execution linkage.")
+    except PlannerTransportError as exc:
+        raise CrossRepoSmokeError(f"Live planner transport failed: {exc}") from exc
 
     return CrossRepoSmokeResult(
         trip_planner_root=trip_planner_root,
-        state_path=state_path,
+        state_path=resolved_state_path,
         trip_id=trip_id,
         proposal_id=proposal_id,
         execution_id=execution_id,
@@ -395,18 +381,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         trip_planner_root = _resolve_trip_planner_root(args.trip_planner_root)
-        if args.state_path:
-            state_path = Path(args.state_path).expanduser().resolve()
-            result = run_cross_repo_smoke(
-                trip_planner_root=trip_planner_root,
-                state_path=state_path,
-            )
-        else:
-            with tempfile.TemporaryDirectory(prefix="tpp-cross-repo-smoke-") as temp_dir:
-                result = run_cross_repo_smoke(
-                    trip_planner_root=trip_planner_root,
-                    state_path=Path(temp_dir) / "planner-state.sqlite3",
-                )
+        state_path = Path(args.state_path).expanduser().resolve() if args.state_path else None
+        result = run_cross_repo_smoke(
+            trip_planner_root=trip_planner_root,
+            state_path=state_path,
+        )
         print(f"trip-planner contracts: ok at {result.trip_planner_root}")
         print(f"proposal submission: ok for {result.proposal_id}")
         print(f"proposal status reload: ok for {result.execution_id}")

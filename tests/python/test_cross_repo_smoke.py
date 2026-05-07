@@ -4,25 +4,35 @@ import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
+import travel_plan_permission.cross_repo_smoke as cross_repo_smoke
 from travel_plan_permission.cross_repo_smoke import (
     CrossRepoSmokeError,
     _assert_status_contract,
     _assert_submit_echoes_planner_fixture,
     _load_json,
     _object_field,
-    _planner_runtime_env,
     _string_field,
     main,
     run_cross_repo_smoke,
 )
+from travel_plan_permission.http_service import PlannerProposalStore
 from travel_plan_permission.persistence import resolve_portal_state_store
+from travel_plan_permission.planner_client import PlannerJsonResponse
 from travel_plan_permission.policy_api import (
     PlannerCorrelationId,
+    PlannerProposalEvaluationRequest,
     PlannerProposalExecutionStatus,
     PlannerProposalOperationResponse,
+    PlannerProposalStatusRequest,
+    PlannerProposalSubmissionRequest,
+    TripPlan,
+    get_evaluation_result,
+    poll_execution_status,
+    submit_proposal,
 )
 
 
@@ -74,16 +84,83 @@ def _write_trip_planner_contracts(root: Path) -> None:
     )
 
 
+def _configure_live_smoke_env(monkeypatch: pytest.MonkeyPatch, state_path: Path) -> None:
+    monkeypatch.setenv("TPP_BASE_URL", "http://live-tpp.test")
+    monkeypatch.setenv("TPP_PLANNER_TOKEN", "live-smoke-token")
+    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", str(state_path))
+
+
+class _LivePlannerTransport:
+    def __call__(
+        self,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        json_body: dict[str, object] | None,
+        timeout: float,
+    ) -> PlannerJsonResponse:
+        assert timeout > 0
+        assert headers == {"Authorization": "Bearer live-smoke-token"}
+        path = urlparse(url).path
+        state_path = Path(os.environ["TPP_PORTAL_STATE_PATH"])
+        store = PlannerProposalStore(state_path=state_path)
+
+        if method == "POST" and path == "/api/planner/proposals":
+            assert isinstance(json_body, dict)
+            trip_plan = TripPlan.model_validate(json_body["trip_plan"])
+            proposal_request = PlannerProposalSubmissionRequest.model_validate(json_body["request"])
+            response = submit_proposal(trip_plan, proposal_request)
+            store.record_submission(trip_plan, proposal_request, response)
+            return PlannerJsonResponse(200, response.model_dump(mode="json"), "")
+
+        if method == "GET" and path.startswith("/api/planner/proposals/"):
+            parts = path.split("/")
+            proposal_id = parts[4]
+            execution_id = parts[6]
+            stored = store.lookup_submission(execution_id)
+            assert stored is not None
+            response = poll_execution_status(
+                stored.trip_plan,
+                PlannerProposalStatusRequest(
+                    trip_id=stored.request.trip_id,
+                    proposal_id=proposal_id,
+                    proposal_version=stored.request.proposal_version,
+                    execution_id=execution_id,
+                ),
+            )
+            return PlannerJsonResponse(200, response.model_dump(mode="json"), "")
+
+        if method == "GET" and path.startswith("/api/planner/executions/"):
+            execution_id = path.split("/")[4]
+            stored = store.lookup_submission(execution_id)
+            assert stored is not None
+            response = get_evaluation_result(
+                stored.trip_plan,
+                PlannerProposalEvaluationRequest(
+                    trip_id=stored.request.trip_id,
+                    proposal_id=stored.request.proposal_id,
+                    proposal_version=stored.request.proposal_version,
+                    execution_id=execution_id,
+                ),
+            )
+            return PlannerJsonResponse(200, response.model_dump(mode="json"), "")
+
+        return PlannerJsonResponse(404, {"detail": f"unhandled {method} {path}"}, "")
+
+
 def test_cross_repo_smoke_proves_submission_status_evaluation_and_reload(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trip_planner_root = tmp_path / "trip-planner"
     _write_trip_planner_contracts(trip_planner_root)
     state_path = tmp_path / "tpp-state.sqlite3"
+    _configure_live_smoke_env(monkeypatch, state_path)
 
     result = run_cross_repo_smoke(
         trip_planner_root=trip_planner_root,
         state_path=state_path,
+        transport=_LivePlannerTransport(),
     )
 
     assert result.trip_id == "trip-planner-fixture-001"
@@ -127,9 +204,12 @@ def test_cross_repo_smoke_resolves_root_via_trip_planner_repo_env(
     """
     trip_planner_root = tmp_path / "trip-planner"
     _write_trip_planner_contracts(trip_planner_root)
+    state_path = tmp_path / "env-state.sqlite3"
+    _configure_live_smoke_env(monkeypatch, state_path)
+    monkeypatch.setattr(cross_repo_smoke, "urllib_transport", _LivePlannerTransport())
     monkeypatch.setenv("TRIP_PLANNER_REPO", str(trip_planner_root))
 
-    exit_code = main([])
+    exit_code = main(["--state-path", str(state_path)])
 
     assert exit_code == 0
     captured = capsys.readouterr()
@@ -148,13 +228,16 @@ def test_cross_repo_smoke_resolves_root_via_sibling_checkout_fallback(
     """
     trip_planner_root = tmp_path / "trip-planner"
     _write_trip_planner_contracts(trip_planner_root)
+    state_path = tmp_path / "fallback-state.sqlite3"
+    _configure_live_smoke_env(monkeypatch, state_path)
+    monkeypatch.setattr(cross_repo_smoke, "urllib_transport", _LivePlannerTransport())
     # Simulate CWD being inside the TPP checkout (tmp_path / "travel-plan-permission")
     tpp_dir = tmp_path / "travel-plan-permission"
     tpp_dir.mkdir()
     monkeypatch.delenv("TRIP_PLANNER_REPO", raising=False)
     monkeypatch.chdir(tpp_dir)
 
-    exit_code = main([])
+    exit_code = main(["--state-path", str(state_path)])
 
     assert exit_code == 0
     captured = capsys.readouterr()
@@ -361,6 +444,7 @@ def test_validate_contracts_raises_when_response_operation_wrong(tmp_path: Path)
 
 def test_cross_repo_smoke_uses_default_proposal_version_when_fixture_omits_it(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trip_planner_root = tmp_path / "trip-planner"
     contracts = trip_planner_root / "docs" / "contracts"
@@ -393,8 +477,13 @@ def test_cross_repo_smoke_uses_default_proposal_version_when_fixture_omits_it(
         encoding="utf-8",
     )
     state_path = tmp_path / "state.sqlite3"
+    _configure_live_smoke_env(monkeypatch, state_path)
 
-    result = run_cross_repo_smoke(trip_planner_root=trip_planner_root, state_path=state_path)
+    result = run_cross_repo_smoke(
+        trip_planner_root=trip_planner_root,
+        state_path=state_path,
+        transport=_LivePlannerTransport(),
+    )
 
     assert result.proposal_id == "prop-no-version"
 
@@ -529,25 +618,61 @@ def test_assert_status_contract_raises_when_poll_after_seconds_none() -> None:
         _assert_status_contract(status_contract=contract, execution_id="e1")
 
 
-# -- _planner_runtime_env -----------------------------------------------------
+# -- live runtime config ------------------------------------------------------
 
 
-def test_planner_runtime_env_restores_previous_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TPP_BASE_URL", "http://original-value")
+def test_cross_repo_smoke_requires_live_base_url(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trip_planner_root = tmp_path / "trip-planner"
+    _write_trip_planner_contracts(trip_planner_root)
+    monkeypatch.delenv("TPP_BASE_URL", raising=False)
+    monkeypatch.setenv("TPP_PLANNER_TOKEN", "token")
 
-    with _planner_runtime_env():
-        assert os.environ["TPP_BASE_URL"] == "http://testserver"
+    with pytest.raises(CrossRepoSmokeError, match="TPP_BASE_URL is required"):
+        run_cross_repo_smoke(
+            trip_planner_root=trip_planner_root,
+            state_path=tmp_path / "state.sqlite3",
+            transport=_LivePlannerTransport(),
+        )
 
-    assert os.environ["TPP_BASE_URL"] == "http://original-value"
+
+def test_cross_repo_smoke_fails_when_live_service_is_unreachable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trip_planner_root = tmp_path / "trip-planner"
+    _write_trip_planner_contracts(trip_planner_root)
+    monkeypatch.setenv("TPP_BASE_URL", "http://127.0.0.1:9")
+    monkeypatch.setenv("TPP_PLANNER_TOKEN", "dummy")
+    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", str(tmp_path / "state.sqlite3"))
+
+    exit_code = main(
+        [
+            "--trip-planner-root",
+            str(trip_planner_root),
+            "--state-path",
+            str(tmp_path / "state.sqlite3"),
+        ]
+    )
+
+    assert exit_code == 1
 
 
 # -- main with --state-path ---------------------------------------------------
 
 
-def test_cross_repo_smoke_cli_accepts_explicit_state_path(tmp_path: Path, capsys) -> None:
+def test_cross_repo_smoke_cli_accepts_explicit_state_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
     trip_planner_root = tmp_path / "trip-planner"
     _write_trip_planner_contracts(trip_planner_root)
     state_path = tmp_path / "explicit-state.sqlite3"
+    _configure_live_smoke_env(monkeypatch, state_path)
+    monkeypatch.setattr(cross_repo_smoke, "urllib_transport", _LivePlannerTransport())
 
     exit_code = main(
         ["--trip-planner-root", str(trip_planner_root), "--state-path", str(state_path)]

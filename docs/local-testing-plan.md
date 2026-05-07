@@ -158,13 +158,17 @@ The same contract is gated automatically in CI by the `cross-repo-smoke` job in
 3. Installs this repo's `[dev,orchestration]` extras.
 4. Generates a fresh `TPP_BOOTSTRAP_SIGNING_SECRET` and mints a bootstrap token
    via `tpp-planner-token`.
-5. Starts `tpp-planner-service` on `127.0.0.1:8000` in the background and waits
+5. Sets `TPP_PORTAL_STATE_PATH` to the CI runtime directory so the service and
+   smoke command assert against the same persisted state file.
+6. Starts `tpp-planner-service` on `127.0.0.1:8000` in the background and waits
    for `/readyz` to return `200`.
-6. Runs `tpp-cross-repo-smoke` against the live local service, with
+7. Runs `tpp-cross-repo-smoke` against the live local service, with
    `TRIP_PLANNER_REPO` pointed at the trip-planner checkout so the harness's
-   contract-doc and proposal-fixture lookups succeed.
-7. Runs `tpp-planner-smoke` against the same service.
-8. Tears down the background service in an `if: always()` step and uploads the
+   contract-doc and proposal-fixture lookups succeed. The smoke submits,
+   polls, fetches evaluation, and reopens the configured state store to verify
+   the live submission persisted.
+8. Runs `tpp-planner-smoke` against the same service.
+9. Tears down the background service in an `if: always()` step and uploads the
    service log on failure.
 
 The job runs on every pull request and push to `main` and is intended to be

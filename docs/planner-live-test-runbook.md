@@ -146,11 +146,16 @@ tpp-cross-repo-smoke --trip-planner-root ../trip-planner
 ```
 
 The command validates the `trip-planner` TPP contract docs and proposal
-fixture, submits the packaged TPP proposal through a local FastAPI test client,
-polls proposal status, fetches the evaluation result, then reloads a second TPP
-store from the same state file to prove proposal/follow-up state survived
-persistence. Set `TRIP_PLANNER_REPO` instead of passing `--trip-planner-root`
-when the checkout is not a sibling directory.
+fixture, submits the packaged TPP proposal through the live service at
+`TPP_BASE_URL`, polls proposal status, fetches the evaluation result, then
+reopens the configured TPP state store to prove the live HTTP submission
+survived persistence. Set `TRIP_PLANNER_REPO` instead of passing
+`--trip-planner-root` when the checkout is not a sibling directory.
+
+Use the token minted in step 4 as `TPP_PLANNER_TOKEN`, or set
+`TPP_ACCESS_TOKEN` when running in static-token mode. If you need an isolated
+state file for the assertion, set `TPP_PORTAL_STATE_PATH` before starting
+`tpp-planner-service` and before running `tpp-cross-repo-smoke`.
 
 ## Preview or remote base URLs
 
