@@ -2050,8 +2050,10 @@ def test_portal_review_state_survives_restart(monkeypatch, tmp_path) -> None:
 
 def test_expense_review_state_survives_restart(tmp_path) -> None:
     state_path = tmp_path / "portal-runtime-state.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    _seed_manager_review(store)
 
-    first_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
+    first_client = TestClient(create_app(store))
     review = first_client.post(
         "/portal/expenses/review",
         data=_expense_form_payload(),
