@@ -1,57 +1,50 @@
 {
-  "trip_id": "TRIP-PLANNER-2001",
-  "traveler_name": "Jordan Lee",
-  "traveler_role": "Program Manager",
-  "department": "Operations",
-  "destination": "Chicago, IL 60601",
-  "origin_city": "Austin, TX",
-  "destination_city": "Chicago, IL",
-  "departure_date": "2026-05-20",
-  "return_date": "2026-05-22",
-  "purpose": "Planner integration rehearsal",
-  "transportation_mode": "air",
-  "expected_costs": {
-    "airfare": 420.5,
-    "lodging": 610.0,
-    "meals": 160.0
+  "operation": "poll_execution_status",
+  "submission_status": "succeeded",
+  "request_id": "req-6c7111b78d37",
+  "correlation_id": {
+    "value": "corr-4de8cc0e31f6",
+    "issued_by": "trip-planner"
   },
-  "funding_source": "OPS-INT",
-  "estimated_cost": 1190.5,
-  "status": "approved",
-  "expense_breakdown": {
-    "airfare": 420.5,
-    "lodging": 610.0,
-    "meals": 160.0
+  "transport_pattern": "deferred",
+  "execution_status": {
+    "state": "succeeded",
+    "terminal": true,
+    "summary": "Proposal execution completed successfully.",
+    "external_status": "200 OK",
+    "poll_after_seconds": null,
+    "updated_at": "2026-04-11T06:10:00Z"
   },
-  "selected_fare": 420.5,
-  "lowest_fare": 399.0,
-  "cabin_class": "economy",
-  "flight_duration_hours": 2.8,
-  "fare_evidence_attached": true,
-  "driving_cost": 280.0,
-  "flight_cost": 420.5,
-  "comparable_hotels": [
-    590.0,
-    610.0
-  ],
-  "overnight_stay": true,
-  "meals_provided": false,
-  "meal_per_diem_requested": true,
-  "selected_providers": {
-    "airfare": "Blue Skies Airlines",
-    "lodging": "Loop Business Hotel"
+  "result_payload": {
+    "trip_id": "TRIP-PLANNER-2001",
+    "proposal_id": "proposal-2001",
+    "proposal_version": "proposal-v1",
+    "execution_id": "exec-10c6fb4730f2",
+    "queue_state": "completed",
+    "result_endpoint": "GET /api/planner/executions/exec-10c6fb4730f2/evaluation-result"
   },
-  "validation_results": [],
-  "approval_history": [
-    {
-      "approver_id": "manager-001",
-      "level": "manager",
-      "outcome": "approved",
-      "timestamp": "2026-04-11T06:10:00Z",
-      "justification": null,
-      "previous_status": "submitted",
-      "new_status": "approved"
-    }
-  ],
-  "exception_requests": []
+  "proposal_status": {
+    "trip_id": "TRIP-PLANNER-2001",
+    "proposal_id": "proposal-2001",
+    "proposal_version": "proposal-v1",
+    "execution_id": "exec-10c6fb4730f2",
+    "status": "approved",
+    "validation_results": [],
+    "approval_history": [
+      {
+        "approver_id": "manager-001",
+        "level": "manager",
+        "outcome": "approved",
+        "timestamp": "2026-04-11T06:10:00Z",
+        "justification": null,
+        "previous_status": "submitted",
+        "new_status": "approved"
+      }
+    ],
+    "exception_requests": []
+  },
+  "error": null,
+  "retry": null,
+  "received_at": "2026-04-11T06:10:00Z",
+  "status_endpoint": "GET /api/planner/proposals/proposal-2001/executions/exec-10c6fb4730f2"
 }

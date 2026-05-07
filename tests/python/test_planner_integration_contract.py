@@ -8,6 +8,7 @@ from travel_plan_permission.policy_api import (
     PlannerPolicySnapshot,
     PlannerPolicySnapshotRequest,
     PlannerProposalEvaluationResult,
+    PlannerProposalOperationResponse,
 )
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "planner_integration"
@@ -65,12 +66,16 @@ def test_proposal_submission_fixture_matches_trip_plan_model() -> None:
     assert submission.selected_providers["airfare"] == "Blue Skies Airlines"
 
 
-def test_proposal_status_fixture_matches_trip_plan_model() -> None:
-    status_payload = TripPlan.model_validate(_load_fixture("proposal_status.json"))
+def test_proposal_status_fixture_matches_operation_response_model() -> None:
+    status_payload = PlannerProposalOperationResponse.model_validate(
+        _load_fixture("proposal_status.json")
+    )
 
-    assert status_payload.status.value == "approved"
-    assert len(status_payload.approval_history) == 1
-    assert status_payload.approval_history[0].new_status.value == "approved"
+    assert status_payload.operation == "poll_execution_status"
+    assert status_payload.proposal_status is not None
+    assert status_payload.proposal_status.status.value == "approved"
+    assert len(status_payload.proposal_status.approval_history) == 1
+    assert status_payload.proposal_status.approval_history[0].new_status.value == "approved"
 
 
 def test_compliant_evaluation_result_fixture_matches_model() -> None:

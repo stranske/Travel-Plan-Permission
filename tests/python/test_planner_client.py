@@ -61,6 +61,16 @@ def _operation_payload(
             "execution_id": "exec-949",
             "raw_response": {"provider_status": execution_state},
         },
+        "proposal_status": {
+            "trip_id": "TRIP-949",
+            "proposal_id": "proposal-123",
+            "proposal_version": "proposal-v1",
+            "execution_id": "exec-949",
+            "status": "rejected" if submission_status == "failed" else "approved" if terminal else "submitted",
+            "approval_history": [],
+            "validation_results": [],
+            "exception_requests": [],
+        },
         "error": None,
         "retry": None,
         "received_at": "2026-04-27T00:00:01Z",
@@ -150,6 +160,8 @@ def test_polling_returns_terminal_response_without_dropping_body() -> None:
     assert result.execution_status is not None
     assert result.execution_status.terminal is True
     assert result.result_payload["raw_response"] == {"provider_status": "failed"}
+    assert result.proposal_status is not None
+    assert result.proposal_status.status.value == "rejected"
     assert [call[0] for call in transport.calls] == ["GET", "GET"]
     assert sleep_calls == [1]
 
@@ -219,3 +231,15 @@ def test_fetch_evaluation_result_parses_planner_contract_fixture() -> None:
     assert result.execution_id == "exec-10c6fb4730f2"
     assert result.outcome == "compliant"
     assert result.policy_result.status == "pass"
+
+
+def test_poll_status_parses_planner_status_contract_fixture() -> None:
+    payload = json.loads((FIXTURE_ROOT / "proposal_status.json").read_text(encoding="utf-8"))
+    transport = ScriptedTransport([_json_response(payload)])
+    client = _client(transport)
+
+    result = client.poll_status(proposal_id="proposal-2001", execution_id="exec-10c6fb4730f2")
+
+    assert result.proposal_status is not None
+    assert result.proposal_status.status.value == "approved"
+    assert result.proposal_status.approval_history[0].approver_id == "manager-001"
