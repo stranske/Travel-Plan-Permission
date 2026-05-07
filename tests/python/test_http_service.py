@@ -2342,6 +2342,18 @@ def test_submission_status_lookup_survives_restart(monkeypatch, tmp_path) -> Non
     state_path = tmp_path / "portal-runtime-state.sqlite3"
     first_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
     trip_plan = _load_fixture("proposal_submission.json")
+    trip_plan["status"] = "approved"
+    trip_plan["approval_history"] = [
+        {
+            "approver_id": "manager-001",
+            "level": "manager",
+            "outcome": "approved",
+            "timestamp": "2026-04-11T06:10:00Z",
+            "justification": None,
+            "previous_status": "submitted",
+            "new_status": "approved",
+        }
+    ]
     request_payload = {
         "trip_id": trip_plan["trip_id"],
         "proposal_id": "proposal-123",
@@ -2369,6 +2381,13 @@ def test_submission_status_lookup_survives_restart(monkeypatch, tmp_path) -> Non
     )
 
     assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["operation"] == "poll_execution_status"
+    assert status_payload["submission_status"] == "succeeded"
+    assert status_payload["proposal_status"]["status"] == "approved"
+    assert status_payload["proposal_status"]["approval_history"][0]["new_status"] == "approved"
+    assert status_payload["proposal_status"]["validation_results"] == []
+    assert status_payload["proposal_status"]["exception_requests"] == []
     assert evaluation_response.status_code == 200
 
 

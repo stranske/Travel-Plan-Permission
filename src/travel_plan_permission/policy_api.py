@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from .canonical import CanonicalTripPlan
 from .mapping import TemplateMapping, load_template_mapping
 from .models import (
+    ApprovalEvent,
     ExceptionRequest,
     ExpenseCategory,
     ExpenseItem,
@@ -39,6 +40,7 @@ from .security import (
     PLANNER_EXECUTION_STATUS_ENDPOINT,
     PLANNER_POLICY_SNAPSHOT_ENDPOINT,
 )
+from .validation import ValidationResult
 
 PolicyIssueSeverity = Literal["info", "warning", "error"]
 PolicyCheckStatus = Literal["pass", "fail"]
@@ -92,6 +94,7 @@ __all__ = [
     "PlannerRetryMetadata",
     "PlannerErrorRecord",
     "PlannerProposalExecutionStatus",
+    "PlannerProposalStatusPayload",
     "PlannerProposalSubmissionRequest",
     "PlannerProposalStatusRequest",
     "PlannerProposalEvaluationRequest",
@@ -297,6 +300,28 @@ class PlannerProposalExecutionStatus(BaseModel):
     )
 
 
+class PlannerProposalStatusPayload(BaseModel):
+    """Canonical trip proposal status details carried by a poll response."""
+
+    trip_id: str = Field(..., description="Trip identifier linked to the proposal")
+    proposal_id: str = Field(..., description="Stable planner proposal identifier")
+    proposal_version: str = Field(..., description="Planner proposal version identifier")
+    execution_id: str = Field(..., description="Execution identifier returned on submit")
+    status: TripStatus = Field(..., description="Current canonical trip proposal status")
+    approval_history: tuple[ApprovalEvent, ...] = Field(
+        default_factory=tuple,
+        description="Immutable approval and override history for this proposal",
+    )
+    validation_results: list[ValidationResult] = Field(
+        default_factory=list,
+        description="Latest validation results attached to the proposal",
+    )
+    exception_requests: list[ExceptionRequest] = Field(
+        default_factory=list,
+        description="Current exception requests linked to the proposal",
+    )
+
+
 class PlannerProposalSubmissionRequest(BaseModel):
     """Planner-facing submission request contract for proposal execution."""
 
@@ -373,6 +398,10 @@ class PlannerProposalOperationResponse(BaseModel):
     )
     result_payload: dict[str, object] = Field(
         default_factory=dict, description="Structured linkage payload for the planner"
+    )
+    proposal_status: PlannerProposalStatusPayload | None = Field(
+        default=None,
+        description="Canonical status readback details when polling a stored proposal",
     )
     error: PlannerErrorRecord | None = Field(
         default=None, description="Structured error detail when the operation failed"
@@ -941,6 +970,25 @@ def _proposal_result_payload(
     }
 
 
+def _proposal_status_payload(
+    *,
+    plan: TripPlan,
+    proposal_id: str,
+    proposal_version: str,
+    execution_id: str,
+) -> PlannerProposalStatusPayload:
+    return PlannerProposalStatusPayload(
+        trip_id=plan.trip_id,
+        proposal_id=proposal_id,
+        proposal_version=proposal_version,
+        execution_id=execution_id,
+        status=plan.status,
+        approval_history=plan.approval_history,
+        validation_results=plan.validation_results,
+        exception_requests=plan.exception_requests,
+    )
+
+
 def _proposal_response_for_plan(
     *,
     operation: PlannerOperationType,
@@ -968,6 +1016,16 @@ def _proposal_response_for_plan(
     )
     if organization_id is not None:
         base_payload["organization_id"] = organization_id
+    status_payload = (
+        _proposal_status_payload(
+            plan=plan,
+            proposal_id=proposal_id,
+            proposal_version=proposal_version,
+            execution_id=execution_id,
+        )
+        if operation == "poll_execution_status"
+        else None
+    )
 
     if not service_available:
         return PlannerProposalOperationResponse(
@@ -995,6 +1053,7 @@ def _proposal_response_for_plan(
             ),
             received_at=event_time,
             status_endpoint=status_endpoint,
+            proposal_status=status_payload,
         )
 
     if plan.status == TripStatus.REJECTED:
@@ -1021,6 +1080,7 @@ def _proposal_response_for_plan(
             ),
             received_at=event_time,
             status_endpoint=status_endpoint,
+            proposal_status=status_payload,
         )
 
     if plan.status in {TripStatus.APPROVED, TripStatus.COMPLETED}:
@@ -1040,6 +1100,7 @@ def _proposal_response_for_plan(
             result_payload=base_payload | {"queue_state": "completed"},
             received_at=event_time,
             status_endpoint=status_endpoint,
+            proposal_status=status_payload,
         )
 
     pending_state: PlannerExecutionState = "running" if transport_pattern == "async" else "deferred"
@@ -1071,6 +1132,7 @@ def _proposal_response_for_plan(
         ),
         received_at=event_time,
         status_endpoint=status_endpoint,
+        proposal_status=status_payload,
     )
 
 
