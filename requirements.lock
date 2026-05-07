@@ -133,6 +133,10 @@ pluggy==1.6.0
     # via
     #   pytest
     #   pytest-cov
+psycopg==3.3.3
+    # via travel-plan-permission (pyproject.toml)
+psycopg-binary==3.3.3
+    # via psycopg
 pyarrow==23.0.1
     # via travel-plan-permission (pyproject.toml)
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
