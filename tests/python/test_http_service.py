@@ -1930,8 +1930,9 @@ def test_portal_exception_decision_returns_404_for_missing_request(monkeypatch) 
     assert response.json()["detail"] == "Exception request not found."
 
 
-def test_save_portal_draft_evicts_exception_state_with_oldest_draft() -> None:
-    store = PlannerProposalStore()
+def test_save_portal_draft_evicts_exception_state_with_oldest_draft(tmp_path) -> None:
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
     old_draft = store.save_portal_draft({"traveler_name": "First"})
     store.create_exception_request(
         old_draft.draft_id,
@@ -1948,6 +1949,10 @@ def test_save_portal_draft_evicts_exception_state_with_oldest_draft() -> None:
 
     assert old_draft.draft_id not in store.portal_drafts_by_id
     assert old_draft.draft_id not in store.exception_requests_by_draft_id
+
+    reopened = PlannerProposalStore(state_path=state_path)
+    assert old_draft.draft_id not in reopened.portal_drafts_by_id
+    assert old_draft.draft_id not in reopened.exception_requests_by_draft_id
 
 
 def test_manager_review_store_returns_copies() -> None:

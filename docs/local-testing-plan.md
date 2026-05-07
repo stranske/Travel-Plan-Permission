@@ -114,8 +114,9 @@ restart-oriented local check whenever you touch portal workflow state:
 
 For multi-instance staging, also exercise the same flow against a Postgres
 URL: two service instances pointing at the same database should each see the
-other instance's drafts after a refresh, since per-record upserts at the SQL
-layer prevent lost writes between processes.
+latest committed snapshot after a refresh. Keyed record namespaces reconcile
+on save, so records evicted from one instance's serialized state should not
+reappear after restart.
 
 Treat any restart-sensitive data loss as a regression to file rather than as
 an ambiguous flake.

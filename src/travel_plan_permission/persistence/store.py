@@ -42,10 +42,10 @@ class PortalStateStore(Protocol):
     def save_snapshot(self, snapshot: dict[str, object]) -> None:
         """Persist a serialized snapshot.
 
-        Implementations should perform per-record upserts (within a single
-        transaction) for the namespaces declared in :data:`RECORD_NAMESPACES`
-        so two processes writing different ids do not clobber each other's
-        rows. Singleton mappings (e.g. ``review_ids_by_draft_id``) may be
+        Implementations should reconcile each namespace declared in
+        :data:`RECORD_NAMESPACES` within a single transaction: delete rows whose
+        keys are absent from the incoming namespace, then upsert the current
+        records. Singleton mappings (e.g. ``review_ids_by_draft_id``) may be
         stored as a single blob.
         """
 
