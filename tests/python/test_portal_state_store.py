@@ -72,10 +72,7 @@ class TestSQLitePortalStateStore:
         finally:
             store.close()
 
-    def test_per_record_upsert_preserves_other_records(self, tmp_path: Path) -> None:
-        # Two store instances writing different draft ids should both survive,
-        # since save_snapshot upserts per-record rather than overwriting the
-        # full namespace.
+    def test_save_snapshot_reconciles_absent_records(self, tmp_path: Path) -> None:
         path = tmp_path / "concurrent.sqlite3"
         store_a = SQLitePortalStateStore(path)
         store_a.initialize()
@@ -89,12 +86,12 @@ class TestSQLitePortalStateStore:
         loaded.initialize()
         snapshot = loaded.load_snapshot()
         assert snapshot is not None
-        assert set(snapshot["portal_drafts_by_id"].keys()) == {"alpha", "beta"}
+        assert set(snapshot["portal_drafts_by_id"].keys()) == {"beta"}
         store_a.close()
         store_b.close()
         loaded.close()
 
-    def test_expense_drafts_use_per_record_upserts(self, tmp_path: Path) -> None:
+    def test_empty_record_namespace_removes_all_records(self, tmp_path: Path) -> None:
         path = tmp_path / "expense-concurrent.sqlite3"
         store_a = SQLitePortalStateStore(path)
         store_a.initialize()
@@ -102,18 +99,17 @@ class TestSQLitePortalStateStore:
 
         store_b = SQLitePortalStateStore(path)
         store_b.initialize()
-        store_b.save_snapshot({"expense_drafts_by_id": {"exp-b": _draft_payload({"who": "b"})}})
+        store_b.save_snapshot({"expense_drafts_by_id": {}})
 
         loaded = SQLitePortalStateStore(path)
         loaded.initialize()
         snapshot = loaded.load_snapshot()
-        assert snapshot is not None
-        assert set(snapshot["expense_drafts_by_id"].keys()) == {"exp-a", "exp-b"}
+        assert snapshot is None or snapshot["expense_drafts_by_id"] == {}
         store_a.close()
         store_b.close()
         loaded.close()
 
-    def test_threaded_writers_dont_lose_records(self, tmp_path: Path) -> None:
+    def test_reconcile_is_transactional_for_threaded_writers(self, tmp_path: Path) -> None:
         path = tmp_path / "threads.sqlite3"
         bootstrap = SQLitePortalStateStore(path)
         bootstrap.initialize()
@@ -145,7 +141,23 @@ class TestSQLitePortalStateStore:
         snapshot = store.load_snapshot()
         store.close()
         assert snapshot is not None
-        assert set(snapshot["portal_drafts_by_id"].keys()) == set(ids)
+        assert len(snapshot["portal_drafts_by_id"]) == 1
+        assert next(iter(snapshot["portal_drafts_by_id"])) in set(ids)
+
+    def test_lru_evicted_portal_drafts_stay_evicted_after_restart(
+        self, tmp_path: Path
+    ) -> None:
+        state_path = tmp_path / "portal-runtime-state.sqlite3"
+        first_store = PlannerProposalStore(state_path=state_path)
+
+        for index in range(65):
+            first_store.save_portal_draft({"traveler_name": f"Traveler {index}"})
+
+        expected_keys = set(first_store.portal_drafts_by_id)
+
+        reopened = PlannerProposalStore(state_path=state_path)
+        assert set(reopened.portal_drafts_by_id) == expected_keys
+        assert len(reopened.portal_drafts_by_id) == 64
 
 
 class TestJsonPortalStateStore:
@@ -539,6 +551,35 @@ class TestPostgresPortalStateStore:
             }
         )
         assert mock_cur.execute.call_count >= 2
+        store.close()
+
+    def test_save_snapshot_deletes_stale_postgres_records(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_pg, mock_conn, mock_cur = self._make_mock_psycopg()
+        monkeypatch.setitem(sys.modules, "psycopg", mock_pg)
+
+        from travel_plan_permission.persistence.postgres_store import PostgresPortalStateStore
+
+        store = PostgresPortalStateStore("postgresql://test/db")
+        store.save_snapshot(
+            {
+                "portal_drafts_by_id": {
+                    "d1": {"answers": {}},
+                    "d2": {"answers": {}},
+                },
+                "exception_requests_by_draft_id": {},
+            }
+        )
+
+        delete_calls = [
+            call
+            for call in mock_cur.execute.call_args_list
+            if call.args and str(call.args[0]).startswith("DELETE FROM tpp.portal_records")
+        ]
+        assert len(delete_calls) == 2
+        assert delete_calls[0].args[1] == ("portal_drafts_by_id", ["d1", "d2"])
+        assert delete_calls[1].args[1] == ("exception_requests_by_draft_id",)
         store.close()
 
     def test_close_when_never_connected(self) -> None:

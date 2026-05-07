@@ -9,12 +9,11 @@ not set. The store uses three tables:
 * ``portal_singletons`` — single-row payload for namespaces that don't fit
   the keyed model (e.g. ``review_ids_by_draft_id``).
 
-``save_snapshot`` upserts mapped records inside a single transaction. It does
-not delete records that are absent from the snapshot; the in-memory
-``PlannerProposalStore`` may LRU-evict records on its side, and a follow-up
-will add an explicit per-record delete API. Until then, two concurrent
-processes can write different ids to the same backing store and both records
-survive (per-record CAS at the SQL row level).
+``save_snapshot`` reconciles each mapped namespace inside a single
+transaction: rows whose keys are absent from the latest serialized snapshot are
+deleted before current records are upserted. This keeps SQL-backed restart
+state aligned with in-memory LRU eviction for portal drafts, expense drafts,
+manager reviews, submissions, plans, and exception requests.
 """
 
 from __future__ import annotations
@@ -114,6 +113,20 @@ class SQLitePortalStateStore:
         with _transaction(conn):
             for namespace, value in snapshot.items():
                 if namespace in RECORD_NAMESPACES and isinstance(value, dict):
+                    record_keys = [str(record_key) for record_key in value]
+                    if record_keys:
+                        placeholders = ", ".join("?" for _ in record_keys)
+                        conn.execute(
+                            "DELETE FROM portal_records "
+                            "WHERE namespace = ? "
+                            f"AND record_key NOT IN ({placeholders})",
+                            (namespace, *record_keys),
+                        )
+                    else:
+                        conn.execute(
+                            "DELETE FROM portal_records WHERE namespace = ?",
+                            (namespace,),
+                        )
                     for record_key, payload in value.items():
                         conn.execute(
                             "INSERT INTO portal_records "
