@@ -37,8 +37,8 @@ _TRIP_PLANNER_REQUIRED_FILES = (
 _DEFAULT_PROPOSAL_VERSION = "proposal-v1"
 _PORTAL_STATE_ENV_VAR = "TPP_PORTAL_STATE_PATH"
 _PORTAL_STATE_DEFAULT_PATH = Path("var") / "portal-runtime-state.sqlite3"
-_SUBMIT_OPERATION = "submit" + "_proposal"
-_POLL_OPERATION = "poll" + "_execution_status"
+_SUBMIT_OPERATION = "submit_proposal"
+_POLL_OPERATION = "poll_execution_status"
 
 
 class CrossRepoSmokeError(RuntimeError):
@@ -299,11 +299,16 @@ def _resolve_planner_token() -> str:
 
 
 def _resolve_state_path(configured_path: Path | None) -> Path:
-    if configured_path is not None:
-        return configured_path
     env_path = os.getenv(_PORTAL_STATE_ENV_VAR)
     if env_path:
-        return Path(env_path).expanduser().resolve()
+        resolved_env_path = Path(env_path).expanduser().resolve()
+        if configured_path is not None and configured_path.resolve() != resolved_env_path:
+            raise CrossRepoSmokeError(
+                f"{_PORTAL_STATE_ENV_VAR} must match --state-path for live smoke persistence."
+            )
+        return resolved_env_path
+    if configured_path is not None:
+        return configured_path.resolve()
     return (Path.cwd() / _PORTAL_STATE_DEFAULT_PATH).resolve()
 
 
@@ -321,16 +326,18 @@ def run_cross_repo_smoke(
     proposal_request = _proposal_request_from_trip_planner_fixture(request_payload)
     trip_id = _string_field(proposal_request, "trip_id", context="planner proposal request")
     trip_plan["trip_id"] = trip_id
+    base_url = _resolve_base_url()
+    token = _resolve_planner_token()
     resolved_state_path = _resolve_state_path(state_path)
 
     client = TravelPlanPermissionClient(
-        base_url=_resolve_base_url(),
-        token=_resolve_planner_token(),
+        base_url=base_url,
+        token=token,
         timeout=timeout,
         transport=transport or urllib_transport,
     )
     try:
-        submit_contract = getattr(client, _SUBMIT_OPERATION)(
+        submit_contract = client.submit_proposal(
             trip_plan=trip_plan,
             request_payload=proposal_request,
         )
@@ -354,13 +361,13 @@ def run_cross_repo_smoke(
             trip_id=trip_id,
         )
 
-        status_contract = getattr(client, "poll" + "_status")(
+        status_contract = client.poll_status(
             proposal_id=proposal_id,
             execution_id=execution_id,
         )
         _assert_status_contract(status_contract=status_contract, execution_id=execution_id)
 
-        evaluation = getattr(client, "fetch" + "_evaluation_result")(execution_id=execution_id)
+        evaluation = client.fetch_evaluation_result(execution_id=execution_id)
         if evaluation.proposal_id != proposal_id or evaluation.execution_id != execution_id:
             raise CrossRepoSmokeError("Reloaded evaluation lost proposal/execution linkage.")
     except PlannerTransportError as exc:

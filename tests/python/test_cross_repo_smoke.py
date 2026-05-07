@@ -91,6 +91,11 @@ def _configure_live_smoke_env(monkeypatch: pytest.MonkeyPatch, state_path: Path)
 
 
 class _LivePlannerTransport:
+    @staticmethod
+    def _close_store(store: PlannerProposalStore) -> None:
+        if store.store is not None:
+            store.store.close()
+
     def __call__(
         self,
         method: str,
@@ -104,7 +109,18 @@ class _LivePlannerTransport:
         path = urlparse(url).path
         state_path = Path(os.environ["TPP_PORTAL_STATE_PATH"])
         store = PlannerProposalStore(state_path=state_path)
+        try:
+            return self._dispatch(method, path, json_body, store)
+        finally:
+            self._close_store(store)
 
+    def _dispatch(
+        self,
+        method: str,
+        path: str,
+        json_body: dict[str, object] | None,
+        store: PlannerProposalStore,
+    ) -> PlannerJsonResponse:
         if method == "POST" and path == "/api/planner/proposals":
             assert isinstance(json_body, dict)
             trip_plan = TripPlan.model_validate(json_body["trip_plan"])
@@ -134,7 +150,7 @@ class _LivePlannerTransport:
             execution_id = path.split("/")[4]
             stored = store.lookup_submission(execution_id)
             assert stored is not None
-            response = get_evaluation_result(
+            evaluation_response = get_evaluation_result(
                 stored.trip_plan,
                 PlannerProposalEvaluationRequest(
                     trip_id=stored.request.trip_id,
@@ -143,7 +159,7 @@ class _LivePlannerTransport:
                     execution_id=execution_id,
                 ),
             )
-            return PlannerJsonResponse(200, response.model_dump(mode="json"), "")
+            return PlannerJsonResponse(200, evaluation_response.model_dump(mode="json"), "")
 
         return PlannerJsonResponse(404, {"detail": f"unhandled {method} {path}"}, "")
 
