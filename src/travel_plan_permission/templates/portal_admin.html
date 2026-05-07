@@ -211,7 +211,12 @@
             <h2>Audit history</h2>
             <ul>
               {% for event in audit_events %}
-                <li>{{ event.timestamp.isoformat() }}: {{ event.event_type.value }} · {{ event.outcome }} by {{ event.actor }}{% if event.subject %} on {{ event.subject }}{% endif %}</li>
+                <li>
+                  {{ event.timestamp.isoformat() }}: {{ event.event_type.value }} · {{ event.outcome }} by {{ event.actor }}{% if event.subject %} on {{ event.subject }}{% endif %}
+                  {% if event.metadata %}
+                    <code>{{ event.metadata | tojson }}</code>
+                  {% endif %}
+                </li>
               {% else %}
                 <li>No audit events recorded yet.</li>
               {% endfor %}

@@ -2208,6 +2208,50 @@ def test_audit_events_queryable_after_restart_for_auth_and_status_change(tmp_pat
     )
 
 
+def test_audit_events_queryable_from_admin_after_restart(monkeypatch, tmp_path) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    state_path = tmp_path / "portal-runtime-state.sqlite3"
+
+    first_store = PlannerProposalStore(state_path=state_path)
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.AUTHENTICATION,
+        actor="static-token",
+        subject="planner-admin",
+        outcome="success",
+        metadata={"provider": "static-token"},
+    )
+    first_store.security.audit_log.record(
+        event_type=AuditEventType.REVIEW,
+        actor="workflow-portal",
+        subject="review-123",
+        outcome="proposal_status_change",
+        metadata={
+            "proposal_id": "prop-123",
+            "from_status": "submitted",
+            "to_status": "approved",
+        },
+    )
+    first_store.store.save_snapshot(first_store._serialize_state())
+
+    restarted = PlannerProposalStore(state_path=state_path)
+    client = TestClient(create_app(restarted))
+    response = client.get(
+        "/portal/admin",
+        headers=_bootstrap_auth_header(
+            subject="planner-admin",
+            permissions=(Permission.VIEW,),
+        ),
+    )
+
+    assert response.status_code == 200
+    assert "static-token" in response.text
+    assert "planner-admin" in response.text
+    assert "workflow-portal" in response.text
+    assert "review-123" in response.text
+    assert "proposal_status_change" in response.text
+    assert "prop-123" in response.text
+
+
 def test_audit_events_round_trip_serialize_and_load(tmp_path) -> None:
     state_path = tmp_path / "portal-runtime-state.sqlite3"
     first_store = PlannerProposalStore(state_path=state_path)
