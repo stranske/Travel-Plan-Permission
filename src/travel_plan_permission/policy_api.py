@@ -30,7 +30,6 @@ from .models import (
     ExpenseReport,
     TripPlan,
     TripStatus,
-    ValidationResult,
 )
 from .policy import PolicyContext, PolicyEngine, PolicyResult, Severity
 from .policy_versioning import PolicyVersion
@@ -41,6 +40,7 @@ from .security import (
     PLANNER_EXECUTION_STATUS_ENDPOINT,
     PLANNER_POLICY_SNAPSHOT_ENDPOINT,
 )
+from .validation import ValidationResult
 
 PolicyIssueSeverity = Literal["info", "warning", "error"]
 PolicyCheckStatus = Literal["pass", "fail"]
