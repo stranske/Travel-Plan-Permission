@@ -158,13 +158,20 @@ shape. At submission time:
 
 ### 3. Read proposal status
 
-TPP returns the same canonical `TripPlan` shape for status readback, enriched
-with:
+TPP returns a `PlannerProposalOperationResponse` for status readback. The
+top-level envelope remains the polling contract for queue state, execution
+state, `result_endpoint`, `proposal_id`, and `execution_id` linkage. The
+canonical planner-facing status details live in the typed `proposal_status`
+field, which includes:
 
 - the latest `status`,
 - immutable `approval_history`,
 - any current `validation_results`,
 - any `exception_requests` captured during review.
+
+Callers should use `submission_status` and `execution_status` to decide whether
+to keep polling, then read `proposal_status` for approval, validation, and
+exception state that belongs to the trip proposal itself.
 
 ### 4. Consume policy evaluation results
 
