@@ -1,7 +1,7 @@
 """Postgres-backed portal state store, gated on TPP_PORTAL_DATABASE_URL.
 
 The driver (``psycopg``) is loaded lazily so the import cost only applies
-when a Postgres URL is configured. The schema and per-record-upsert
+when a Postgres URL is configured. The schema and per-namespace reconcile
 semantics mirror :class:`SQLitePortalStateStore`; the SQL strings differ only
 where Postgres syntax requires (e.g. ``ON CONFLICT`` parameter ordering).
 """
@@ -107,6 +107,19 @@ class PostgresPortalStateStore:
         with conn.transaction(), conn.cursor() as cur:
             for namespace, value in snapshot.items():
                 if namespace in RECORD_NAMESPACES and isinstance(value, dict):
+                    record_keys = [str(record_key) for record_key in value]
+                    if record_keys:
+                        cur.execute(
+                            "DELETE FROM tpp.portal_records "
+                            "WHERE namespace = %s "
+                            "AND NOT (record_key = ANY(%s))",
+                            (namespace, record_keys),
+                        )
+                    else:
+                        cur.execute(
+                            "DELETE FROM tpp.portal_records WHERE namespace = %s",
+                            (namespace,),
+                        )
                     for record_key, payload in value.items():
                         cur.execute(
                             "INSERT INTO tpp.portal_records "

@@ -97,8 +97,17 @@ export TPP_OIDC_ROLE_MAP='{"sub:user@example.com":"traveler"}'
 
 OIDC mode validates the bearer JWT against the provider JWKS, issuer, audience,
 expiry, not-before, and subject claims before resolving the subject to a TPP
-role. Azure AD and Okta deployments can override discovery defaults with
-`TPP_OIDC_ISSUER` and `TPP_OIDC_JWKS_URL`.
+role. Invalid OIDC bearer tokens are rejected at the HTTP boundary with a
+structured `{"detail": {"error_code": "invalid_token", "message": "..."}}`
+response body (FastAPI wraps the error fields under `detail`) and a
+`WWW-Authenticate: Bearer error="invalid_token"` challenge header. The
+role map can also be loaded from `TPP_OIDC_ROLE_MAP_FILE` when the JSON mapping
+should live in a mounted config file instead of an environment variable. Set
+exactly one of `TPP_OIDC_ROLE_MAP` or `TPP_OIDC_ROLE_MAP_FILE`; `/readyz`
+reports `misconfigured` when both are present. Set `TPP_OIDC_SUBJECT_CLAIM` to
+use a verified claim other than `sub` as the role-map lookup key. Azure AD and
+Okta deployments can override discovery defaults with `TPP_OIDC_ISSUER` and
+`TPP_OIDC_JWKS_URL`.
 
 For a browser-facing draft flow on top of the same runtime, open:
 
@@ -120,12 +129,16 @@ shared staging deployments, set `TPP_PORTAL_DATABASE_URL` (e.g.
 the optional `postgres` extra to pull in the `psycopg` driver. Pre-existing
 local state at `var/portal-runtime-state.json` (the deprecated single-file
 backend) is imported once on first start when the sibling SQLite file is
-created. Pass a `.json`-suffixed path or set `TPP_PORTAL_BACKEND=json` to
-keep using the deprecated JSON file during migration. For restart
+created. SQL snapshot saves reconcile keyed record namespaces, so drafts,
+reviews, submissions, plans, and exception records evicted from memory do not
+reappear after restart. Pass a `.json`-suffixed path or set
+`TPP_PORTAL_BACKEND=json` to keep using the deprecated JSON file during migration. For restart
 verification, create a draft, copy the `/portal/review/{draft_id}` URL,
 restart the service, and reopen the same page to confirm the review state,
 submission result, and follow-on review link still render intentionally
-before rechecking artifacts.
+before rechecking artifacts. Expense review drafts and the in-process security
+audit history use the same restart-safe snapshot path, so `/portal/expenses/{draft_id}`
+and the admin audit surface can be rechecked after restart as well.
 
 Run the repo-native live smoke command against a running service with:
 

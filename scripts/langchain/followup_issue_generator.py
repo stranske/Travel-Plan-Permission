@@ -33,6 +33,8 @@ from pathlib import Path
 from typing import Any
 
 from scripts.langchain import verdict_policy
+from scripts.langchain.issue_pr_context import estimate_tokens
+from scripts.langchain.verifier_config import EVAL_FOLLOW_UP_BUDGET_TOKENS
 
 try:
     from scripts.langchain.injection_guard import check_prompt_injection
@@ -1387,6 +1389,45 @@ def generate_followup_issue(
         )
 
 
+def _budget_followup_tasks(tasks: list[str]) -> list[str]:
+    budget = max(1, min(1000, EVAL_FOLLOW_UP_BUDGET_TOKENS // 4))
+    used = 0
+    selected: list[str] = []
+    for task in tasks[:20]:
+        estimated = max(1, estimate_tokens(f"- [ ] {task}"))
+        if estimated > budget:
+            if not selected:
+                truncated = _truncate_task_to_budget(task, budget)
+                if truncated:
+                    selected.append(truncated)
+            break
+        if selected and used + estimated > budget:
+            break
+        selected.append(task)
+        used += estimated
+    return selected
+
+
+def _truncate_task_to_budget(task: str, budget: int) -> str:
+    suffix = "..."
+    if estimate_tokens(f"- [ ] {task}") <= budget:
+        return task
+    low = 0
+    high = max(0, len(task))
+    best = ""
+    while low <= high:
+        mid = (low + high) // 2
+        candidate = f"{task[:mid].rstrip()}{suffix}"
+        if estimate_tokens(f"- [ ] {candidate}") <= budget:
+            best = candidate
+            low = mid + 1
+        else:
+            high = mid - 1
+    if best:
+        return best
+    return suffix if estimate_tokens(f"- [ ] {suffix}") <= budget else ""
+
+
 def _generate_with_llm(
     verification_data: VerificationData,
     original_issue: OriginalIssueData,
@@ -1445,8 +1486,8 @@ def _generate_with_llm(
     tasks_prompt = GENERATE_TASKS_PROMPT.format(
         analysis_json=json.dumps(analysis, indent=2),
         original_tasks="\n".join(
-            f"- [ ] {t}" for t in original_issue.tasks[:20]
-        ),  # Limit for token budget
+            f"- [ ] {t}" for t in _budget_followup_tasks(original_issue.tasks)
+        ),
     )
 
     tasks_response, trace_id_2, trace_url_2 = _invoke_llm(
@@ -1575,8 +1616,13 @@ def _generate_without_llm(
             task = f"Address: {task}"
         tasks.append(task)
 
-    # Use original unmet acceptance criteria
-    acceptance_criteria = original_issue.acceptance_criteria[:10]
+    # Use original unmet acceptance criteria, but avoid pulling workflow-sync
+    # rollout criteria into repo-local follow-ups when verifier concerns are
+    # focused on the consumer repository behavior.
+    acceptance_criteria = _select_followup_acceptance_criteria(
+        original_issue,
+        verification_data,
+    )
 
     # Build body
     body_parts = [
@@ -1763,12 +1809,172 @@ def _build_why_section(
     if verification_data.structural_issues:
         parts.append("The original issue had structural problems that may have hindered progress.")
 
+    if _has_mixed_repo_and_workflow_acceptance_criteria(
+        original_issue
+    ) and not _verification_feedback_mentions_workflow_sync(verification_data):
+        parts.append(
+            "Workflow-sync acceptance criteria were de-emphasized so this follow-up stays "
+            "focused on the repo-local verifier concerns."
+        )
+
     if needs_human_reason:
         parts.append(needs_human_reason)
 
     parts.append("This follow-up addresses the remaining gaps with improved task structure.")
 
     return " ".join(parts)
+
+
+WORKFLOW_SYNC_PATH_MARKERS = (
+    ".github/actions",
+    ".github/scripts",
+    ".github/sync-manifest.yml",
+    ".github/workflows",
+)
+
+WORKFLOW_SYNC_ACCEPTANCE_MARKERS = (
+    "workflow file",
+    "workflow files",
+    "workflow-owned",
+    "workflows-owned",
+    "workflows-owned scripts",
+    "gate workflow",
+    "maint-68",
+    "synced automation",
+    "synced script",
+    "synced scripts",
+    "synced workflow",
+    "sync pr",
+    "sync-generated",
+    "sync workflow templates",
+    "template sync",
+    "workflow template sync",
+    "workflow-template",
+)
+
+EXPLICIT_WORKFLOW_SYNC_ACCEPTANCE_MARKERS = (
+    "workflow-owned",
+    "workflows-owned",
+    "maint-68",
+    "synced automation",
+    "synced script",
+    "synced scripts",
+    "synced workflow",
+    "sync pr",
+    "sync-generated",
+    "sync workflow templates",
+    "template sync",
+    "workflow template sync",
+    "workflow-template",
+)
+
+WORKFLOW_SYNC_CONTEXT_MARKERS = (
+    *WORKFLOW_SYNC_ACCEPTANCE_MARKERS,
+    "consumer sync",
+    "consumer-sync",
+    "consumer",
+    "consumers",
+    "from the template",
+    "maint-68",
+    "synced",
+    "sync-generated",
+    "template syncing",
+    "workflow sync",
+    "workflows sync",
+)
+
+WORKFLOW_SYNC_REPO_LOCAL_MARKERS = (
+    "repo-local",
+    "repository-local",
+    "local-only",
+    "project-specific",
+    "this repository",
+    "this repo",
+)
+
+
+def _acceptance_criteria_from_original_issue(
+    original_issue: OriginalIssueData | list[str],
+) -> list[str]:
+    if isinstance(original_issue, OriginalIssueData):
+        raw_criteria = original_issue.acceptance_criteria
+    else:
+        raw_criteria = original_issue
+    return [criterion for criterion in raw_criteria if criterion]
+
+
+def _is_workflow_sync_acceptance_criterion(criterion: str) -> bool:
+    normalized = str(criterion or "").strip().lower()
+    has_repo_local_marker = any(marker in normalized for marker in WORKFLOW_SYNC_REPO_LOCAL_MARKERS)
+    if any(marker in normalized for marker in WORKFLOW_SYNC_PATH_MARKERS):
+        return not has_repo_local_marker
+    if any(marker in normalized for marker in WORKFLOW_SYNC_ACCEPTANCE_MARKERS):
+        return not has_repo_local_marker or any(
+            marker in normalized for marker in EXPLICIT_WORKFLOW_SYNC_ACCEPTANCE_MARKERS
+        )
+    return False
+
+
+def _mentions_workflow_sync_context(value: str) -> bool:
+    normalized = str(value or "").strip().lower()
+    return _is_workflow_sync_acceptance_criterion(normalized) or any(
+        marker in normalized for marker in WORKFLOW_SYNC_CONTEXT_MARKERS
+    )
+
+
+def _has_mixed_repo_and_workflow_acceptance_criteria(
+    original_issue: OriginalIssueData | list[str],
+) -> bool:
+    criteria = _acceptance_criteria_from_original_issue(original_issue)
+    if not criteria:
+        return False
+    has_workflow = any(_is_workflow_sync_acceptance_criterion(criterion) for criterion in criteria)
+    has_repo_local = any(
+        not _is_workflow_sync_acceptance_criterion(criterion) for criterion in criteria
+    )
+    return has_workflow and has_repo_local
+
+
+def _verification_feedback_mentions_workflow_sync(verification_data: VerificationData) -> bool:
+    parts = [
+        *verification_data.concerns,
+        *verification_data.non_pass_output,
+        *verification_data.non_pass_findings,
+        *verification_data.structural_issues,
+    ]
+    return any(_mentions_workflow_sync_context(part) for part in parts)
+
+
+def _select_followup_acceptance_criteria(
+    original_issue: OriginalIssueData | list[str],
+    verification_data: VerificationData,
+    *,
+    limit: int = 10,
+) -> list[str]:
+    """Select acceptance criteria that keep fallback follow-ups scoped.
+
+    Mixed Workflows/consumer issues can carry rollout criteria about synced
+    workflows next to repo-local behavior checks. When verifier feedback is
+    being converted into a consumer follow-up, keep the repo-local criteria and
+    avoid restating workflow-sync rollout criteria as if they were local tasks.
+    """
+
+    criteria = _acceptance_criteria_from_original_issue(original_issue)
+    if not criteria:
+        return []
+
+    if not _has_mixed_repo_and_workflow_acceptance_criteria(original_issue):
+        return criteria[:limit]
+
+    if _verification_feedback_mentions_workflow_sync(verification_data):
+        return criteria[:limit]
+
+    filtered = [
+        criterion for criterion in criteria if not _is_workflow_sync_acceptance_criterion(criterion)
+    ]
+    if filtered:
+        return filtered[:limit]
+    return criteria[:limit]
 
 
 def main() -> int:

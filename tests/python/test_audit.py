@@ -334,9 +334,7 @@ class TestExportCLI:
         )
         assert rc == 3
 
-    def test_export_main_returns_3_when_audit_events_columns_mismatch(
-        self, tmp_path: Path
-    ) -> None:
+    def test_export_main_returns_3_when_audit_events_columns_mismatch(self, tmp_path: Path) -> None:
         store_path = tmp_path / "bad-schema.sqlite3"
         conn = sqlite3.connect(store_path)
         try:
@@ -552,6 +550,7 @@ class TestEmitPoints:
             bootstrap_ttl_seconds=900,
             oidc_audience=None,
             oidc_role_map_configured=False,
+            oidc_role_map={},
             oidc_subject_claim="sub",
             missing_config=("TPP_AUTH_MODE",),
             invalid_config=(),

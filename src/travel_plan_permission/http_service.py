@@ -35,6 +35,7 @@ from .export import ExportService
 from .models import (
     ApprovalStatus,
     ExceptionRequest,
+    ExceptionStatus,
     ExceptionType,
     ExpenseCategory,
     ExpenseItem,
@@ -914,29 +915,12 @@ class PlannerProposalStore:
             for execution_id, serialized in payload.get("proposals_by_execution_id", {}).items()
         }
         self.portal_drafts_by_id = {
-            draft_id: PortalDraft(
-                draft_id=draft_id,
-                answers=dict(serialized["answers"]),
-                updated_at=datetime.fromisoformat(serialized["updated_at"]),
-                cached_artifacts={
-                    artifact_name: PortalArtifact(
-                        filename=artifact_payload["filename"],
-                        content=base64.b64decode(artifact_payload["content"]),
-                        media_type=artifact_payload["media_type"],
-                    )
-                    for artifact_name, artifact_payload in serialized.get(
-                        "cached_artifacts", {}
-                    ).items()
-                },
-                submission_response=(
-                    PlannerProposalOperationResponse.model_validate(
-                        serialized["submission_response"]
-                    )
-                    if serialized.get("submission_response") is not None
-                    else None
-                ),
-            )
+            draft_id: _portal_draft_from_state(draft_id, serialized)
             for draft_id, serialized in payload.get("portal_drafts_by_id", {}).items()
+        }
+        self.expense_drafts_by_id = {
+            draft_id: _portal_draft_from_state(draft_id, serialized)
+            for draft_id, serialized in payload.get("expense_drafts_by_id", {}).items()
         }
         self.manager_reviews = ReviewWorkflowStore(
             reviews_by_id={
@@ -972,6 +956,10 @@ class PlannerProposalStore:
                 "exception_requests_by_draft_id", {}
             ).items()
         }
+        self.security.audit_log.events = [
+            _audit_log_event_from_state(serialized)
+            for serialized in payload.get("audit_events", [])
+        ]
 
     def _serialize_state(self) -> dict[str, object]:
         return {
@@ -988,24 +976,12 @@ class PlannerProposalStore:
                 for execution_id, stored in self.proposals_by_execution_id.items()
             },
             "portal_drafts_by_id": {
-                draft_id: {
-                    "answers": dict(draft.answers),
-                    "updated_at": draft.updated_at.isoformat(),
-                    "cached_artifacts": {
-                        artifact_name: {
-                            "filename": artifact.filename,
-                            "content": base64.b64encode(artifact.content).decode("ascii"),
-                            "media_type": artifact.media_type,
-                        }
-                        for artifact_name, artifact in draft.cached_artifacts.items()
-                    },
-                    "submission_response": (
-                        draft.submission_response.model_dump(mode="json")
-                        if draft.submission_response is not None
-                        else None
-                    ),
-                }
+                draft_id: _portal_draft_to_state(draft)
                 for draft_id, draft in self.portal_drafts_by_id.items()
+            },
+            "expense_drafts_by_id": {
+                draft_id: _portal_draft_to_state(draft)
+                for draft_id, draft in self.expense_drafts_by_id.items()
             },
             "manager_reviews": {
                 review_id: {
@@ -1034,7 +1010,73 @@ class PlannerProposalStore:
                 draft_id: [request.model_dump(mode="json") for request in requests]
                 for draft_id, requests in self.exception_requests_by_draft_id.items()
             },
+            "audit_events": [
+                _audit_log_event_to_state(event) for event in self.security.audit_log.events
+            ],
         }
+
+
+def _portal_draft_to_state(draft: PortalDraft) -> dict[str, object]:
+    return {
+        "answers": dict(draft.answers),
+        "updated_at": draft.updated_at.isoformat(),
+        "cached_artifacts": {
+            artifact_name: {
+                "filename": artifact.filename,
+                "content": base64.b64encode(artifact.content).decode("ascii"),
+                "media_type": artifact.media_type,
+            }
+            for artifact_name, artifact in draft.cached_artifacts.items()
+        },
+        "submission_response": (
+            draft.submission_response.model_dump(mode="json")
+            if draft.submission_response is not None
+            else None
+        ),
+    }
+
+
+def _portal_draft_from_state(draft_id: str, serialized: dict[str, Any]) -> PortalDraft:
+    return PortalDraft(
+        draft_id=draft_id,
+        answers=dict(serialized["answers"]),
+        updated_at=datetime.fromisoformat(serialized["updated_at"]),
+        cached_artifacts={
+            artifact_name: PortalArtifact(
+                filename=artifact_payload["filename"],
+                content=base64.b64decode(artifact_payload["content"]),
+                media_type=artifact_payload["media_type"],
+            )
+            for artifact_name, artifact_payload in serialized.get("cached_artifacts", {}).items()
+        },
+        submission_response=(
+            PlannerProposalOperationResponse.model_validate(serialized["submission_response"])
+            if serialized.get("submission_response") is not None
+            else None
+        ),
+    )
+
+
+def _audit_log_event_to_state(event: AuditLogEvent) -> dict[str, object]:
+    return {
+        "event_type": event.event_type.value,
+        "actor": event.actor,
+        "subject": event.subject,
+        "outcome": event.outcome,
+        "metadata": dict(event.metadata),
+        "timestamp": event.timestamp.isoformat(),
+    }
+
+
+def _audit_log_event_from_state(serialized: dict[str, Any]) -> AuditLogEvent:
+    return AuditLogEvent(
+        event_type=AuditEventType(serialized["event_type"]),
+        actor=serialized["actor"],
+        subject=serialized.get("subject"),
+        outcome=serialized["outcome"],
+        metadata=dict(serialized.get("metadata", {})),
+        timestamp=datetime.fromisoformat(serialized["timestamp"]),
+    )
 
 
 def _readiness_response() -> PlannerReadinessResponse:
@@ -1179,9 +1221,130 @@ def _expense_export_artifacts(
     }
 
 
+@dataclass(frozen=True)
+class _ExpenseLinkageResolution:
+    """Resolved linkage metadata for an expense draft's `approved_request_id`."""
+
+    kind: str
+    status_value: str
+    is_approved: bool
+    traveler_name: str | None
+    trip_id: str | None
+
+
+@dataclass(frozen=True)
+class _ExpenseLinkageValidation:
+    """Validation result that also declares whether exports must be suppressed."""
+
+    errors: tuple[str, ...] = ()
+    blocks_export: bool = False
+
+
+def _resolve_expense_linkage(
+    proposal_store: PlannerProposalStore | None,
+    approved_request_id: str,
+) -> _ExpenseLinkageResolution | None:
+    if proposal_store is None:
+        return None
+    manager_review = proposal_store.lookup_manager_review(approved_request_id)
+    if manager_review is not None:
+        return _ExpenseLinkageResolution(
+            kind="manager_review",
+            status_value=manager_review.status.value,
+            is_approved=manager_review.status == ReviewStatus.APPROVED,
+            traveler_name=manager_review.trip_plan.traveler_name,
+            trip_id=manager_review.trip_plan.trip_id,
+        )
+    exception_requests = proposal_store.exception_requests_by_draft_id.get(approved_request_id)
+    if exception_requests:
+        approved = next(
+            (
+                request
+                for request in exception_requests
+                if request.status == ExceptionStatus.APPROVED
+            ),
+            None,
+        )
+        chosen = approved or exception_requests[-1]
+        traveler_name: str | None = None
+        trip_id: str | None = None
+        portal_draft = proposal_store.lookup_portal_draft(approved_request_id)
+        if portal_draft is None:
+            portal_draft = proposal_store.lookup_expense_draft(approved_request_id)
+        if portal_draft is not None:
+            traveler_value = portal_draft.answers.get("traveler_name")
+            trip_value = portal_draft.answers.get("trip_id")
+            traveler_name = str(traveler_value) if traveler_value else None
+            trip_id = str(trip_value) if trip_value else None
+        return _ExpenseLinkageResolution(
+            kind="exception_request",
+            status_value=chosen.status.value,
+            is_approved=chosen.status == ExceptionStatus.APPROVED,
+            traveler_name=traveler_name,
+            trip_id=trip_id,
+        )
+    return None
+
+
+def _validate_expense_linkage(
+    proposal_store: PlannerProposalStore | None,
+    answers: dict[str, object],
+) -> _ExpenseLinkageValidation:
+    raw = answers.get("approved_request_id")
+    if not isinstance(raw, str) or not raw.strip():
+        return _ExpenseLinkageValidation()
+    if proposal_store is None:
+        return _ExpenseLinkageValidation()
+    approved_request_id = raw.strip()
+    resolution = _resolve_expense_linkage(proposal_store, approved_request_id)
+    if resolution is None:
+        missing_linkage_errors = (
+            f"Approved request id '{approved_request_id}' was not found in the "
+            "manager-review or exception-request stores.",
+        )
+        return _ExpenseLinkageValidation(errors=missing_linkage_errors, blocks_export=True)
+    errors: list[str] = []
+    if not resolution.is_approved:
+        errors.append(
+            f"Approved request id '{approved_request_id}' was found in the "
+            f"{resolution.kind} store but its status is '{resolution.status_value}', "
+            "not approved."
+        )
+    traveler_value = answers.get("traveler_name")
+    if (
+        resolution.traveler_name is not None
+        and isinstance(traveler_value, str)
+        and traveler_value
+        and resolution.traveler_name != traveler_value
+    ):
+        errors.append(
+            f"Approved request id '{approved_request_id}' is for traveler "
+            f"'{resolution.traveler_name}', but the expense draft lists traveler "
+            f"'{traveler_value}'."
+        )
+    trip_value = answers.get("trip_id")
+    if (
+        resolution.trip_id is not None
+        and isinstance(trip_value, str)
+        and trip_value
+        and resolution.trip_id != trip_value
+    ):
+        errors.append(
+            f"Approved request id '{approved_request_id}' is for trip "
+            f"'{resolution.trip_id}', but the expense draft lists trip "
+            f"'{trip_value}'."
+        )
+    return _ExpenseLinkageValidation(
+        errors=tuple(errors),
+        blocks_export=bool(errors),
+    )
+
+
 def _expense_review_state(
     draft_id: str,
     answers: dict[str, object],
+    *,
+    proposal_store: PlannerProposalStore | None = None,
 ) -> ExpensePortalReviewState:
     missing_fields = [
         field_name for field_name in _EXPENSE_REQUIRED_FIELDS if not answers.get(field_name)
@@ -1193,11 +1356,15 @@ def _expense_review_state(
     expense_report: ExpenseReport | None = None
     artifacts: dict[str, PortalArtifact] = {}
 
+    linkage_validation = _ExpenseLinkageValidation()
+
     ocr_text = answers.get("receipt_ocr_text")
     if isinstance(ocr_text, str) and ocr_text.strip():
         receipt_extraction = ReceiptProcessor.extract_from_text(ocr_text)
 
     if not missing_fields:
+        linkage_validation = _validate_expense_linkage(proposal_store, answers)
+        validation_errors.extend(linkage_validation.errors)
         try:
             category = ExpenseCategory(str(answers["expense_category"]))
             expense_amount = Decimal(str(answers["expense_amount"]))
@@ -1255,37 +1422,38 @@ def _expense_review_state(
                     "Receipt missing: reviewers should hold reimbursement until the traveler uploads support."
                 )
 
-            expense = ExpenseItem(
-                category=category,
-                description=str(answers["expense_description"]),
-                vendor=str(answers.get("expense_vendor") or "") or None,
-                amount=expense_amount,
-                expense_date=expense_date,
-                receipt_attached=receipt is not None,
-                receipt_url=str(receipt_reference) if receipt_reference else None,
-                receipt_references=[receipt] if receipt is not None else [],
-                third_party_paid_explanation=(
-                    str(answers["third_party_paid_explanation"])
-                    if answers.get("third_party_paid_explanation")
-                    else None
-                ),
-            )
-            expense_report = ExpenseReport(
-                report_id=f"EXP-{draft_id.upper()}",
-                trip_id=str(answers["trip_id"]),
-                traveler_name=str(answers["traveler_name"]),
-                cost_center=str(answers.get("cost_center") or "") or None,
-                expenses=[expense],
-            )
-            expense_report = ApprovalEngine.from_file().evaluate_report(expense_report)
-            if expense_report.approval_status == ApprovalStatus.FLAGGED:
-                review_warnings.append(
-                    "Policy warning: manager or accounting review is required before reimbursement."
+            if not linkage_validation.blocks_export:
+                expense = ExpenseItem(
+                    category=category,
+                    description=str(answers["expense_description"]),
+                    vendor=str(answers.get("expense_vendor") or "") or None,
+                    amount=expense_amount,
+                    expense_date=expense_date,
+                    receipt_attached=receipt is not None,
+                    receipt_url=str(receipt_reference) if receipt_reference else None,
+                    receipt_references=[receipt] if receipt is not None else [],
+                    third_party_paid_explanation=(
+                        str(answers["third_party_paid_explanation"])
+                        if answers.get("third_party_paid_explanation")
+                        else None
+                    ),
                 )
-            artifacts = _expense_export_artifacts(
-                draft_id=draft_id,
-                expense_report=expense_report,
-            )
+                expense_report = ExpenseReport(
+                    report_id=f"EXP-{draft_id.upper()}",
+                    trip_id=str(answers["trip_id"]),
+                    traveler_name=str(answers["traveler_name"]),
+                    cost_center=str(answers.get("cost_center") or "") or None,
+                    expenses=[expense],
+                )
+                expense_report = ApprovalEngine.from_file().evaluate_report(expense_report)
+                if expense_report.approval_status == ApprovalStatus.FLAGGED:
+                    review_warnings.append(
+                        "Policy warning: manager or accounting review is required before reimbursement."
+                    )
+                artifacts = _expense_export_artifacts(
+                    draft_id=draft_id,
+                    expense_report=expense_report,
+                )
         except ValidationError as exc:
             validation_errors.extend(
                 f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
@@ -1511,7 +1679,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     @app.post("/portal/expenses/review")
     async def portal_expense_review(request: Request) -> Response:
         answers = _expense_answers_from_encoded_body(await request.body())
-        review = _expense_review_state("preview", answers)
+        review = _expense_review_state("preview", answers, proposal_store=proposal_store)
         if review.missing_fields or review.validation_errors:
             return _TEMPLATES.TemplateResponse(
                 request=request,
@@ -1520,7 +1688,9 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
         draft = proposal_store.save_expense_draft(answers)
-        persisted_review = _expense_review_state(draft.draft_id, answers)
+        persisted_review = _expense_review_state(
+            draft.draft_id, answers, proposal_store=proposal_store
+        )
         if persisted_review.artifacts:
             proposal_store.cache_expense_artifacts(draft.draft_id, persisted_review.artifacts)
         return RedirectResponse(
@@ -1582,7 +1752,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No expense portal draft found for '{draft_id}'.",
             )
-        review = _expense_review_state(draft.draft_id, draft.answers)
+        review = _expense_review_state(draft.draft_id, draft.answers, proposal_store=proposal_store)
         if review.artifacts and not draft.cached_artifacts:
             proposal_store.cache_expense_artifacts(draft.draft_id, review.artifacts)
         return _TEMPLATES.TemplateResponse(
@@ -2015,9 +2185,17 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No expense portal draft found for '{draft_id}'.",
             )
+        linkage_validation = _validate_expense_linkage(proposal_store, draft.answers)
+        if linkage_validation.blocks_export:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Expense export is blocked: " + "; ".join(linkage_validation.errors),
+            )
         artifacts = draft.cached_artifacts
         if not artifacts:
-            review = _expense_review_state(draft.draft_id, draft.answers)
+            review = _expense_review_state(
+                draft.draft_id, draft.answers, proposal_store=proposal_store
+            )
             artifacts = review.artifacts
             if artifacts:
                 proposal_store.cache_expense_artifacts(draft.draft_id, artifacts)
