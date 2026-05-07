@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import ast
+import inspect
 import json
 import os
+import textwrap
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -193,6 +196,37 @@ def test_cross_repo_smoke_proves_submission_status_evaluation_and_reload(
     stored = persisted["proposals_by_execution_id"][result.execution_id]
     assert stored["request"]["proposal_version"] == "planner-proposal-v2"
     assert stored["request"]["payload"] == {"proposal_ref": "planner-proposal-123"}
+
+
+def test_run_cross_repo_smoke_uses_live_client_instead_of_direct_policy_calls() -> None:
+    source = textwrap.dedent(inspect.getsource(cross_repo_smoke.run_cross_repo_smoke))
+    tree = ast.parse(source)
+    direct_calls = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    method_calls = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+
+    assert "TravelPlanPermissionClient" in direct_calls
+    assert {
+        "submit_proposal",
+        "poll_status",
+        "fetch_evaluation_result",
+    }.issubset(method_calls)
+    assert (
+        not {
+            "get_policy_snapshot",
+            "submit_proposal",
+            "poll_execution_status",
+            "get_evaluation_result",
+        }
+        & direct_calls
+    )
 
 
 def test_cross_repo_smoke_cli_reports_missing_trip_planner_checkout(
