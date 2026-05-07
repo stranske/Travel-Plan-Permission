@@ -143,6 +143,8 @@ jobs:
         run: |
           secret="$(python -c 'import secrets; print(secrets.token_hex(32))')"
           echo "TPP_BOOTSTRAP_SIGNING_SECRET=${secret}" >> "$GITHUB_ENV"
+          mkdir -p "${{ github.workspace }}/_runtime"
+          echo "TPP_PORTAL_STATE_PATH=${{ github.workspace }}/_runtime/planner-state.sqlite3" >> "$GITHUB_ENV"
 
       - name: Mint planner bootstrap token
         working-directory: travel-plan-permission
