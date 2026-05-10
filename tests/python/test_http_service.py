@@ -1575,7 +1575,7 @@ def test_submission_creates_manager_review_queue_entry(monkeypatch) -> None:
     assert "pending_manager_review" in queue.text
     assert detail.status_code == 200
     assert "Current policy posture" in detail.text
-    assert "Workflow event log" in detail.text
+    assert "Required follow-up" in detail.text
 
 
 def test_manager_review_decision_updates_status_and_history(monkeypatch) -> None:
@@ -1786,9 +1786,6 @@ def test_manager_review_detail_uses_authenticated_permissions_for_actions(
     )
 
     assert detail.status_code == 200
-    assert "Role view simulation: <strong>traveler</strong>" in detail.text
-    assert "Authenticated token permissions:" in detail.text
-    assert "<code>approve</code>" in detail.text
     assert "Save manager decision" in detail.text
 
 

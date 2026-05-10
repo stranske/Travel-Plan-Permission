@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Manager Review Queue</title>
+    <title>Reviewer Approval Queue</title>
     <style>
       :root {
         --ink: #102230;
@@ -51,15 +51,10 @@
       <section class="panel">
         <div class="topbar">
           <div>
-            <h1>Manager review queue</h1>
-            <p style="margin-top: 10px;">Submitted browser requests stay here with policy posture and decision history until a manager acts.</p>
-            <p style="margin-top: 10px;">
-              Role view simulation: <strong>{{ role_view.role.value }}</strong>, showing
-              {% for permission in role_view.permissions %}<code>{{ permission.value }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
-            </p>
+            <h1>Reviewer approval queue</h1>
+            <p style="margin-top: 10px;">Submitted travel requests stay here until a reviewer records the next approval decision.</p>
           </div>
           <div class="row">
-            <a class="link" href="/portal/admin?actor_role={{ role_view.role.value }}">Admin console</a>
             <a class="link" href="/portal">Portal home</a>
           </div>
         </div>
@@ -76,10 +71,9 @@
                   <span class="badge">{{ review.status }}</span>
                 </div>
                 <div class="meta">
-                  <span>Trip {{ review.trip_plan.trip_id }}</span>
-                  <span>Draft {{ review.draft_id }}</span>
-                  <span>Policy {{ review.policy_snapshot.policy_status }}</span>
-                  <span>{{ review.policy_snapshot.approval_triggers | length }} approval trigger(s)</span>
+                  <span>Approval state: {{ review.status }}</span>
+                  <span>Policy posture: {{ review.policy_snapshot.policy_status }}</span>
+                  <span>{{ review.policy_snapshot.approval_triggers | length }} policy reason(s) to review</span>
                 </div>
                 <div style="margin-top: 16px;">
                   <a class="link" href="/portal/manager/reviews/{{ review.review_id }}">Open review details</a>
