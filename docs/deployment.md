@@ -19,6 +19,7 @@ Free hosting is suitable for functional testing, not durable production use:
 `render.yaml` defines a single web service:
 
 - Service: `tpp-planner-api`
+- Current staging URL: `https://tpp-planner-api.onrender.com`
 - Runtime: Python
 - Plan: free
 - Start command: `tpp-planner-service --host 0.0.0.0 --port $PORT`
@@ -50,7 +51,7 @@ Then run the Trip Planner full-product verifier with live TPP enabled:
 
 ```bash
 LIVE_TPP=required \
-TPP_BASE_URL=https://<tpp-render-origin> \
+TPP_BASE_URL=https://tpp-planner-api.onrender.com \
 TPP_ACCESS_TOKEN=<token> \
 TPP_OIDC_PROVIDER=google \
 make full-product-check
@@ -59,7 +60,7 @@ make full-product-check
 For a direct TPP smoke check:
 
 ```bash
-TPP_BASE_URL=https://<tpp-render-origin> \
+TPP_BASE_URL=https://tpp-planner-api.onrender.com \
 TPP_AUTH_MODE=static-token \
 TPP_ACCESS_TOKEN=<token> \
 TPP_OIDC_PROVIDER=google \
