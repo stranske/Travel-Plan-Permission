@@ -139,7 +139,7 @@
                 <li>
                   {{ item.type.value }} · {{ item.status.value }}
                   {% if item.approval_level %} · {{ item.approval_level.value }}{% endif %}
-                  {% if item.approval %} · {{ item.approval.approver_id }}{% endif %}
+                  {% if item.approval %} by {{ item.approval.approver_id }}{% endif %}
                 </li>
               {% else %}
                 <li>No exception requests attached to this draft.</li>
@@ -168,7 +168,7 @@
             <h3>Audit trail</h3>
             <ul>
               {% for event in audit_events %}
-                <li>{{ event.timestamp.isoformat() }}: {{ event.outcome }} recorded by {{ event.actor }}</li>
+                <li>{{ event.timestamp.isoformat() }}: {{ event.event_type.value }} · {{ event.outcome }} by {{ event.actor }}</li>
               {% else %}
                 <li>No audit events recorded for this review yet.</li>
               {% endfor %}
