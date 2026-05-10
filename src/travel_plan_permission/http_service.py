@@ -2107,6 +2107,11 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             route=_route_identifier(request),
         )
         role_view = _resolve_role_view(actor_role)
+        if not role_view.can_configure:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin diagnostics require an administrator role view.",
+            )
         return _TEMPLATES.TemplateResponse(
             request=request,
             name="portal_admin.html",

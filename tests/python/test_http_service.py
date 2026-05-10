@@ -1752,6 +1752,23 @@ def test_portal_admin_console_surfaces_permissions_runtime_and_audit_history(
     assert "artifact_downloaded" in console.text
 
 
+def test_portal_admin_console_requires_admin_role_view(monkeypatch) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+
+    forbidden = client.get(
+        "/portal/admin?actor_role=traveler",
+        headers=_bootstrap_auth_header(
+            subject="viewer-only",
+            permissions=(Permission.VIEW,),
+        ),
+    )
+
+    assert forbidden.status_code == 403
+    assert forbidden.json()["detail"] == "Admin diagnostics require an administrator role view."
+
+
 def test_manager_review_detail_uses_authenticated_permissions_for_actions(
     monkeypatch,
 ) -> None:
