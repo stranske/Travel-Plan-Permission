@@ -116,21 +116,27 @@
             <h3>Approval history</h3>
             <ul>
               {% for event in review.trip_plan.approval_history %}
-                <li>{{ event.timestamp.isoformat() }}: {{ event.outcome.value }} by {{ event.approver_id }}{% if event.justification %} — {{ event.justification }}{% endif %}</li>
+                <li>
+                  {{ event.timestamp.isoformat() }}: {{ event.outcome.value }}
+                  {% if role_can_configure %} by {{ event.approver_id }}{% endif %}
+                  {% if event.justification %} — {{ event.justification }}{% endif %}
+                </li>
               {% else %}
                 <li>No manager decision recorded yet.</li>
               {% endfor %}
             </ul>
           </div>
 
-          <div class="callout" style="margin-top: 18px;">
-            <h3>Workflow event log</h3>
-            <ul>
-              {% for event in review.history %}
-                <li>{{ event.timestamp.isoformat() }}: {{ event.event_type }} by {{ event.actor_id }}{% if event.rationale %} — {{ event.rationale }}{% endif %}</li>
-              {% endfor %}
-            </ul>
-          </div>
+          {% if role_can_configure %}
+            <div class="callout" style="margin-top: 18px;">
+              <h3>Workflow event log</h3>
+              <ul>
+                {% for event in review.history %}
+                  <li>{{ event.timestamp.isoformat() }}: {{ event.event_type }} by {{ event.actor_id }}{% if event.rationale %} — {{ event.rationale }}{% endif %}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
 
           <div class="callout" style="margin-top: 18px;">
             <h3>Exception requests</h3>

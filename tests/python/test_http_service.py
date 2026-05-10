@@ -1694,14 +1694,7 @@ def test_manager_review_detail_hides_decision_form_for_read_only_role(
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
-    draft_id, _location = _create_portal_draft(client)
-    client.post(
-        f"/portal/review/{draft_id}/submit",
-        headers=AUTH_HEADER,
-        follow_redirects=True,
-    )
-    review = store.lookup_manager_review_for_draft(draft_id)
-    assert review is not None
+    review = _seed_manager_review(store, status=http_service.ReviewStatus.PENDING_MANAGER_REVIEW)
 
     detail = client.get(
         f"/portal/manager/reviews/{review.review_id}?actor_role=traveler",
@@ -1711,6 +1704,7 @@ def test_manager_review_detail_hides_decision_form_for_read_only_role(
     assert detail.status_code == 200
     assert "Read-only role" in detail.text
     assert "Save manager decision" not in detail.text
+    assert "Workflow event log" not in detail.text
 
 
 def test_portal_admin_console_surfaces_permissions_runtime_and_audit_history(
@@ -1787,6 +1781,27 @@ def test_manager_review_detail_uses_authenticated_permissions_for_actions(
 
     assert detail.status_code == 200
     assert "Save manager decision" in detail.text
+
+
+def test_manager_review_detail_shows_debug_event_log_for_configure_permission(
+    monkeypatch,
+) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+
+    review = _seed_manager_review(store, status=http_service.ReviewStatus.PENDING_MANAGER_REVIEW)
+
+    detail = client.get(
+        f"/portal/manager/reviews/{review.review_id}",
+        headers=_bootstrap_auth_header(
+            subject="admin-debugger",
+            permissions=(Permission.VIEW, Permission.CONFIGURE),
+        ),
+    )
+
+    assert detail.status_code == 200
+    assert "Workflow event log" in detail.text
 
 
 def test_exception_decision_updates_review_detail_and_audit_log(monkeypatch) -> None:

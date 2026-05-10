@@ -1561,6 +1561,7 @@ def _manager_review_queue_context(
         "role_view": role_view,
         "actor_permissions": tuple(sorted(auth_context.permissions, key=lambda item: item.value)),
         "role_can_approve": auth_context.can(Permission.APPROVE),
+        "role_can_configure": auth_context.can(Permission.CONFIGURE),
     }
 
 
@@ -1580,6 +1581,7 @@ def _manager_review_detail_context(
         "role_view": role_view,
         "actor_permissions": tuple(sorted(auth_context.permissions, key=lambda item: item.value)),
         "role_can_approve": auth_context.can(Permission.APPROVE),
+        "role_can_configure": auth_context.can(Permission.CONFIGURE),
         "exceptions": exceptions or [],
         "audit_events": audit_events or [],
         "error_message": error_message,
