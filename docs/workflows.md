@@ -29,7 +29,7 @@ contract stays explicit and testable.
   immutable approval history recorded on the trip.
 - Managers can record `approve`, `request_changes`, or `reject` decisions with
   rationale from the detail view, and the runtime keeps that decision history in
-  durable in-memory workflow state for later review during the same service run.
+  the configured portal state store so it can be reopened after service restart.
 
 ## Expense (Stage 2)
 

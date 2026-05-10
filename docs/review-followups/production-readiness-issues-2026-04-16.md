@@ -2,8 +2,29 @@
 
 These issue drafts follow the canonical agent issue structure documented in
 [`docs/AGENT_ISSUE_FORMAT.md`](../AGENT_ISSUE_FORMAT.md).
-They target the remaining gaps between the current well-tested service and a
-more production-ready workflow portal.
+They target the remaining gaps between the then-current well-tested service and
+a more production-ready workflow portal.
+
+## Status Update, 2026-05-09
+
+Recent implementation rounds resolved most of these drafts:
+
+- Portal workflow state now has durable SQLite/Postgres-backed persistence via
+  `src/travel_plan_permission/persistence/`, with restart tests in
+  `tests/python/test_http_service.py` and backend tests in
+  `tests/python/test_portal_state_store.py`.
+- Expense and accounting exports are now gated by approved manager-review or
+  approved exception linkage, traveler/trip matching, and explicit
+  reimbursement/accounting status options.
+- Portal actions now use authenticated permission checks for request,
+  review, artifact, exception, and admin surfaces, with role-aware templates and
+  durable audit-event logging.
+
+The remaining production-hardening boundary is narrower than these drafts now
+imply: external identity provisioning, enterprise segregation-of-duties depth,
+external accounting/ERP settlement writes, and record lifecycle/retention policy
+for portal workflow records. Audit-event retention is already implemented
+through `tpp-audit-prune`.
 
 ## Issue Draft 1: Persist Portal Workflow State Beyond A Single Service Run
 
@@ -28,19 +49,19 @@ surfaces that can resume previously created workflow state.
 
 ## Tasks
 
-- [ ] Add a durable storage abstraction for portal requests, manager reviews, exception records, expense drafts, and audit events
-- [ ] Replace the in-memory `ReviewWorkflowStore` and portal draft stores with the new storage-backed implementation
-- [ ] Make portal home, request detail, manager review, expense review, and audit surfaces load previously saved state after a restart
-- [ ] Add bounded retention and cleanup rules suitable for local/dev use and future production configuration
-- [ ] Add tests that simulate restart-safe retrieval of requests, reviews, exceptions, expense drafts, and audit history
-- [ ] Update setup and operator docs to describe the default local persistence path and its production-facing expectations
+- [x] Add a durable storage abstraction for portal requests, manager reviews, exception records, expense drafts, and audit events
+- [x] Replace the in-memory `ReviewWorkflowStore` and portal draft stores with the new storage-backed implementation
+- [x] Make portal home, request detail, manager review, expense review, and audit surfaces load previously saved state after a restart
+- [ ] Add bounded retention and cleanup rules for portal workflow records suitable for local/dev use and future production configuration
+- [x] Add tests that simulate restart-safe retrieval of requests, reviews, exceptions, expense drafts, and audit history
+- [x] Update setup and operator docs to describe the default local persistence path and its production-facing expectations
 
 ## Acceptance Criteria
 
-- [ ] Requests, reviews, exceptions, expense drafts, and audit history survive a service restart
-- [ ] The portal UI can reopen saved workflow state without manual reconstruction
-- [ ] Restart and retrieval behavior is test-covered
-- [ ] Local docs explain how durable storage is configured and where it lives
+- [x] Requests, reviews, exceptions, expense drafts, and audit history survive a service restart
+- [x] The portal UI can reopen saved workflow state without manual reconstruction
+- [x] Restart and retrieval behavior is test-covered
+- [x] Local docs explain how durable storage is configured and where it lives
 
 ## Implementation Notes
 
@@ -79,19 +100,19 @@ the portal UI.
 
 ## Tasks
 
-- [ ] Replace free-form expense linkage with server-validated lookup against approved request records
-- [ ] Validate traveler, trip, and cost context against the approved request before allowing expense review or export
-- [ ] Add a bounded reimbursement state machine for draft, manager review, accounting review, reimbursed, and rejected states
-- [ ] Update expense and accounting views so invalid linkage and blocked transitions render deliberate user-visible errors
-- [ ] Add tests for nonexistent request IDs, mismatched traveler/trip data, invalid transitions, and export gating
-- [ ] Update docs to describe the delivered expense workflow and its remaining external accounting boundaries
+- [x] Replace free-form expense linkage with server-validated lookup against approved request records
+- [x] Validate traveler, trip, and cost context against the approved request before allowing expense review or export
+- [x] Add a bounded reimbursement state machine for draft, manager review, accounting review, reimbursed, and rejected states
+- [x] Update expense and accounting views so invalid linkage and blocked transitions render deliberate user-visible errors
+- [x] Add tests for nonexistent request IDs, mismatched traveler/trip data, invalid transitions, and export gating
+- [x] Update docs to describe the delivered expense workflow and its remaining external accounting boundaries
 
 ## Acceptance Criteria
 
-- [ ] Expense flows cannot proceed against nonexistent or unapproved requests
-- [ ] Reimbursement state transitions are explicit, validated, and visible in the UI
-- [ ] Accounting export artifacts are tied to a validated approved request
-- [ ] Tests cover invalid linkages and main reimbursement transitions
+- [x] Expense flows cannot proceed against nonexistent or unapproved requests
+- [x] Reimbursement state transitions are explicit, validated, and visible in the UI
+- [x] Accounting export artifacts are tied to a validated approved request
+- [x] Tests cover invalid linkages and main reimbursement transitions
 
 ## Implementation Notes
 
@@ -133,19 +154,19 @@ portal actions, and make authorization state visible in the UI and audit trail.
 
 ## Tasks
 
-- [ ] Define the portal actor/session model for local and production-style use
-- [ ] Enforce authentication and role checks on request submission, manager review, expense review, export, exception, and audit routes
-- [ ] Update templates to display current actor context and suppress or disable unauthorized actions
-- [ ] Record authorization failures and elevated actions in the audit trail
-- [ ] Add tests for traveler, manager, accounting, and admin access boundaries
-- [ ] Update local runbook and README guidance so portal auth expectations are explicit
+- [x] Define the portal actor/session model for local and production-style use
+- [x] Enforce authentication and role checks on request submission, manager review, expense review, export, exception, and audit routes
+- [x] Update templates to display current actor context and suppress or disable unauthorized actions
+- [x] Record authorization failures and elevated actions in the audit trail
+- [x] Add tests for traveler, manager, accounting, and admin access boundaries
+- [x] Update local runbook and README guidance so portal auth expectations are explicit
 
 ## Acceptance Criteria
 
-- [ ] Portal actions require an authenticated actor with the correct role or permission
-- [ ] Unauthorized users receive bounded errors and no hidden side effects
-- [ ] Role-sensitive UI states are visible and test-covered
-- [ ] Docs explain how to run the portal locally with realistic actor context
+- [x] Portal actions require an authenticated actor with the correct role or permission
+- [x] Unauthorized users receive bounded errors and no hidden side effects
+- [x] Role-sensitive UI states are visible and test-covered
+- [x] Docs explain how to run the portal locally with realistic actor context
 
 ## Implementation Notes
 

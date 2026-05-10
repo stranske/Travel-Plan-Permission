@@ -78,6 +78,10 @@ tpp-planner-service --host 127.0.0.1 --port 8000
 ```
 
 Use `--reload` for local development if you want `uvicorn` auto-reload.
+On a cold local checkout, especially when the repo or `.venv` lives under
+cloud-synced storage, service startup can spend tens of seconds importing
+spreadsheet dependencies before Uvicorn binds. Wait for `/readyz` rather than
+treating the absence of immediate log output as a contract failure.
 
 ### 3. Confirm liveness and readiness
 
@@ -157,6 +161,11 @@ Use the token minted in step 4 as `TPP_PLANNER_TOKEN`, or set
 state file for the assertion, set `TPP_PORTAL_STATE_PATH` before starting
 `tpp-planner-service` and before running `tpp-cross-repo-smoke`.
 
+Recent local verification on 2026-05-09 showed both `tpp-planner-smoke` and
+`tpp-cross-repo-smoke --trip-planner-root ../trip-planner` passing against the
+live local service once the service and smoke command shared the same
+`TPP_PORTAL_STATE_PATH`.
+
 ## Preview or remote base URLs
 
 For preview or shared environments, point the same commands at the deployed base
@@ -183,6 +192,15 @@ The runtime config is incomplete or invalid. Check for:
 - missing `TPP_AUTH_MODE`,
 - missing `TPP_ACCESS_TOKEN` for `static-token`,
 - missing or too-short `TPP_BOOTSTRAP_SIGNING_SECRET` for `bootstrap-token`.
+
+### `/readyz` is unreachable and logs are still empty
+
+The process may still be in Python import/startup before Uvicorn has bound the
+socket. This is most visible on cold local checkouts with Dropbox or other
+cloud-sync metadata on the virtualenv. Wait longer, or interrupt the foreground
+process to inspect the traceback. If the trace is inside `openpyxl` imports, the
+issue is startup latency; if it reports `ModuleNotFoundError` or config errors,
+refresh the environment or fix runtime env vars before retrying.
 
 ### `tpp-planner-token` exits with a config error
 

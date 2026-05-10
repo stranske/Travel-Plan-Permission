@@ -31,6 +31,31 @@ expected_ranges = {
 1. **Lock file drift**: `requirements.lock`/`uv.lock` not regenerated with dependency updates
 2. **Hardcoded test assertions**: Version checks assume specific major.minor versions
 3. **Missing automation**: No sync between `pyproject.toml` ranges and test expectations
+
+### What This Does Not Solve
+
+The lock-file automation keeps committed repository state aligned; it does not
+upgrade an existing developer virtualenv. If a local `.venv` was created before
+a dependency update, tests that inspect installed packages can still fail even
+when `pyproject.toml` and `requirements.lock` are correct. In that case the fix
+is to refresh or recreate the local environment from the lock file, not to
+change dependency bounds. A 2026-05-09 local audit hit exactly this case:
+`requirements.lock` contained `ruff==0.15.12` and `mypy==1.20.2`, while the
+existing `.venv` still had `ruff==0.15.10` and `mypy==1.20.1`.
+
+The scheduled dependency-refresh workflow now verifies
+`scripts/check_local_env_freshness.py` and adds a local follow-up to generated
+dependency PRs. After pulling one of those PRs locally, run:
+
+```bash
+python scripts/check_local_env_freshness.py --check
+```
+
+If it reports stale packages, refresh from the lock file:
+
+```bash
+uv pip install --python .venv/bin/python -r requirements.lock
+```
 4. **Lack of patterns**: No established best practices for version-agnostic testing
 
 ---
