@@ -66,7 +66,11 @@ def _operation_payload(
             "proposal_id": "proposal-123",
             "proposal_version": "proposal-v1",
             "execution_id": "exec-949",
-            "status": "rejected" if submission_status == "failed" else "approved" if terminal else "submitted",
+            "status": (
+                "rejected"
+                if submission_status == "failed"
+                else "approved" if terminal else "submitted"
+            ),
             "approval_history": [],
             "validation_results": [],
             "exception_requests": [],
