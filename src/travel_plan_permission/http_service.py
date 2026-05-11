@@ -266,6 +266,16 @@ class RoleView:
     role: RoleName
     permissions: tuple[Permission, ...]
 
+    @property
+    def can_configure(self) -> bool:
+        """Return whether this simulated role view exposes admin diagnostics."""
+
+        return self.role in {
+            RoleName.FINANCE_ADMIN,
+            RoleName.POLICY_ADMIN,
+            RoleName.SYSTEM_ADMIN,
+        }
+
 
 @dataclass(frozen=True)
 class ExpensePortalReviewState:
@@ -2099,7 +2109,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     def portal_admin_dashboard(
         request: Request,
         authorization: str | None = Header(default=None),
-        actor_role: str | None = Query(default=RoleName.TRAVELER.value),
+        actor_role: str | None = Query(default=RoleName.FINANCE_ADMIN.value),
     ) -> HTMLResponse:
         auth_context = _authorize_request(
             authorization,
