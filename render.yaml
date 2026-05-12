@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: tpp-planner-api
+    runtime: python
+    plan: free
+    buildCommand: python -m pip install --upgrade pip && python -m pip install -e .
+    startCommand: tpp-planner-service --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: TPP_AUTH_MODE
+        value: static-token
+      - key: TPP_OIDC_PROVIDER
+        value: google
+      - key: TPP_PORTAL_STATE_PATH
+        value: /tmp/tpp/portal-runtime-state.sqlite3
+      - key: TPP_BASE_URL
+        sync: false
+      - key: TPP_ACCESS_TOKEN
+        sync: false

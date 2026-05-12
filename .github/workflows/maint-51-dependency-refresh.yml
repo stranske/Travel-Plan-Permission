@@ -57,6 +57,9 @@ jobs:
           python scripts/sync_tool_versions.py --check || true
           echo "versions_ok=$?" >> $GITHUB_OUTPUT
 
+      - name: Verify local environment freshness helper
+        run: python scripts/check_local_env_freshness.py --help >/dev/null
+
       - name: Regenerate lockfile
         id: compile
         run: |
@@ -67,12 +70,21 @@ jobs:
           LOCK_HASH_BEFORE=$(sha256sum requirements.lock 2>/dev/null | cut -d' ' -f1 || echo "none")
           
           # Regenerate lockfile with all extras
-          uv pip compile pyproject.toml \
-            --extra dev \
-            --extra ocr \
-            --extra orchestration \
-            --universal \
-            --output-file requirements.lock
+          uv pip compile --upgrade pyproject.toml --extra dev --extra ocr --extra orchestration -o requirements.lock
+
+          python - <<'PY'
+          import subprocess
+          import sys
+
+          compiled_proc = subprocess.run(['uv', 'pip', 'compile', 'pyproject.toml',
+                                         '--extra', 'dev', '--extra', 'ocr',
+                                         '--extra', 'orchestration',
+                                         '-o', 'requirements.check'])
+          if compiled_proc.returncode != 0:
+              sys.exit(compiled_proc.returncode)
+          subprocess.run(['diff', '-u', 'requirements.lock', 'requirements.check'], check=True)
+          PY
+          rm -f requirements.check
           
           # Check for changes
           LOCK_HASH_AFTER=$(sha256sum requirements.lock | cut -d' ' -f1)
@@ -109,19 +121,30 @@ jobs:
 
             ### Changes
             - Regenerated `requirements.lock` with all extras (dev, ocr, orchestration)
+            - Verified that `scripts/check_local_env_freshness.py` is available for local `.venv` drift checks
 
             ### Compile Command
             ```bash
-            uv pip compile pyproject.toml \
-              --extra dev \
-              --extra ocr \
-              --extra orchestration \
-              --universal \
-              --output-file requirements.lock
+            uv pip compile --upgrade pyproject.toml --extra dev --extra ocr --extra orchestration -o requirements.lock
+            ```
+
+            ### Local Environment Follow-Up
+            After pulling this PR locally, run:
+
+            ```bash
+            python scripts/check_local_env_freshness.py --check
+            ```
+
+            If it reports stale packages, refresh the local virtualenv from the
+            updated lock file:
+
+            ```bash
+            uv pip install --python .venv/bin/python -r requirements.lock
             ```
 
             ### Verification
             - [ ] CI passes
+            - [ ] `python scripts/check_local_env_freshness.py --check` passes locally after environment refresh
             - [ ] No breaking changes in dependencies
 
             ---
