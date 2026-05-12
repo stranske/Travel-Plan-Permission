@@ -144,9 +144,7 @@ class TestSQLitePortalStateStore:
         assert len(snapshot["portal_drafts_by_id"]) == 1
         assert next(iter(snapshot["portal_drafts_by_id"])) in set(ids)
 
-    def test_lru_evicted_portal_drafts_stay_evicted_after_restart(
-        self, tmp_path: Path
-    ) -> None:
+    def test_lru_evicted_portal_drafts_stay_evicted_after_restart(self, tmp_path: Path) -> None:
         state_path = tmp_path / "portal-runtime-state.sqlite3"
         first_store = PlannerProposalStore(state_path=state_path)
 
