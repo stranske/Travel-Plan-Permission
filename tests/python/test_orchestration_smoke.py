@@ -197,6 +197,38 @@ def test_policy_graph_langgraph_smoke(tmp_path: Path) -> None:
     assert output_path.exists()
 
 
+def test_policy_graph_langgraph_seam(tmp_path: Path) -> None:
+    pytest.importorskip("langgraph")
+    plan, canonical = _fixture_trip_input()
+    output_path = tmp_path / "travel_request_langgraph_seam.xlsx"
+    planner_turn = {
+        "source": "trip_planner",
+        "turn_id": "turn-948",
+        "operation": "submit_business_trip",
+        "message": "Book the conference trip and check policy.",
+    }
+
+    state = run_policy_graph(
+        plan,
+        canonical_plan=canonical,
+        output_path=output_path,
+        planner_turn=planner_turn,
+        prefer_langgraph=True,
+    )
+
+    assert state.policy_result is not None
+    assert state.planner_turn == planner_turn
+    assert state.checkpoint_metadata is not None
+    assert state.follow_up_action is not None
+    assert state.checkpoint_metadata["state_model"] == "TripState"
+    assert state.checkpoint_metadata["trip_id"] == plan.trip_id
+    assert state.checkpoint_metadata["policy_status"] == state.policy_result["status"]
+    assert state.follow_up_action["source"] == "policy_check"
+    assert state.follow_up_action["policy_status"] == state.policy_result["status"]
+    assert state.follow_up_action["required"] is True
+    assert state.follow_up_action["next_step"] == "planner_revise_trip"
+
+
 def test_policy_graph_prefers_langgraph_when_available() -> None:
     pytest.importorskip("langgraph")
 
