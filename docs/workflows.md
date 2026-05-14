@@ -7,6 +7,25 @@ Draft → Employee Submit → Manager Review → Board Secretary Review → Appr
 
 Branches: Request Changes, Reject. No delegation/escalation in Stage 1–2.
 
+### Portal surface split
+
+TPP exposes three distinct surfaces so reviewers can complete approvals in
+business terms without needing runtime internals:
+
+- **Reviewer surface** (`/portal/manager/reviews` and
+  `/portal/manager/reviews/{review_id}`): focuses on request status, policy
+  rationale, exception decisions, follow-up actions, and approval/audit history.
+- **Administrator surface** (`/portal/admin`): keeps role simulation, auth
+  posture, exception queue administration, and runtime control details in an
+  explicit admin navigation target.
+- **Developer/integration surface** (policy API endpoints, contract fixtures,
+  smoke commands, and runbooks): covers payload contracts, auth wiring, and
+  diagnostics used by `trip-planner` integration and local/CI verification.
+
+Reviewer pages should avoid transport/payload internals (draft IDs, planner
+seam details, and policy-engine implementation labels) unless the user has
+explicitly navigated to admin or diagnostics views.
+
 ### Workflow portal contract
 
 The Stage 2 browser portal now uses three explicit server-rendered endpoints:
@@ -29,7 +48,7 @@ contract stays explicit and testable.
   immutable approval history recorded on the trip.
 - Managers can record `approve`, `request_changes`, or `reject` decisions with
   rationale from the detail view, and the runtime keeps that decision history in
-  durable in-memory workflow state for later review during the same service run.
+  the configured portal state store so it can be reopened after service restart.
 
 ## Expense (Stage 2)
 

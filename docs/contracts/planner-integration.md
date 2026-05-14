@@ -17,6 +17,13 @@ This document defines the planner-facing integration seam between
 The goal is to let `trip-planner` integrate without relying on undocumented
 headers, hidden cache rules, or ad hoc payload interpretation.
 
+The integration should also preserve a product/debug split. `trip-planner`
+should translate policy and proposal state into user-facing approval readiness
+only when a trip is in a business-policy workflow. Raw TPP identifiers,
+transport state, polling details, policy versions, and result payloads remain
+part of the integration contract, but they belong in diagnostics or advanced
+views rather than normal traveler-facing planning copy.
+
 For the operator-facing startup, auth bootstrap, and smoke-test procedure that
 drives this contract over a live HTTP service, see the
 [`Planner Live-Test Runbook`](../planner-live-test-runbook.md).
@@ -29,6 +36,23 @@ The current first-pass contract supports these planner-facing flows:
 2. Proposal submission
 3. Proposal status readback
 4. Policy evaluation result handling
+
+For product surfaces, these flows should map to a small set of user-facing
+states:
+
+- `ready_for_approval`: the proposal is compliant or otherwise ready for normal
+  approval handling.
+- `needs_exception`: the proposal can proceed only through an exception path.
+- `needs_planner_revision`: the planner should revise cost, provider, timing,
+  documentation, or route assumptions before resubmitting.
+- `waiting_for_policy_review`: TPP accepted the proposal and the caller should
+  wait or poll for the evaluation result.
+- `policy_review_failed`: the transport or evaluation run failed and requires
+  operator attention before the business user can rely on the result.
+
+Those labels are a presentation contract, not a replacement for the typed
+planner payloads below. Callers should keep using machine-readable fields for
+state transitions and diagnostics.
 
 Fixture files for each flow live under
 `tests/fixtures/planner_integration/` and are validated in

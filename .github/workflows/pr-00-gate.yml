@@ -104,7 +104,11 @@ jobs:
         run: |
           # This job is intentionally scoped to the LangGraph execution path.
           # Broader orchestration coverage stays in the main Python test suite.
-          pytest tests/orchestration_graph_test.py tests/python/test_langgraph_orchestration.py -v
+          pytest \
+            tests/orchestration_graph_test.py \
+            tests/python/test_langgraph_orchestration.py \
+            tests/python/test_orchestration_smoke.py::test_policy_graph_langgraph_seam \
+            -v
 
   cross-repo-smoke:
     # Gates the planner integration contract against a pinned trip-planner ref.

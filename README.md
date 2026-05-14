@@ -50,6 +50,21 @@ fill-spreadsheet --help
 
 For the full local or preview live-test path, use the
 [`Planner Live-Test Runbook`](docs/planner-live-test-runbook.md).
+For hosted testing, use the [deployment guide](docs/deployment.md).
+
+After pulling a dependency-refresh PR, check that the existing local `.venv`
+matches the updated lock file:
+
+```bash
+python scripts/check_local_env_freshness.py --check
+```
+
+If it reports stale packages, refresh from `requirements.lock` before running
+the planner smoke tests:
+
+```bash
+uv pip install --python .venv/bin/python -r requirements.lock
+```
 
 Run the planner-facing HTTP adapter locally:
 
@@ -151,6 +166,21 @@ reports a healthy runtime, confirms the service rejects an unauthenticated
 snapshot request, and then exercises the full HTTP handshake over the live
 socket: policy snapshot, proposal submission, execution-status readback, and
 evaluation-result retrieval.
+
+For cross-repo verification with a sibling `trip-planner` checkout, run:
+
+```bash
+TPP_BASE_URL=http://127.0.0.1:8000 \
+TPP_PLANNER_TOKEN=<token-or-static-token> \
+TPP_PORTAL_STATE_PATH=var/portal-runtime-state.sqlite3 \
+tpp-cross-repo-smoke --trip-planner-root ../trip-planner
+```
+
+Use the same `TPP_PORTAL_STATE_PATH` for the running service and the smoke
+command so the persistence reload assertion checks the file the service wrote.
+On cold local checkouts under cloud-synced storage, service startup can take
+tens of seconds while spreadsheet dependencies import before `/readyz` is
+reachable; wait for readiness before treating the integration as failed.
 
 ## Documentation
 

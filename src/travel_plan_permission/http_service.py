@@ -266,6 +266,16 @@ class RoleView:
     role: RoleName
     permissions: tuple[Permission, ...]
 
+    @property
+    def can_configure(self) -> bool:
+        """Return whether this simulated role view exposes admin diagnostics."""
+
+        return self.role in {
+            RoleName.FINANCE_ADMIN,
+            RoleName.POLICY_ADMIN,
+            RoleName.SYSTEM_ADMIN,
+        }
+
 
 @dataclass(frozen=True)
 class ExpensePortalReviewState:
@@ -1561,6 +1571,7 @@ def _manager_review_queue_context(
         "role_view": role_view,
         "actor_permissions": tuple(sorted(auth_context.permissions, key=lambda item: item.value)),
         "role_can_approve": auth_context.can(Permission.APPROVE),
+        "role_can_configure": auth_context.can(Permission.CONFIGURE),
     }
 
 
@@ -1580,6 +1591,7 @@ def _manager_review_detail_context(
         "role_view": role_view,
         "actor_permissions": tuple(sorted(auth_context.permissions, key=lambda item: item.value)),
         "role_can_approve": auth_context.can(Permission.APPROVE),
+        "role_can_configure": auth_context.can(Permission.CONFIGURE),
         "exceptions": exceptions or [],
         "audit_events": audit_events or [],
         "error_message": error_message,
@@ -2097,7 +2109,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     def portal_admin_dashboard(
         request: Request,
         authorization: str | None = Header(default=None),
-        actor_role: str | None = Query(default=RoleName.TRAVELER.value),
+        actor_role: str | None = Query(default=RoleName.FINANCE_ADMIN.value),
     ) -> HTMLResponse:
         auth_context = _authorize_request(
             authorization,
@@ -2105,6 +2117,11 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             route=_route_identifier(request),
         )
         role_view = _resolve_role_view(actor_role)
+        if not role_view.can_configure:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin diagnostics require an administrator role view.",
+            )
         return _TEMPLATES.TemplateResponse(
             request=request,
             name="portal_admin.html",

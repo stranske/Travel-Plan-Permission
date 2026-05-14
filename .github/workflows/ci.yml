@@ -58,6 +58,7 @@ jobs:
             tests/orchestration_graph_test.py \
             tests/python/test_langgraph_orchestration.py \
             tests/python/test_orchestration_smoke.py::test_policy_graph_langgraph_smoke \
+            tests/python/test_orchestration_smoke.py::test_policy_graph_langgraph_seam \
             tests/python/test_orchestration_smoke.py::test_policy_graph_prefers_langgraph_when_available \
             -v
 

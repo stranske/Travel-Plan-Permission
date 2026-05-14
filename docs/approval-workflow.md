@@ -74,3 +74,24 @@ Approval packets package the trip summary, policy status, cost breakdown, and a 
 - PDFs include the justification column to preserve override rationale for auditing.
 - Manager review decisions captured through the browser queue require rationale so
   approval, rejection, and requested changes all leave an audit-ready explanation.
+
+## Portal surface design
+
+The portal should separate reviewer-facing product work from administrator and
+developer diagnostics:
+
+- **Reviewer surfaces** should answer what request is being reviewed, whether it
+  is ready to approve, what exception or follow-up is required, and what action
+  the reviewer can take next. They should use business-language labels rather
+  than planner transport details, payload IDs, or policy-engine internals.
+- **Administrator surfaces** should expose policy configuration, thresholds,
+  approval-routing rules, user/role setup, and operational status needed to run
+  the approval program.
+- **Developer/debug surfaces** should preserve raw planner payloads, proposal
+  IDs, execution IDs, policy versions, queue states, polling outcomes, and
+  validation traces for diagnosis. These details should remain available, but
+  they should not be required for routine manager review.
+
+When TPP is used from `trip-planner`, `trip-planner` decides whether policy
+readiness is relevant to a given trip. TPP remains responsible for making the
+actual approval review legible once a business proposal reaches the portal.

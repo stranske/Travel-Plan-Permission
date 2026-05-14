@@ -197,6 +197,50 @@ def test_policy_graph_langgraph_smoke(tmp_path: Path) -> None:
     assert output_path.exists()
 
 
+def test_policy_graph_langgraph_seam(tmp_path: Path) -> None:
+    pytest.importorskip("langgraph")
+    plan, canonical = _fixture_trip_input()
+    output_path = tmp_path / "travel_request_langgraph_seam.xlsx"
+    planner_turn = {
+        "source": "trip_planner",
+        "turn_id": "turn-948",
+        "operation": "submit_business_trip",
+        "message": "Book the conference trip and check policy.",
+    }
+
+    # Build the graph explicitly so the seam test can verify the LangGraph
+    # path was actually taken — not a silent fallback to _SimplePolicyGraph.
+    # Without this check, every behavioral seam assertion below would still
+    # pass under fallback (both implementations call the same
+    # _planner_runtime_node inline), so a regression in _build_langgraph()
+    # that returns None would not be caught by this test alone.
+    graph = build_policy_graph(prefer_langgraph=True)
+    assert isinstance(graph, orchestration_graph._LangGraphPolicyGraph), (
+        f"prefer_langgraph=True silently fell back to {type(graph).__name__}; "
+        "this test exists to catch regressions in _build_langgraph()."
+    )
+
+    state = run_policy_graph(
+        plan,
+        canonical_plan=canonical,
+        output_path=output_path,
+        planner_turn=planner_turn,
+        prefer_langgraph=True,
+    )
+
+    assert state.policy_result is not None
+    assert state.planner_turn == planner_turn
+    assert state.checkpoint_metadata is not None
+    assert state.follow_up_action is not None
+    assert state.checkpoint_metadata["state_model"] == "TripState"
+    assert state.checkpoint_metadata["trip_id"] == plan.trip_id
+    assert state.checkpoint_metadata["policy_status"] == state.policy_result["status"]
+    assert state.follow_up_action["source"] == "policy_check"
+    assert state.follow_up_action["policy_status"] == state.policy_result["status"]
+    assert state.follow_up_action["required"] is True
+    assert state.follow_up_action["next_step"] == "planner_revise_trip"
+
+
 def test_policy_graph_prefers_langgraph_when_available() -> None:
     pytest.importorskip("langgraph")
 
