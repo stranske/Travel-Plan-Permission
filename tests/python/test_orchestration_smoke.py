@@ -208,6 +208,18 @@ def test_policy_graph_langgraph_seam(tmp_path: Path) -> None:
         "message": "Book the conference trip and check policy.",
     }
 
+    # Build the graph explicitly so the seam test can verify the LangGraph
+    # path was actually taken — not a silent fallback to _SimplePolicyGraph.
+    # Without this check, every behavioral seam assertion below would still
+    # pass under fallback (both implementations call the same
+    # _planner_runtime_node inline), so a regression in _build_langgraph()
+    # that returns None would not be caught by this test alone.
+    graph = build_policy_graph(prefer_langgraph=True)
+    assert isinstance(graph, orchestration_graph._LangGraphPolicyGraph), (
+        f"prefer_langgraph=True silently fell back to {type(graph).__name__}; "
+        "this test exists to catch regressions in _build_langgraph()."
+    )
+
     state = run_policy_graph(
         plan,
         canonical_plan=canonical,
