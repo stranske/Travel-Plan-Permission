@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import logging
 import os
 import sys
 from dataclasses import dataclass, field, replace
@@ -29,7 +30,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 
-from . import audit
+from . import audit, demo_seed
 from .approval import ApprovalEngine
 from .export import ExportService
 from .models import (
@@ -86,6 +87,8 @@ from .security import (
     RoleName,
     SecurityModel,
 )
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "PlannerProposalStore",
@@ -1634,9 +1637,41 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         summary="Thin HTTP adapter over the planner-facing policy API builders.",
     )
 
+    demo_mode = demo_seed.demo_mode_enabled()
+    if demo_mode:
+        try:
+            seeded = demo_seed.seed_demo_data(proposal_store)
+            logger.info("TPP_DEMO_MODE: seeded %d synthetic manager review(s) from fixtures.", seeded)
+        except demo_seed.DemoSeedError:
+            logger.exception("TPP_DEMO_MODE enabled but synthetic demo seeding failed.")
+
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/portal/demo", response_class=HTMLResponse)
+    def portal_demo(request: Request) -> HTMLResponse:
+        """Surface the synthetic demo reviewer token (demo mode only).
+
+        Auth-gated routes read the ``Authorization`` header, so a non-developer
+        copies the displayed token into ``Authorization: Bearer <token>`` (e.g.
+        via a browser extension) to open the populated manager review queue.
+        """
+
+        if not demo_mode:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Demo mode is not enabled.",
+            )
+        token = demo_seed.mint_demo_reviewer_token()
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="portal_demo.html",
+            context={
+                "token": token,
+                "queue_url": request.url_for("portal_manager_review_queue"),
+            },
+        )
 
     @app.get("/portal", response_class=HTMLResponse)
     def portal_home(request: Request) -> HTMLResponse:
