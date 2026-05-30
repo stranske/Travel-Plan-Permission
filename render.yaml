@@ -1,3 +1,8 @@
+# Public Render deployment. This deployment is FIXTURES-ONLY: it boots with
+# TPP_DEMO_MODE=1 and seeds its store exclusively from repo fixtures
+# (tests/fixtures/*.json). No real travel/expense data is ever served here.
+# The real-data zone must use the internal/on-prem path in
+# docs/no-terminal-demo.md, never this public service.
 services:
   - type: web
     name: tpp-planner-api
@@ -7,13 +12,21 @@ services:
     startCommand: tpp-planner-service --host 0.0.0.0 --port $PORT
     healthCheckPath: /healthz
     envVars:
+      # Synthetic demo: seed from fixtures and mount /portal/demo. Default OFF
+      # everywhere else; only this fixtures-only service enables it.
+      - key: TPP_DEMO_MODE
+        value: "1"
+      # Bootstrap-token auth so the demo reviewer token (minted at /portal/demo)
+      # validates against the gated manager/admin routes.
       - key: TPP_AUTH_MODE
-        value: static-token
+        value: bootstrap-token
+      - key: TPP_BOOTSTRAP_SIGNING_SECRET
+        generateValue: true
       - key: TPP_OIDC_PROVIDER
         value: google
       - key: TPP_PORTAL_STATE_PATH
         value: /tmp/tpp/portal-runtime-state.sqlite3
       - key: TPP_BASE_URL
         sync: false
-      - key: TPP_ACCESS_TOKEN
-        sync: false
+      # No real TPP_ACCESS_TOKEN is wired here: this service must never hold a
+      # token to a proprietary backend.

@@ -1,0 +1,73 @@
+name: Maint Render Liveness
+
+# Scheduled liveness probe for the synthetic public demo. Runs
+# `tpp-planner-smoke --base-url <synthetic-demo-url>` so a down demo surfaces as
+# a red run instead of silently failing. See docs/no-terminal-demo.md.
+
+'on':
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Synthetic demo base URL to probe (defaults to the TPP_DEMO_BASE_URL repo variable).'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  liveness:
+    name: synthetic demo liveness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve demo base URL
+        id: resolve
+        env:
+          INPUT_URL: ${{ github.event.inputs.base_url }}
+          VAR_URL: ${{ vars.TPP_DEMO_BASE_URL }}
+        run: |
+          URL="${INPUT_URL:-$VAR_URL}"
+          if [ -z "$URL" ]; then
+            echo "No demo base URL configured." >> "$GITHUB_STEP_SUMMARY"
+            echo "Set the TPP_DEMO_BASE_URL repo variable or pass a base_url input." >> "$GITHUB_STEP_SUMMARY"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Probing synthetic demo at: $URL" >> "$GITHUB_STEP_SUMMARY"
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "base_url=$URL" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.resolve.outputs.configured == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Python
+        if: steps.resolve.outputs.configured == 'true'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.12'
+
+      - name: Install package
+        if: steps.resolve.outputs.configured == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Probe synthetic demo
+        if: steps.resolve.outputs.configured == 'true'
+        env:
+          TPP_BASE_URL: ${{ steps.resolve.outputs.base_url }}
+          TPP_OIDC_PROVIDER: google
+          TPP_AUTH_MODE: bootstrap-token
+          TPP_BOOTSTRAP_SIGNING_SECRET: ${{ secrets.TPP_DEMO_BOOTSTRAP_SECRET }}
+        run: |
+          if [ -z "$TPP_BOOTSTRAP_SIGNING_SECRET" ]; then
+            echo "::warning::TPP_DEMO_BOOTSTRAP_SECRET is not set; the smoke may fail to mint a token."
+          fi
+          tpp-planner-smoke --base-url "$TPP_BASE_URL"

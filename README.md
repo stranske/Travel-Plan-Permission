@@ -52,6 +52,12 @@ For the full local or preview live-test path, use the
 [`Planner Live-Test Runbook`](docs/planner-live-test-runbook.md).
 For hosted testing, use the [deployment guide](docs/deployment.md).
 
+**Try it in a browser (synthetic data only):** the
+[No-terminal demo runbook](docs/no-terminal-demo.md) walks a non-developer
+through the traveler&nbsp;&rarr;&nbsp;manager&nbsp;&rarr;&nbsp;admin loop on a
+fixtures-only public demo, and documents internal/on-prem hosting for the
+real-data zone.
+
 After pulling a dependency-refresh PR, check that the existing local `.venv`
 matches the updated lock file:
 
@@ -186,6 +192,7 @@ reachable; wait for readiness before treating the integration as failed.
 
 - [Local Testing Plan](docs/local-testing-plan.md)
 - [Planner Live-Test Runbook](docs/planner-live-test-runbook.md)
+- [No-terminal Demo Runbook](docs/no-terminal-demo.md)
 - [Policy API](docs/policy-api.md)
 - [Planner Integration Contract](docs/contracts/planner-integration.md)
 - [LangGraph Quickstart](docs/langgraph_quickstart.md)
