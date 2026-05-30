@@ -1,16 +1,17 @@
-"""Synthetic, fixtures-only demo seeding for the planner HTTP service.
+"""Synthetic demo seeding for the planner HTTP service.
 
 This module powers the opt-in ``TPP_DEMO_MODE`` boot path (see
 :func:`travel_plan_permission.http_service.create_app`). When enabled, it
-seeds the in-memory proposal store from repo fixtures so a non-developer can
-exercise the full traveler -> manager -> admin loop in a browser without a
-terminal.
+seeds the in-memory proposal store from repo fixtures plus a small set of
+synthetic policy-evidence defaults so a non-developer can exercise the full
+traveler -> manager -> admin loop in a browser without a terminal.
 
 Hard guarantees:
 
-* **Synthetic only.** Every seeded value originates from
-  ``tests/fixtures/*.json`` in this repository. No real travel/expense data is
-  ever embedded, so the public demo never leaks proprietary data.
+* **Synthetic only.** Seeded values originate from ``tests/fixtures/*.json`` in
+  this repository plus synthetic defaults for the policy-evidence fields the
+  portal review requires. No real travel/expense data is ever embedded, so the
+  public demo never leaks proprietary data.
 * **Opt-in.** Seeding only runs when ``TPP_DEMO_MODE`` is truthy, and never when
   the portal is pointed at a real Postgres backend (``TPP_PORTAL_DATABASE_URL``).
 
@@ -212,7 +213,7 @@ def mint_demo_reviewer_token(config: PlannerAuthConfig | None = None) -> str | N
 
 
 def seed_demo_data(store: object) -> int:
-    """Seed ``store`` with synthetic, fixtures-only demo data.
+    """Seed ``store`` with synthetic demo data.
 
     Returns the number of manager reviews seeded. Importing
     :mod:`travel_plan_permission.http_service` lazily avoids a circular import

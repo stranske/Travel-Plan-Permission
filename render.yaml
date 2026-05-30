@@ -1,6 +1,7 @@
-# Public Render deployment. This deployment is FIXTURES-ONLY: it boots with
-# TPP_DEMO_MODE=1 and seeds its store exclusively from repo fixtures
-# (tests/fixtures/*.json). No real travel/expense data is ever served here.
+# Public Render deployment. This deployment is SYNTHETIC-ONLY: it boots with
+# TPP_DEMO_MODE=1 and seeds its store from repo fixtures (tests/fixtures/*.json)
+# plus synthetic policy-evidence defaults. No real travel/expense data is ever
+# served here.
 # The real-data zone must use the internal/on-prem path in
 # docs/no-terminal-demo.md, never this public service.
 services:
@@ -21,7 +22,7 @@ services:
       - key: TPP_AUTH_MODE
         value: bootstrap-token
       - key: TPP_BOOTSTRAP_SIGNING_SECRET
-        generateValue: true
+        sync: false
       - key: TPP_OIDC_PROVIDER
         value: google
       - key: TPP_PORTAL_STATE_PATH

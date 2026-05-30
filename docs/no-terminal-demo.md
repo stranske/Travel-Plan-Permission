@@ -10,20 +10,23 @@ convenience:
 
 | Path | Data | Where it runs | LLM features |
 | --- | --- | --- | --- |
-| **Synthetic public demo** | Repo fixtures only | Public free-tier host (Render) | None |
+| **Synthetic public demo** | Repo fixtures plus synthetic policy-evidence defaults | Public free-tier host (Render) | None |
 | **Internal / on-prem** | Real org data | Inside the org perimeter | Disabled |
 
 > **Why two paths?** The org cannot place proprietary travel/expense data on
-> community/external SaaS. The public demo is therefore **synthetic-fixtures
-> only**, and any real-data deployment must stay in-perimeter.
+> community/external SaaS. The public demo is therefore **synthetic only**,
+> seeded from repo fixtures plus synthetic policy-evidence defaults, and any
+> real-data deployment must stay in-perimeter.
 
 ---
 
 ## 1. Synthetic public demo (no terminal)
 
 The public service boots with `TPP_DEMO_MODE=1` and seeds its in-memory store
-exclusively from `tests/fixtures/canonical_trip_plan_realistic.json` and
-`tests/fixtures/sample_expense_report_minimal.json`. No real data is present.
+from `tests/fixtures/canonical_trip_plan_realistic.json`,
+`tests/fixtures/sample_expense_report_minimal.json`, and synthetic
+policy-evidence defaults required to render the manager review. No real data is
+present.
 
 ### What a reviewer does
 
@@ -57,7 +60,7 @@ gate still protects the proprietary zone.
 | --- | --- | --- |
 | `TPP_DEMO_MODE` | `1` | Turns on synthetic seeding + `/portal/demo`. Default OFF. |
 | `TPP_AUTH_MODE` | `bootstrap-token` | Required so the minted reviewer token validates. |
-| `TPP_BOOTSTRAP_SIGNING_SECRET` | (generated) | Signs the reviewer token. |
+| `TPP_BOOTSTRAP_SIGNING_SECRET` | operator-provided secret | Signs the reviewer token; must match the GitHub `TPP_DEMO_BOOTSTRAP_SECRET` secret used by the liveness workflow. |
 | `TPP_OIDC_PROVIDER` | `google` | Provider label embedded in the token. |
 | `TPP_PORTAL_DATABASE_URL` | *(unset)* | If this names a Postgres DSN, demo seeding is **refused** so synthetic data never lands in a real store. |
 | `TPP_DEMO_FIXTURE_DIR` | *(unset)* | Optional override for the fixtures directory; defaults to the repo `tests/fixtures`. |
