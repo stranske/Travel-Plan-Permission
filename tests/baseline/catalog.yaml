@@ -1,0 +1,253 @@
+# Travel-Plan-Permission scenario catalog -- expense-approval + policy-lite surface.
+#
+# Surfaces:
+#   * ApprovalEngine.evaluate_expense  (config/approval_rules.yaml)
+#   * PolicyEngine.validate            (config/policy.yaml)
+#
+# Same shape as the Counter_Risk / TMP / trip-planner kits. A "scenario" is the
+# BASE request (expense list + policy context) with an optional ordered `patch`
+# applied (see adapter.apply_patch for the patch DSL). Directional checks compare
+# a variant scenario to a control on a named flat metric key.
+#
+# The repo defaults that anchor every scenario (read from the live config files
+# at test time, NOT hardcoded here):
+#   approval_rules.yaml -- ordered rules:
+#     1. meals_manager_review : category=meals,  threshold=300, require_approval
+#     2. default_under_100    : (any category),  threshold=100, auto_approve
+#     3. high_amount_flag     : (any category),  threshold=5000, require_approval
+#     => amount <= 100               -> auto_approved
+#        100 < amount < 5000 (non-meal) -> pending (no rule resolves)
+#        amount >= 5000              -> flagged (high_amount_flag)
+#        meals & amount >= 300       -> flagged (meals_manager_review)
+#   policy.yaml -- 10 rules; the base context is built to PASS all of them.
+
+# ---------------------------------------------------------------------------
+# Base request: a fully-compliant trip.
+#
+# Two small expenses, each <= $100 -> both auto-approved, report auto_approved.
+# Policy context satisfies every rule:
+#   advance_booking : 14+ days notice (booked 2025-01-01, departs 2025-01-20)
+#   fare_comparison : selected 300 vs lowest 250 -> overage 50 <= 200
+#   cabin_class     : economy, 4h flight (<= 5h long-haul) -> economy allowed
+#   fare_evidence   : attached
+#   driving_vs_flying : drive 100 <= fly 300
+#   hotel_comparison  : 2 comparable hotels (minimum 2)
+#   local_overnight : overnight, 60 miles (>= 50 min distance)
+#   meal_per_diem   : meals not provided -> per diem ok
+#   non_reimbursable: descriptions contain no blocked keywords
+#   third_party_paid: (none provided) -> pass
+# ---------------------------------------------------------------------------
+base:
+  request:
+    expenses:
+      - {category: ground_transport, description: Airport shuttle, amount: 45.00, expense_date: "2025-01-20"}
+      - {category: meals, description: Working lunch, amount: 35.00, expense_date: "2025-01-21"}
+    context:
+      booking_date: "2025-01-01"
+      departure_date: "2025-01-20"
+      return_date: "2025-01-22"
+      selected_fare: 300
+      lowest_fare: 250
+      cabin_class: economy
+      flight_duration_hours: 4.0
+      fare_evidence_attached: true
+      driving_cost: 100
+      flight_cost: 300
+      comparable_hotels: [120, 130]
+      distance_from_office_miles: 60
+      overnight_stay: true
+      meals_provided: false
+      meal_per_diem_requested: true
+
+# ---------------------------------------------------------------------------
+# Scenarios (each = base + optional patch). `base` is listed explicitly so the
+# golden / invariant tests parametrize over it.
+# ---------------------------------------------------------------------------
+scenarios:
+  - id: base
+    patch: []
+
+  # Push the first (ground_transport) expense from $45 to $7500. It now trips
+  # high_amount_flag -> that expense is FLAGGED, report rolls up to FLAGGED.
+  - id: expense_over_high_limit
+    patch:
+      - {op: set_expense_amount, index: 0, value: 7500.00}
+
+  # Push the meals expense from $35 to $350. Meals >= 300 trips
+  # meals_manager_review -> FLAGGED (category rule fires before default_under_100).
+  - id: meals_over_review_limit
+    patch:
+      - {op: set_expense_amount, index: 1, value: 350.00}
+
+  # Mid-range non-meal expense ($500). Matches no resolving rule -> PENDING
+  # (default_under_100 only auto-approves <= 100; high_amount_flag only flags
+  # >= 5000). Demonstrates the "needs review but not auto-anything" gap.
+  - id: expense_pending_midrange
+    patch:
+      - {op: set_expense_amount, index: 0, value: 500.00}
+
+  # Add a non-reimbursable item (contains the blocked keyword "alcohol").
+  # The non_reimbursable BLOCKING rule fails -> a blocking violation.
+  - id: non_reimbursable_item
+    patch:
+      - {op: add_expense, category: meals, description: Client dinner with alcohol, amount: 80.00}
+
+  # Book only 3 days before departure (< 14 required). advance_booking is an
+  # ADVISORY rule -> one advisory violation, no new blocking violation.
+  - id: late_booking
+    patch:
+      - {op: set_context, field: booking_date, value: "2025-01-17"}
+
+  # Choose a fare $400 over the lowest (threshold is $200). fare_comparison is
+  # BLOCKING -> a blocking violation.
+  - id: fare_far_over_lowest
+    patch:
+      - {op: set_context, field: selected_fare, value: 650}
+
+  # Business cabin on a short (4h) flight: cabin_class BLOCKING rule fails.
+  - id: premium_cabin_short_haul
+    patch:
+      - {op: set_context, field: cabin_class, value: business}
+
+  # Drop fare evidence: fare_evidence BLOCKING rule fails.
+  - id: missing_fare_evidence
+    patch:
+      - {op: set_context, field: fare_evidence_attached, value: false}
+
+  # A maximally non-compliant trip: a flagged high expense AND four policy
+  # breaches (1 advisory: late booking; 3 blocking: fare overage, business
+  # cabin, missing evidence). Exercises the combined escalation signal.
+  - id: many_violations
+    patch:
+      - {op: set_expense_amount, index: 0, value: 7500.00}
+      - {op: set_context, field: booking_date, value: "2025-01-17"}
+      - {op: set_context, field: selected_fare, value: 650}
+      - {op: set_context, field: cabin_class, value: business}
+      - {op: set_context, field: fare_evidence_attached, value: false}
+
+# ---------------------------------------------------------------------------
+# Directional checks: variant vs control on a flat metric key.
+# direction names are from baseline_kit.DIRECTIONS (left=variant, right=control).
+# Each is grounded in the surface's documented policy/approval economics.
+# ---------------------------------------------------------------------------
+directionals:
+  # Pushing an expense past the $5000 flag limit flips the report to flagged.
+  - id: high_expense_flags_report
+    scenario: expense_over_high_limit
+    control: base
+    metric: approval.report_flagged
+    direction: increase
+    enforce: true
+  # ...and raises the flagged-expense count.
+  - id: high_expense_raises_flagged_count
+    scenario: expense_over_high_limit
+    control: base
+    metric: approval.n_flagged
+    direction: increase
+    enforce: true
+  # ...and lowers the auto-approved count (that expense is no longer auto-approved).
+  - id: high_expense_lowers_auto_count
+    scenario: expense_over_high_limit
+    control: base
+    metric: approval.n_auto_approved
+    direction: decrease
+    enforce: true
+  # A large meals expense trips the category review rule -> flagged.
+  - id: large_meals_flags_report
+    scenario: meals_over_review_limit
+    control: base
+    metric: approval.report_flagged
+    direction: increase
+    enforce: true
+  # A mid-range non-meal expense lands in PENDING (was auto-approved at base).
+  - id: midrange_raises_pending
+    scenario: expense_pending_midrange
+    control: base
+    metric: approval.n_pending
+    direction: increase
+    enforce: true
+  # A blocked-keyword expense raises the policy violation count.
+  - id: non_reimbursable_raises_violations
+    scenario: non_reimbursable_item
+    control: base
+    metric: policy.violation_count
+    direction: increase
+    enforce: true
+  # ...specifically a BLOCKING violation.
+  - id: non_reimbursable_raises_blocking
+    scenario: non_reimbursable_item
+    control: base
+    metric: policy.blocking_violation_count
+    direction: increase
+    enforce: true
+  # Booking late raises the (advisory) violation count.
+  - id: late_booking_raises_violations
+    scenario: late_booking
+    control: base
+    metric: policy.violation_count
+    direction: increase
+    enforce: true
+  # ...and it is advisory, not blocking.
+  - id: late_booking_raises_advisory
+    scenario: late_booking
+    control: base
+    metric: policy.advisory_violation_count
+    direction: increase
+    enforce: true
+  # An over-budget fare raises blocking violations.
+  - id: fare_overage_raises_blocking
+    scenario: fare_far_over_lowest
+    control: base
+    metric: policy.blocking_violation_count
+    direction: increase
+    enforce: true
+  # Premium cabin on a short flight raises blocking violations.
+  - id: premium_cabin_raises_blocking
+    scenario: premium_cabin_short_haul
+    control: base
+    metric: policy.blocking_violation_count
+    direction: increase
+    enforce: true
+  # Missing fare evidence raises blocking violations.
+  - id: missing_evidence_raises_blocking
+    scenario: missing_fare_evidence
+    control: base
+    metric: policy.blocking_violation_count
+    direction: increase
+    enforce: true
+  # A blocking policy breach turns on the combined escalation signal.
+  - id: fare_overage_requires_escalation
+    scenario: fare_far_over_lowest
+    control: base
+    metric: requires_escalation
+    direction: increase
+    enforce: true
+  # A flagged expense (no policy breach) also turns on escalation.
+  - id: flagged_expense_requires_escalation
+    scenario: expense_over_high_limit
+    control: base
+    metric: requires_escalation
+    direction: increase
+    enforce: true
+  # The many-violations trip lowers the policy pass count well below base (10).
+  - id: many_violations_lowers_passed
+    scenario: many_violations
+    control: base
+    metric: policy.n_passed
+    direction: decrease
+    enforce: true
+
+# ---------------------------------------------------------------------------
+# Coverage manifest: the metric keys whose movement we assert directionally.
+# Each must be produced by the adapter (checked by test_coverage_manifest).
+# ---------------------------------------------------------------------------
+priority_metrics:
+  - approval.report_flagged
+  - approval.n_flagged
+  - approval.n_auto_approved
+  - approval.n_pending
+  - policy.violation_count
+  - policy.blocking_violation_count
+  - policy.advisory_violation_count
+  - policy.n_passed
+  - requires_escalation
