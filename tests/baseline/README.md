@@ -6,15 +6,34 @@ Scenario-driven wiring / sensibility / regression tests built on the shared
 ## Requires
 
 `baseline_kit` (the shared core) must be importable. It lives in
-`stranske/Workflows` under `packages/app-baseline-kit`:
+`stranske/Workflows` under `packages/app-baseline-kit`. Install the harness
+dependencies from the dedicated requirements file:
 
 ```bash
-pip install "app-baseline-kit @ git+https://github.com/stranske/Workflows.git#subdirectory=packages/app-baseline-kit"
+pip install -r tests/baseline/requirements-baseline.txt
 ```
 
-It is declared in this repo's `pyproject.toml` `[project.optional-dependencies]
-dev`, so `pip install -e ".[dev]"` pulls it (plus `pytest-regressions`, whose
-`num_regression` fixture needs `numpy` + `pandas`, already in `dev`).
+That installs `app-baseline-kit` plus `pytest-regressions` (whose
+`num_regression` fixture needs `numpy` + `pandas`, both declared in
+`pyproject.toml [dev]`).
+
+### Why these deps are NOT in `pyproject.toml`
+
+`app-baseline-kit` is a `name @ git+url` PEP 508 direct reference. TPP uses a
+custom build backend (`tools/build_backend`) that cannot serialize a direct
+reference carrying an extra marker into valid wheel metadata — declaring it in
+`pyproject` makes every `pip install -e .` fail with
+`invalid metadata: Expected semicolon (after URL and whitespace)`. So the
+harness deps live outside `pyproject`:
+
+- **`tests/baseline/requirements-baseline.txt`** — canonical pins, for local /
+  manual runs (the snippet above).
+- **`requirements.lock`** — carries the same three pins so the reusable Python
+  CI job (which installs `-r requirements.lock`) provides them to this suite.
+  Keep the two in sync.
+
+The `baseline_kit` import is allow-listed in `.project_modules.txt` so the
+test-dependency scanner does not flag it as an undeclared dependency.
 
 ## Target surfaces
 

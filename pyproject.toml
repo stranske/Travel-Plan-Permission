@@ -43,12 +43,6 @@ dev = [
     "pyarrow>=23.0.1",
     "hypothesis>=6.0.0",
     "langgraph>=0.2.0",
-    # Shared app behavior baseline harness (tests/baseline). Pulls
-    # pytest-regressions, whose num_regression fixture needs numpy + pandas
-    # (both already declared above). Tracked as a git direct reference
-    # (latest on Workflows main).
-    "app-baseline-kit @ git+https://github.com/stranske/Workflows.git#subdirectory=packages/app-baseline-kit",
-    "pytest-regressions==2.11.0",
 ]
 ocr = [
     "Pillow>=10.0.0",
