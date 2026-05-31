@@ -13,15 +13,15 @@ The built orchestration layer uses **LangGraph** when available to coordinate de
 
 ## Implementation Status
 
-| Capability | Status | Evidence |
-| --- | --- | --- |
-| Deterministic policy check node | BUILT | `src/travel_plan_permission/orchestration/graph.py` registers `policy_check` in `_build_langgraph`, and the fallback executor runs `_policy_check_node` in sequence. |
-| Planner runtime checkpoint seam | BUILT | `graph.py` registers `planner_runtime`, records checkpoint metadata and follow-up state, and matches the README's deterministic portal framing. |
-| Spreadsheet artifact node | BUILT | `graph.py` registers `spreadsheet` and calls the repo-local spreadsheet rendering/fill APIs. |
-| LLM agents | NOT IMPLEMENTED | No `ChatOpenAI`, `langchain_openai`, or `import openai` code exists under `src/`; agent phases remain future work. |
-| Vendor/travel-provider search | NOT IMPLEMENTED | Current graph nodes are limited to `policy_check`, `planner_runtime`, and `spreadsheet`; no vendor-search node is registered. |
-| Receipt OCR inside orchestration graph | NOT IMPLEMENTED | `ReceiptProcessor.extract_from_image` is an import-guarded standalone OCR helper behind the optional `ocr` extra, and no orchestration node calls it. |
-| Future privacy boundary | NOT IMPLEMENTED | Any future LLM agent must call an authorized no-train endpoint with redaction and data-zoning, and must not run against proprietary travel data until that boundary exists. |
+| Capability ID | Capability | Status Marker | Evidence |
+| --- | --- | --- | --- |
+| `deterministic.policy_check_node` | Deterministic policy check node | `STATUS:BUILT` | `src/travel_plan_permission/orchestration/graph.py` registers `policy_check` in `_build_langgraph`, and the fallback executor runs `_policy_check_node` in sequence. |
+| `deterministic.planner_runtime_node` | Planner runtime checkpoint seam | `STATUS:BUILT` | `graph.py` registers `planner_runtime`, records checkpoint metadata and follow-up state, and matches the README's deterministic portal framing. |
+| `deterministic.spreadsheet_node` | Spreadsheet artifact node | `STATUS:BUILT` | `graph.py` registers `spreadsheet` and calls the repo-local spreadsheet rendering/fill APIs. |
+| `future.llm_agents` | LLM agents | `STATUS:NOT_IMPLEMENTED` | No `ChatOpenAI`, `langchain_openai`, or `import openai` code exists under `src/`; agent phases remain future work. |
+| `future.vendor_search` | Vendor/travel-provider search | `STATUS:NOT_IMPLEMENTED` | Current graph nodes are limited to `policy_check`, `planner_runtime`, and `spreadsheet`; no vendor-search node is registered. |
+| `future.graph_receipt_ocr` | Receipt OCR inside orchestration graph | `STATUS:NOT_IMPLEMENTED` | `ReceiptProcessor.extract_from_image` is an import-guarded standalone OCR helper behind the optional `ocr` extra, and no orchestration node calls it. |
+| `future.privacy_boundary` | Future privacy boundary for LLM processing | `STATUS:NOT_IMPLEMENTED` | Any future LLM agent must call an authorized no-train endpoint with redaction and data-zoning, and must not process proprietary travel data until that boundary exists and is approved. |
 
 The status table is intentionally machine-checkable. It keeps this plan aligned with the README's description of the portal as intentionally small, server-rendered, and deterministic.
 
@@ -56,7 +56,7 @@ The status table is intentionally machine-checkable. It keeps this plan aligned 
 
 ### 2.3 LLM Agents
 
-- Planned to reside as node functions in the orchestration service.
+- Planned to be added as node functions in the orchestration service once the privacy boundary above exists.
 - Would use an authorized no-train LLM endpoint with redaction and data-zoning to:
   - Transform free text into structured data (e.g., `TripPlan`)
   - Generate explanations and options
