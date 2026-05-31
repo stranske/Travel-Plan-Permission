@@ -14,6 +14,40 @@ Free hosting is suitable for functional testing, not durable production use:
 - Move to a durable database via `TPP_PORTAL_DATABASE_URL` and install the
   `postgres` extra before treating the service as shared staging or production.
 
+### State-retention posture
+
+The hosted Render service is an **intentionally ephemeral synthetic demo**, not a
+durable store. Because `TPP_PORTAL_STATE_PATH` points at `/tmp`, submitted drafts
+and reviews do not survive a restart/redeploy. To avoid misleading testers, the
+portal home renders an in-UI "Ephemeral demo state — submissions are not retained"
+banner whenever state is ephemeral (no `TPP_PORTAL_DATABASE_URL` and the state path
+lives under a temp directory); the banner disappears automatically once a durable
+backend is configured.
+
+Choose one posture explicitly:
+
+- **Ephemeral synthetic demo (default):** keep `TPP_PORTAL_STATE_PATH` on `/tmp`.
+  The in-UI banner is the required warning — do not advertise durability for this
+  deployment.
+- **Durable in-perimeter store:** set `TPP_PORTAL_DATABASE_URL` to an
+  org-controlled/managed Postgres (or move `TPP_PORTAL_STATE_PATH` off `/tmp` to a
+  persistent disk path) and install the `postgres` extra. Any durable store holding
+  real data must stay inside the perimeter — never a community SaaS database.
+
+#### Manual acceptance: portal-state restart verification
+
+When the durable posture is chosen, confirm retention with this checklist
+(promoted from the README restart-verification steps):
+
+1. Open the deployed portal and create a draft.
+2. Copy the `/portal/review/{draft_id}` URL.
+3. Restart/redeploy the service.
+4. Reopen the same `/portal/review/{draft_id}` page and confirm the review state,
+   submission result, and follow-on review link still render.
+
+If the deployment is intentionally ephemeral, this checklist is expected to fail
+after a restart — that is precisely why the in-UI ephemerality banner must be shown.
+
 ## Render Backend
 
 `render.yaml` defines a single web service:
