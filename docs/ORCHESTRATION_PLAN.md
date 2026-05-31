@@ -1,17 +1,29 @@
-mkdir -p docs
-cat > docs/ORCHESTRATION_PLAN.md <<'EOF'
 # Travel-Plan-Permission: Orchestration & Agent Plan
 
 ## 1. Overview
 
-This document describes how the Travel-Plan-Permission policy engine will integrate with a LangGraph-based orchestration layer and a small set of LLM agents to support end-to-end travel workflows.
+This document describes how the Travel-Plan-Permission policy engine integrates with the current deterministic orchestration layer, and how future LLM-assisted agents can be added once the required privacy boundary exists.
 
 The system has two main goals:
 
 1. **Long-term**: Provide a full pre-trip and post-trip experience, including planning, policy checking, approvals, and reconciliation.
 1. **Short-term (early deliverable)**: Provide an automated way to fill the organization’s existing travel request spreadsheet template from a finalized trip plan so users can benefit before the full stack is deployed.
 
-The orchestration layer will use **LangGraph** to coordinate deterministic policy logic (this repo), LLM agents, and user/supervisor interactions.
+The built orchestration layer uses **LangGraph** when available to coordinate deterministic policy logic in this repo. LLM agents, vendor/travel-provider search, and receipt OCR inside the graph are planned capabilities, not implemented runtime behavior.
+
+## Implementation Status
+
+| Capability | Status | Evidence |
+| --- | --- | --- |
+| Deterministic policy check node | BUILT | `src/travel_plan_permission/orchestration/graph.py` registers `policy_check` in `_build_langgraph`, and the fallback executor runs `_policy_check_node` in sequence. |
+| Planner runtime checkpoint seam | BUILT | `graph.py` registers `planner_runtime`, records checkpoint metadata and follow-up state, and matches the README's deterministic portal framing. |
+| Spreadsheet artifact node | BUILT | `graph.py` registers `spreadsheet` and calls the repo-local spreadsheet rendering/fill APIs. |
+| LLM agents | NOT IMPLEMENTED | No `ChatOpenAI`, `langchain_openai`, or `import openai` code exists under `src/`; agent phases remain future work. |
+| Vendor/travel-provider search | NOT IMPLEMENTED | Current graph nodes are limited to `policy_check`, `planner_runtime`, and `spreadsheet`; no vendor-search node is registered. |
+| Receipt OCR inside orchestration graph | NOT IMPLEMENTED | `ReceiptProcessor.extract_from_image` is an import-guarded standalone OCR helper behind the optional `ocr` extra, and no orchestration node calls it. |
+| Future privacy boundary | NOT IMPLEMENTED | Any future LLM agent must call an authorized no-train endpoint with redaction and data-zoning, and must not run against proprietary travel data until that boundary exists. |
+
+The status table is intentionally machine-checkable. It keeps this plan aligned with the README's description of the portal as intentionally small, server-rendered, and deterministic.
 
 ---
 
@@ -34,9 +46,9 @@ The orchestration layer will use **LangGraph** to coordinate deterministic polic
 ### 2.2 Orchestration Service (LangGraph)
 
 - Maintains workflow state via a shared `TripState` model.
-- Implements pre-trip and post-trip workflows as graphs.
+- Implements the current policy/spreadsheet seam as a graph when LangGraph is installed, with a deterministic fallback executor.
 - Calls the policy engine functions as deterministic nodes.
-- Invokes LLM agents to:
+- Does not currently invoke LLM agents. Future phases may add agents to:
   - Normalize user input into structured plans
   - Explain policy results
   - Summarize vendor options
@@ -44,11 +56,11 @@ The orchestration layer will use **LangGraph** to coordinate deterministic polic
 
 ### 2.3 LLM Agents
 
-- Reside as node functions in the orchestration service.
-- Use OpenAI’s API to:
+- Planned to reside as node functions in the orchestration service.
+- Would use an authorized no-train LLM endpoint with redaction and data-zoning to:
   - Transform free text into structured data (e.g., `TripPlan`)
   - Generate explanations and options
-- Are not separate services; they are functions in the same process as LangGraph that call out to the LLM.
+- Are not implemented in the current `src/` tree and are not separate services today.
 
 Examples:
 
@@ -360,14 +372,14 @@ advisory-only policy path.
 
 ## 7. LLM Agent Implementation Model
 
-LLM agents are implemented as node functions in the orchestrator that:
+LLM agents are planned, not implemented. The current orchestrator nodes are deterministic: `policy_check`, `planner_runtime`, and `spreadsheet`. A future LLM agent implementation would:
 1. Read the relevant subset of TripState.
 1. Construct a prompt (and tools if needed).
-1. Call the LLM via the OpenAI API.
+1. Call an authorized no-train LLM endpoint via the repo's approved redaction/data-zone boundary.
 1. Parse the result into structured output.
 1. Update TripState and return it to LangGraph.
 
-Example pattern for the Policy Explanation Agent:
+Illustrative future pattern for the Policy Explanation Agent:
 
 ```python
 from langchain_openai import ChatOpenAI
