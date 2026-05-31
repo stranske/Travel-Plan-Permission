@@ -2665,3 +2665,51 @@ def test_demo_mode_refused_for_real_postgres_backend(monkeypatch) -> None:
     create_app(store)
     # Synthetic seeding must never write into a proprietary-data store.
     assert store.list_manager_reviews() == []
+
+
+_EPHEMERAL_BANNER_MARKER = 'data-testid="ephemeral-state-banner"'
+
+
+def test_portal_home_warns_when_state_ephemeral(monkeypatch) -> None:
+    # /tmp-backed state (the render.yaml synthetic-demo default) does not
+    # survive restarts/redeploys, so the portal home must warn testers.
+    _set_runtime_env(monkeypatch)
+    monkeypatch.delenv("TPP_PORTAL_DATABASE_URL", raising=False)
+    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", "/tmp/tpp/portal-runtime-state.sqlite3")
+
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.get("/portal")
+
+    assert response.status_code == 200
+    assert _EPHEMERAL_BANNER_MARKER in response.text
+    assert "submissions are not retained" in response.text
+
+
+def test_portal_home_omits_warning_when_state_durable(monkeypatch) -> None:
+    # A configured Postgres backend is durable, so the warning must be absent.
+    _set_runtime_env(monkeypatch)
+    monkeypatch.setenv("TPP_PORTAL_DATABASE_URL", "postgresql://user:pw@db.internal/tpp")
+
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.get("/portal")
+
+    assert response.status_code == 200
+    assert _EPHEMERAL_BANNER_MARKER not in response.text
+
+
+def test_portal_state_is_ephemeral_classification(monkeypatch) -> None:
+    monkeypatch.delenv("TPP_PORTAL_DATABASE_URL", raising=False)
+
+    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", "/tmp/tpp/portal-runtime-state.sqlite3")
+    assert http_service._portal_state_is_ephemeral() is True
+
+    # A persistent, non-temp path is treated as durable.
+    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", "/srv/tpp/portal-runtime-state.sqlite3")
+    assert http_service._portal_state_is_ephemeral() is False
+
+    # An explicit Postgres backend is always durable regardless of state path.
+    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", "/tmp/tpp/portal-runtime-state.sqlite3")
+    monkeypatch.setenv("TPP_PORTAL_DATABASE_URL", "postgresql://user:pw@db.internal/tpp")
+    assert http_service._portal_state_is_ephemeral() is False

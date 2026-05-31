@@ -7,6 +7,7 @@ import base64
 import logging
 import os
 import sys
+import tempfile
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
@@ -44,6 +45,7 @@ from .models import (
     TripPlan,
 )
 from .persistence import PortalStateStore, resolve_portal_state_store
+from .persistence.resolver import PORTAL_DATABASE_URL_ENV
 from .planner_auth import (
     OIDCAuthenticationError,
     PlannerAuthConfig,
@@ -453,6 +455,39 @@ def _default_portal_state_path() -> Path:
     if configured_path:
         return Path(configured_path).expanduser()
     return Path.cwd() / _PORTAL_STATE_DEFAULT_PATH
+
+
+def _path_is_under_tmp(path: Path) -> bool:
+    """Return ``True`` when ``path`` lives inside a temp directory.
+
+    State written under ``/tmp`` (the hosted synthetic-demo default in
+    ``render.yaml``) does not survive the free service spinning down, so it is
+    treated as ephemeral. Symlinks are intentionally not resolved so the literal
+    ``/tmp`` prefix on platforms that alias it (e.g. macOS ``/tmp`` ->
+    ``/private/tmp``) is still recognized.
+    """
+
+    candidate = path.expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    tmp_roots = {Path("/tmp"), Path(tempfile.gettempdir())}
+    lineage = {candidate, *candidate.parents}
+    return any(root in lineage for root in tmp_roots)
+
+
+def _portal_state_is_ephemeral() -> bool:
+    """Return ``True`` when portal state will not survive restarts/redeploys.
+
+    The hosted synthetic demo points ``TPP_PORTAL_STATE_PATH`` at ``/tmp``, so
+    submissions silently vanish when the free Render service spins down. The
+    portal home surfaces an in-UI notice in that case. State is treated as
+    durable when a Postgres backend is configured (``TPP_PORTAL_DATABASE_URL``)
+    or when the configured state path lives outside a temp directory.
+    """
+
+    if os.getenv(PORTAL_DATABASE_URL_ENV):
+        return False
+    return _path_is_under_tmp(_default_portal_state_path())
 
 
 def _install_audit_store_from_env() -> None:
@@ -1641,7 +1676,9 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     if demo_mode:
         try:
             seeded = demo_seed.seed_demo_data(proposal_store)
-            logger.info("TPP_DEMO_MODE: seeded %d synthetic manager review(s) from fixtures.", seeded)
+            logger.info(
+                "TPP_DEMO_MODE: seeded %d synthetic manager review(s) from fixtures.", seeded
+            )
         except demo_seed.DemoSeedError:
             logger.exception("TPP_DEMO_MODE enabled but synthetic demo seeding failed.")
 
@@ -1681,6 +1718,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             context={
                 "service_ready": _readiness_response().status == "ready",
                 "runtime_config": PlannerRuntimeConfig.from_env(),
+                "state_ephemeral": _portal_state_is_ephemeral(),
             },
         )
 
