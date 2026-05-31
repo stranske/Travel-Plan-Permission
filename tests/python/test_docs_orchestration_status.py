@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,11 +36,9 @@ def test_plan_lists_built_deterministic_nodes_and_no_openai_client_code() -> Non
     for node_name in ("policy_check", "planner_runtime", "spreadsheet"):
         assert node_name in content
 
-    result = subprocess.run(
-        ["rg", "-n", r"ChatOpenAI|langchain_openai|import openai", "src/"],
-        cwd=ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
+    source_text = "\n".join(
+        path.read_text(encoding="utf-8") for path in (ROOT / "src").rglob("*.py")
     )
-    assert result.returncode == 1, result.stdout
+    assert "ChatOpenAI" not in source_text
+    assert "langchain_openai" not in source_text
+    assert "import openai" not in source_text
