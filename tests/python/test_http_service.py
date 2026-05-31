@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -2699,10 +2700,15 @@ def test_portal_home_omits_warning_when_state_durable(monkeypatch) -> None:
     assert _EPHEMERAL_BANNER_MARKER not in response.text
 
 
-def test_portal_state_is_ephemeral_classification(monkeypatch) -> None:
+def test_portal_state_is_ephemeral_classification(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("TPP_PORTAL_DATABASE_URL", raising=False)
 
     monkeypatch.setenv("TPP_PORTAL_STATE_PATH", "/tmp/tpp/portal-runtime-state.sqlite3")
+    assert http_service._portal_state_is_ephemeral() is True
+
+    durable_alias = tmp_path / "durable-alias"
+    durable_alias.symlink_to(Path(tempfile.gettempdir()), target_is_directory=True)
+    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", str(durable_alias / "portal-runtime-state.sqlite3"))
     assert http_service._portal_state_is_ephemeral() is True
 
     # A persistent, non-temp path is treated as durable.

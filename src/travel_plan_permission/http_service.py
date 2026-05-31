@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
@@ -462,17 +463,24 @@ def _path_is_under_tmp(path: Path) -> bool:
 
     State written under ``/tmp`` (the hosted synthetic-demo default in
     ``render.yaml``) does not survive the free service spinning down, so it is
-    treated as ephemeral. Symlinks are intentionally not resolved so the literal
-    ``/tmp`` prefix on platforms that alias it (e.g. macOS ``/tmp`` ->
-    ``/private/tmp``) is still recognized.
+    treated as ephemeral. Both the literal path and its resolved target are
+    checked so aliases such as macOS ``/tmp`` -> ``/private/tmp`` and symlinked
+    state paths are classified correctly.
     """
 
     candidate = path.expanduser()
     if not candidate.is_absolute():
         candidate = Path.cwd() / candidate
     tmp_roots = {Path("/tmp"), Path(tempfile.gettempdir())}
-    lineage = {candidate, *candidate.parents}
-    return any(root in lineage for root in tmp_roots)
+    tmp_roots |= {root.resolve(strict=False) for root in tmp_roots}
+
+    def lineage(value: Path) -> set[Path]:
+        return {value, *value.parents}
+
+    paths_to_check = {candidate}
+    with suppress(OSError):
+        paths_to_check.add(candidate.resolve(strict=False))
+    return any(root in lineage(value) for value in paths_to_check for root in tmp_roots)
 
 
 def _portal_state_is_ephemeral() -> bool:
