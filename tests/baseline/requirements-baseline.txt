@@ -1,0 +1,21 @@
+# App behavior baseline harness dependencies (tests/baseline).
+#
+# These are deliberately NOT declared in pyproject.toml. TPP uses a custom build
+# backend (tools/build_backend) that cannot serialize a PEP 508 "name @ git+url"
+# direct reference carrying an extra marker into valid wheel metadata, so adding
+# app-baseline-kit to pyproject [project.optional-dependencies] breaks every
+# `pip install -e .` (invalid Requires-Dist metadata). Installing the kit deps
+# from this file keeps pyproject's metadata valid for all install paths.
+#
+# In CI the reusable Python CI job installs `-r requirements.lock`, which carries
+# the same three pins (kept in sync with this file). For a local baseline run:
+#
+#     pip install -r tests/baseline/requirements-baseline.txt
+#     PYTHONHASHSEED=0 pytest tests/baseline -q
+#
+# pytest-datadir is pulled transitively by pytest-regressions; it is pinned here
+# so local installs match the lock exactly.
+
+app-baseline-kit @ git+https://github.com/stranske/Workflows.git#subdirectory=packages/app-baseline-kit
+pytest-regressions==2.11.0
+pytest-datadir==1.8.0

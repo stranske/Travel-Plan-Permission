@@ -69,14 +69,21 @@ jobs:
           # Save original hash
           LOCK_HASH_BEFORE=$(sha256sum requirements.lock 2>/dev/null | cut -d' ' -f1 || echo "none")
           
-          # Regenerate lockfile with all extras
-          uv pip compile --upgrade pyproject.toml --extra dev --extra ocr --extra orchestration -o requirements.lock
+          # Regenerate lockfile with all extras.
+          # tests/baseline/requirements-baseline.txt carries the app behavior
+          # baseline harness deps (app-baseline-kit + pytest-regressions): these
+          # cannot live in pyproject because TPP's custom build backend mangles a
+          # "name @ git+url" direct reference into invalid wheel metadata. They are
+          # compiled in here so the refreshed lock keeps providing them to
+          # tests/baseline. See tests/baseline/README.md.
+          uv pip compile --upgrade pyproject.toml tests/baseline/requirements-baseline.txt --extra dev --extra ocr --extra orchestration -o requirements.lock
 
           python - <<'PY'
           import subprocess
           import sys
 
           compiled_proc = subprocess.run(['uv', 'pip', 'compile', 'pyproject.toml',
+                                         'tests/baseline/requirements-baseline.txt',
                                          '--extra', 'dev', '--extra', 'ocr',
                                          '--extra', 'orchestration',
                                          '-o', 'requirements.check'])
