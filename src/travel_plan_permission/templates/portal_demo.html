@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Travel Request Portal — Synthetic Demo Access</title>
+    <style>
+      body {
+        margin: 0;
+        color: #102230;
+        font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+        background: linear-gradient(135deg, #f7f2ea 0%, #dce8ef 100%);
+      }
+      main { max-width: 760px; margin: 0 auto; padding: 48px 20px 72px; }
+      .panel {
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid rgba(16, 34, 48, 0.14);
+        border-radius: 20px;
+        box-shadow: 0 18px 48px rgba(16, 34, 48, 0.14);
+        padding: 28px;
+      }
+      h1 { margin-top: 0; }
+      .banner {
+        background: #f6d8ca;
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin-bottom: 20px;
+        font-weight: 600;
+      }
+      code, .token {
+        font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+        font-size: 0.95rem;
+      }
+      .token {
+        display: block;
+        word-break: break-all;
+        background: #102230;
+        color: #f7f2ea;
+        padding: 14px 16px;
+        border-radius: 10px;
+        margin: 12px 0;
+      }
+      ol { line-height: 1.6; }
+      a.button {
+        display: inline-block;
+        margin-top: 12px;
+        background: #c65d2e;
+        color: #fff;
+        text-decoration: none;
+        padding: 10px 18px;
+        border-radius: 10px;
+      }
+      .warn { color: #8a2b0c; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="panel">
+        <div class="banner">Synthetic demo — fixtures only. No real travel or expense data is present.</div>
+        <h1>Reviewer access for the synthetic demo</h1>
+        <p>
+          This deployment runs in <code>TPP_DEMO_MODE</code> and is seeded entirely from
+          repository fixtures. Use the short-lived reviewer token below to open the
+          manager review queue and walk the traveler&nbsp;&rarr;&nbsp;manager&nbsp;&rarr;&nbsp;admin loop.
+        </p>
+        {% if token %}
+        <p>Copy this bearer token:</p>
+        <span class="token">{{ token }}</span>
+        <ol>
+          <li>Send the gated request with header
+            <code>Authorization: Bearer &lt;token&gt;</code> (for example via a browser
+            header extension, or <code>curl -H</code> from any machine).</li>
+          <li>Open the populated queue at <code>{{ queue_url }}</code>.</li>
+        </ol>
+        <a class="button" href="{{ queue_url }}">Open the manager review queue</a>
+        <p style="margin-top:16px;color:#4f6776;">
+          The queue link only renders rows once the <code>Authorization</code> header is
+          attached; without it the gate returns 401, which is expected.
+        </p>
+        {% else %}
+        <p class="warn">
+          No demo token is available. The service must be configured for
+          bootstrap-token auth (<code>TPP_AUTH_MODE=bootstrap-token</code> with a
+          <code>TPP_BOOTSTRAP_SIGNING_SECRET</code>) for the demo reviewer token to be
+          minted. See <code>docs/no-terminal-demo.md</code>.
+        </p>
+        {% endif %}
+      </div>
+    </main>
+  </body>
+</html>

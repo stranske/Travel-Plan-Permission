@@ -107,10 +107,32 @@
       li + li {
         margin-top: 8px;
       }
+      .banner {
+        margin-bottom: 24px;
+        padding: 16px 20px;
+        border-radius: 18px;
+        border: 1px solid #e3b95c;
+        background: #fdf3d7;
+        color: #6b4a09;
+        line-height: 1.5;
+      }
+      .banner strong {
+        color: #5a3d05;
+      }
     </style>
   </head>
   <body>
     <main>
+      {% if state_ephemeral %}
+      <section class="banner" role="status" data-testid="ephemeral-state-banner">
+        <strong>Ephemeral demo state — submissions are not retained.</strong>
+        This deployment stores portal and proposal state on disposable storage that is
+        cleared on every restart or redeploy, so anything you submit here can vanish
+        mid-session. Treat it as a throwaway synthetic demo; configure
+        <code>TPP_PORTAL_DATABASE_URL</code> (or a persistent
+        <code>TPP_PORTAL_STATE_PATH</code>) for durable in-perimeter use.
+      </section>
+      {% endif %}
       <section class="hero">
         <div class="eyebrow">Workflow Lite Portal</div>
         <h1>Travel request drafting without fixture gymnastics.</h1>

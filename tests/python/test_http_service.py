@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -2580,3 +2581,141 @@ raise SystemExit(1)
     )
 
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def _set_demo_runtime_env(monkeypatch) -> None:
+    """Bootstrap-token runtime config + demo mode for the synthetic demo path."""
+
+    monkeypatch.setenv("TPP_BASE_URL", "http://127.0.0.1:8000")
+    monkeypatch.setenv("TPP_OIDC_PROVIDER", "google")
+    monkeypatch.setenv("TPP_AUTH_MODE", "bootstrap-token")
+    monkeypatch.setenv("TPP_BOOTSTRAP_SIGNING_SECRET", "bootstrap-secret-123")
+    monkeypatch.setenv("TPP_DEMO_MODE", "1")
+    monkeypatch.delenv("TPP_PORTAL_DATABASE_URL", raising=False)
+
+
+def test_demo_mode_seeds_reviewable_queue(monkeypatch) -> None:
+    # Demo mode OFF: the gate still holds for the proprietary zone (no token -> 401).
+    monkeypatch.delenv("TPP_DEMO_MODE", raising=False)
+    _set_bootstrap_runtime_env(monkeypatch)
+    gated_client = TestClient(create_app(PlannerProposalStore()))
+    gated = gated_client.get("/portal/manager/reviews")
+    assert gated.status_code == 401
+
+    # Demo mode ON: the queue is seeded from fixtures and reachable with the token.
+    _set_demo_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+    token = mint_bootstrap_token(
+        subject="tpp-demo-reviewer",
+        permissions=(Permission.VIEW,),
+        provider="google",
+        secret="bootstrap-secret-123",
+        expires_in_seconds=600,
+    )
+    response = client.get(
+        "/portal/manager/reviews",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    # At least one seeded review row is rendered in the queue.
+    assert "review" in response.text.lower()
+    assert "/portal/manager/reviews/" in response.text
+
+
+def test_demo_seed_values_originate_from_fixtures(monkeypatch) -> None:
+    _set_demo_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+    token = mint_bootstrap_token(
+        subject="tpp-demo-reviewer",
+        permissions=(Permission.VIEW,),
+        provider="google",
+        secret="bootstrap-secret-123",
+        expires_in_seconds=600,
+    )
+    response = client.get(
+        "/portal/manager/reviews",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+
+    # The rendered queue must carry a value taken directly from the repo fixture,
+    # proving the seed is synthetic (no hand-typed / real data).
+    fixture_path = (
+        Path(http_service.__file__).resolve().parents[2]
+        / "tests"
+        / "fixtures"
+        / "canonical_trip_plan_realistic.json"
+    )
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    fixture_traveler = fixture["traveler_name"]
+    assert fixture_traveler in html.unescape(response.text)
+
+
+def test_demo_mode_off_does_not_seed(monkeypatch) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    monkeypatch.delenv("TPP_DEMO_MODE", raising=False)
+    store = PlannerProposalStore()
+    create_app(store)
+    assert store.list_manager_reviews() == []
+
+
+def test_demo_mode_refused_for_real_postgres_backend(monkeypatch) -> None:
+    _set_demo_runtime_env(monkeypatch)
+    monkeypatch.setenv("TPP_PORTAL_DATABASE_URL", "postgresql://user:pw@db.internal/tpp")
+    store = PlannerProposalStore()
+    create_app(store)
+    # Synthetic seeding must never write into a proprietary-data store.
+    assert store.list_manager_reviews() == []
+
+
+_EPHEMERAL_BANNER_MARKER = 'data-testid="ephemeral-state-banner"'
+
+
+def test_portal_home_warns_when_state_ephemeral(monkeypatch) -> None:
+    # /tmp-backed state (the render.yaml synthetic-demo default) does not
+    # survive restarts/redeploys, so the portal home must warn testers.
+    _set_runtime_env(monkeypatch)
+    monkeypatch.delenv("TPP_PORTAL_DATABASE_URL", raising=False)
+    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", "/tmp/tpp/portal-runtime-state.sqlite3")
+
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.get("/portal")
+
+    assert response.status_code == 200
+    assert _EPHEMERAL_BANNER_MARKER in response.text
+    assert "submissions are not retained" in response.text
+
+
+def test_portal_home_omits_warning_when_state_durable(monkeypatch) -> None:
+    # A configured Postgres backend is durable, so the warning must be absent.
+    _set_runtime_env(monkeypatch)
+    monkeypatch.setenv("TPP_PORTAL_DATABASE_URL", "postgresql://user:pw@db.internal/tpp")
+
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.get("/portal")
+
+    assert response.status_code == 200
+    assert _EPHEMERAL_BANNER_MARKER not in response.text
+
+
+def test_portal_state_is_ephemeral_classification(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("TPP_PORTAL_DATABASE_URL", raising=False)
+
+    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", "/tmp/tpp/portal-runtime-state.sqlite3")
+    assert http_service._portal_state_is_ephemeral() is True
+
+    durable_alias = tmp_path / "durable-alias"
+    durable_alias.symlink_to(Path(tempfile.gettempdir()), target_is_directory=True)
+    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", str(durable_alias / "portal-runtime-state.sqlite3"))
+    assert http_service._portal_state_is_ephemeral() is True
+
+    # A persistent, non-temp path is treated as durable.
+    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", "/srv/tpp/portal-runtime-state.sqlite3")
+    assert http_service._portal_state_is_ephemeral() is False
+
+    # An explicit Postgres backend is always durable regardless of state path.
+    monkeypatch.setenv("TPP_PORTAL_STATE_PATH", "/tmp/tpp/portal-runtime-state.sqlite3")
+    monkeypatch.setenv("TPP_PORTAL_DATABASE_URL", "postgresql://user:pw@db.internal/tpp")
+    assert http_service._portal_state_is_ephemeral() is False

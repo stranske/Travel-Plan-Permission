@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import argparse
 import base64
+import logging
 import os
 import sys
+import tempfile
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
@@ -29,7 +32,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 
-from . import audit
+from . import audit, demo_seed
 from .approval import ApprovalEngine
 from .export import ExportService
 from .models import (
@@ -43,6 +46,7 @@ from .models import (
     TripPlan,
 )
 from .persistence import PortalStateStore, resolve_portal_state_store
+from .persistence.resolver import PORTAL_DATABASE_URL_ENV
 from .planner_auth import (
     OIDCAuthenticationError,
     PlannerAuthConfig,
@@ -86,6 +90,8 @@ from .security import (
     RoleName,
     SecurityModel,
 )
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "PlannerProposalStore",
@@ -450,6 +456,46 @@ def _default_portal_state_path() -> Path:
     if configured_path:
         return Path(configured_path).expanduser()
     return Path.cwd() / _PORTAL_STATE_DEFAULT_PATH
+
+
+def _path_is_under_tmp(path: Path) -> bool:
+    """Return ``True`` when ``path`` lives inside a temp directory.
+
+    State written under ``/tmp`` (the hosted synthetic-demo default in
+    ``render.yaml``) does not survive the free service spinning down, so it is
+    treated as ephemeral. Both the literal path and its resolved target are
+    checked so aliases such as macOS ``/tmp`` -> ``/private/tmp`` and symlinked
+    state paths are classified correctly.
+    """
+
+    candidate = path.expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    tmp_roots = {Path("/tmp"), Path(tempfile.gettempdir())}
+    tmp_roots |= {root.resolve(strict=False) for root in tmp_roots}
+
+    def lineage(value: Path) -> set[Path]:
+        return {value, *value.parents}
+
+    paths_to_check = {candidate}
+    with suppress(OSError):
+        paths_to_check.add(candidate.resolve(strict=False))
+    return any(root in lineage(value) for value in paths_to_check for root in tmp_roots)
+
+
+def _portal_state_is_ephemeral() -> bool:
+    """Return ``True`` when portal state will not survive restarts/redeploys.
+
+    The hosted synthetic demo points ``TPP_PORTAL_STATE_PATH`` at ``/tmp``, so
+    submissions silently vanish when the free Render service spins down. The
+    portal home surfaces an in-UI notice in that case. State is treated as
+    durable when a Postgres backend is configured (``TPP_PORTAL_DATABASE_URL``)
+    or when the configured state path lives outside a temp directory.
+    """
+
+    if os.getenv(PORTAL_DATABASE_URL_ENV):
+        return False
+    return _path_is_under_tmp(_default_portal_state_path())
 
 
 def _install_audit_store_from_env() -> None:
@@ -1634,9 +1680,43 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         summary="Thin HTTP adapter over the planner-facing policy API builders.",
     )
 
+    demo_mode = demo_seed.demo_mode_enabled()
+    if demo_mode:
+        try:
+            seeded = demo_seed.seed_demo_data(proposal_store)
+            logger.info(
+                "TPP_DEMO_MODE: seeded %d synthetic manager review(s) from fixtures.", seeded
+            )
+        except demo_seed.DemoSeedError:
+            logger.exception("TPP_DEMO_MODE enabled but synthetic demo seeding failed.")
+
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/portal/demo", response_class=HTMLResponse)
+    def portal_demo(request: Request) -> HTMLResponse:
+        """Surface the synthetic demo reviewer token (demo mode only).
+
+        Auth-gated routes read the ``Authorization`` header, so a non-developer
+        copies the displayed token into ``Authorization: Bearer <token>`` (e.g.
+        via a browser extension) to open the populated manager review queue.
+        """
+
+        if not demo_mode:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Demo mode is not enabled.",
+            )
+        token = demo_seed.mint_demo_reviewer_token()
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="portal_demo.html",
+            context={
+                "token": token,
+                "queue_url": request.url_for("portal_manager_review_queue"),
+            },
+        )
 
     @app.get("/portal", response_class=HTMLResponse)
     def portal_home(request: Request) -> HTMLResponse:
@@ -1646,6 +1726,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             context={
                 "service_ready": _readiness_response().status == "ready",
                 "runtime_config": PlannerRuntimeConfig.from_env(),
+                "state_ephemeral": _portal_state_is_ephemeral(),
             },
         )
 
