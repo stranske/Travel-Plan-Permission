@@ -4,7 +4,7 @@
 - Issue: #1154, "Move the 5-second wall-clock export assertion out of the unit-test lane"
 - Branch: `codex/issue-1154-export-perf`
 - PR: #1163, https://github.com/stranske/Travel-Plan-Permission/pull/1163
-- Head: `ee6a1c13f10e03ce5767634b04e1275631daba29`
+- Head: `28bd7ffac9d492fe28947917467ed4859b58845d`
 - Status: opened ready-for-review; waiting on keepalive/CI
 - Changes:
   - Registered pytest `perf` marker and default-deselected it with `-m "not perf"`.
