@@ -1,4 +1,8 @@
-"""Tests for accounting export service."""
+"""Tests for accounting export service.
+
+Run opt-in performance coverage with:
+    pytest -m perf tests/python/test_export_service.py
+"""
 
 from __future__ import annotations
 
@@ -39,6 +43,34 @@ def _sample_report() -> ExpenseReport:
             )
         ],
     )
+
+
+def _typical_batch_reports() -> list[ExpenseReport]:
+    reports: list[ExpenseReport] = []
+    for report_idx in range(50):
+        expenses = [
+            ExpenseItem(
+                category=ExpenseCategory.GROUND_TRANSPORT,
+                description=f"Taxi ride {expense_idx}",
+                vendor="City Cabs",
+                amount=Decimal("25.00") + Decimal(expense_idx),
+                expense_date=date(2025, 3, 15 + expense_idx),
+                receipt_attached=True,
+                receipt_url=f"/receipts/{report_idx}-{expense_idx}",
+            )
+            for expense_idx in range(4)
+        ]
+        reports.append(
+            ExpenseReport(
+                report_id=f"EXP-{report_idx:03}",
+                trip_id=f"TRIP-{report_idx:03}",
+                traveler_name=f"Traveler {report_idx}",
+                cost_center="OPS",
+                approval_status=ApprovalStatus.AUTO_APPROVED,
+                expenses=expenses,
+            )
+        )
+    return reports
 
 
 class TestExportService:
@@ -108,35 +140,32 @@ class TestExportService:
             "receipt_link",
         ]
 
+    def test_typical_batch_exports_have_expected_outputs(self) -> None:
+        """Typical batch coverage should stay in the default unit lane."""
+        service = ExportService()
+        now = datetime(2025, 4, 1, 9, 0, tzinfo=UTC)
+        reports = _typical_batch_reports()
+
+        csv_filename, csv_content = service.to_csv(reports, batch_id="typical-csv", now=now)
+        excel_filename, excel_content = service.to_excel(
+            reports, batch_id="typical-xlsx", now=now
+        )
+
+        assert csv_filename == "expense_export_2025-04-01_typical-csv.csv"
+        assert csv_content.splitlines()[0] == ",".join(service.schema)
+        assert len(csv_content.splitlines()) == 201
+        assert excel_filename == "expense_export_2025-04-01_typical-xlsx.xlsx"
+        workbook = load_workbook(BytesIO(excel_content))
+        sheet = workbook.active
+        assert [cell.value for cell in sheet[1]] == service.schema
+        assert sheet.max_row == 201
+
+    @pytest.mark.perf
     def test_exports_complete_within_five_seconds_for_typical_batch(self) -> None:
         """CSV and Excel exports should finish quickly for typical batch sizes."""
         service = ExportService()
         now = datetime(2025, 4, 1, 9, 0, tzinfo=UTC)
-
-        reports: list[ExpenseReport] = []
-        for report_idx in range(50):
-            expenses = [
-                ExpenseItem(
-                    category=ExpenseCategory.GROUND_TRANSPORT,
-                    description=f"Taxi ride {expense_idx}",
-                    vendor="City Cabs",
-                    amount=Decimal("25.00") + Decimal(expense_idx),
-                    expense_date=date(2025, 3, 15 + expense_idx),
-                    receipt_attached=True,
-                    receipt_url=f"/receipts/{report_idx}-{expense_idx}",
-                )
-                for expense_idx in range(4)
-            ]
-            reports.append(
-                ExpenseReport(
-                    report_id=f"EXP-{report_idx:03}",
-                    trip_id=f"TRIP-{report_idx:03}",
-                    traveler_name=f"Traveler {report_idx}",
-                    cost_center="OPS",
-                    approval_status=ApprovalStatus.AUTO_APPROVED,
-                    expenses=expenses,
-                )
-            )
+        reports = _typical_batch_reports()
 
         start = perf_counter()
         service.to_csv(reports, batch_id="perf-csv", now=now)
