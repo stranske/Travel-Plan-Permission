@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
@@ -10,9 +9,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .config_loader import YamlConfigLoaderMixin, load_rules
 from .models import ExpenseCategory
 from .providers import ProviderRegistry, provider_type_for_category
 
@@ -272,22 +271,18 @@ def _default_policy_path() -> Path | None:
     return None
 
 
-def _load_rules(raw_rules: Iterable[dict[str, object]]) -> list[ValidationRule]:
-    rules: list[ValidationRule] = []
-    for raw_rule in raw_rules:
-        rule_type = raw_rule.get("type")
-        if not isinstance(rule_type, str):
-            raise ValueError("Each rule must include a string 'type'")
-        rule_cls = _RULE_TYPES.get(rule_type)
-        if rule_cls is None:
-            raise ValueError(f"Unsupported rule type: {rule_type}")
-        # rule_cls is a concrete ValidationRule subclass with model_validate
-        rule_instance: ValidationRule = rule_cls.model_validate(raw_rule)  # type: ignore[attr-defined]
-        rules.append(rule_instance)
-    return rules
+def _build_rule(raw_rule: dict[str, object]) -> ValidationRule:
+    rule_type = raw_rule.get("type")
+    if not isinstance(rule_type, str):
+        raise ValueError("Each rule must include a string 'type'")
+    rule_cls = _RULE_TYPES.get(rule_type)
+    if rule_cls is None:
+        raise ValueError(f"Unsupported rule type: {rule_type}")
+    rule_instance: ValidationRule = rule_cls.model_validate(raw_rule)  # type: ignore[attr-defined]
+    return rule_instance
 
 
-class PolicyValidator:
+class PolicyValidator(YamlConfigLoaderMixin):
     """Evaluate a trip plan against configured policy rules."""
 
     def __init__(self, rules: Iterable[ValidationRule]):
@@ -295,25 +290,23 @@ class PolicyValidator:
 
     @classmethod
     def from_yaml(cls, content: str) -> PolicyValidator:
-        data = yaml.safe_load(content) or {}
+        data = cls._load_yaml_mapping(content)
         raw_rules = data.get("rules")
         if not raw_rules:
             raise ValueError("Policy configuration must include a 'rules' list")
-        return cls(_load_rules(raw_rules))
+        return cls(load_rules(raw_rules, _build_rule))
 
-    @classmethod
-    def from_file(cls, path: str | Path | None = None) -> PolicyValidator:
-        target_path = Path(path) if path is not None else _default_policy_path()
-        if target_path is None:
-            raise FileNotFoundError("No validation.yaml file found")
-        return cls.from_yaml(target_path.read_text(encoding="utf-8"))
+    @staticmethod
+    def _default_config_path() -> Path | None:
+        return _default_policy_path()
+
+    @staticmethod
+    def _missing_config_message() -> str:
+        return "No validation.yaml file found"
 
     @classmethod
     def from_environment(cls, env_var: str = "POLICY_CONFIG") -> PolicyValidator:
-        content = os.getenv(env_var)
-        if not content:
-            raise ValueError(f"Environment variable '{env_var}' is not set or empty")
-        return cls.from_yaml(content)
+        return super().from_environment(env_var)
 
     def validate_plan(
         self, plan: TripPlan, *, reference_date: date | None = None

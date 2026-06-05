@@ -9,13 +9,15 @@ where Postgres syntax requires (e.g. ``ON CONFLICT`` parameter ordering).
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from .store import RECORD_NAMESPACES
+from .sql_store import SqlSnapshotStore
 
 if TYPE_CHECKING:  # pragma: no cover — typing-only import
-    from psycopg import Connection
+    from psycopg import Connection, Cursor
 
 SCHEMA_VERSION = 1
 
@@ -48,7 +50,7 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
 )
 
 
-class PostgresPortalStateStore:
+class PostgresPortalStateStore(SqlSnapshotStore):
     """Postgres-backed portal state store using namespaced ``tpp`` schema."""
 
     def __init__(self, database_url: str) -> None:
@@ -83,7 +85,7 @@ class PostgresPortalStateStore:
                 (SCHEMA_VERSION, _now()),
             )
 
-    def load_snapshot(self) -> dict[str, object] | None:
+    def _select_all(self) -> tuple[list[tuple[str, str, object]], list[tuple[str, object]]]:
         conn = self._connection()
         with conn.cursor() as cur:
             cur.execute("SELECT namespace, record_key, payload_json FROM tpp.portal_records")
@@ -91,60 +93,75 @@ class PostgresPortalStateStore:
             cur.execute("SELECT namespace, payload_json FROM tpp.portal_singletons")
             singletons = cur.fetchall()
         conn.commit()
-        if not records and not singletons:
-            return None
+        return records, singletons
 
-        snapshot: dict[str, Any] = {namespace: {} for namespace in RECORD_NAMESPACES}
-        for namespace, record_key, payload in records:
-            snapshot.setdefault(namespace, {})[record_key] = _coerce_jsonb(payload)
-        for namespace, payload in singletons:
-            snapshot[namespace] = _coerce_jsonb(payload)
-        return snapshot
-
-    def save_snapshot(self, snapshot: dict[str, object]) -> None:
+    @contextmanager
+    def _transaction(self) -> Iterator[Cursor[object]]:
         conn = self._connection()
-        now = _now()
         with conn.transaction(), conn.cursor() as cur:
-            for namespace, value in snapshot.items():
-                if namespace in RECORD_NAMESPACES and isinstance(value, dict):
-                    record_keys = [str(record_key) for record_key in value]
-                    if record_keys:
-                        cur.execute(
-                            "DELETE FROM tpp.portal_records "
-                            "WHERE namespace = %s "
-                            "AND NOT (record_key = ANY(%s))",
-                            (namespace, record_keys),
-                        )
-                    else:
-                        cur.execute(
-                            "DELETE FROM tpp.portal_records WHERE namespace = %s",
-                            (namespace,),
-                        )
-                    for record_key, payload in value.items():
-                        cur.execute(
-                            "INSERT INTO tpp.portal_records "
-                            "(namespace, record_key, payload_json, updated_at) "
-                            "VALUES (%s, %s, %s::jsonb, %s) "
-                            "ON CONFLICT (namespace, record_key) DO UPDATE SET "
-                            "payload_json = EXCLUDED.payload_json, "
-                            "updated_at = EXCLUDED.updated_at",
-                            (
-                                namespace,
-                                str(record_key),
-                                json.dumps(payload, sort_keys=True),
-                                now,
-                            ),
-                        )
-                else:
-                    cur.execute(
-                        "INSERT INTO tpp.portal_singletons "
-                        "(namespace, payload_json, updated_at) "
-                        "VALUES (%s, %s::jsonb, %s) "
-                        "ON CONFLICT (namespace) DO UPDATE SET "
-                        "payload_json = EXCLUDED.payload_json, "
-                        "updated_at = EXCLUDED.updated_at",
-                        (namespace, json.dumps(value, sort_keys=True), now),
-                    )
+            yield cur
+
+    def _delete_absent_records(
+        self, handle: Cursor[object], namespace: str, record_keys: list[str]
+    ) -> None:
+        if record_keys:
+            handle.execute(
+                "DELETE FROM tpp.portal_records "
+                "WHERE namespace = %s "
+                "AND NOT (record_key = ANY(%s))",
+                (namespace, record_keys),
+            )
+        else:
+            handle.execute(
+                "DELETE FROM tpp.portal_records WHERE namespace = %s",
+                (namespace,),
+            )
+
+    def _upsert_record(
+        self,
+        handle: Cursor[object],
+        namespace: str,
+        record_key: str,
+        payload: object,
+        updated_at: object,
+    ) -> None:
+        handle.execute(
+            "INSERT INTO tpp.portal_records "
+            "(namespace, record_key, payload_json, updated_at) "
+            "VALUES (%s, %s, %s::jsonb, %s) "
+            "ON CONFLICT (namespace, record_key) DO UPDATE SET "
+            "payload_json = EXCLUDED.payload_json, "
+            "updated_at = EXCLUDED.updated_at",
+            (
+                namespace,
+                record_key,
+                json.dumps(payload, sort_keys=True),
+                updated_at,
+            ),
+        )
+
+    def _upsert_singleton(
+        self,
+        handle: Cursor[object],
+        namespace: str,
+        payload: object,
+        updated_at: object,
+    ) -> None:
+        handle.execute(
+            "INSERT INTO tpp.portal_singletons "
+            "(namespace, payload_json, updated_at) "
+            "VALUES (%s, %s::jsonb, %s) "
+            "ON CONFLICT (namespace) DO UPDATE SET "
+            "payload_json = EXCLUDED.payload_json, "
+            "updated_at = EXCLUDED.updated_at",
+            (namespace, json.dumps(payload, sort_keys=True), updated_at),
+        )
+
+    def _now(self) -> datetime:
+        return _now()
+
+    def _coerce_payload(self, value: object) -> object:
+        return _coerce_jsonb(value)
 
     def close(self) -> None:
         if self._conn is not None:

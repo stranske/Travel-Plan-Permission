@@ -1,0 +1,18 @@
+## 2026-06-05T07:11:46Z - opener (codex): issue #1151 config/sql base refactor
+
+- Repo: `stranske/Travel-Plan-Permission`
+- Issue: `#1151` Share TPP YAML config-loader and snapshot-store base classes
+- Branch: `codex/issue-1151-config-sql-base`
+- Status: implementation complete locally; ready to push/open PR.
+- Scope implemented: added shared `YamlConfigLoaderMixin` and `load_rules` helper for config loaders; added shared `SqlSnapshotStore` base for SQL snapshot load/reconcile control flow; updated approval, validation, providers, policy, SQLite, and Postgres modules to consume the shared bases while preserving public APIs and backend-specific SQL.
+- Validation:
+  - `python -m pytest tests/python/test_approval_engine.py::test_load_rules_from_environment tests/python/test_providers.py::test_lookup_filters_by_destination_and_validity tests/python/test_validation.py "tests/python/test_portal_state_store.py::TestSQLitePortalStateStore::test_save_snapshot_reconciles_absent_records" -q` -> 15 passed.
+  - `python -m pytest tests/python/test_portal_state_store.py -q` -> 44 passed.
+  - `python -m ruff check src/travel_plan_permission/approval.py src/travel_plan_permission/validation.py src/travel_plan_permission/providers.py src/travel_plan_permission/policy.py src/travel_plan_permission/config_loader.py src/travel_plan_permission/persistence/sql_store.py src/travel_plan_permission/persistence/sqlite_store.py src/travel_plan_permission/persistence/postgres_store.py tests/python/test_portal_state_store.py tests/python/test_approval_engine.py tests/python/test_providers.py tests/python/test_validation.py` -> passed.
+  - Dedupe grep: `content = os.getenv(env_var)` count is 0 in approval/validation; `isinstance(value, dict)` count is 0 in sqlite/postgres and 1 in shared `sql_store.py`.
+  - `git diff --check` -> passed.
+  - Full `python -m pytest tests/python -q` -> 551 passed, 1 skipped, 3 xfailed; failed only local dependency-version gates for installed `black 26.3.1` vs declared `>=26.5.1` and installed `pyarrow 16.1.0` vs declared `>=23.0.1` / pandas Arrow dtype import.
+- Deliberate-break gates:
+  - YAML: temporarily returned `{}` from shared `_load_yaml_mapping`; `test_load_rules_from_environment` failed with missing `rules` list; restored helper.
+  - SQL: temporarily skipped shared `_delete_absent_records`; `test_save_snapshot_reconciles_absent_records` failed because stale `alpha` survived beside `beta`; restored delete step.
+- Next action: push branch and open ready-for-review PR with `agent:codex`, `agents:keepalive`, and `autofix`.

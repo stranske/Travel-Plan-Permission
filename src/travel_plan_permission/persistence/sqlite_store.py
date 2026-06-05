@@ -22,9 +22,8 @@ import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
-from .store import RECORD_NAMESPACES
+from .sql_store import SqlSnapshotStore
 
 SCHEMA_VERSION = 1
 
@@ -54,7 +53,7 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
 )
 
 
-class SQLitePortalStateStore:
+class SQLitePortalStateStore(SqlSnapshotStore):
     """SQLite-backed portal state store using WAL journal mode."""
 
     def __init__(self, path: Path) -> None:
@@ -89,7 +88,7 @@ class SQLitePortalStateStore:
                 (SCHEMA_VERSION, _now_iso()),
             )
 
-    def load_snapshot(self) -> dict[str, object] | None:
+    def _select_all(self) -> tuple[list[tuple[str, str, object]], list[tuple[str, object]]]:
         conn = self._connection()
         records = conn.execute(
             "SELECT namespace, record_key, payload_json FROM portal_records"
@@ -97,61 +96,71 @@ class SQLitePortalStateStore:
         singletons = conn.execute(
             "SELECT namespace, payload_json FROM portal_singletons"
         ).fetchall()
-        if not records and not singletons:
-            return None
+        return records, singletons
 
-        snapshot: dict[str, Any] = {namespace: {} for namespace in RECORD_NAMESPACES}
-        for namespace, record_key, payload_json in records:
-            snapshot.setdefault(namespace, {})[record_key] = json.loads(payload_json)
-        for namespace, payload_json in singletons:
-            snapshot[namespace] = json.loads(payload_json)
-        return snapshot
-
-    def save_snapshot(self, snapshot: dict[str, object]) -> None:
+    def _transaction(self) -> _transaction:
         conn = self._connection()
-        now = _now_iso()
-        with _transaction(conn):
-            for namespace, value in snapshot.items():
-                if namespace in RECORD_NAMESPACES and isinstance(value, dict):
-                    record_keys = [str(record_key) for record_key in value]
-                    if record_keys:
-                        placeholders = ", ".join("?" for _ in record_keys)
-                        conn.execute(
-                            "DELETE FROM portal_records "
-                            "WHERE namespace = ? "
-                            f"AND record_key NOT IN ({placeholders})",
-                            (namespace, *record_keys),
-                        )
-                    else:
-                        conn.execute(
-                            "DELETE FROM portal_records WHERE namespace = ?",
-                            (namespace,),
-                        )
-                    for record_key, payload in value.items():
-                        conn.execute(
-                            "INSERT INTO portal_records "
-                            "(namespace, record_key, payload_json, updated_at) "
-                            "VALUES (?, ?, ?, ?) "
-                            "ON CONFLICT(namespace, record_key) DO UPDATE SET "
-                            "payload_json=excluded.payload_json, "
-                            "updated_at=excluded.updated_at",
-                            (
-                                namespace,
-                                str(record_key),
-                                json.dumps(payload, sort_keys=True),
-                                now,
-                            ),
-                        )
-                else:
-                    conn.execute(
-                        "INSERT INTO portal_singletons "
-                        "(namespace, payload_json, updated_at) "
-                        "VALUES (?, ?, ?) "
-                        "ON CONFLICT(namespace) DO UPDATE SET "
-                        "payload_json=excluded.payload_json, "
-                        "updated_at=excluded.updated_at",
-                        (namespace, json.dumps(value, sort_keys=True), now),
-                    )
+        return _transaction(conn)
+
+    def _delete_absent_records(
+        self, handle: sqlite3.Connection, namespace: str, record_keys: list[str]
+    ) -> None:
+        if record_keys:
+            placeholders = ", ".join("?" for _ in record_keys)
+            handle.execute(
+                "DELETE FROM portal_records "
+                "WHERE namespace = ? "
+                f"AND record_key NOT IN ({placeholders})",
+                (namespace, *record_keys),
+            )
+        else:
+            handle.execute(
+                "DELETE FROM portal_records WHERE namespace = ?",
+                (namespace,),
+            )
+
+    def _upsert_record(
+        self,
+        handle: sqlite3.Connection,
+        namespace: str,
+        record_key: str,
+        payload: object,
+        updated_at: object,
+    ) -> None:
+        handle.execute(
+            "INSERT INTO portal_records "
+            "(namespace, record_key, payload_json, updated_at) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(namespace, record_key) DO UPDATE SET "
+            "payload_json=excluded.payload_json, "
+            "updated_at=excluded.updated_at",
+            (
+                namespace,
+                record_key,
+                json.dumps(payload, sort_keys=True),
+                updated_at,
+            ),
+        )
+
+    def _upsert_singleton(
+        self,
+        handle: sqlite3.Connection,
+        namespace: str,
+        payload: object,
+        updated_at: object,
+    ) -> None:
+        handle.execute(
+            "INSERT INTO portal_singletons "
+            "(namespace, payload_json, updated_at) "
+            "VALUES (?, ?, ?) "
+            "ON CONFLICT(namespace) DO UPDATE SET "
+            "payload_json=excluded.payload_json, "
+            "updated_at=excluded.updated_at",
+            (namespace, json.dumps(payload, sort_keys=True), updated_at),
+        )
+
+    def _now(self) -> str:
+        return _now_iso()
 
     def close(self) -> None:
         if self._conn is not None:

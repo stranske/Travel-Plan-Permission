@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import os
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 
-import yaml
-
+from .config_loader import YamlConfigLoaderMixin, load_rules
 from .models import (
     ApprovalDecision,
     ApprovalRule,
@@ -18,12 +15,6 @@ from .models import (
     ExpenseItem,
     ExpenseReport,
 )
-
-
-def _load_rules(raw_rules: Iterable[dict[str, object]]) -> list[ApprovalRule]:
-    """Convert raw rule dictionaries into validated ApprovalRule objects."""
-
-    return [ApprovalRule.model_validate(rule) for rule in raw_rules]
 
 
 def _default_rules_path() -> Path | None:
@@ -47,7 +38,7 @@ def _package_rules_resource() -> resources.abc.Traversable | None:
 
 
 @dataclass
-class ApprovalEngine:
+class ApprovalEngine(YamlConfigLoaderMixin):
     """Evaluate expenses against configured approval rules."""
 
     rules: list[ApprovalRule]
@@ -56,35 +47,30 @@ class ApprovalEngine:
     def from_yaml(cls, content: str) -> ApprovalEngine:
         """Load approval rules from YAML content."""
 
-        data = yaml.safe_load(content) or {}
+        data = cls._load_yaml_mapping(content)
         raw_rules = data.get("rules")
         if not raw_rules:
             raise ValueError("Approval rules configuration must include a 'rules' list")
-        return cls(_load_rules(raw_rules))
+        return cls(load_rules(raw_rules, ApprovalRule.model_validate))
 
-    @classmethod
-    def from_file(cls, path: str | Path | None = None) -> ApprovalEngine:
-        """Load approval rules from a YAML file."""
+    @staticmethod
+    def _default_config_path() -> Path | None:
+        return _default_rules_path()
 
-        target_path = Path(path) if path is not None else _default_rules_path()
+    @staticmethod
+    def _read_default_config_resource() -> str | None:
+        resource = _package_rules_resource()
+        return resource.read_text(encoding="utf-8") if resource is not None else None
 
-        if target_path is None or not target_path.exists():
-            resource = _package_rules_resource()
-            if resource is None:
-                raise FileNotFoundError("No approval rules file found")
-            content = resource.read_text(encoding="utf-8")
-        else:
-            content = target_path.read_text(encoding="utf-8")
-        return cls.from_yaml(content)
+    @staticmethod
+    def _missing_config_message() -> str:
+        return "No approval rules file found"
 
     @classmethod
     def from_environment(cls, env_var: str = "APPROVAL_RULES") -> ApprovalEngine:
         """Load approval rules from an environment variable containing YAML."""
 
-        content = os.getenv(env_var)
-        if not content:
-            raise ValueError(f"Environment variable '{env_var}' is not set or empty")
-        return cls.from_yaml(content)
+        return super().from_environment(env_var)
 
     def evaluate_expense(self, expense: ExpenseItem) -> ApprovalDecision:
         """Evaluate a single expense and return a decision."""
