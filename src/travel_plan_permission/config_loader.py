@@ -23,6 +23,12 @@ class YamlConfigLoaderMixin:
     """Mixin for config classes that load themselves from YAML content."""
 
     @classmethod
+    def from_yaml(cls, content: str) -> Self:
+        """Build a config object from YAML content."""
+
+        raise NotImplementedError
+
+    @classmethod
     def from_file(cls, path: str | Path | None = None) -> Self:
         """Load configuration from a YAML file or configured default."""
 
