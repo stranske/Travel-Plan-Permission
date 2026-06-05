@@ -1670,7 +1670,7 @@ def _admin_dashboard_context(
 
 
 def register_portal_routes(app: FastAPI, proposal_store: PlannerProposalStore, *, demo_mode: bool) -> None:
-    """Register one cohesive planner service route group."""
+    """Register portal entry, draft, expense, demo, and health routes."""
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
@@ -1774,7 +1774,7 @@ def register_portal_routes(app: FastAPI, proposal_store: PlannerProposalStore, *
         )
 
 def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
-    """Register one cohesive planner service route group."""
+    """Register reviewer-facing portal review, submit, and exception routes."""
 
     @app.get(
         "/portal/review/{draft_id}",
@@ -1980,7 +1980,7 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
         )
 
 def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
-    """Register one cohesive planner service route group."""
+    """Register manager queue, review detail, and decision routes."""
 
     @app.get("/portal/manager/reviews", response_class=HTMLResponse)
     def portal_manager_review_queue(
@@ -2122,7 +2122,7 @@ def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) 
         )
 
 def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
-    """Register one cohesive planner service route group."""
+    """Register admin exception decision and dashboard routes."""
 
     @app.post("/portal/admin/exceptions/{draft_id}/{exception_index}/decision")
     async def portal_exception_decision(
@@ -2209,7 +2209,7 @@ def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) ->
         )
 
 def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
-    """Register one cohesive planner service route group."""
+    """Register portal and expense artifact download routes."""
 
     @app.get("/portal/review/{draft_id}/artifacts/{artifact_name}")
     def portal_artifact(
@@ -2311,7 +2311,7 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
         )
 
 def register_planner_api_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
-    """Register one cohesive planner service route group."""
+    """Register readiness and planner API endpoints."""
 
     @app.get(
         "/readyz",
