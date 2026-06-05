@@ -3,7 +3,8 @@
 - Repo: `stranske/Travel-Plan-Permission`
 - Issue: `#1151` Share TPP YAML config-loader and snapshot-store base classes
 - Branch: `codex/issue-1151-config-sql-base`
-- Status: implementation complete locally; ready to push/open PR.
+- PR: `#1160` https://github.com/stranske/Travel-Plan-Permission/pull/1160
+- Status: ready-for-review PR opened and handed to keepalive.
 - Scope implemented: added shared `YamlConfigLoaderMixin` and `load_rules` helper for config loaders; added shared `SqlSnapshotStore` base for SQL snapshot load/reconcile control flow; updated approval, validation, providers, policy, SQLite, and Postgres modules to consume the shared bases while preserving public APIs and backend-specific SQL.
 - Validation:
   - `python -m pytest tests/python/test_approval_engine.py::test_load_rules_from_environment tests/python/test_providers.py::test_lookup_filters_by_destination_and_validity tests/python/test_validation.py "tests/python/test_portal_state_store.py::TestSQLitePortalStateStore::test_save_snapshot_reconciles_absent_records" -q` -> 15 passed.
@@ -15,4 +16,6 @@
 - Deliberate-break gates:
   - YAML: temporarily returned `{}` from shared `_load_yaml_mapping`; `test_load_rules_from_environment` failed with missing `rules` list; restored helper.
   - SQL: temporarily skipped shared `_delete_absent_records`; `test_save_snapshot_reconciles_absent_records` failed because stale `alpha` survived beside `beta`; restored delete step.
-- Next action: push branch and open ready-for-review PR with `agent:codex`, `agents:keepalive`, and `autofix`.
+- Post-open routing: PR is open/non-draft on `codex/issue-1151-config-sql-base` with labels `agent:codex`, `agents:keepalive`, `autofix`; opener infra repair added `agent:retry` and dispatched Gate Followups after initial skipped keepalive evidence.
+- Post-open cap-health: raw cap below 5; #1160 classified `draining` with fresh active Gate/Autofix/Gate Followups runs. Existing Trend #5440 remains the scoped runner-failed strict-config blocker for #5389 and is not opener-repairable.
+- Next action: wait for asynchronous CI/keepalive; next lane should inspect #1160 checks/comments and let keepalive/closer continue.
