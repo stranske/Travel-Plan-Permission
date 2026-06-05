@@ -16,8 +16,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-import yaml
-
+from .config_loader import YamlConfigLoaderMixin
 from .models import ExpenseItem
 
 
@@ -364,7 +363,7 @@ def _default_policy_path() -> Path | None:
     return None
 
 
-class PolicyEngine:
+class PolicyEngine(YamlConfigLoaderMixin):
     """Execute all policy-lite rules and aggregate their results."""
 
     def __init__(self, rules: Iterable[PolicyRule]):
@@ -372,7 +371,7 @@ class PolicyEngine:
 
     @classmethod
     def from_yaml(cls, content: str) -> PolicyEngine:
-        config = yaml.safe_load(content) or {}
+        config = cls._load_yaml_mapping(content)
 
         advance_cfg = _load_rule_config(
             config,
@@ -458,13 +457,13 @@ class PolicyEngine:
 
         return cls(rules)
 
-    @classmethod
-    def from_file(cls, path: str | Path | None = None) -> PolicyEngine:
-        target_path = Path(path) if path is not None else _default_policy_path()
-        if target_path is None:
-            raise FileNotFoundError("No policy.yaml configuration file found")
-        content = target_path.read_text(encoding="utf-8")
-        return cls.from_yaml(content)
+    @staticmethod
+    def _default_config_path() -> Path | None:
+        return _default_policy_path()
+
+    @staticmethod
+    def _missing_config_message() -> str:
+        return "No policy.yaml configuration file found"
 
     def validate(self, context: PolicyContext) -> list[PolicyResult]:
         return [rule.evaluate(context) for rule in self.rules]

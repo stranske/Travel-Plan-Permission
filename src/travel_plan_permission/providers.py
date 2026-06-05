@@ -6,8 +6,9 @@ from datetime import date
 from enum import StrEnum
 from pathlib import Path
 
-import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from .config_loader import YamlConfigLoaderMixin
 
 
 class ProviderType(StrEnum):
@@ -89,7 +90,7 @@ class ProviderChange(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
-class ProviderRegistry(BaseModel):
+class ProviderRegistry(YamlConfigLoaderMixin, BaseModel):
     """Registry of approved providers with lookup helpers."""
 
     version: str = Field(..., description="Version tag for the provider list")
@@ -108,21 +109,14 @@ class ProviderRegistry(BaseModel):
     def from_yaml(cls, content: str) -> ProviderRegistry:
         """Instantiate a registry from YAML content."""
 
-        data = yaml.safe_load(content) or {}
+        data = cls._load_yaml_mapping(content)
         providers = data.get("providers")
         if not providers:
             raise ValueError("Provider configuration must include a 'providers' list")
         return cls.model_validate(data)
 
-    @classmethod
-    def from_file(cls, path: str | Path | None = None) -> ProviderRegistry:
-        """Load provider configuration from a file, falling back to the default path."""
-
-        target_path = cls._resolve_path(path)
-        return cls.from_yaml(target_path.read_text(encoding="utf-8"))
-
     @staticmethod
-    def _default_path() -> Path | None:
+    def _default_config_path() -> Path | None:
         for parent in Path(__file__).resolve().parents:
             candidate = parent / "config" / "providers.yaml"
             if candidate.exists():
@@ -130,9 +124,9 @@ class ProviderRegistry(BaseModel):
         return None
 
     @classmethod
-    def _resolve_path(cls, path: str | Path | None) -> Path:
+    def _resolve_config_path(cls, path: str | Path | None) -> Path | None:
         if path is None:
-            default_path = cls._default_path()
+            default_path = cls._default_config_path()
             if default_path is None:
                 raise FileNotFoundError("No providers.yaml file found")
             return default_path
@@ -146,6 +140,10 @@ class ProviderRegistry(BaseModel):
             if relative_candidate.exists():
                 return relative_candidate
         return candidate
+
+    @staticmethod
+    def _missing_config_message() -> str:
+        return "No providers.yaml file found"
 
     def lookup(
         self,
