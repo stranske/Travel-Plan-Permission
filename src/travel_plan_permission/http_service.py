@@ -1669,26 +1669,8 @@ def _admin_dashboard_context(
     }
 
 
-def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
-    """Create the planner-facing ASGI application."""
-
-    _install_audit_store_from_env()
-    proposal_store = store or PlannerProposalStore(state_path=_default_portal_state_path())
-    app = FastAPI(
-        title="Travel Plan Permission Planner Service",
-        version="0.1.0",
-        summary="Thin HTTP adapter over the planner-facing policy API builders.",
-    )
-
-    demo_mode = demo_seed.demo_mode_enabled()
-    if demo_mode:
-        try:
-            seeded = demo_seed.seed_demo_data(proposal_store)
-            logger.info(
-                "TPP_DEMO_MODE: seeded %d synthetic manager review(s) from fixtures.", seeded
-            )
-        except demo_seed.DemoSeedError:
-            logger.exception("TPP_DEMO_MODE enabled but synthetic demo seeding failed.")
+def register_portal_routes(app: FastAPI, proposal_store: PlannerProposalStore, *, demo_mode: bool) -> None:
+    """Register one cohesive planner service route group."""
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
@@ -1790,6 +1772,9 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             url=request.url_for("portal_expense_detail", draft_id=draft.draft_id),
             status_code=status.HTTP_303_SEE_OTHER,
         )
+
+def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
+    """Register one cohesive planner service route group."""
 
     @app.get(
         "/portal/review/{draft_id}",
@@ -1994,6 +1979,9 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             ),
         )
 
+def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
+    """Register one cohesive planner service route group."""
+
     @app.get("/portal/manager/reviews", response_class=HTMLResponse)
     def portal_manager_review_queue(
         request: Request,
@@ -2133,6 +2121,9 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
+    """Register one cohesive planner service route group."""
+
     @app.post("/portal/admin/exceptions/{draft_id}/{exception_index}/decision")
     async def portal_exception_decision(
         request: Request,
@@ -2216,6 +2207,9 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 runtime_config=PlannerRuntimeConfig.from_env(),
             ),
         )
+
+def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
+    """Register one cohesive planner service route group."""
 
     @app.get("/portal/review/{draft_id}/artifacts/{artifact_name}")
     def portal_artifact(
@@ -2315,6 +2309,9 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
             media_type=artifact.media_type,
             headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
         )
+
+def register_planner_api_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
+    """Register one cohesive planner service route group."""
 
     @app.get(
         "/readyz",
@@ -2467,6 +2464,33 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
                 detail=str(exc),
             ) from exc
 
+def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
+    """Create the planner-facing ASGI application."""
+
+    _install_audit_store_from_env()
+    proposal_store = store or PlannerProposalStore(state_path=_default_portal_state_path())
+    app = FastAPI(
+        title="Travel Plan Permission Planner Service",
+        version="0.1.0",
+        summary="Thin HTTP adapter over the planner-facing policy API builders.",
+    )
+
+    demo_mode = demo_seed.demo_mode_enabled()
+    if demo_mode:
+        try:
+            seeded = demo_seed.seed_demo_data(proposal_store)
+            logger.info(
+                "TPP_DEMO_MODE: seeded %d synthetic manager review(s) from fixtures.", seeded
+            )
+        except demo_seed.DemoSeedError:
+            logger.exception("TPP_DEMO_MODE enabled but synthetic demo seeding failed.")
+
+    register_portal_routes(app, proposal_store, demo_mode=demo_mode)
+    register_review_routes(app, proposal_store)
+    register_manager_routes(app, proposal_store)
+    register_admin_routes(app, proposal_store)
+    register_artifact_routes(app, proposal_store)
+    register_planner_api_routes(app, proposal_store)
     return app
 
 
