@@ -47,7 +47,7 @@ class TripState(BaseModel):
             return value.model_dump(mode="json")
         if isinstance(value, dict):
             return TripPlan.model_validate(value).model_dump(mode="json")
-        return value  # type: ignore[return-value]
+        return cast(dict[str, object], value)
 
     @field_validator("canonical_plan", mode="before")
     @classmethod
@@ -58,7 +58,7 @@ class TripState(BaseModel):
             return value.model_dump(mode="json")
         if isinstance(value, dict):
             return CanonicalTripPlan.model_validate(value).model_dump(mode="json")
-        return value  # type: ignore[return-value]
+        return cast(dict[str, object] | None, value)
 
     @field_validator("spreadsheet_path", mode="before")
     @classmethod
@@ -67,7 +67,7 @@ class TripState(BaseModel):
             return None
         if isinstance(value, Path):
             return str(value)
-        return value  # type: ignore[return-value]
+        return cast(str | None, value)
 
     @field_validator("policy_result", mode="before")
     @classmethod
@@ -78,7 +78,7 @@ class TripState(BaseModel):
             return value.model_dump(mode="json")
         if isinstance(value, dict):
             return PolicyCheckResult.model_validate(value).model_dump(mode="json")
-        return value  # type: ignore[return-value]
+        return cast(dict[str, object] | None, value)
 
     @field_validator("policy_missing_inputs", mode="before")
     @classmethod
@@ -93,7 +93,7 @@ class TripState(BaseModel):
                 elif isinstance(entry, dict):
                     normalized.append(entry)
             return normalized
-        return value  # type: ignore[return-value]
+        return cast(list[dict[str, object]], value)
 
     @field_validator(
         "planner_turn",
@@ -108,7 +108,7 @@ class TripState(BaseModel):
             return None
         if isinstance(value, dict):
             return value
-        return value  # type: ignore[return-value]
+        return cast(dict[str, object] | None, value)
 
     @field_validator("unfilled_mapping_report", mode="before")
     @classmethod
@@ -121,25 +121,25 @@ class TripState(BaseModel):
             return _serialize_unfilled_mapping_report(value)
         if isinstance(value, dict):
             return value
-        return value  # type: ignore[return-value]
+        return cast(dict[str, list[dict[str, object]]] | None, value)
 
     @field_serializer("plan_json", mode="plain")
     def _serialize_plan(self, value: object) -> dict[str, object]:
         if isinstance(value, TripPlan):
             return value.model_dump(mode="json")
-        return value  # type: ignore[return-value]
+        return cast(dict[str, object], value)
 
     @field_serializer("canonical_plan", mode="plain")
     def _serialize_canonical_plan(self, value: object) -> dict[str, object] | None:
         if isinstance(value, CanonicalTripPlan):
             return value.model_dump(mode="json")
-        return value  # type: ignore[return-value]
+        return cast(dict[str, object] | None, value)
 
     @field_serializer("spreadsheet_path", mode="plain")
     def _serialize_spreadsheet_path(self, value: object) -> str | None:
         if isinstance(value, Path):
             return str(value)
-        return value  # type: ignore[return-value]
+        return cast(str | None, value)
 
     @field_serializer("policy_missing_inputs", mode="plain")
     def _serialize_policy_missing_inputs(self, value: object) -> list[dict[str, object]]:
@@ -151,7 +151,7 @@ class TripState(BaseModel):
                 elif isinstance(entry, dict):
                     serialized.append(entry)
             return serialized
-        return value  # type: ignore[return-value]
+        return cast(list[dict[str, object]], value)
 
     @field_serializer("unfilled_mapping_report", mode="plain")
     def _serialize_unfilled_mapping_report(
@@ -159,7 +159,7 @@ class TripState(BaseModel):
     ) -> dict[str, list[dict[str, object]]] | None:
         if isinstance(value, UnfilledMappingReport):
             return _serialize_unfilled_mapping_report(value)
-        return value  # type: ignore[return-value]
+        return cast(dict[str, list[dict[str, object]]] | None, value)
 
 
 class PolicyGraph(Protocol):
@@ -256,7 +256,7 @@ def _spreadsheet_node(state: TripState) -> TripState:
             report=report,
         )
         state.spreadsheet_path = str(output_path)
-    state.unfilled_mapping_report = report  # type: ignore[assignment]
+    state.unfilled_mapping_report = _serialize_unfilled_mapping_report(report)
     return state
 
 
