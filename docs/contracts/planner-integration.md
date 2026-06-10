@@ -233,6 +233,9 @@ canonical seam for broader orchestration work:
 Future integration work should use this state model for checkpoint save/load
 and follow-up behavior; a policy call that only returns advisory output without
 updating this state is not sufficient for the planner-runtime lifecycle.
+The `src/travel_plan_permission/cross_repo_smoke.py` harness and
+`tpp-cross-repo-smoke` CI step are the integration-level evidence that proposal
+evaluation persists and reloads this `TripState` follow-up contract.
 
 ## Example Fixtures
 

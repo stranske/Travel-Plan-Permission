@@ -186,6 +186,7 @@ def test_cross_repo_smoke_proves_submission_status_evaluation_and_reload(
     assert result.proposal_id == "planner-proposal-123"
     assert result.execution_id
     assert result.outcome in {"compliant", "non_compliant", "exception_required"}
+    assert result.trip_state_persisted is True
     store = resolve_portal_state_store(state_path)
     assert store is not None
     persisted = store.load_snapshot()
@@ -196,6 +197,48 @@ def test_cross_repo_smoke_proves_submission_status_evaluation_and_reload(
     stored = persisted["proposals_by_execution_id"][result.execution_id]
     assert stored["request"]["proposal_version"] == "planner-proposal-v2"
     assert stored["request"]["payload"] == {"proposal_ref": "planner-proposal-123"}
+    trip_state = persisted["trip_states_by_execution_id"][result.execution_id]
+    assert trip_state["planner_turn"]["source"] == "trip_planner"
+    assert trip_state["planner_turn"]["execution_id"] == result.execution_id
+    assert trip_state["policy_result"]
+    assert trip_state["checkpoint_metadata"]["state_model"] == "TripState"
+    assert trip_state["checkpoint_metadata"]["trip_id"] == result.trip_id
+    assert trip_state["follow_up_action"]["policy_status"] == result.outcome
+    assert trip_state["follow_up_action"]["execution_id"] == result.execution_id
+
+
+def test_cross_repo_smoke_persists_trip_state_after_evaluation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trip_planner_root = tmp_path / "trip-planner"
+    _write_trip_planner_contracts(trip_planner_root)
+    state_path = tmp_path / "trip-state.sqlite3"
+    _configure_live_smoke_env(monkeypatch, state_path)
+
+    result = run_cross_repo_smoke(
+        trip_planner_root=trip_planner_root,
+        state_path=state_path,
+        transport=_LivePlannerTransport(),
+    )
+
+    store = resolve_portal_state_store(state_path)
+    assert store is not None
+    persisted = store.load_snapshot()
+    store.close()
+    assert persisted is not None
+    trip_states = persisted["trip_states_by_execution_id"]
+    assert result.execution_id in trip_states
+    trip_state = trip_states[result.execution_id]
+    assert trip_state["planner_turn"] == {
+        "source": "trip_planner",
+        "execution_id": result.execution_id,
+    }
+    assert trip_state["checkpoint_metadata"]["state_model"] == "TripState"
+    assert trip_state["checkpoint_metadata"]["policy_status"] == result.outcome
+    assert trip_state["follow_up_action"]["source"] == "policy_check"
+    assert trip_state["follow_up_action"]["trip_id"] == result.trip_id
+    assert trip_state["policy_result"]["policy_version"]
 
 
 def test_run_cross_repo_smoke_uses_live_client_instead_of_direct_policy_calls() -> None:
@@ -284,6 +327,7 @@ def test_cross_repo_smoke_resolves_root_via_trip_planner_repo_env(
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "trip-planner contracts: ok" in captured.out
+    assert "TripState persistence: ok" in captured.out
 
 
 def test_cross_repo_smoke_resolves_root_via_sibling_checkout_fallback(
@@ -312,6 +356,7 @@ def test_cross_repo_smoke_resolves_root_via_sibling_checkout_fallback(
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "trip-planner contracts: ok" in captured.out
+    assert "TripState persistence: ok" in captured.out
 
 
 def test_cross_repo_smoke_fails_when_fixture_operation_is_renamed(
@@ -751,4 +796,5 @@ def test_cross_repo_smoke_cli_accepts_explicit_state_path(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "trip-planner contracts: ok" in captured.out
+    assert "TripState persistence: ok" in captured.out
     assert state_path.exists()

@@ -11,6 +11,9 @@ from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
+from pydantic import ValidationError
+
+from .orchestration.graph import TripState
 from .persistence import resolve_portal_state_store
 from .planner_client import (
     PlannerTransportError,
@@ -39,6 +42,7 @@ _PORTAL_STATE_ENV_VAR = "TPP_PORTAL_STATE_PATH"
 _PORTAL_STATE_DEFAULT_PATH = Path("var") / "portal-runtime-state.sqlite3"
 _SUBMIT_OPERATION = "submit_proposal"
 _POLL_OPERATION = "poll_execution_status"
+_TRIP_STATES_NAMESPACE = "trip_states_by_execution_id"
 
 
 class CrossRepoSmokeError(RuntimeError):
@@ -55,6 +59,7 @@ class CrossRepoSmokeResult:
     proposal_id: str
     execution_id: str
     outcome: str
+    trip_state_persisted: bool = False
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -282,6 +287,94 @@ def _assert_state_store_reloads(
         raise CrossRepoSmokeError("Persisted TPP proposal state lost the trip/workspace id.")
 
 
+def _persist_trip_state(
+    *,
+    state_path: Path,
+    execution_id: str,
+    trip_id: str,
+    trip_plan: dict[str, object],
+    evaluation_outcome: str,
+    policy_result: dict[str, object],
+    blocking_issues: list[dict[str, object]],
+) -> None:
+    store = resolve_portal_state_store(state_path)
+    if store is None:
+        raise CrossRepoSmokeError(f"No store configured for state path: {state_path}")
+    try:
+        persisted = store.load_snapshot() or {}
+        trip_states = persisted.setdefault(_TRIP_STATES_NAMESPACE, {})
+        if not isinstance(trip_states, dict):
+            raise CrossRepoSmokeError("Persisted TripState namespace has invalid shape.")
+        state = TripState(
+            plan_json=trip_plan,
+            planner_turn={"source": "trip_planner", "execution_id": execution_id},
+            policy_result=policy_result,
+            checkpoint_metadata={
+                "state_model": "TripState",
+                "trip_id": trip_id,
+                "policy_status": evaluation_outcome,
+            },
+            follow_up_action={
+                "source": "policy_check",
+                "execution_id": execution_id,
+                "trip_id": trip_id,
+                "policy_status": evaluation_outcome,
+                "required": True,
+                "blocking_issue_codes": [
+                    issue.get("code")
+                    for issue in blocking_issues
+                    if isinstance(issue.get("code"), str)
+                ],
+            },
+        )
+        trip_states[execution_id] = json.loads(state.model_dump_json())
+        store.save_snapshot(persisted)
+    finally:
+        store.close()
+
+
+def _assert_trip_state_reloads(
+    *,
+    state_path: Path,
+    execution_id: str,
+    trip_id: str,
+    expected_outcome: str,
+) -> None:
+    store = resolve_portal_state_store(state_path)
+    if store is None:
+        raise CrossRepoSmokeError(f"No store configured for state path: {state_path}")
+    persisted = store.load_snapshot()
+    store.close()
+    if persisted is None:
+        raise CrossRepoSmokeError(f"TPP TripState was not written: {state_path}")
+    trip_states = persisted.get(_TRIP_STATES_NAMESPACE)
+    if not isinstance(trip_states, dict) or execution_id not in trip_states:
+        raise CrossRepoSmokeError("Persisted TripState state does not contain execution_id.")
+    state_payload = trip_states[execution_id]
+    if not isinstance(state_payload, dict):
+        raise CrossRepoSmokeError("Persisted TripState entry has invalid shape.")
+    try:
+        state = TripState.model_validate(state_payload)
+    except ValidationError as exc:
+        raise CrossRepoSmokeError("Persisted TripState entry failed model validation.") from exc
+    if state.planner_turn is None or state.planner_turn.get("source") != "trip_planner":
+        raise CrossRepoSmokeError("Persisted TripState lost planner_turn source.")
+    if not state.policy_result:
+        raise CrossRepoSmokeError("Persisted TripState lost policy_result.")
+    if state.checkpoint_metadata is None:
+        raise CrossRepoSmokeError("Persisted TripState lost checkpoint metadata.")
+    if state.checkpoint_metadata.get("state_model") != "TripState":
+        raise CrossRepoSmokeError("Persisted TripState checkpoint has wrong state model.")
+    if state.checkpoint_metadata.get("trip_id") != trip_id:
+        raise CrossRepoSmokeError("Persisted TripState checkpoint has wrong trip id.")
+    if state.checkpoint_metadata.get("policy_status") != expected_outcome:
+        raise CrossRepoSmokeError("Persisted TripState checkpoint has wrong policy status.")
+    if state.follow_up_action is None:
+        raise CrossRepoSmokeError("Persisted TripState lost follow-up action.")
+    if state.follow_up_action.get("execution_id") != execution_id:
+        raise CrossRepoSmokeError("Persisted TripState follow-up has wrong execution id.")
+
+
 def _resolve_base_url() -> str:
     base_url = os.getenv("TPP_BASE_URL", "").strip()
     if not base_url:
@@ -370,6 +463,23 @@ def run_cross_repo_smoke(
         evaluation = client.fetch_evaluation_result(execution_id=execution_id)
         if evaluation.proposal_id != proposal_id or evaluation.execution_id != execution_id:
             raise CrossRepoSmokeError("Reloaded evaluation lost proposal/execution linkage.")
+        _persist_trip_state(
+            state_path=resolved_state_path,
+            execution_id=execution_id,
+            trip_id=trip_id,
+            trip_plan=trip_plan,
+            evaluation_outcome=evaluation.outcome,
+            policy_result=evaluation.policy_result.model_dump(mode="json"),
+            blocking_issues=[
+                issue.model_dump(mode="json") for issue in evaluation.blocking_issues
+            ],
+        )
+        _assert_trip_state_reloads(
+            state_path=resolved_state_path,
+            execution_id=execution_id,
+            trip_id=trip_id,
+            expected_outcome=evaluation.outcome,
+        )
     except PlannerTransportError as exc:
         raise CrossRepoSmokeError(f"Live planner transport failed: {exc}") from exc
 
@@ -380,6 +490,7 @@ def run_cross_repo_smoke(
         proposal_id=proposal_id,
         execution_id=execution_id,
         outcome=evaluation.outcome,
+        trip_state_persisted=True,
     )
 
 
@@ -397,6 +508,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"proposal submission: ok for {result.proposal_id}")
         print(f"proposal status reload: ok for {result.execution_id}")
         print(f"evaluation reload: ok with outcome {result.outcome}")
+        print(f"TripState persistence: ok for {result.execution_id}")
     except CrossRepoSmokeError as exc:
         print(str(exc), file=sys.stderr)
         return 1
