@@ -11,6 +11,8 @@ from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from .orchestration.graph import TripState
 from .persistence import resolve_portal_state_store
 from .planner_client import (
@@ -298,34 +300,37 @@ def _persist_trip_state(
     store = resolve_portal_state_store(state_path)
     if store is None:
         raise CrossRepoSmokeError(f"No store configured for state path: {state_path}")
-    persisted = store.load_snapshot() or {}
-    trip_states = persisted.setdefault(_TRIP_STATES_NAMESPACE, {})
-    if not isinstance(trip_states, dict):
+    try:
+        persisted = store.load_snapshot() or {}
+        trip_states = persisted.setdefault(_TRIP_STATES_NAMESPACE, {})
+        if not isinstance(trip_states, dict):
+            raise CrossRepoSmokeError("Persisted TripState namespace has invalid shape.")
+        state = TripState(
+            plan_json=trip_plan,
+            planner_turn={"source": "trip_planner", "execution_id": execution_id},
+            policy_result=policy_result,
+            checkpoint_metadata={
+                "state_model": "TripState",
+                "trip_id": trip_id,
+                "policy_status": evaluation_outcome,
+            },
+            follow_up_action={
+                "source": "policy_check",
+                "execution_id": execution_id,
+                "trip_id": trip_id,
+                "policy_status": evaluation_outcome,
+                "required": True,
+                "blocking_issue_codes": [
+                    issue.get("code")
+                    for issue in blocking_issues
+                    if isinstance(issue.get("code"), str)
+                ],
+            },
+        )
+        trip_states[execution_id] = json.loads(state.model_dump_json())
+        store.save_snapshot(persisted)
+    finally:
         store.close()
-        raise CrossRepoSmokeError("Persisted TripState namespace has invalid shape.")
-    state = TripState(
-        plan_json=trip_plan,
-        planner_turn={"source": "trip_planner", "execution_id": execution_id},
-        policy_result=policy_result,
-        checkpoint_metadata={
-            "state_model": "TripState",
-            "trip_id": trip_id,
-            "policy_status": evaluation_outcome,
-        },
-        follow_up_action={
-            "source": "policy_check",
-            "execution_id": execution_id,
-            "trip_id": trip_id,
-            "policy_status": evaluation_outcome,
-            "required": True,
-            "blocking_issue_codes": [
-                issue.get("code") for issue in blocking_issues if isinstance(issue.get("code"), str)
-            ],
-        },
-    )
-    trip_states[execution_id] = json.loads(state.model_dump_json())
-    store.save_snapshot(persisted)
-    store.close()
 
 
 def _assert_trip_state_reloads(
@@ -348,7 +353,10 @@ def _assert_trip_state_reloads(
     state_payload = trip_states[execution_id]
     if not isinstance(state_payload, dict):
         raise CrossRepoSmokeError("Persisted TripState entry has invalid shape.")
-    state = TripState.model_validate(state_payload)
+    try:
+        state = TripState.model_validate(state_payload)
+    except ValidationError as exc:
+        raise CrossRepoSmokeError("Persisted TripState entry failed model validation.") from exc
     if state.planner_turn is None or state.planner_turn.get("source") != "trip_planner":
         raise CrossRepoSmokeError("Persisted TripState lost planner_turn source.")
     if not state.policy_result:
