@@ -91,6 +91,71 @@ class TestSQLitePortalStateStore:
         store_b.close()
         loaded.close()
 
+    def test_trip_state_records_round_trip_by_execution_id(self, tmp_path: Path) -> None:
+        path = tmp_path / "trip-states.sqlite3"
+        store = SQLitePortalStateStore(path)
+        store.initialize()
+        trip_state = {
+            "plan_json": {
+                "trip_id": "trip-001",
+                "traveler_name": "Sam Parker",
+                "destination": "Chicago, IL",
+                "departure_date": "2026-03-10",
+                "return_date": "2026-03-12",
+                "purpose": "Client meeting",
+                "estimated_cost": "840.00",
+            },
+            "planner_turn": {"source": "trip_planner", "execution_id": "exec-001"},
+            "policy_result": {"policy_version": "test", "status": "fail", "issues": []},
+            "checkpoint_metadata": {
+                "state_model": "TripState",
+                "trip_id": "trip-001",
+                "policy_status": "fail",
+            },
+            "follow_up_action": {
+                "source": "policy_check",
+                "execution_id": "exec-001",
+                "trip_id": "trip-001",
+                "policy_status": "fail",
+            },
+        }
+        store.save_snapshot({"trip_states_by_execution_id": {"exec-001": trip_state}})
+
+        reopened = SQLitePortalStateStore(path)
+        reopened.initialize()
+        loaded = reopened.load_snapshot()
+        assert loaded is not None
+        assert loaded["trip_states_by_execution_id"]["exec-001"] == trip_state
+        store.close()
+        reopened.close()
+
+    def test_trip_state_namespace_reconciles_absent_records(self, tmp_path: Path) -> None:
+        path = tmp_path / "trip-state-reconcile.sqlite3"
+        store_a = SQLitePortalStateStore(path)
+        store_a.initialize()
+        store_a.save_snapshot(
+            {
+                "trip_states_by_execution_id": {
+                    "exec-a": {
+                        "plan_json": {"trip_id": "trip-a"},
+                        "planner_turn": {"source": "trip_planner"},
+                    }
+                }
+            }
+        )
+
+        store_b = SQLitePortalStateStore(path)
+        store_b.initialize()
+        store_b.save_snapshot({"trip_states_by_execution_id": {}})
+
+        loaded = SQLitePortalStateStore(path)
+        loaded.initialize()
+        snapshot = loaded.load_snapshot()
+        assert snapshot is None or snapshot["trip_states_by_execution_id"] == {}
+        store_a.close()
+        store_b.close()
+        loaded.close()
+
     def test_empty_record_namespace_removes_all_records(self, tmp_path: Path) -> None:
         path = tmp_path / "expense-concurrent.sqlite3"
         store_a = SQLitePortalStateStore(path)
