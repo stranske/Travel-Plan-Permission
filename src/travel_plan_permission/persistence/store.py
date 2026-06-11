@@ -11,6 +11,7 @@ from typing import Protocol, runtime_checkable
 RECORD_NAMESPACES: tuple[str, ...] = (
     "plans_by_trip_id",
     "proposals_by_execution_id",
+    "trip_states_by_execution_id",
     "portal_drafts_by_id",
     "expense_drafts_by_id",
     "manager_reviews",
