@@ -241,6 +241,32 @@ def test_cross_repo_smoke_persists_trip_state_after_evaluation(
     assert trip_state["policy_result"]["policy_version"]
 
 
+def test_cross_repo_smoke_fails_when_trip_state_persistence_is_skipped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trip_planner_root = tmp_path / "trip-planner"
+    _write_trip_planner_contracts(trip_planner_root)
+    state_path = tmp_path / "missing-trip-state.sqlite3"
+    _configure_live_smoke_env(monkeypatch, state_path)
+
+    def _skip_trip_state_persistence(**_: object) -> None:
+        return None
+
+    monkeypatch.setattr(
+        cross_repo_smoke,
+        "_persist_trip_state",
+        _skip_trip_state_persistence,
+    )
+
+    with pytest.raises(CrossRepoSmokeError, match="TripState state does not contain execution_id"):
+        run_cross_repo_smoke(
+            trip_planner_root=trip_planner_root,
+            state_path=state_path,
+            transport=_LivePlannerTransport(),
+        )
+
+
 def test_run_cross_repo_smoke_uses_live_client_instead_of_direct_policy_calls() -> None:
     source = textwrap.dedent(inspect.getsource(cross_repo_smoke.run_cross_repo_smoke))
     tree = ast.parse(source)

@@ -1,3 +1,16 @@
+## 2026-06-13T14:03:00Z - opener (codex): issue #1191 -> PR pending
+
+- Repo: `stranske/Travel-Plan-Permission`
+- Issue: `#1191` - Cross-repo smoke: persist and assert TripState follow-up state after live HTTP evaluation
+- Branch: `codex/issue-1191-tripstate-followup-state`
+- Worktree: `/Users/teacher/.codex/automations/pd-workloop-resume/worktrees/tpp-1191-tripstate`
+- Context: `origin/main` already contains the core TripState smoke persistence from #1186/#1187 (`TripState` construction, `trip_states_by_execution_id`, reload assertions, docs evidence). This lane adds the remaining durable deliberate-break proof requested by #1191 rather than duplicating the implementation.
+- Change: added `test_cross_repo_smoke_fails_when_trip_state_persistence_is_skipped`, which monkeypatches `_persist_trip_state` to no-op and asserts `run_cross_repo_smoke` fails on the TripState reload check.
+- Tests:
+  - `python -m pytest tests/python/test_cross_repo_smoke.py::test_cross_repo_smoke_proves_submission_status_evaluation_and_reload tests/python/test_cross_repo_smoke.py::test_cross_repo_smoke_persists_trip_state_after_evaluation tests/python/test_cross_repo_smoke.py::test_cross_repo_smoke_fails_when_trip_state_persistence_is_skipped -q` passed.
+  - `python -m pytest tests/python/test_cross_repo_smoke.py tests/python/test_orchestration_smoke.py -q` passed.
+- Next action: commit, push, open ready-for-review PR with `agent:codex`, `agents:keepalive`, and `autofix`; then hand off to keepalive.
+
 ## 2026-06-11T10:07:47Z - opener (codex): issue #1186 -> PR #1187
 
 - Repo: `stranske/Travel-Plan-Permission`
