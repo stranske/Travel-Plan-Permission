@@ -46,7 +46,7 @@ colorama==0.4.6 ; sys_platform == 'win32'
     #   click
     #   pytest
     #   uvicorn
-coverage==7.14.0
+coverage==7.14.1
     # via pytest-cov
 cryptography==47.0.0
     # via
@@ -171,7 +171,7 @@ pyjwt==2.12.1
     # via travel-plan-permission (pyproject.toml)
 pytesseract==0.3.13
     # via travel-plan-permission (pyproject.toml)
-pytest==9.0.3
+pytest==9.1.0
     # via
     #   travel-plan-permission (pyproject.toml)
     #   app-baseline-kit
@@ -209,7 +209,7 @@ requests==2.33.1
     #   requests-toolbelt
 requests-toolbelt==1.0.0
     # via langsmith
-ruff==0.15.14
+ruff==0.15.17
     # via travel-plan-permission (pyproject.toml)
 six==1.17.0
     # via python-dateutil
