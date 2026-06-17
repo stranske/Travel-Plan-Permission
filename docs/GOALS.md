@@ -108,9 +108,11 @@ modern version compatible with Python 3.11+.
 | Labels | ✅ Synced | All required labels created |
 | Secrets | ✅ Configured | SERVICE_BOT_PAT, OWNER_PR_PAT, ACTIONS_BOT_PAT |
 | `ci.yml` | ✅ Works | Thin caller to reusable-10-ci-python.yml |
+| LangGraph Orchestration CI | ✅ Works | `ci.yml` orchestration job installs `.[orchestration,dev]` and runs `tests/orchestration_graph_test.py` |
+| Cross-Repo Smoke | ✅ Works | `ci.yml` cross-repo-smoke job gates the trip-planner contract via `.github/trip-planner-pinned-ref` |
 | `lint.yml` | ✅ Works | Local linting jobs (separate file for mixed job workaround) |
 | Reusable Python CI | ✅ Works | With version overrides in autofix-versions.env |
-| Gate job pattern | ❌ Blocked | Mixing job types causes startup_failure |
+| Gate job pattern | ✅ Works | `pr-00-gate.yml` runs required local checks, orchestration tests, and gate aggregation |
 
 ### Required Version Overrides
 
@@ -136,8 +138,8 @@ PYYAML_VERSION=6.0.3  # if using newer PyYAML
 
 - [ ] Report `needs` + reusable workflow bug to GitHub or find documentation
 - [x] Fix BLACK_VERSION unbound variable in Workflows repo
-- [ ] Implement alternative gate pattern (workflow_run or required checks)
-- [ ] Re-enable actionlint, docs-lint, schema-validate jobs
+- [x] Implement alternative gate pattern (workflow_run or required checks)
+- [x] Re-enable actionlint, docs-lint, schema-validate jobs
 - [x] Evaluate labeler.yml and archive if not useful (archived 2025-12-22)
 - [ ] Rewrite GitHub Issues #3-19 into Issues.txt format
 
