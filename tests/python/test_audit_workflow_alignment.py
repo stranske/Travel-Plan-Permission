@@ -105,3 +105,18 @@ def test_collect_workflow_files_ignores_non_yaml(tmp_path: Path) -> None:
     files = collect_workflow_files(workflows)
 
     assert list(files) == ["ci.yml"]
+
+
+def test_belt_automation_not_claimed_unavailable() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    status_doc = repo_root / "docs" / "agent-integration-status.md"
+    lines = status_doc.read_text(encoding="utf-8").splitlines()
+
+    for index, line in enumerate(lines):
+        if "Full Belt automation" not in line:
+            continue
+        nearby_cells = " ".join(lines[index : index + 3])
+        assert "❌ Not available" not in nearby_cells
+        return
+
+    pytest.fail("Full Belt automation row not found in docs/agent-integration-status.md")

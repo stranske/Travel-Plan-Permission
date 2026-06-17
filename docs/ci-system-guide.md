@@ -32,6 +32,10 @@ This repository uses a **hybrid CI approach**:
 │  • actionlint              │  • python-ci                   │
 │  • docs-lint               │    (reusable-10-ci-python.yml) │
 │  • schema-validate         │                                │
+│  • orchestration           │                                │
+│    (LangGraph)             │                                │
+│  • cross-repo-smoke        │                                │
+│    (trip-planner)          │                                │
 ├─────────────────────────────────────────────────────────────┤
 │                           Gate                               │
 │              Aggregates all job results                      │
@@ -87,6 +91,8 @@ The Workflows repo includes a sophisticated agent automation system:
 | `link-check` | Validates documentation links | Every PR/push |
 | `schema-validate` | JSON Schema compilation + fixture validation | Every PR/push |
 | `python-ci` | Full Python CI (ruff, mypy, pytest, coverage) | Every PR/push |
+| `orchestration` | LangGraph Orchestration CI; installs `.[orchestration,dev]` and runs `tests/orchestration_graph_test.py` plus LangGraph orchestration tests | Every PR/push |
+| `cross-repo-smoke` | Cross-Repo Smoke for the trip-planner contract using `.github/trip-planner-pinned-ref`, `tpp-cross-repo-smoke`, and `tpp-planner-smoke` | Every PR/push |
 | `gate` | Aggregates all results for branch protection | Every PR/push |
 
 ### Branch Protection

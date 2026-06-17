@@ -9,10 +9,10 @@ available in this repository and what setup is required.
 |---------|--------|------------|----------------|
 | **Reusable Python CI** | ✅ Active | Automatic on PR/push | None - already configured |
 | **Reusable Docker CI** | ⚪ Available | Add job calling `reusable-12-ci-docker.yml` | Add workflow job |
-| **Issue-to-PR via Codex** | ⚠️ Partial | Label issue with `agent:codex` | See below |
-| **Keepalive monitoring** | ⚠️ Partial | Label PR with `agents:keepalive` | See below |
-| **Autofix formatting** | ⚠️ Partial | Label PR with `autofix` | See below |
-| **Full Belt automation** | ❌ Not available | N/A | Would require workflow duplication |
+| **Issue-to-PR via Codex** | ✅ Active | Label issue with `agent:codex` or use issue intake | Thin callers present |
+| **Keepalive monitoring** | ✅ Active | Label PR with `agents:keepalive` | `agents-80-pr-event-hub.yml` and `agents-81-gate-followups.yml` present |
+| **Autofix formatting** | ✅ Active | Label PR with `autofix` | `autofix.yml` and dispatcher workflows present |
+| **Full Belt automation** | ✅ Active | Use issue intake and belt thin callers | `agents-71-codex-belt-dispatcher.yml`, `agents-72-codex-belt-worker.yml`, `agents-73-codex-belt-conveyor.yml`, `agents-80-pr-event-hub.yml`, and `agents-81-gate-followups.yml` present |
 
 ## Labels Available
 
@@ -40,16 +40,16 @@ All required labels have been created:
 
 ### What Works Now
 
-1. **Create an issue** in this repo with `agent:codex` label
-2. **Codex creates PR** via GitHub's built-in Codex integration
-3. **Label PR** with `agents:keepalive` for monitoring
-4. **CI runs** automatically via reusable workflows
-5. **Manual merge** when Gate passes
+1. **Create an issue** in this repo with the appropriate agent label or issue-intake format
+2. **Issue intake and belt workflows** route work through the thin callers
+3. **Label PR** with `agents:keepalive` and `autofix` for monitoring and formatting recovery
+4. **CI runs** automatically via reusable and repo-local workflows
+5. **PR event hub and gate followups** keep the PR moving after gate events
 
 ### What Requires Workflows Repo
 
-The full agent belt automation (automatic issue pickup, branch creation, 
-keepalive sweeps, auto-merge) runs from the Workflows repo. To use it:
+The reusable agent belt implementation still lives in the Workflows repo, while
+this repo invokes it through thin caller workflows. To update belt behavior:
 
 1. **Issues.txt pattern**: Create issues in Workflows repo using Issues.txt
 2. **Orchestrator**: Run from Workflows repo Actions tab
@@ -77,7 +77,7 @@ Create issues in the Workflows repo that reference this repo:
 **Pros**: Full automation available
 **Cons**: Issues live in different repo
 
-### Option 3: Thin Caller Workflows (Recommended for Full Automation)
+### Option 3: Thin Caller Workflows (Active Full Automation)
 
 Create **thin caller workflows** that reference the Workflows repo reusable workflows:
 
@@ -87,18 +87,18 @@ uses: stranske/Workflows/.github/workflows/reusable-agents-issue-bridge.yml@main
 ```
 
 **Pros**: Full automation, automatic updates from Workflows repo, minimal maintenance
-**Cons**: Requires secrets setup (`SERVICE_BOT_PAT`, `ACTIONS_BOT_PAT`)
+**Cons**: Requires configured secrets (`SERVICE_BOT_PAT`, `ACTIONS_BOT_PAT`)
 
 ## Recommended Approach
 
-For this project, **Option 1 (Minimal)** is recommended for now:
+For this project, **Option 3 (Thin Callers)** is active:
 
 1. ✅ Labels are set up
 2. ✅ Reusable CI works
-3. ✅ Issues can be assigned to agents
-4. Manual keepalive via @mentions
+3. ✅ Issues can be assigned to agents or routed by issue intake
+4. ✅ Belt dispatcher, worker, conveyor, PR hub, gate followups, verifier, and autofix workflows are present
 
-When/if automation volume justifies it, consider **Option 3 (Thin Callers)** - see [belt-automation-plan.md](./belt-automation-plan.md) for the reusable workflow pattern.
+See [belt-automation-plan.md](./belt-automation-plan.md) for the reusable workflow pattern.
 
 ## Agents 63 Access
 
@@ -136,9 +136,9 @@ When/if automation volume justifies it, consider **Option 3 (Thin Callers)** - s
 | Feature | Status | Notes |
 |---------|--------|-------|
 | `Issues.txt` | ✅ Ready | Two test issues created |
-| `agents-63` workflow | ❌ Not local | Use Workflows repo or duplicate |
+| `agents-issue-intake` workflow | ✅ Active | Thin caller present locally |
 | `agent:codex` label | ✅ Ready | Can create issues with this label |
-| Secrets for automation | ⚠️ Not configured | Needed for Option C |
+| Secrets for automation | ✅ Configured | Thin callers can use repo automation secrets |
 
 ### Quick Start for Agent Work
 
