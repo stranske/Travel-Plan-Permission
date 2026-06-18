@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -73,7 +73,7 @@ jobs:
       TPP_PORT: "8000"
     steps:
       - name: Checkout Travel-Plan-Permission (PR head)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: travel-plan-permission
 
@@ -109,7 +109,7 @@ jobs:
           echo "TRIP_PLANNER_PINNED_REF=${ref}" >> "$GITHUB_ENV"
 
       - name: Checkout trip-planner at pinned ref
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: stranske/trip-planner
           ref: ${{ env.TRIP_PLANNER_PINNED_REF }}
