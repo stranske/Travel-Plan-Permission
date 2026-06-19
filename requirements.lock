@@ -171,7 +171,7 @@ pyjwt==2.12.1
     # via travel-plan-permission (pyproject.toml)
 pytesseract==0.3.13
     # via travel-plan-permission (pyproject.toml)
-pytest==9.1.0
+pytest==9.1.1
     # via
     #   travel-plan-permission (pyproject.toml)
     #   app-baseline-kit
