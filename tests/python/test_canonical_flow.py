@@ -40,14 +40,12 @@ def test_canonical_trip_plan_flow_renders_policy_and_spreadsheet() -> None:
     assert isinstance(output_bytes, bytes)
     assert output_bytes
 
-    workbook = load_workbook(BytesIO(output_bytes))
-    sheet = workbook.active
+    workbook = load_workbook(BytesIO(output_bytes), read_only=True)
+    sheet = workbook["Itinerary Form"]
 
-    assert sheet["B3"].value == "Alex Rivera"
-    assert sheet["B4"].value == "Regional partner summit"
-    assert sheet["D4"].value == "OPS-410"
-    assert sheet["B5"].value == "Seattle, WA"
-    assert sheet["F5"].value == "98101"
-    assert sheet["B11"].value == "Pine Street Suites"
-    assert sheet["G12"].value == "X"
+    assert sheet["C6"].value == "Alex Rivera"
+    assert sheet["C7"].value == "Regional partner summit"
+    assert sheet["G6"].value == 98101
+    assert sheet["C36"].value == "Pine Street Suites"
+    assert sheet["B40"].value == "☒"
     workbook.close()

@@ -41,6 +41,7 @@ from .security import (
     PLANNER_POLICY_SNAPSHOT_ENDPOINT,
 )
 from .validation import ValidationResult
+from .workbook_ooxml import render_mapped_workbook
 
 PolicyIssueSeverity = Literal["info", "warning", "error"]
 PolicyCheckStatus = Literal["pass", "fail"]
@@ -601,16 +602,40 @@ class UnfilledMappingReport:
             self.checkboxes.append(entry)
 
 
-_TEMPLATE_FILENAME = "travel_request_template.xlsx"
+@dataclass(frozen=True)
+class _MappedCellValue:
+    cell: str
+    value: object
+    number_format: str | None = None
+
+
+_TEMPLATE_FILENAME = "Travel_Itinerary_Form_Jan_1_2026_runtime.xlsx"
 _CURRENCY_FIELDS = {
+    "air_travel_airport_parking_cost",
+    "air_travel_ground_transport_cost",
+    "air_travel_mileage_cost",
+    "airfare_cost_comparison",
     "event_registration_cost",
     "flight_pref_outbound.roundtrip_cost",
+    "ground_transport.rental_cost",
+    "ground_transport.rental_daily_rate",
+    "ground_transport.rideshare_cost",
+    "ground_transport.shuttle_cost",
     "lowest_cost_roundtrip",
+    "parking_daily_rate",
     "parking_estimate",
     "hotel.nightly_rate",
     "comparable_hotels[0].nightly_rate",
+    "comparable_hotels[1].nightly_rate",
 }
+_INTEGER_FIELDS = {"destination_zip"}
 _DATE_FIELDS = {"depart_date", "return_date"}
+_DATETIME_FIELDS = {
+    "flight_pref_outbound.depart_time",
+    "flight_pref_outbound.arrive_time",
+    "flight_pref_return.depart_time",
+    "flight_pref_return.arrive_time",
+}
 _CURRENCY_FORMAT = "$#,##0.00"
 _ZIP_PATTERN = re.compile(r"^(?P<city_state>.*?)(?:\s+(?P<zip>\d{5})(?:-\d{4})?)?$")
 _RESOURCE_TEMPLATE_CACHE: dict[str, Path] = {}
@@ -674,6 +699,97 @@ def _plan_field_values(
     fields: dict[str, object] = dict(plan.model_dump())
     if canonical_plan is not None:
         fields.update(canonical_plan.model_dump())
+    depart_date = canonical_plan.depart_date if canonical_plan else plan.departure_date
+    return_date = canonical_plan.return_date if canonical_plan else plan.return_date
+    valid_trip_dates = isinstance(depart_date, date) and isinstance(return_date, date)
+    trip_nights = max((return_date - depart_date).days, 1) if valid_trip_dates else 1
+    ground_transport_pref = (
+        canonical_plan.ground_transport_pref if canonical_plan is not None else None
+    )
+    normalized_ground_transport = (
+        ground_transport_pref.strip().casefold().replace("-", " ").replace("/", " ")
+        if ground_transport_pref
+        else ""
+    )
+    ground_transport_estimate = (
+        canonical_plan.ground_transport_estimate
+        if canonical_plan is not None
+        else plan.expense_breakdown.get(ExpenseCategory.GROUND_TRANSPORT)
+    )
+    parking_estimate = (
+        canonical_plan.parking_estimate
+        if canonical_plan is not None
+        else _expected_cost_value(plan, "airport_parking", "parking_estimate")
+    )
+    selected_airfare = (
+        canonical_plan.flight_pref_outbound.roundtrip_cost
+        if canonical_plan is not None
+        and canonical_plan.flight_pref_outbound is not None
+        and canonical_plan.flight_pref_outbound.roundtrip_cost is not None
+        else plan.expense_breakdown.get(ExpenseCategory.AIRFARE)
+    )
+    lowest_airfare = (
+        canonical_plan.lowest_cost_roundtrip
+        if canonical_plan is not None
+        else plan.lowest_fare
+    )
+    default_meal_count = trip_nights
+    canonical_meal_counts = canonical_plan.meal_counts if canonical_plan is not None else None
+    comparable_hotels = canonical_plan.comparable_hotels if canonical_plan is not None else None
+    canonical_ground = canonical_plan.ground_transport if canonical_plan is not None else None
+
+    def ground_choice(*terms: str) -> bool:
+        return bool(normalized_ground_transport) and any(
+            term in normalized_ground_transport for term in terms
+        )
+
+    rideshare_planned = (
+        canonical_ground.rideshare_planned
+        if canonical_ground is not None and canonical_ground.rideshare_planned is not None
+        else ground_choice("rideshare", "taxi")
+    )
+    shuttle_planned = (
+        canonical_ground.shuttle_planned
+        if canonical_ground is not None and canonical_ground.shuttle_planned is not None
+        else ground_choice("shuttle")
+    )
+    rental_planned = (
+        canonical_ground.rental_planned
+        if canonical_ground is not None and canonical_ground.rental_planned is not None
+        else ground_choice("rental")
+    )
+    mileage_planned = (
+        canonical_ground.mileage_planned
+        if canonical_ground is not None and canonical_ground.mileage_planned is not None
+        else ground_choice("personal", "mileage")
+    )
+    mosers_vehicle_planned = (
+        canonical_ground.mosers_vehicle_planned
+        if canonical_ground is not None
+        and canonical_ground.mosers_vehicle_planned is not None
+        else ground_choice("mosers", "organization vehicle")
+    )
+    mileage_miles = canonical_ground.mileage_miles if canonical_ground is not None else None
+    mileage_cost = canonical_ground.mileage_cost if canonical_ground is not None else None
+    if mileage_cost is None and mileage_miles is not None:
+        # The supplied 2026 organizational workbook fixes its calculator at $0.725/mile.
+        mileage_cost = mileage_miles * Decimal("0.725")
+    rideshare_cost = canonical_ground.rideshare_cost if canonical_ground is not None else None
+    shuttle_cost = canonical_ground.shuttle_cost if canonical_ground is not None else None
+    rental_cost = canonical_ground.rental_cost if canonical_ground is not None else None
+    if rideshare_planned and rideshare_cost is None:
+        rideshare_cost = ground_transport_estimate
+    if shuttle_planned and shuttle_cost is None:
+        shuttle_cost = ground_transport_estimate
+    if rental_planned and rental_cost is None:
+        rental_cost = ground_transport_estimate
+    destination_ground_cost = sum(
+        (amount for amount in (rideshare_cost, shuttle_cost, rental_cost) if amount is not None),
+        Decimal("0"),
+    )
+    if destination_ground_cost == 0 and ground_transport_estimate is not None:
+        destination_ground_cost = ground_transport_estimate
+
     fields.update(
         {
             "traveler_name": (
@@ -689,30 +805,90 @@ def _plan_field_values(
             ),
             "city_state": city_state,
             "destination_zip": zip_code,
-            "depart_date": (canonical_plan.depart_date if canonical_plan else plan.departure_date),
-            "return_date": (canonical_plan.return_date if canonical_plan else plan.return_date),
+            "event_dates": (
+                canonical_plan.event_dates
+                if canonical_plan is not None and canonical_plan.event_dates
+                else (
+                    f"{depart_date:%m/%d/%Y} - {return_date:%m/%d/%Y}"
+                    if valid_trip_dates
+                    else None
+                )
+            ),
+            "departure_city_airport": (
+                canonical_plan.departure_city_airport
+                if canonical_plan is not None
+                else plan.origin_city
+            ),
+            "return_city_airport": (
+                canonical_plan.return_city_airport
+                if canonical_plan is not None
+                else plan.destination_city or city_state
+            ),
+            "depart_date": depart_date,
+            "return_date": return_date,
             "event_registration_cost": (
                 canonical_plan.event_registration_cost
                 if canonical_plan and canonical_plan.event_registration_cost is not None
                 else plan.expense_breakdown.get(ExpenseCategory.CONFERENCE_FEES)
             ),
-            "flight_pref_outbound.roundtrip_cost": (
-                canonical_plan.flight_pref_outbound.roundtrip_cost
-                if canonical_plan
-                and canonical_plan.flight_pref_outbound is not None
-                and canonical_plan.flight_pref_outbound.roundtrip_cost is not None
-                else plan.expense_breakdown.get(ExpenseCategory.AIRFARE)
-            ),
+            "flight_pref_outbound.roundtrip_cost": selected_airfare,
+            "airfare_cost_comparison": selected_airfare,
             "lowest_cost_roundtrip": (
                 canonical_plan.lowest_cost_roundtrip
                 if canonical_plan and canonical_plan.lowest_cost_roundtrip is not None
                 else plan.expense_breakdown.get(ExpenseCategory.AIRFARE)
             ),
-            "parking_estimate": (
-                canonical_plan.parking_estimate
-                if canonical_plan and canonical_plan.parking_estimate is not None
-                else plan.expense_breakdown.get(ExpenseCategory.GROUND_TRANSPORT)
+            "parking_estimate": parking_estimate,
+            "parking_daily_rate": (
+                parking_estimate / Decimal(trip_nights)
+                if parking_estimate is not None
+                else None
             ),
+            "airfare_within_threshold": (
+                selected_airfare <= lowest_airfare + Decimal("200")
+                if selected_airfare is not None and lowest_airfare is not None
+                else None
+            ),
+            "hotel_comparison_reviewed": bool(comparable_hotels)
+            if comparable_hotels is not None
+            else None,
+            "meal_counts.breakfast": (
+                canonical_meal_counts.breakfast
+                if canonical_meal_counts is not None
+                else default_meal_count
+            ),
+            "meal_counts.lunch": (
+                canonical_meal_counts.lunch
+                if canonical_meal_counts is not None
+                else default_meal_count
+            ),
+            "meal_counts.dinner": (
+                canonical_meal_counts.dinner
+                if canonical_meal_counts is not None
+                else default_meal_count
+            ),
+            "ground_transport.mosers_vehicle_planned": mosers_vehicle_planned,
+            "ground_transport.mileage_planned": mileage_planned,
+            "ground_transport.mileage_miles": mileage_miles,
+            "ground_transport.mileage_cost": mileage_cost,
+            "ground_transport.rideshare_planned": rideshare_planned,
+            "ground_transport.shuttle_planned": shuttle_planned,
+            "ground_transport.rental_planned": rental_planned,
+            "ground_transport.rideshare_cost": rideshare_cost,
+            "ground_transport.shuttle_cost": shuttle_cost,
+            "ground_transport.rental_cost": rental_cost,
+            "ground_transport.rental_company": (
+                canonical_ground.rental_company if canonical_ground is not None else None
+            ),
+            "ground_transport.rental_daily_rate": (
+                canonical_ground.rental_daily_rate if canonical_ground is not None else None
+            ),
+            "ground_transport.rental_reason": (
+                canonical_ground.rental_reason if canonical_ground is not None else None
+            ),
+            "air_travel_mileage_cost": mileage_cost,
+            "air_travel_airport_parking_cost": parking_estimate,
+            "air_travel_ground_transport_cost": destination_ground_cost or None,
         }
     )
     return fields
@@ -743,13 +919,27 @@ def _resolve_field_value(data: object, field_name: str) -> object | None:
     return current
 
 
-def _format_date_value(value: object) -> str | None:
+def _format_date_value(value: object) -> date | None:
     if isinstance(value, datetime):
         value = value.date()
     if isinstance(value, date):
-        return value.isoformat()
-    if isinstance(value, str):
         return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _format_datetime_value(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
     return None
 
 
@@ -1683,15 +1873,16 @@ def _allowed_vendors_for_type(plan: TripPlan, provider_type: ProviderType) -> li
     return sorted(providers, key=str.lower)
 
 
-def _populate_travel_workbook(
-    wb: Workbook,
+def _mapped_cell_values(
     plan: TripPlan,
     mapping: TemplateMapping,
     *,
     canonical_plan: CanonicalTripPlan | None = None,
     report: UnfilledMappingReport | None = None,
-) -> None:
-    ws = wb.active
+) -> list[_MappedCellValue]:
+    """Resolve and normalize every writable mapping entry once."""
+
+    mapped_values: list[_MappedCellValue] = []
     field_data = _plan_field_values(plan, canonical_plan=canonical_plan)
     for field_name, cell in mapping.cells.items():
         value = _resolve_field_value(field_data, field_name)
@@ -1705,8 +1896,26 @@ def _populate_travel_workbook(
                 if report is not None:
                     report.add("cells", field_name, cell, "invalid_currency")
                 continue
-            ws[cell] = float(amount)
-            ws[cell].number_format = _CURRENCY_FORMAT
+            mapped_values.append(
+                _MappedCellValue(cell=cell, value=amount, number_format=_CURRENCY_FORMAT)
+            )
+            continue
+        if field_name in _INTEGER_FIELDS:
+            try:
+                numeric_value = int(str(value))
+            except (TypeError, ValueError):
+                if report is not None:
+                    report.add("cells", field_name, cell, "invalid_integer")
+                continue
+            mapped_values.append(_MappedCellValue(cell=cell, value=numeric_value))
+            continue
+        if field_name in _DATETIME_FIELDS:
+            formatted_datetime = _format_datetime_value(value)
+            if formatted_datetime is None:
+                if report is not None:
+                    report.add("cells", field_name, cell, "invalid_datetime")
+                continue
+            mapped_values.append(_MappedCellValue(cell=cell, value=formatted_datetime))
             continue
         if field_name in _DATE_FIELDS or isinstance(value, date):
             formatted = _format_date_value(value)
@@ -1714,9 +1923,9 @@ def _populate_travel_workbook(
                 if report is not None:
                     report.add("cells", field_name, cell, "invalid_date")
                 continue
-            ws[cell] = formatted
+            mapped_values.append(_MappedCellValue(cell=cell, value=formatted))
             continue
-        ws[cell] = value
+        mapped_values.append(_MappedCellValue(cell=cell, value=value))
 
     for field_name, dropdown_config in mapping.dropdowns.items():
         value = _resolve_field_value(field_data, field_name)
@@ -1733,7 +1942,12 @@ def _populate_travel_workbook(
         dropdown_cell = dropdown_config.get("cell")
         if isinstance(dropdown_cell, str):
             options = dropdown_config.get("options")
-            ws[dropdown_cell] = _normalize_dropdown_value(value, options)
+            mapped_values.append(
+                _MappedCellValue(
+                    cell=dropdown_cell,
+                    value=_normalize_dropdown_value(value, options),
+                )
+            )
 
     for field_name, checkbox_config in mapping.checkboxes.items():
         value = _resolve_field_value(field_data, field_name)
@@ -1752,7 +1966,44 @@ def _populate_travel_workbook(
             continue
         true_value = checkbox_config.get("true_value", "X")
         false_value = checkbox_config.get("false_value", "")
-        ws[checkbox_cell] = true_value if bool(value) else false_value
+        mapped_values.append(
+            _MappedCellValue(
+                cell=checkbox_cell,
+                value=true_value if bool(value) else false_value,
+            )
+        )
+
+    return mapped_values
+
+
+def _populate_travel_workbook(
+    wb: Workbook,
+    plan: TripPlan,
+    mapping: TemplateMapping,
+    *,
+    canonical_plan: CanonicalTripPlan | None = None,
+    report: UnfilledMappingReport | None = None,
+) -> None:
+    worksheet_name = mapping.metadata.get("worksheet")
+    if isinstance(worksheet_name, str):
+        if worksheet_name not in wb.sheetnames:
+            raise ValueError(
+                f"Template worksheet '{worksheet_name}' was not found; "
+                f"available worksheets: {', '.join(wb.sheetnames)}"
+            )
+        ws = wb[worksheet_name]
+    else:
+        ws = wb.active
+
+    for mapped_value in _mapped_cell_values(
+        plan,
+        mapping,
+        canonical_plan=canonical_plan,
+        report=report,
+    ):
+        ws[mapped_value.cell] = mapped_value.value
+        if mapped_value.number_format is not None:
+            ws[mapped_value.cell].number_format = mapped_value.number_format
 
     for formula_config in mapping.formulas.values():
         formula_cell = formula_config.get("cell")
@@ -1774,6 +2025,29 @@ def render_travel_spreadsheet_bytes(
     template_bytes = _default_template_bytes(
         template_file if isinstance(template_file, str) else None
     )
+    if mapping.metadata.get("render_engine") == "ooxml":
+        worksheet_name = mapping.metadata.get("worksheet")
+        if not isinstance(worksheet_name, str):
+            raise ValueError("OOXML template mappings must declare a worksheet name.")
+        mapped_values = _mapped_cell_values(
+            plan,
+            mapping,
+            canonical_plan=canonical_plan,
+            report=report,
+        )
+        cell_formulas = {
+            formula_cell: formula_value
+            for formula_config in mapping.formulas.values()
+            if isinstance((formula_cell := formula_config.get("cell")), str)
+            and isinstance((formula_value := formula_config.get("formula")), str)
+        }
+        return render_mapped_workbook(
+            template_bytes,
+            worksheet_name=worksheet_name,
+            cell_values={entry.cell: entry.value for entry in mapped_values},
+            cell_formulas=cell_formulas,
+        )
+
     wb = load_workbook(BytesIO(template_bytes))
     _populate_travel_workbook(
         wb,
@@ -1782,6 +2056,9 @@ def render_travel_spreadsheet_bytes(
         canonical_plan=canonical_plan,
         report=report,
     )
+    wb.calculation.calcMode = "auto"
+    wb.calculation.fullCalcOnLoad = True
+    wb.calculation.forceFullCalc = True
     output = BytesIO()
     wb.save(output)
     wb.close()

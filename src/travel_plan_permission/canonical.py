@@ -64,6 +64,36 @@ class CanonicalAttestations(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class CanonicalMealCounts(BaseModel):
+    """Eligible meal counts used by the organizational itinerary workbook."""
+
+    breakfast: int | None = Field(default=None, ge=0)
+    lunch: int | None = Field(default=None, ge=0)
+    dinner: int | None = Field(default=None, ge=0)
+
+    model_config = {"extra": "forbid"}
+
+
+class CanonicalGroundTransport(BaseModel):
+    """Structured inputs used by the organization workbook's transport calculator."""
+
+    mosers_vehicle_planned: bool | None = None
+    mileage_planned: bool | None = None
+    mileage_miles: Decimal | None = Field(default=None, ge=0)
+    mileage_cost: Decimal | None = Field(default=None, ge=0)
+    rideshare_planned: bool | None = None
+    rideshare_cost: Decimal | None = Field(default=None, ge=0)
+    shuttle_planned: bool | None = None
+    shuttle_cost: Decimal | None = Field(default=None, ge=0)
+    rental_planned: bool | None = None
+    rental_cost: Decimal | None = Field(default=None, ge=0)
+    rental_company: str | None = None
+    rental_daily_rate: Decimal | None = Field(default=None, ge=0)
+    rental_reason: str | None = None
+
+    model_config = {"extra": "forbid"}
+
+
 class CanonicalTripPlan(BaseModel):
     """Canonical TripPlan contract aligned to schemas/trip_plan.min.schema.json."""
 
@@ -73,6 +103,9 @@ class CanonicalTripPlan(BaseModel):
     cost_center: str | None = None
     destination_zip: str = Field(..., pattern=_ZIP_PATTERN.pattern)
     city_state: str | None = None
+    event_dates: str | None = None
+    departure_city_airport: str | None = None
+    return_city_airport: str | None = None
     depart_date: date
     return_date: date
     event_registration_cost: Decimal | None = Field(default=None, ge=0)
@@ -80,9 +113,12 @@ class CanonicalTripPlan(BaseModel):
     flight_pref_return: CanonicalFlightReturn | None = None
     lowest_cost_roundtrip: Decimal | None = Field(default=None, ge=0)
     parking_estimate: Decimal | None = Field(default=None, ge=0)
+    ground_transport_estimate: Decimal | None = Field(default=None, ge=0)
     hotel: CanonicalHotel | None = None
     comparable_hotels: list[CanonicalComparableHotel] | None = None
     ground_transport_pref: str | None = None
+    ground_transport: CanonicalGroundTransport | None = None
+    meal_counts: CanonicalMealCounts | None = None
     notes: str | None = None
     attachments: CanonicalAttachments | None = None
     attestations: CanonicalAttestations | None = None
@@ -136,7 +172,16 @@ def canonical_trip_plan_to_model(plan: CanonicalTripPlan) -> TripPlan:
         airfare = plan.lowest_cost_roundtrip
     _add_cost(breakdown, ExpenseCategory.AIRFARE, airfare)
 
-    _add_cost(breakdown, ExpenseCategory.GROUND_TRANSPORT, plan.parking_estimate)
+    ground_transport_total = sum(
+        (
+            amount
+            for amount in (plan.parking_estimate, plan.ground_transport_estimate)
+            if amount is not None
+        ),
+        Decimal("0"),
+    )
+    if ground_transport_total:
+        _add_cost(breakdown, ExpenseCategory.GROUND_TRANSPORT, ground_transport_total)
 
     if plan.hotel and plan.hotel.nightly_rate is not None and plan.hotel.nights is not None:
         lodging_total = plan.hotel.nightly_rate * Decimal(plan.hotel.nights)
@@ -148,6 +193,12 @@ def canonical_trip_plan_to_model(plan: CanonicalTripPlan) -> TripPlan:
     transportation_mode: Literal["air", "train", "car", "mixed"] | None = None
     if airfare is not None:
         transportation_mode = "air"
+
+    comparable_hotel_rates = [
+        hotel.nightly_rate
+        for hotel in plan.comparable_hotels or []
+        if hotel.nightly_rate is not None
+    ]
 
     return TripPlan(
         trip_id=_default_trip_id(plan),
@@ -161,6 +212,7 @@ def canonical_trip_plan_to_model(plan: CanonicalTripPlan) -> TripPlan:
         expected_costs=expected_costs,
         estimated_cost=estimated_cost,
         expense_breakdown=breakdown,
+        comparable_hotels=comparable_hotel_rates or None,
     )
 
 

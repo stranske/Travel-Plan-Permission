@@ -43,6 +43,7 @@ def _set_runtime_env(monkeypatch, *, provider: str = "google") -> None:
     monkeypatch.setenv("TPP_OIDC_PROVIDER", provider)
     monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
     monkeypatch.setenv("TPP_ACCESS_TOKEN", "dev-token")
+    monkeypatch.setenv("TPP_HANDOFF_SIGNING_SECRET", "test-handoff-signing-secret")
 
 
 def _set_bootstrap_runtime_env(monkeypatch, *, provider: str = "google") -> None:
@@ -172,6 +173,9 @@ def _portal_form_payload() -> dict[str, str]:
         "cost_center": "OPS-410",
         "city_state": "Seattle, WA",
         "destination_zip": "98101",
+        "event_dates": "10/06/2025 - 10/08/2025",
+        "departure_city_airport": "Portland (PDX)",
+        "return_city_airport": "Seattle (SEA)",
         "depart_date": "2025-10-05",
         "return_date": "2025-10-09",
         "notes": "Request airport pickup and late checkout.",
@@ -192,7 +196,14 @@ def _portal_form_payload() -> dict[str, str]:
         "hotel.price_compare_notes": "Conference hotel is $20 more per night.",
         "comparable_hotels[0].name": "Marketview Hotel",
         "comparable_hotels[0].nightly_rate": "190.00",
+        "comparable_hotels[1].name": "Pioneer Square Inn",
+        "comparable_hotels[1].nightly_rate": "199.00",
         "ground_transport_pref": "rideshare/taxi",
+        "ground_transport_estimate": "84.00",
+        "meal_counts.breakfast": "4",
+        "meal_counts.lunch": "3",
+        "meal_counts.dinner": "4",
+        "attestations.budget_ok": "true",
         "parking_estimate": "35.00",
         "event_registration_cost": "320.00",
         "booking_date": "2025-09-20",
@@ -776,6 +787,70 @@ def test_portal_request_form_get_stays_lightweight() -> None:
     assert 'value="Alex Rivera"' not in response.text
     assert "Generated artifacts" not in response.text
     assert "Policy-lite posture" not in response.text
+
+
+def test_trip_planner_handoff_prefills_form_without_url_data(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.post(
+        "/portal/handoff",
+        data={
+            "business_purpose": "Washington client visit",
+            "city_state": "Washington DC",
+            "depart_date": "2026-10-14",
+            "return_date": "2026-10-16",
+            "notes": "Prepared from trip-planner scenario Washington runtime bundle.",
+        },
+    )
+
+    assert response.status_code == 200
+    assert 'action="/portal/handoff/draft"' in response.text
+    assert "Complete the organization details" in response.text
+    assert "Washington client visit" in response.text
+    assert 'value="Washington DC"' in response.text
+    cookie = response.headers["set-cookie"]
+    assert "tpp_portal_handoff=" in cookie
+    assert "HttpOnly" in cookie
+    assert "SameSite=lax" in cookie
+
+
+def test_trip_planner_handoff_can_review_and_download_but_not_submit(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+    prefill = client.post(
+        "/portal/handoff",
+        data={"business_purpose": "Washington client visit"},
+    )
+    assert prefill.status_code == 200
+
+    review = client.post(
+        "/portal/handoff/draft",
+        data=_portal_form_payload(),
+        follow_redirects=True,
+    )
+
+    assert review.status_code == 200
+    assert 'data-template="review-summary"' in review.text
+    assert "trip-planner-handoff" in review.text
+    assert "Generated artifacts" in review.text
+    assert "Submit request" not in review.text
+    assert "Screenshot or fare evidence must be attached" not in review.text
+    assert "Provide at least 2 comparable hotel rates" not in review.text
+    match = re.search(r"/portal/review/([^/]+)/artifacts/itinerary", review.text)
+    assert match is not None
+    draft_id = match.group(1)
+    itinerary = client.get(f"/portal/review/{draft_id}/artifacts/itinerary")
+    submit = client.post(
+        f"/portal/review/{draft_id}/submit",
+        follow_redirects=False,
+    )
+
+    assert itinerary.status_code == 200
+    assert itinerary.content.startswith(b"PK")
+    assert submit.status_code == 401
+    assert store.lookup_portal_draft(draft_id) is not None
 
 
 def test_expense_portal_form_renders() -> None:
