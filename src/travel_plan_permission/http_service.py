@@ -35,6 +35,10 @@ from pydantic import BaseModel, Field, ValidationError
 from . import audit, demo_seed
 from .approval import ApprovalEngine
 from .export import ExportService
+from .intake_requirements import (
+    PlannerIntakeRequirementCatalog,
+    get_intake_requirement_catalog,
+)
 from .models import (
     ApprovalStatus,
     ExceptionRequest,
@@ -51,6 +55,7 @@ from .planner_auth import (
     OIDCAuthenticationError,
     PlannerAuthConfig,
     PlannerAuthContext,
+    PlannerAuthMode,
     authenticate_request,
 )
 from .policy_api import (
@@ -67,6 +72,14 @@ from .policy_api import (
     get_policy_snapshot,
     poll_execution_status,
     submit_proposal,
+)
+from .portal_handoff import (
+    HANDOFF_COOKIE_MAX_AGE_SECONDS,
+    HANDOFF_COOKIE_NAME,
+    issue_handoff_token,
+    issue_pending_handoff_token,
+    resolve_handoff_signing_secret,
+    verify_handoff_token,
 )
 from .portal_review import (
     PortalArtifact,
@@ -111,6 +124,9 @@ _PORTAL_CANONICAL_FIELDS: tuple[str, ...] = (
     "cost_center",
     "destination_zip",
     "city_state",
+    "event_dates",
+    "departure_city_airport",
+    "return_city_airport",
     "depart_date",
     "return_date",
     "event_registration_cost",
@@ -132,7 +148,27 @@ _PORTAL_CANONICAL_FIELDS: tuple[str, ...] = (
     "hotel.price_compare_notes",
     "comparable_hotels[0].name",
     "comparable_hotels[0].nightly_rate",
+    "comparable_hotels[1].name",
+    "comparable_hotels[1].nightly_rate",
     "ground_transport_pref",
+    "ground_transport_estimate",
+    "ground_transport.mosers_vehicle_planned",
+    "ground_transport.mileage_planned",
+    "ground_transport.mileage_miles",
+    "ground_transport.mileage_cost",
+    "ground_transport.rideshare_planned",
+    "ground_transport.rideshare_cost",
+    "ground_transport.shuttle_planned",
+    "ground_transport.shuttle_cost",
+    "ground_transport.rental_planned",
+    "ground_transport.rental_cost",
+    "ground_transport.rental_company",
+    "ground_transport.rental_daily_rate",
+    "ground_transport.rental_reason",
+    "meal_counts.breakfast",
+    "meal_counts.lunch",
+    "meal_counts.dinner",
+    "attestations.budget_ok",
     "notes",
 )
 _PORTAL_POLICY_FIELDS: tuple[str, ...] = (
@@ -152,6 +188,9 @@ _PORTAL_POLICY_FIELDS: tuple[str, ...] = (
 _PORTAL_FIELDS: tuple[str, ...] = _PORTAL_CANONICAL_FIELDS + _PORTAL_POLICY_FIELDS
 _PORTAL_OPTIONAL_FIELDS = {
     "cost_center",
+    "event_dates",
+    "departure_city_airport",
+    "return_city_airport",
     "event_registration_cost",
     "flight_pref_outbound.carrier_flight",
     "flight_pref_outbound.depart_time",
@@ -171,7 +210,27 @@ _PORTAL_OPTIONAL_FIELDS = {
     "hotel.price_compare_notes",
     "comparable_hotels[0].name",
     "comparable_hotels[0].nightly_rate",
+    "comparable_hotels[1].name",
+    "comparable_hotels[1].nightly_rate",
     "ground_transport_pref",
+    "ground_transport_estimate",
+    "ground_transport.mosers_vehicle_planned",
+    "ground_transport.mileage_planned",
+    "ground_transport.mileage_miles",
+    "ground_transport.mileage_cost",
+    "ground_transport.rideshare_planned",
+    "ground_transport.rideshare_cost",
+    "ground_transport.shuttle_planned",
+    "ground_transport.shuttle_cost",
+    "ground_transport.rental_planned",
+    "ground_transport.rental_cost",
+    "ground_transport.rental_company",
+    "ground_transport.rental_daily_rate",
+    "ground_transport.rental_reason",
+    "meal_counts.breakfast",
+    "meal_counts.lunch",
+    "meal_counts.dinner",
+    "attestations.budget_ok",
     "notes",
     "booking_date",
     "selected_fare",
@@ -193,6 +252,12 @@ _PORTAL_REQUIRED_FIELDS: tuple[str, ...] = tuple(
 )
 _PORTAL_BOOLEAN_FIELDS = {
     "hotel.conference_hotel",
+    "attestations.budget_ok",
+    "ground_transport.mosers_vehicle_planned",
+    "ground_transport.mileage_planned",
+    "ground_transport.rideshare_planned",
+    "ground_transport.shuttle_planned",
+    "ground_transport.rental_planned",
     "fare_evidence_attached",
     "overnight_stay",
     "meals_provided",
@@ -402,6 +467,63 @@ def _authorize_request(
         ) from exc
 
 
+def _set_handoff_cookie(response: Response, request: Request, token: str) -> None:
+    response.set_cookie(
+        HANDOFF_COOKIE_NAME,
+        token,
+        max_age=HANDOFF_COOKIE_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        path="/portal",
+    )
+
+
+def _resolve_handoff_secret_or_503() -> str:
+    try:
+        return resolve_handoff_signing_secret()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+
+def _handoff_view_context(request: Request, draft_id: str) -> PlannerAuthContext | None:
+    try:
+        secret = resolve_handoff_signing_secret()
+    except ValueError:
+        return None
+    subject = verify_handoff_token(
+        request.cookies.get(HANDOFF_COOKIE_NAME),
+        secret=secret,
+    )
+    if subject != draft_id:
+        return None
+    return PlannerAuthContext(
+        subject=f"handoff:{draft_id}",
+        permissions=(Permission.VIEW,),
+        provider="trip-planner-handoff",
+        expires_at=None,
+        auth_mode=PlannerAuthMode.STATIC_TOKEN,
+    )
+
+
+def _authorize_portal_view(
+    request: Request,
+    authorization: str | None,
+    *,
+    draft_id: str,
+) -> PlannerAuthContext:
+    if authorization is None:
+        handoff_context = _handoff_view_context(request, draft_id)
+        if handoff_context is not None:
+            return handoff_context
+    return _authorize_request(
+        authorization,
+        required_permission=Permission.VIEW,
+        route=_route_identifier(request),
+    )
 def _copy_exception_request(request: ExceptionRequest) -> ExceptionRequest:
     """Return a deep copy of an exception request."""
 
@@ -1544,6 +1666,8 @@ def _portal_template_context(
     auth_context: PlannerAuthContext | None = None,
     exceptions: list[ExceptionRequest] | None = None,
     error_message: str | None = None,
+    form_action: str = "/portal/draft",
+    handoff_active: bool = False,
 ) -> dict[str, object]:
     answers = review.answers if review is not None else {}
     viewer_permissions = (
@@ -1576,6 +1700,8 @@ def _portal_template_context(
         ),
         "optional_fields": _PORTAL_OPTIONAL_FIELDS,
         "error_message": error_message,
+        "form_action": form_action,
+        "handoff_active": handoff_active,
         "viewer": auth_context,
         "viewer_permissions": viewer_permissions,
         "viewer_can_view": (
@@ -1728,6 +1854,72 @@ def register_portal_routes(app: FastAPI, proposal_store: PlannerProposalStore, *
             context=_portal_template_context(request, None),
         )
 
+    @app.post("/portal/handoff", response_class=HTMLResponse)
+    async def portal_handoff(request: Request) -> HTMLResponse:
+        answers = _portal_answers_from_encoded_body(await request.body())
+        review = portal_validation_state(
+            answers,
+            required_fields=_PORTAL_REQUIRED_FIELDS,
+            canonical_payload_builder=_canonical_payload_from_answers,
+        )
+        response = _TEMPLATES.TemplateResponse(
+            request=request,
+            name="draft_entry.html",
+            context=_portal_template_context(
+                request,
+                review,
+                form_action="/portal/handoff/draft",
+                handoff_active=True,
+            ),
+        )
+        token = issue_pending_handoff_token(secret=_resolve_handoff_secret_or_503())
+        _set_handoff_cookie(response, request, token)
+        return response
+
+    @app.post("/portal/handoff/draft")
+    async def portal_handoff_draft(request: Request) -> Response:
+        secret = _resolve_handoff_secret_or_503()
+        subject = verify_handoff_token(
+            request.cookies.get(HANDOFF_COOKIE_NAME),
+            secret=secret,
+        )
+        if subject is None or not subject.startswith("pending:"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="The trip-planner handoff session is missing or expired.",
+            )
+        answers = _portal_answers_from_encoded_body(await request.body())
+        review = portal_validation_state(
+            answers,
+            required_fields=_PORTAL_REQUIRED_FIELDS,
+            canonical_payload_builder=_canonical_payload_from_answers,
+        )
+        if review.missing_fields or review.validation_errors:
+            return _TEMPLATES.TemplateResponse(
+                request=request,
+                name="validation_feedback.html",
+                context=_portal_template_context(
+                    request,
+                    review,
+                    form_action="/portal/handoff/draft",
+                    handoff_active=True,
+                ),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        draft = proposal_store.save_portal_draft(answers)
+        if review.artifacts:
+            proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
+        response = RedirectResponse(
+            url=request.url_for("portal_review_detail", draft_id=draft.draft_id),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+        _set_handoff_cookie(
+            response,
+            request,
+            issue_handoff_token(draft.draft_id, secret=secret),
+        )
+        return response
+
     @app.post("/portal/draft")
     async def portal_draft_review(request: Request) -> Response:
         answers = _portal_answers_from_encoded_body(await request.body())
@@ -1786,10 +1978,10 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
         draft_id: str,
         authorization: str | None = Header(default=None),
     ) -> HTMLResponse:
-        auth_context = _authorize_request(
+        auth_context = _authorize_portal_view(
+            request,
             authorization,
-            required_permission=Permission.VIEW,
-            route=_route_identifier(request),
+            draft_id=draft_id,
         )
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
@@ -2218,10 +2410,10 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
         artifact_name: str,
         authorization: str | None = Header(default=None),
     ) -> Response:
-        auth_context = _authorize_request(
+        auth_context = _authorize_portal_view(
+            request,
             authorization,
-            required_permission=Permission.VIEW,
-            route=_route_identifier(request),
+            draft_id=draft_id,
         )
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
@@ -2323,6 +2515,21 @@ def register_planner_api_routes(app: FastAPI, proposal_store: PlannerProposalSto
         if readiness.status != "ready":
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return readiness
+
+    @app.get(
+        "/api/planner/intake-requirements",
+        response_model=PlannerIntakeRequirementCatalog,
+    )
+    def intake_requirements(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> PlannerIntakeRequirementCatalog:
+        _authorize_request(
+            authorization,
+            required_permission=Permission.VIEW,
+            route=_route_identifier(request),
+        )
+        return get_intake_requirement_catalog()
 
     @app.get("/api/planner/policy-snapshot", response_model=PlannerPolicySnapshot)
     def policy_snapshot(

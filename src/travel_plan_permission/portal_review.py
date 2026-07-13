@@ -24,6 +24,36 @@ if TYPE_CHECKING:
     from .review_workflow import ReviewRequest
 
 
+_POLICY_ANSWER_FIELDS: tuple[str, ...] = (
+    "booking_date",
+    "selected_fare",
+    "lowest_fare",
+    "cabin_class",
+    "flight_duration_hours",
+    "fare_evidence_attached",
+    "driving_cost",
+    "flight_cost",
+    "distance_from_office_miles",
+    "overnight_stay",
+    "meals_provided",
+    "meal_per_diem_requested",
+)
+
+
+def _apply_policy_answers(plan: TripPlan, answers: dict[str, object]) -> TripPlan:
+    """Merge portal-only policy fields into the canonical internal plan."""
+
+    payload = plan.model_dump()
+    payload.update(
+        {
+            field_name: answers[field_name]
+            for field_name in _POLICY_ANSWER_FIELDS
+            if answers.get(field_name) is not None
+        }
+    )
+    return TripPlan.model_validate(payload)
+
+
 @dataclass(frozen=True)
 class PortalArtifact:
     """Generated portal artifact metadata and payload."""
@@ -154,7 +184,10 @@ def portal_review_state(
     artifacts: dict[str, PortalArtifact] = {}
 
     if not missing_fields and canonical_plan is not None and not validation_errors:
-        trip_plan = canonical_trip_plan_to_model(canonical_plan)
+        trip_plan = _apply_policy_answers(
+            canonical_trip_plan_to_model(canonical_plan),
+            answers,
+        )
         policy_snapshot = get_policy_snapshot(
             trip_plan,
             PlannerPolicySnapshotRequest(trip_id=trip_plan.trip_id),

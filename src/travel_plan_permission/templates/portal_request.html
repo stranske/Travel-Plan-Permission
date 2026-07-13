@@ -257,6 +257,9 @@
                     <div class="label-row"><span>Return date</span></div>
                     <input type="date" name="return_date" value="{{ answers.get('return_date', '') }}" />
                   </label>
+                  <label><div class="label-row"><span>Event or meeting dates</span><span class="optional">Optional</span></div><input name="event_dates" value="{{ answers.get('event_dates', '') }}" /></label>
+                  <label><div class="label-row"><span>Departure city or airport</span><span class="optional">Optional</span></div><input name="departure_city_airport" value="{{ answers.get('departure_city_airport', '') }}" /></label>
+                  <label><div class="label-row"><span>Return city or airport</span><span class="optional">Optional</span></div><input name="return_city_airport" value="{{ answers.get('return_city_airport', '') }}" /></label>
                   <label>
                     <div class="label-row"><span>Traveler notes</span><span class="optional">Optional</span></div>
                     <textarea name="notes">{{ answers.get('notes', '') }}</textarea>
@@ -291,6 +294,8 @@
                   <label><div class="label-row"><span>Hotel comparison notes</span><span class="optional">Optional</span></div><textarea name="hotel.price_compare_notes">{{ answers.get('hotel.price_compare_notes', '') }}</textarea></label>
                   <label><div class="label-row"><span>Comparable hotel</span><span class="optional">Optional</span></div><input name="comparable_hotels[0].name" value="{{ answers.get('comparable_hotels[0].name', '') }}" /></label>
                   <label><div class="label-row"><span>Comparable nightly rate</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="comparable_hotels[0].nightly_rate" value="{{ answers.get('comparable_hotels[0].nightly_rate', '') }}" /></label>
+                  <label><div class="label-row"><span>Second comparable hotel</span><span class="optional">Optional</span></div><input name="comparable_hotels[1].name" value="{{ answers.get('comparable_hotels[1].name', '') }}" /></label>
+                  <label><div class="label-row"><span>Second comparable nightly rate</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="comparable_hotels[1].nightly_rate" value="{{ answers.get('comparable_hotels[1].nightly_rate', '') }}" /></label>
                   <label>
                     <div class="label-row"><span>Ground transport</span><span class="optional">Optional</span></div>
                     <select name="ground_transport_pref">
@@ -300,8 +305,20 @@
                       {% endfor %}
                     </select>
                   </label>
+                  <label><div class="label-row"><span>Ground transport estimate</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="ground_transport_estimate" value="{{ answers.get('ground_transport_estimate', '') }}" /></label>
                   <label><div class="label-row"><span>Parking estimate</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="parking_estimate" value="{{ answers.get('parking_estimate', '') }}" /></label>
                   <label><div class="label-row"><span>Registration cost</span><span class="optional">Optional</span></div><input type="number" step="0.01" name="event_registration_cost" value="{{ answers.get('event_registration_cost', '') }}" /></label>
+                  <label><div class="label-row"><span>Eligible breakfasts</span><span class="optional">Optional</span></div><input type="number" step="1" min="0" name="meal_counts.breakfast" value="{{ answers.get('meal_counts.breakfast', '') }}" /></label>
+                  <label><div class="label-row"><span>Eligible lunches</span><span class="optional">Optional</span></div><input type="number" step="1" min="0" name="meal_counts.lunch" value="{{ answers.get('meal_counts.lunch', '') }}" /></label>
+                  <label><div class="label-row"><span>Eligible dinners</span><span class="optional">Optional</span></div><input type="number" step="1" min="0" name="meal_counts.dinner" value="{{ answers.get('meal_counts.dinner', '') }}" /></label>
+                  <label>
+                    <div class="label-row"><span>Trip is in section budget</span><span class="optional">Optional</span></div>
+                    <select name="attestations.budget_ok">
+                      <option value="">Select</option>
+                      <option value="true" {% if answers.get('attestations.budget_ok') in [True, 'true'] %}selected{% endif %}>Yes</option>
+                      <option value="false" {% if answers.get('attestations.budget_ok') in [False, 'false'] %}selected{% endif %}>No</option>
+                    </select>
+                  </label>
                 </div>
               </section>
 

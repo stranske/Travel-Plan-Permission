@@ -1,4 +1,109 @@
 templates:
+  ITIN-2026.1:
+    metadata:
+      template_id: ITIN-2026.1
+      template_file: Travel_Itinerary_Form_Jan_1_2026_runtime.xlsx
+      worksheet: Itinerary Form
+      render_engine: ooxml
+      source_file: templates/Travel_Itinerary_Form_Jan_1_2026_revised.xlsx
+      source_sha256: 91aa64850b4b5f21a3200e6d814af8a777084cd8978227a450314cefcbe00522
+      runtime_sha256: d7a445e92e20c601f17a3d8e1ad57e8dcb67da281e0bfefb9551dcbd1cb795c7
+      normalization: LibreOffice, lookup-sheet slimming, and cached ZIP-key freezing 2026-07-11
+      last_reviewed: "2026-07-11"
+      reviewer: codex
+      derived_fields:
+        - city_state
+        - parking_estimate
+        - hotel.nights
+        - ground_transport_pref
+        - ground_transport_estimate
+      unmapped_fields:
+        cost_center: The organizational itinerary form has no cost-center field.
+    cells:
+      traveler_name: C6
+      destination_zip: G6
+      event_dates: M6
+      business_purpose: C7
+      depart_date: M7
+      return_date: M8
+      event_registration_cost: M10
+      departure_city_airport: D14
+      return_city_airport: J14
+      flight_pref_outbound.carrier_flight: F16
+      flight_pref_outbound.depart_time: I16
+      flight_pref_outbound.arrive_time: K16
+      flight_pref_return.carrier_flight: F17
+      flight_pref_return.depart_time: I17
+      flight_pref_return.arrive_time: K17
+      flight_pref_outbound.roundtrip_cost: M17
+      lowest_cost_roundtrip: E20
+      parking_daily_rate: K22
+      notes: D32
+      hotel.name: C36
+      hotel.nightly_rate: K36
+      hotel.address: C38
+      hotel.city_state: H38
+      hotel.price_compare_notes: K44
+      comparable_hotels[0].name: C45
+      comparable_hotels[0].nightly_rate: H45
+      comparable_hotels[1].name: C46
+      comparable_hotels[1].nightly_rate: H46
+      meal_counts.breakfast: H52
+      meal_counts.lunch: H53
+      meal_counts.dinner: H54
+      airfare_cost_comparison: I62
+      air_travel_mileage_cost: I63
+      air_travel_airport_parking_cost: I64
+      air_travel_ground_transport_cost: I65
+      ground_transport.mileage_miles: C73
+      ground_transport.rental_company: G73
+      ground_transport.rental_daily_rate: I74
+      ground_transport.rental_reason: G76
+      ground_transport.rideshare_cost: N75
+      ground_transport.shuttle_cost: N76
+      ground_transport.rental_cost: N77
+    checkboxes:
+      airfare_within_threshold:
+        cell: B27
+        true_value: "☒"
+        false_value: "☐"
+      hotel.conference_hotel:
+        cell: B40
+        true_value: "☒"
+        false_value: "☐"
+      hotel_comparison_reviewed:
+        cell: B41
+        true_value: "☒"
+        false_value: "☐"
+      ground_transport.mosers_vehicle_planned:
+        cell: M73
+        true_value: "☒"
+        false_value: "☐"
+      ground_transport.mileage_planned:
+        cell: M74
+        true_value: "☒"
+        false_value: "☐"
+      ground_transport.rideshare_planned:
+        cell: M75
+        true_value: "☒"
+        false_value: "☐"
+      ground_transport.shuttle_planned:
+        cell: M76
+        true_value: "☒"
+        false_value: "☐"
+      ground_transport.rental_planned:
+        cell: M77
+        true_value: "☒"
+        false_value: "☐"
+      attestations.budget_ok:
+        cell: B107
+        true_value: "☒"
+        false_value: "☐"
+    dropdowns: {}
+    formulas:
+      city_state:
+        cell: H6
+        formula: '=IFERROR(VLOOKUP(G6,Locations!A:F,4,FALSE)&", "&VLOOKUP(G6,Locations!A:F,6,FALSE),"City / State")'
   ITIN-2025.1:
     metadata:
       template_id: ITIN-2025.1

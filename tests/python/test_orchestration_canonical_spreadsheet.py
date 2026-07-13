@@ -23,13 +23,13 @@ def test_policy_graph_retains_canonical_fields(tmp_path: Path) -> None:
 
     assert state.spreadsheet_path == str(output_path)
 
-    workbook = load_workbook(output_path)
-    sheet = workbook.active
+    workbook = load_workbook(output_path, read_only=True)
+    sheet = workbook["Itinerary Form"]
 
-    assert sheet["B8"].value == "UA204"
-    assert sheet["B11"].value == "Harborview Suites"
-    assert sheet["B12"].value == "88 Mission St"
-    assert sheet["D12"].value == "San Francisco, CA"
+    assert sheet["F16"].value == "UA204"
+    assert sheet["C36"].value == "Harborview Suites"
+    assert sheet["C38"].value == "88 Mission St"
+    assert sheet["H38"].value == "San Francisco, CA"
     workbook.close()
 
 

@@ -49,6 +49,7 @@ def test_canonical_conversion_builds_trip_plan() -> None:
     assert trip_plan.expense_breakdown[ExpenseCategory.GROUND_TRANSPORT] == Decimal("36")
     assert trip_plan.expense_breakdown[ExpenseCategory.LODGING] == Decimal("630")
     assert trip_plan.estimated_cost == Decimal("1566")
+    assert trip_plan.comparable_hotels == [Decimal("185"), Decimal("199")]
 
 
 def test_load_trip_plan_payload_handles_canonical() -> None:

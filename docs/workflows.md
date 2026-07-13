@@ -34,6 +34,17 @@ The Stage 2 browser portal now uses three explicit server-rendered endpoints:
 - `POST /portal/draft` validates required inputs before any draft is saved
 - `GET /portal/review/{draft_id}` renders `templates/review_summary.html`
 
+The review-only `trip-planner` bridge adds two form-POST endpoints:
+
+- `POST /portal/handoff` accepts known business-trip fields and renders the same
+  draft form for the organization-specific details that remain unknown.
+- `POST /portal/handoff/draft` validates and saves the completed draft, generates
+  its workbook artifacts, and redirects to review under a short-lived capability
+  scoped to that draft.
+
+The bridge never carries traveler fields in a query string and never grants the
+`create` permission needed by the submission endpoint.
+
 When `POST /portal/draft` is missing required fields, the service returns HTTP 400
 and renders `templates/validation_feedback.html` instead of redirecting. The entry,
 validation, and review states are intentionally separate templates so the route

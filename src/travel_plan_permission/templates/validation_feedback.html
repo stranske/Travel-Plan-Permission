@@ -42,7 +42,7 @@
         </div>
       {% endif %}
 
-      <form method="post" action="/portal/draft">
+      <form method="post" action="{{ form_action }}">
         {% include "_portal_form_fields.html" %}
         <div class="actions">
           <button class="primary" type="submit">Retry validation</button>

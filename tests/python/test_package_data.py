@@ -15,7 +15,7 @@ def test_approval_rules_resource_exists() -> None:
 
 def test_template_resource_exists() -> None:
     template = resources.files("travel_plan_permission").joinpath(
-        "templates", "travel_request_template.xlsx"
+        "templates", "Travel_Itinerary_Form_Jan_1_2026_runtime.xlsx"
     )
     assert template.is_file()
     assert template.read_bytes().startswith(b"PK")

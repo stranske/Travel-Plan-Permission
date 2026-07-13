@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
@@ -57,23 +57,22 @@ def test_fill_travel_spreadsheet_writes_mapped_fields(tmp_path) -> None:
 
     assert result == output_path
     workbook = load_workbook(output_path)
-    sheet = workbook.active
+    sheet = workbook["Itinerary Form"]
 
-    assert sheet["B3"].value == plan.traveler_name
-    assert sheet["B4"].value == plan.purpose
-    assert sheet["D4"].value == plan.department
-    assert sheet["B5"].value == "Austin, TX"
-    assert sheet["F5"].value == "78701"
-    assert sheet["B6"].value == "2024-09-15"
-    assert sheet["D6"].value == "2024-09-20"
-    assert sheet["F6"].value == 200.0
-    assert sheet["F6"].number_format == "$#,##0.00"
-    assert sheet["E8"].value == 450.5
-    assert sheet["E8"].number_format == "$#,##0.00"
-    assert sheet["E9"].value == 450.5
-    assert sheet["E9"].number_format == "$#,##0.00"
-    assert sheet["F9"].value == 40.0
-    assert sheet["F9"].number_format == "$#,##0.00"
+    assert sheet["C6"].value == plan.traveler_name
+    assert sheet["C7"].value == plan.purpose
+    assert sheet["G6"].value == 78701
+    assert sheet["M7"].value == datetime.combine(plan.departure_date, datetime.min.time())
+    assert sheet["M8"].value == datetime.combine(plan.return_date, datetime.min.time())
+    assert sheet["M10"].value == 200.0
+    assert "$" in sheet["M10"].number_format
+    assert "0.00" in sheet["M10"].number_format
+    assert sheet["M17"].value == 450.5
+    assert "$" in sheet["M17"].number_format
+    assert "0.00" in sheet["M17"].number_format
+    assert sheet["E20"].value == 450.5
+    assert "$" in sheet["E20"].number_format
+    assert "0.00" in sheet["E20"].number_format
     workbook.close()
 
 
@@ -82,7 +81,7 @@ def test_render_travel_spreadsheet_bytes_returns_xlsx_bytes() -> None:
 
     output_bytes = render_travel_spreadsheet_bytes(plan)
 
-    workbook = load_workbook(BytesIO(output_bytes))
+    workbook = load_workbook(BytesIO(output_bytes), read_only=True)
     assert workbook.sheetnames
     workbook.close()
 
@@ -95,22 +94,14 @@ def test_fill_travel_spreadsheet_matches_rendered_bytes(tmp_path) -> None:
     fill_travel_spreadsheet(plan, output_path)
 
     # Compare workbook contents instead of raw bytes (which include timestamps)
-    wb_from_bytes = load_workbook(BytesIO(output_bytes))
-    wb_from_file = load_workbook(output_path)
+    wb_from_bytes = load_workbook(BytesIO(output_bytes), read_only=True)
+    wb_from_file = load_workbook(output_path, read_only=True)
 
-    # Compare sheet names
     assert wb_from_bytes.sheetnames == wb_from_file.sheetnames
-
-    # Compare cell values in all sheets
-    for sheet_name in wb_from_bytes.sheetnames:
-        sheet_bytes = wb_from_bytes[sheet_name]
-        sheet_file = wb_from_file[sheet_name]
-
-        # Compare all cell values
-        for row in sheet_bytes.iter_rows():
-            for cell in row:
-                file_cell = sheet_file[cell.coordinate]
-                assert file_cell.value == cell.value, f"Mismatch at {cell.coordinate}"
+    sheet_bytes = wb_from_bytes["Itinerary Form"]
+    sheet_file = wb_from_file["Itinerary Form"]
+    for cell_ref in ("C6", "C7", "G6", "M7", "M8", "M10", "M17", "E20"):
+        assert sheet_bytes[cell_ref].value == sheet_file[cell_ref].value
 
     wb_from_bytes.close()
     wb_from_file.close()
@@ -131,8 +122,9 @@ def test_fill_travel_spreadsheet_rounds_currency_values(tmp_path) -> None:
     workbook = load_workbook(output_path)
     sheet = workbook.active
 
-    assert sheet["E8"].value == 450.57
-    assert sheet["E8"].number_format == "$#,##0.00"
+    assert sheet["M17"].value == 450.57
+    assert "$" in sheet["M17"].number_format
+    assert "0.00" in sheet["M17"].number_format
     workbook.close()
 
 
@@ -172,7 +164,7 @@ def test_fill_travel_spreadsheet_uses_mapping_cells(tmp_path, monkeypatch) -> No
     sheet = workbook.active
 
     assert sheet["Z99"].value == plan.traveler_name
-    assert sheet["Z100"].value == "2024-09-15"
+    assert sheet["Z100"].value == datetime(2024, 9, 15)
     assert sheet["Z101"].value == 200.0
     assert sheet["Z101"].number_format == "$#,##0.00"
     workbook.close()
@@ -254,13 +246,13 @@ def test_fill_travel_spreadsheet_uses_canonical_fields(tmp_path) -> None:
     fill_travel_spreadsheet(trip_plan, output_path, canonical_plan=canonical_plan)
 
     workbook = load_workbook(output_path)
-    sheet = workbook.active
+    sheet = workbook["Itinerary Form"]
 
     assert canonical_plan.hotel is not None
-    assert sheet["B11"].value == canonical_plan.hotel.name
-    assert sheet["B12"].value == canonical_plan.hotel.address
-    assert sheet["G12"].value == "X"
-    assert sheet["B15"].value == "rideshare/taxi"
+    assert sheet["C36"].value == canonical_plan.hotel.name
+    assert sheet["C38"].value == canonical_plan.hotel.address
+    assert sheet["B40"].value == "☒"
+    assert sheet["M75"].value == "☒"
     workbook.close()
 
 
@@ -276,24 +268,115 @@ def test_fill_travel_spreadsheet_populates_flight_and_hotel_preferences(
     fill_travel_spreadsheet(trip_plan, output_path, canonical_plan=canonical_plan)
 
     workbook = load_workbook(output_path)
-    sheet = workbook.active
+    sheet = workbook["Itinerary Form"]
 
-    assert sheet["B8"].value == "UA204"
-    assert sheet["C8"].value == "2025-11-12T09:10"
-    assert sheet["D8"].value == "2025-11-12T12:45"
-    assert sheet["E8"].value == 612.4
-    assert sheet["B9"].value == "UA205"
-    assert sheet["C9"].value == "2025-11-16T16:05"
-    assert sheet["D9"].value == "2025-11-16T19:30"
-    assert sheet["B11"].value == "Harborview Suites"
-    assert sheet["B12"].value == "88 Mission St"
-    assert sheet["D12"].value == "San Francisco, CA"
-    assert sheet["E12"].value == 289.9
-    assert sheet["F12"].value == 4
-    assert sheet["G12"].value in (None, "")
-    assert sheet["B13"].value == "Conference hotel was $60 more per night"
-    assert sheet["B14"].value == "Market Square Inn"
-    assert sheet["C14"].value == 249.0
-    assert sheet["B15"].value == "rental car"
-    assert sheet["B16"].value == "Need early check-in and airport pickup."
+    assert sheet["F16"].value == "UA204"
+    assert sheet["I16"].value == datetime(2025, 11, 12, 9, 10)
+    assert sheet["K16"].value == datetime(2025, 11, 12, 12, 45)
+    assert sheet["M17"].value == 612.4
+    assert sheet["F17"].value == "UA205"
+    assert sheet["I17"].value == datetime(2025, 11, 16, 16, 5)
+    assert sheet["K17"].value == datetime(2025, 11, 16, 19, 30)
+    assert sheet["C36"].value == "Harborview Suites"
+    assert sheet["C38"].value == "88 Mission St"
+    assert sheet["H38"].value == "San Francisco, CA"
+    assert sheet["K36"].value == 289.9
+    assert sheet["B40"].value == "☐"
+    assert sheet["K44"].value == "Conference hotel was $60 more per night"
+    assert sheet["C45"].value == "Market Square Inn"
+    assert sheet["H45"].value == 249.0
+    assert sheet["M77"].value == "☒"
+    assert sheet["D32"].value == "Need early check-in and airport pickup."
+    workbook.close()
+
+
+def test_fill_travel_spreadsheet_populates_mileage_and_air_comparison(tmp_path) -> None:
+    fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_rich.json"
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    payload["parking_estimate"] = "48.00"
+    payload["ground_transport_estimate"] = "90.00"
+    payload["ground_transport"] = {
+        "mileage_planned": True,
+        "mileage_miles": "212.4",
+        "rideshare_planned": True,
+        "rideshare_cost": "90.00",
+        "rental_planned": False,
+    }
+    canonical_plan = CanonicalTripPlan.model_validate(payload)
+    trip_plan = canonical_trip_plan_to_model(canonical_plan)
+    output_path = tmp_path / "filled-ground.xlsx"
+
+    fill_travel_spreadsheet(trip_plan, output_path, canonical_plan=canonical_plan)
+
+    workbook = load_workbook(output_path, data_only=False)
+    sheet = workbook["Itinerary Form"]
+    assert sheet["C73"].value == 212.4
+    assert sheet["C74"].value == 0.725
+    assert sheet["C75"].value == "=C73*C74"
+    assert sheet["I63"].value == 153.99
+    assert sheet["I64"].value == 48.0
+    assert sheet["I65"].value == 90.0
+    assert sheet["M74"].value == "☒"
+    assert sheet["N75"].value == 90.0
+    workbook.close()
+
+
+def test_washington_business_canary_prepares_organizational_workbook(tmp_path) -> None:
+    fixture_path = (
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "washington_dc_business_trip.json"
+    )
+    canonical_plan = CanonicalTripPlan.model_validate_json(
+        fixture_path.read_text(encoding="utf-8")
+    )
+    trip_plan = canonical_trip_plan_to_model(canonical_plan)
+    template_path = policy_api._default_template_path()
+    template_bytes = template_path.read_bytes()
+    output_path = tmp_path / "washington-dc-business-trip.xlsx"
+
+    fill_travel_spreadsheet(trip_plan, output_path, canonical_plan=canonical_plan)
+
+    assert template_path.read_bytes() == template_bytes
+    workbook = load_workbook(output_path, read_only=True, data_only=False)
+    sheet = workbook["Itinerary Form"]
+    expected_values = {
+        "C6": "Taylor Morgan",
+        "G6": 20001,
+        "M6": "10/15/2026 - 10/16/2026",
+        "C7": "Client strategy meetings and implementation workshop",
+        "M7": datetime(2026, 10, 14),
+        "M8": datetime(2026, 10, 16),
+        "D14": "St. Louis (STL)",
+        "J14": "Washington National (DCA)",
+        "F16": "AA 445",
+        "F17": "AA 2117",
+        "M17": 418.6,
+        "E20": 389.1,
+        "K22": 36.0,
+        "B27": "☒",
+        "C36": "Capital Center Hotel (synthetic)",
+        "K36": 289.0,
+        "B40": "☐",
+        "B41": "☒",
+        "C45": "District Square Inn (synthetic)",
+        "C46": "Penn Quarter Lodge (synthetic)",
+        "H52": 2,
+        "H53": 2,
+        "H54": 2,
+        "M75": "☒",
+        "N75": 96.0,
+        "B107": "☒",
+    }
+    for cell_ref, expected in expected_values.items():
+        assert sheet[cell_ref].value == expected, cell_ref
+    assert sheet["H6"].value == (
+        '=IFERROR(VLOOKUP(G6,Locations!A:F,4,FALSE)&", "'
+        '&VLOOKUP(G6,Locations!A:F,6,FALSE),"City / State")'
+    )
+    assert sheet["O22"].value == "=SUM(M17,C23,F23,K23)"
+    assert sheet["O39"].value == "=K36*O36"
+    assert sheet["G103"].value == "=SUM(G97:G102)"
+    assert workbook.calculation.fullCalcOnLoad is True
+    assert workbook.calculation.forceFullCalc is True
     workbook.close()

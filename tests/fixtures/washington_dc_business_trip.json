@@ -1,0 +1,50 @@
+{
+  "type": "trip",
+  "traveler_name": "Taylor Morgan",
+  "business_purpose": "Client strategy meetings and implementation workshop",
+  "cost_center": "CLIENT-410",
+  "destination_zip": "20001",
+  "city_state": "Washington, DC",
+  "event_dates": "10/15/2026 - 10/16/2026",
+  "departure_city_airport": "St. Louis (STL)",
+  "return_city_airport": "Washington National (DCA)",
+  "depart_date": "2026-10-14",
+  "return_date": "2026-10-16",
+  "event_registration_cost": 0,
+  "flight_pref_outbound": {
+    "carrier_flight": "AA 445",
+    "depart_time": "2026-10-14T08:10:00",
+    "arrive_time": "2026-10-14T11:05:00",
+    "roundtrip_cost": 418.60
+  },
+  "flight_pref_return": {
+    "carrier_flight": "AA 2117",
+    "depart_time": "2026-10-16T18:20:00",
+    "arrive_time": "2026-10-16T19:45:00"
+  },
+  "lowest_cost_roundtrip": 389.10,
+  "parking_estimate": 72,
+  "ground_transport_estimate": 96,
+  "hotel": {
+    "name": "Capital Center Hotel (synthetic)",
+    "address": "900 10th St NW",
+    "city_state": "Washington, DC",
+    "nightly_rate": 289,
+    "nights": 2,
+    "conference_hotel": false,
+    "price_compare_notes": "Selected for walking access to both client meeting locations."
+  },
+  "comparable_hotels": [
+    { "name": "District Square Inn (synthetic)", "nightly_rate": 264 },
+    { "name": "Penn Quarter Lodge (synthetic)", "nightly_rate": 275 }
+  ],
+  "ground_transport_pref": "rideshare/taxi",
+  "meal_counts": {
+    "breakfast": 2,
+    "lunch": 2,
+    "dinner": 2
+  },
+  "notes": "Economy airfare; use rideshare between DCA, hotel, and client offices.",
+  "attachments": { "conference_agenda": "client-workshop-agenda.pdf" },
+  "attestations": { "budget_ok": true }
+}

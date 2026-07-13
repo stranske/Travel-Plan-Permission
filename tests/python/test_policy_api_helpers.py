@@ -157,10 +157,17 @@ def test_resolve_field_value_handles_nested_variations() -> None:
 
 
 def test_format_date_value_variants() -> None:
-    assert policy_api._format_date_value(datetime(2024, 1, 2, 9, 30)) == "2024-01-02"
-    assert policy_api._format_date_value(date(2024, 2, 3)) == "2024-02-03"
-    assert policy_api._format_date_value("2024-03-04") == "2024-03-04"
+    assert policy_api._format_date_value(datetime(2024, 1, 2, 9, 30)) == date(2024, 1, 2)
+    assert policy_api._format_date_value(date(2024, 2, 3)) == date(2024, 2, 3)
+    assert policy_api._format_date_value("2024-03-04") == date(2024, 3, 4)
     assert policy_api._format_date_value(123) is None
+
+
+def test_format_datetime_value_variants() -> None:
+    value = datetime(2024, 1, 2, 9, 30)
+    assert policy_api._format_datetime_value(value) == value
+    assert policy_api._format_datetime_value("2024-01-02T09:30") == value
+    assert policy_api._format_datetime_value("not-a-datetime") is None
 
 
 def test_format_currency_value_variants() -> None:
@@ -329,7 +336,8 @@ def test_plan_field_values_includes_cost_center_and_destination(
     assert fields["event_registration_cost"] == Decimal("50")
     assert fields["flight_pref_outbound.roundtrip_cost"] == Decimal("275.50")
     assert fields["lowest_cost_roundtrip"] == Decimal("275.50")
-    assert fields["parking_estimate"] == Decimal("18.75")
+    assert fields["parking_estimate"] is None
+    assert fields["ground_transport.rideshare_cost"] is None
 
 
 def test_context_from_plan_maps_costs(base_plan: TripPlan) -> None:
