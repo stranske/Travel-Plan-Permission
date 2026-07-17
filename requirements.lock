@@ -35,7 +35,7 @@ colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   click
     #   pytest
-coverage==7.15.1
+coverage==7.15.2
     # via pytest-cov
 cryptography==49.0.0
     # via
@@ -205,7 +205,7 @@ requests==2.34.2
     #   requests-toolbelt
 requests-toolbelt==1.0.0
     # via langsmith
-ruff==0.15.20
+ruff==0.15.22
     # via travel-plan-permission (pyproject.toml)
 six==1.17.0
     # via python-dateutil
