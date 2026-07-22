@@ -1669,7 +1669,9 @@ def _admin_dashboard_context(
     }
 
 
-def register_portal_routes(app: FastAPI, proposal_store: PlannerProposalStore, *, demo_mode: bool) -> None:
+def register_portal_routes(
+    app: FastAPI, proposal_store: PlannerProposalStore, *, demo_mode: bool
+) -> None:
     """Register portal entry, draft, expense, demo, and health routes."""
 
     @app.get("/healthz")
@@ -1772,6 +1774,7 @@ def register_portal_routes(app: FastAPI, proposal_store: PlannerProposalStore, *
             url=request.url_for("portal_expense_detail", draft_id=draft.draft_id),
             status_code=status.HTTP_303_SEE_OTHER,
         )
+
 
 def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
     """Register reviewer-facing portal review, submit, and exception routes."""
@@ -1979,6 +1982,7 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
             ),
         )
 
+
 def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
     """Register manager queue, review detail, and decision routes."""
 
@@ -2121,6 +2125,7 @@ def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) 
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+
 def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
     """Register admin exception decision and dashboard routes."""
 
@@ -2207,6 +2212,7 @@ def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) ->
                 runtime_config=PlannerRuntimeConfig.from_env(),
             ),
         )
+
 
 def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
     """Register portal and expense artifact download routes."""
@@ -2309,6 +2315,7 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
             media_type=artifact.media_type,
             headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
         )
+
 
 def register_planner_api_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
     """Register readiness and planner API endpoints."""
@@ -2463,6 +2470,7 @@ def register_planner_api_routes(app: FastAPI, proposal_store: PlannerProposalSto
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(exc),
             ) from exc
+
 
 def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     """Create the planner-facing ASGI application."""

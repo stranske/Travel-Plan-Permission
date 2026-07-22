@@ -82,7 +82,9 @@ def collect_targets(pyproject: Path, lockfile: Path, extra: str) -> list[Require
     for name, specs in sorted(extra_deps.items()):
         if name in lock_versions:
             targets.append(
-                RequirementTarget(name=name, specs=(("==", lock_versions[name]),), source=str(lockfile))
+                RequirementTarget(
+                    name=name, specs=(("==", lock_versions[name]),), source=str(lockfile)
+                )
             )
         elif specs:
             targets.append(RequirementTarget(name=name, specs=specs, source=str(pyproject)))
@@ -155,7 +157,10 @@ def check_environment(pyproject: Path, lockfile: Path, python: Path, extra: str)
         return 2
     if not python.exists():
         print(f"Missing {python}; create the local environment first.", file=sys.stderr)
-        print(f"Suggested setup: python -m venv .venv && {suggested_refresh_command(python, lockfile)}", file=sys.stderr)
+        print(
+            f"Suggested setup: python -m venv .venv && {suggested_refresh_command(python, lockfile)}",
+            file=sys.stderr,
+        )
         return 2
 
     targets = collect_targets(pyproject, lockfile, extra)
@@ -176,7 +181,9 @@ def check_environment(pyproject: Path, lockfile: Path, python: Path, extra: str)
         if current is None:
             problems.append(f"- {target.name}: missing, expected {expected} from {target.source}")
         elif not version_satisfies(current, target.specs):
-            problems.append(f"- {target.name}: installed {current}, expected {expected} from {target.source}")
+            problems.append(
+                f"- {target.name}: installed {current}, expected {expected} from {target.source}"
+            )
 
     if problems:
         print("Local Python environment is stale or incomplete:", file=sys.stderr)
@@ -184,13 +191,17 @@ def check_environment(pyproject: Path, lockfile: Path, python: Path, extra: str)
         print(f"\nRefresh it with: {suggested_refresh_command(python, lockfile)}", file=sys.stderr)
         return 1
 
-    print(f"Local Python environment matches {lockfile if lockfile.exists() else pyproject} for extra '{extra}'.")
+    print(
+        f"Local Python environment matches {lockfile if lockfile.exists() else pyproject} for extra '{extra}'."
+    )
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="Check the selected interpreter and fail on drift.")
+    parser.add_argument(
+        "--check", action="store_true", help="Check the selected interpreter and fail on drift."
+    )
     parser.add_argument("--pyproject", type=Path, default=Path("pyproject.toml"))
     parser.add_argument("--lockfile", type=Path, default=Path("requirements.lock"))
     parser.add_argument("--python", type=Path, default=DEFAULT_PYTHON)
