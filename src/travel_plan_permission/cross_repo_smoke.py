@@ -470,9 +470,7 @@ def run_cross_repo_smoke(
             trip_plan=trip_plan,
             evaluation_outcome=evaluation.outcome,
             policy_result=evaluation.policy_result.model_dump(mode="json"),
-            blocking_issues=[
-                issue.model_dump(mode="json") for issue in evaluation.blocking_issues
-            ],
+            blocking_issues=[issue.model_dump(mode="json") for issue in evaluation.blocking_issues],
         )
         _assert_trip_state_reloads(
             state_path=resolved_state_path,

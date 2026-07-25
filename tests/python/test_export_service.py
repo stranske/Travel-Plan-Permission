@@ -147,9 +147,7 @@ class TestExportService:
         reports = _typical_batch_reports()
 
         csv_filename, csv_content = service.to_csv(reports, batch_id="typical-csv", now=now)
-        excel_filename, excel_content = service.to_excel(
-            reports, batch_id="typical-xlsx", now=now
-        )
+        excel_filename, excel_content = service.to_excel(reports, batch_id="typical-xlsx", now=now)
 
         assert csv_filename == "expense_export_2025-04-01_typical-csv.csv"
         assert csv_content.splitlines()[0] == ",".join(service.schema)
