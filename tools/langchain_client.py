@@ -21,6 +21,7 @@ from tools.llm_registry import (
     ModelRegistryEntry,
     SlotDefinition,
     apply_slot_env_overrides,
+    configured_model_for_provider,
     default_slots,
     is_model_blocked,
     load_model_registry,
@@ -166,23 +167,59 @@ def _build_openai_client(
     return chat_openai(**kwargs)
 
 
+def _anthropic_rejects_temperature(model: str) -> bool:
+    """Return True for Anthropic models that reject an explicit ``temperature``.
+
+    The newer "thinking" generation returns HTTP 400 ``invalid_request_error`` when a
+    custom ``temperature`` is set. Confirmed via the maint-78 verifier pilot
+    (2026-07-24): ``claude-opus-4-8`` and ``claude-sonnet-5`` (while ``claude-opus-4-6``
+    still accepts ``temperature=0.1``). Matches Opus 4.8 explicitly plus the Claude 5
+    family (``claude-<name>-5...``); minor-version ``-5`` suffixes like
+    ``claude-haiku-4-5`` are NOT matched. Interim, evidence-based guard; the durable
+    capability-aware handling (e.g. retry-on-400) is tracked in stranske/Workflows#2819.
+    """
+    name = model.lower().strip()
+    if name == "claude-opus-4-8":
+        return True
+    return any(
+        name.startswith(f"claude-{family}-5") for family in ("opus", "sonnet", "haiku", "fable")
+    )
+
+
 def _build_anthropic_client(
     chat_anthropic: type, *, model: str, token: str, timeout: int, max_retries: int
 ) -> object:
-    return chat_anthropic(
-        model=model,
-        anthropic_api_key=token,
-        temperature=0.1,
-        timeout=timeout,
-        max_retries=max_retries,
-    )
+    kwargs: dict = {
+        "model": model,
+        "anthropic_api_key": token,
+        "timeout": timeout,
+        "max_retries": max_retries,
+    }
+    if not _anthropic_rejects_temperature(model):
+        kwargs["temperature"] = 0.1
+    return chat_anthropic(**kwargs)
+
+
+def _github_model_id(model: str) -> str:
+    """Return a GitHub Models GA-compatible model id (``publisher/model``).
+
+    The GA endpoint (``models.github.ai/inference``) requires publisher-namespaced ids
+    such as ``openai/gpt-5``. A bare id (e.g. ``codex-mini-latest``) 404s ("page not
+    found") there. Default a bare id to the ``openai/`` publisher; already-namespaced
+    ids (containing ``/``) are returned unchanged. (If a bare id maps to a model the
+    GitHub Models catalog does not offer at all, the durable fix is an owner-reviewed
+    change of the github-models selection to a catalogued id — this only normalizes
+    the id format.)
+    """
+    name = model.strip()
+    return name if "/" in name else f"openai/{name}"
 
 
 def _build_github_client(
     chat_openai: type, *, model: str, token: str, timeout: int, max_retries: int
 ) -> object:
     kwargs: dict = {
-        "model": model,
+        "model": _github_model_id(model),
         "base_url": GITHUB_MODELS_BASE_URL,
         "api_key": token,
         "timeout": timeout,
@@ -227,6 +264,11 @@ def build_chat_client(
 
     selected_provider, provider_explicit = _resolve_provider(provider, force_openai=force_openai)
     if provider_explicit and selected_provider is None:
+        return None
+    if selected_provider and not selected_model:
+        selected_model = configured_model_for_provider(selected_provider)
+    if selected_provider and not selected_model:
+        logger.warning("No reviewed model is configured for provider %s", selected_provider)
         return None
     if selected_provider and _is_model_blocked(selected_provider, selected_model):
         logger.warning("Refusing blocked LLM model: %s/%s", selected_provider, selected_model)
@@ -287,6 +329,8 @@ def build_chat_client(
             logger.warning("Skipping blocked LLM model override: %s/%s", slot.provider, slot_model)
             used_override = True
             slot_model = slot.model
+        if not slot_model:
+            continue
         if _is_model_blocked(slot.provider, slot_model):
             logger.warning("Skipping blocked LLM model: %s/%s", slot.provider, slot_model)
             continue
@@ -499,6 +543,9 @@ def build_chat_clients(
     for idx, slot in enumerate(candidate_slots):
         slot_model = model_overrides[idx] if idx < len(model_overrides) else None
         slot_model = slot_model or slot.model
+        if not slot_model:
+            logger.warning("Skipping LLM slot without a resolved model: %s", slot.name)
+            continue
         if _is_model_blocked(slot.provider, slot_model, registry=registry):
             logger.warning("Skipping blocked LLM model override: %s/%s", slot.provider, slot_model)
             continue
