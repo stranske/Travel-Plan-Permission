@@ -288,11 +288,8 @@ def configured_model_for_provider(
     tier: str | None = None,
     registry: list[ModelRegistryEntry] | None = None,
 ) -> str:
-    # `tier` is accepted for v1 API compatibility but no longer ranks models
-    # (profile selection supersedes it). Explicitly discard it so linters with the
-    # unused-argument rule enabled (e.g. some consumer ruff configs) don't flag the
-    # synced file, without a rule-specific noqa that would drift across configs.
-    _ = tier
+    # Preserve the compatibility keyword while selection remains profile-based.
+    del tier
     normalized_provider = normalize_provider(provider)
     entries = registry if registry is not None else load_model_registry()
     # An explicit slot config is an execution allowlist, including when its
