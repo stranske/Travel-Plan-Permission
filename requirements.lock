@@ -205,7 +205,7 @@ requests==2.34.2
     #   requests-toolbelt
 requests-toolbelt==1.0.0
     # via langsmith
-ruff==0.16.0
+ruff==0.16.1
     # via travel-plan-permission (pyproject.toml)
 six==1.17.0
     # via python-dateutil
