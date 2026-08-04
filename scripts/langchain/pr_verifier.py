@@ -17,7 +17,7 @@ import logging
 import os
 import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -678,16 +678,38 @@ def _fallback_evaluation(
 def _text_from_response_content(content: object) -> str | None:
     """Return provider text, or None when the payload carries no text blocks."""
     if isinstance(content, str):
-        return content
+        return content if content and not content.isspace() else None
+    if isinstance(content, Mapping):
+        block_type = content.get("type")
+        for key in ("text", "content"):
+            text = content.get(key)
+            if (
+                isinstance(text, str)
+                and text
+                and not text.isspace()
+                and block_type in (None, "text", "output_text")
+            ):
+                return text
+        return None
     if isinstance(content, list):
         text_blocks: list[str] = []
         for block in content:
             if isinstance(block, str):
                 text = block
-            elif isinstance(block, dict):
-                text = block.get("text")
+            elif isinstance(block, Mapping):
+                if block.get("type") not in (None, "text", "output_text"):
+                    text = None
+                else:
+                    text = block.get("text")
+                    if not isinstance(text, str):
+                        text = block.get("content")
             else:
-                text = getattr(block, "text", None)
+                if getattr(block, "type", None) not in (None, "text", "output_text"):
+                    text = None
+                else:
+                    text = getattr(block, "text", None)
+                    if not isinstance(text, str):
+                        text = getattr(block, "content", None)
             if isinstance(text, str):
                 text_blocks.append(text)
         if any(block and not block.isspace() for block in text_blocks):
@@ -703,7 +725,17 @@ def _coerce_response_content(content: object) -> str:
     text = _text_from_response_content(content)
     if text is not None:
         return text
-    return json.dumps(content, default=str)
+    try:
+        return json.dumps(content, default=str)
+    except MemoryError:
+        raise
+    except Exception:
+        try:
+            return str(content)
+        except MemoryError:
+            raise
+        except Exception:
+            return f"<unserializable {type(content).__name__}>"
 
 
 def _parse_llm_response(
