@@ -101,7 +101,7 @@ _TASK_COMMAND = (
 
 def _concrete_span(span: str) -> bool:
     """Return True when a backticked/unquoted token names a real work target."""
-    span = span.strip()
+    span = span.strip().rstrip(".,;:!?")
     if not span:
         return False
     if re.fullmatch(_TASK_CATEGORY, span, re.I):
@@ -289,13 +289,14 @@ def validate(body: str) -> Report:
 
     acceptance_at = _find(body, REQUIRED["Acceptance Criteria"])
     if acceptance_at is not None:
-        acceptance = _without_fenced_code(_section_text(body, acceptance_at))
+        acceptance = _section_text(body, acceptance_at)
         if not GATE.search(acceptance):
             report.problems.append(
                 "`Acceptance Criteria` names no test, runnable command or observable "
                 "verification gate — Definition of Ready / Quality Bar §2 requires one."
             )
-        hits = [word for word in BANNED_ADJECTIVES if re.search(rf"\b{word}\b", acceptance, re.I)]
+        prose = re.sub(r"(?<!`)`(?!`)[^`\n]*`", "", _without_fenced_code(acceptance))
+        hits = [word for word in BANNED_ADJECTIVES if re.search(rf"\b{word}\b", prose, re.I)]
         if hits:
             report.problems.append(
                 "`Acceptance Criteria` uses subjective wording ("
