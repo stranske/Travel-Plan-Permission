@@ -176,13 +176,15 @@ CHECKBOX_REGEX = re.compile(r"^\[([ xX])\]\s*(.*)$")
 VERIFY_HINT_REGEX = re.compile(r"\(verify:\s*([^\n)]+)\)", re.IGNORECASE)
 SAFE_VERIFY_COMMAND_RE = re.compile(
     r"^(?:"
+    r"(?:"
     r"(?:python(?:3)?\s+-m\s+)?(?:pytest|unittest)\b"
     r"|node\s+--test\b"
     r"|(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:test|vitest|jest|playwright)\b"
     r"|(?:make|just|cargo|go|dotnet)\s+(?:test|check)\b"
-    r"|gh\s+(?:workflow\s+run|run)\s+\S+"
-    r"|curl\s+https?://\S+\Z"
-    r")",
+    r"|gh\s+(?:workflow\s+run|run)\s+[^\s;&|`$<>\n\r]+"
+    r")(?:[ \t]+[^;&|`$<>\n\r]+)?"
+    r"|curl\s+https?://[^\s;&|`$<>\n\r]+"
+    r")\Z",
     re.IGNORECASE,
 )
 SHELL_METACHARACTERS_RE = re.compile(r"[;&|`$<>\n\r]")
@@ -864,13 +866,15 @@ def main() -> None:
 
     if args.json:
         payload = {
-            "formatted_body": result["formatted_body"],
+            "formatted_body": result.get("formatted_body"),
             "provider_used": result.get("provider_used"),
             "used_llm": result.get("used_llm", False),
             "labels": build_label_transition(),
             "needs_refinement": result.get("needs_refinement", True),
             "validation_audit": result.get("validation_audit"),
         }
+        if result.get("error"):
+            payload["error"] = result["error"]
         if result.get("guard_blocked"):
             payload["guard_blocked"] = True
             payload["guard_reason"] = result.get("guard_reason") or ""
