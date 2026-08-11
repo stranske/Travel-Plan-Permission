@@ -355,7 +355,7 @@ def test_policy_version_hash_matches_engine_rules() -> None:
 
     version_hash = policy_api._policy_version(engine)
 
-    expected = PolicyVersion.from_config(None, {"rules": []}).config_hash
+    expected = PolicyVersion.from_config(None, {"policy_lite_rules": []}).config_hash
     assert version_hash == expected
 
 
