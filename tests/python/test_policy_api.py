@@ -26,6 +26,7 @@ from travel_plan_permission import (
     PolicyIssue,
     PolicyResult,
     PolicyRule,
+    PolicyValidator,
     Receipt,
     ReconciliationResult,
     Severity,
@@ -146,6 +147,7 @@ def test_check_trip_plan_reports_pass_when_no_rules(
     trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: PolicyEngine([]))
+    monkeypatch.setattr(PolicyValidator, "from_file", lambda *_args, **_kwargs: PolicyValidator([]))
 
     result = check_trip_plan(trip_plan)
 
@@ -176,6 +178,7 @@ def test_check_trip_plan_passes_with_only_advisories(
 
     engine = PolicyEngine([AdvisoryRule()])
     monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
+    monkeypatch.setattr(PolicyValidator, "from_file", lambda *_args, **_kwargs: PolicyValidator([]))
 
     result = check_trip_plan(trip_plan)
 
@@ -224,6 +227,7 @@ def test_check_trip_plan_fails_with_blocking_and_advisory_rules(
 
     engine = PolicyEngine([BlockingRule(), AdvisoryRule()])
     monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
+    monkeypatch.setattr(PolicyValidator, "from_file", lambda *_args, **_kwargs: PolicyValidator([]))
 
     result = check_trip_plan(trip_plan)
 
@@ -256,11 +260,49 @@ def test_check_trip_plan_passes_when_all_rules_pass(
 
     engine = PolicyEngine([PassingRule()])
     monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
+    monkeypatch.setattr(PolicyValidator, "from_file", lambda *_args, **_kwargs: PolicyValidator([]))
 
     result = check_trip_plan(trip_plan)
 
     assert result.status == "pass"
     assert result.issues == []
+
+
+def test_check_trip_plan_enforces_validation_blocking_rules(
+    trip_plan: TripPlan,
+) -> None:
+    """Every blocking validation.yaml control reaches the planner verdict path."""
+
+    validator = PolicyValidator.from_file()
+    expected_codes = {rule.code for rule in validator.rules if rule.blocking}
+    future_departure = date.today() + timedelta(days=30)
+    proof_plans = [
+        trip_plan.model_copy(
+            update={
+                "departure_date": future_departure,
+                "return_date": future_departure + timedelta(days=4),
+                "estimated_cost": Decimal("99999.00"),
+            }
+        ),
+        trip_plan.model_copy(
+            update={
+                "departure_date": date.today() + timedelta(days=1),
+                "return_date": date.today() + timedelta(days=4),
+                "estimated_cost": Decimal("1000.00"),
+            }
+        ),
+    ]
+
+    results = [check_trip_plan(plan) for plan in proof_plans]
+    observed_codes = {issue.code for result in results for issue in result.issues}
+
+    assert expected_codes <= observed_codes
+    budget_result = results[0]
+    assert budget_result.status == "fail"
+    assert any(
+        issue.code == "BUD-001" and issue.context["source"] == "validation.yaml"
+        for issue in budget_result.issues
+    )
 
 
 def test_check_trip_plan_skips_cost_comparison_when_estimates_missing(

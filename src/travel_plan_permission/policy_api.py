@@ -40,7 +40,7 @@ from .security import (
     PLANNER_EXECUTION_STATUS_ENDPOINT,
     PLANNER_POLICY_SNAPSHOT_ENDPOINT,
 )
-from .validation import ValidationResult
+from .validation import PolicyValidator, ValidationResult
 
 PolicyIssueSeverity = Literal["info", "warning", "error"]
 PolicyCheckStatus = Literal["pass", "fail"]
@@ -785,8 +785,14 @@ def _normalize_dropdown_value(value: object, options: object) -> object:
     return value
 
 
-def _policy_version(engine: PolicyEngine) -> str:
-    rule_config = {"rules": engine.describe_rules()}
+def _policy_version(engine: PolicyEngine, validator: PolicyValidator | None = None) -> str:
+    """Version the policy sources represented by a given API response."""
+
+    rule_config: dict[str, object] = {"policy_lite_rules": engine.describe_rules()}
+    if validator is not None:
+        rule_config["validation_rules"] = [
+            rule.model_dump(mode="json") for rule in validator.rules
+        ]
     version = PolicyVersion.from_config(None, rule_config)
     return version.config_hash
 
@@ -861,6 +867,24 @@ def _issue_from_result(result: PolicyResult) -> PolicyIssue:
         message=result.message,
         severity=_issue_severity(result),
         context={"rule_id": result.rule_id, "severity": result.severity},
+    )
+
+
+def _issue_from_validation_result(result: ValidationResult) -> PolicyIssue:
+    """Translate validation.yaml violations into the planner's stable issue contract."""
+
+    severity: PolicyIssueSeverity = result.severity.value
+    return PolicyIssue(
+        code=result.code,
+        message=result.message,
+        severity=severity,
+        context={
+            "rule_id": result.code,
+            "rule_name": result.rule_name,
+            "severity": result.severity.value,
+            "source": "validation.yaml",
+            "blocking": result.blocking,
+        },
     )
 
 
@@ -1643,17 +1667,34 @@ def get_evaluation_result(
 
 
 def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
-    """Evaluate a trip plan using the policy-lite engine."""
+    """Evaluate both policy.yaml and validation.yaml for the planner verdict.
+
+    ``policy.yaml`` supplies planner-facing guidance while ``validation.yaml``
+    supplies organization-wide validation controls.  A blocking violation from
+    either source fails the verdict and is returned through the same issue
+    contract so downstream planner consumers cannot silently ignore it.
+    """
 
     engine = PolicyEngine.from_file()
+    validator = PolicyValidator.from_file()
     context = _context_from_plan(plan)
-    results = engine.validate(context)
-    issues = [_issue_from_result(result) for result in results if not result.passed]
+    policy_results = engine.validate(context)
+    validation_results = validator.validate_plan(plan)
+    issues = [
+        *[_issue_from_result(result) for result in policy_results if not result.passed],
+        *[_issue_from_validation_result(result) for result in validation_results],
+    ]
     has_blocking = any(
-        not result.passed and result.severity == Severity.BLOCKING for result in results
+        not result.passed and result.severity == Severity.BLOCKING for result in policy_results
+    ) or any(
+        result.is_blocking for result in validation_results
     )
     status: PolicyCheckStatus = "fail" if has_blocking else "pass"
-    return PolicyCheckResult(status=status, issues=issues, policy_version=_policy_version(engine))
+    return PolicyCheckResult(
+        status=status,
+        issues=issues,
+        policy_version=_policy_version(engine, validator),
+    )
 
 
 def list_allowed_vendors(plan: TripPlan) -> list[str]:

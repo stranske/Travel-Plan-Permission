@@ -14,6 +14,12 @@ from travel_plan_permission import ExpenseCategory, Receipt, TripPlan
 from travel_plan_permission.mapping import TemplateMapping
 from travel_plan_permission.policy import PolicyEngine, PolicyResult, Severity
 from travel_plan_permission.policy_versioning import PolicyVersion
+from travel_plan_permission.validation import (
+    DurationLimitRule,
+    PolicyValidator,
+    ValidationResult,
+    ValidationSeverity,
+)
 
 
 def _blank_template_bytes(initial_cells: dict[str, object] | None = None) -> bytes:
@@ -355,8 +361,46 @@ def test_policy_version_hash_matches_engine_rules() -> None:
 
     version_hash = policy_api._policy_version(engine)
 
-    expected = PolicyVersion.from_config(None, {"rules": []}).config_hash
+    expected = PolicyVersion.from_config(None, {"policy_lite_rules": []}).config_hash
     assert version_hash == expected
+
+
+def test_policy_version_hash_changes_with_validation_rules() -> None:
+    engine = PolicyEngine([])
+    validator = PolicyValidator(
+        [DurationLimitRule(name="duration", code="DUR-001", max_consecutive_days=5)]
+    )
+
+    version_hash = policy_api._policy_version(engine, validator)
+    validator.rules[0] = validator.rules[0].model_copy(
+        update={"max_consecutive_days": 6}
+    )
+
+    assert policy_api._policy_version(engine, validator) != version_hash
+
+
+def test_check_trip_plan_preserves_non_blocking_validation_error_severity(
+    base_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    validator = PolicyValidator([])
+    validation_result = ValidationResult(
+        code="VAL-ERROR",
+        message="An error-level advisory requires attention.",
+        severity=ValidationSeverity.ERROR,
+        rule_name="advisory_error",
+        blocking=False,
+    )
+    monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: PolicyEngine([]))
+    monkeypatch.setattr(PolicyValidator, "from_file", lambda *_args, **_kwargs: validator)
+    monkeypatch.setattr(
+        validator, "validate_plan", lambda *_args, **_kwargs: [validation_result]
+    )
+
+    result = policy_api.check_trip_plan(base_plan)
+
+    assert result.status == "pass"
+    assert result.issues[0].severity == "error"
+    assert result.issues[0].context["blocking"] is False
 
 
 def test_issue_from_result_formats_context() -> None:
