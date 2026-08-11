@@ -873,11 +873,7 @@ def _issue_from_result(result: PolicyResult) -> PolicyIssue:
 def _issue_from_validation_result(result: ValidationResult) -> PolicyIssue:
     """Translate validation.yaml violations into the planner's stable issue contract."""
 
-    severity: PolicyIssueSeverity = (
-        "error"
-        if result.is_blocking
-        else "warning" if result.severity.value == "warning" else "info"
-    )
+    severity: PolicyIssueSeverity = result.severity.value
     return PolicyIssue(
         code=result.code,
         message=result.message,
