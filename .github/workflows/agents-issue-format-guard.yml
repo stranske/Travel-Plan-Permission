@@ -32,6 +32,8 @@ jobs:
       github.event_name != 'issues' ||
       github.event.action == 'opened' || github.event.action == 'edited' ||
       github.event.action == 'reopened' ||
+      (github.event.action == 'unlabeled' &&
+      github.event.label.name == 'agents:format') ||
       ((github.event.action == 'labeled' || github.event.action == 'unlabeled') &&
       (github.event.label.name == 'agents:auto-pilot-pause' ||
       github.event.label.name == 'needs-human' ||
@@ -269,10 +271,11 @@ jobs:
               || echo "::warning::could not apply agents:auto-pilot-pause"
             gh issue edit "$NUMBER" --repo "$GITHUB_REPOSITORY" --remove-label "agents:format" \
               || echo "::warning::could not release agents:format after attempt cap"
-            gh issue comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body-file - <<EOF
-          <!-- format-guard:attempt-cap -->
-          Automated formatting stopped after $format_guard_attempts optimizer attempts. Fix the issue body manually, then remove agents:auto-pilot-pause before retrying.
-          EOF
+            printf '%s\n' \
+              '<!-- format-guard:attempt-cap -->' \
+              "Automated formatting stopped after $format_guard_attempts optimizer attempts. Fix the issue body manually, then remove agents:auto-pilot-pause before retrying." \
+              | gh issue comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body-file - \
+              || echo "::warning::could not post format-guard attempt-cap comment"
             exit 0
           fi
           has_format_label=false
