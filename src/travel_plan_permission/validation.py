@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
+from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -17,6 +18,16 @@ from .providers import ProviderRegistry, provider_type_for_category
 
 if TYPE_CHECKING:
     from .models import TripPlan
+
+
+def _package_validation_resource() -> resources.abc.Traversable | None:
+    """Return the validation config shipped inside the installed package, if present."""
+
+    try:
+        resource = resources.files("travel_plan_permission").joinpath("config", "validation.yaml")
+    except ModuleNotFoundError:
+        return None
+    return resource if resource.is_file() else None
 
 
 class ValidationSeverity(StrEnum):
@@ -299,6 +310,11 @@ class PolicyValidator(YamlConfigLoaderMixin):
     @staticmethod
     def _default_config_path() -> Path | None:
         return _default_policy_path()
+
+    @staticmethod
+    def _read_default_config_resource() -> str | None:
+        resource = _package_validation_resource()
+        return resource.read_text(encoding="utf-8") if resource is not None else None
 
     @staticmethod
     def _missing_config_message() -> str:
