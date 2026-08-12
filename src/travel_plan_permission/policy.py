@@ -8,12 +8,12 @@ message that includes the relevant threshold or policy text.
 
 from __future__ import annotations
 
-from importlib import resources
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from importlib import resources
 from pathlib import Path
 from typing import Any
 

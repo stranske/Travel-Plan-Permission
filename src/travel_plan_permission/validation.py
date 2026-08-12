@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from importlib import resources
 from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
+from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -23,6 +23,8 @@ def _package_validation_resource() -> resources.abc.Traversable | None:
     except ModuleNotFoundError:
         return None
     return resource if resource.is_file() else None
+
+
 from .models import ExpenseCategory
 from .providers import ProviderRegistry, provider_type_for_category
 

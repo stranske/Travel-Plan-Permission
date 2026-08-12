@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from importlib import resources
 from datetime import date
 from enum import StrEnum
+from importlib import resources
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
