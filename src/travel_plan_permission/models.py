@@ -345,26 +345,48 @@ class TripPlan(BaseModel):
     booking_date: date | None = Field(
         default=None, description="Date the trip was booked or requested"
     )
-    selected_fare: Decimal | None = Field(default=None, description="Selected fare for the trip")
-    lowest_fare: Decimal | None = Field(default=None, description="Lowest comparable fare option")
+    selected_fare: Decimal | None = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+        description="Selected fare for the trip",
+    )
+    lowest_fare: Decimal | None = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+        description="Lowest comparable fare option",
+    )
     cabin_class: str | None = Field(default=None, description="Requested cabin class")
     flight_duration_hours: float | None = Field(
-        default=None, description="Estimated flight duration in hours"
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+        description="Estimated flight duration in hours",
     )
     fare_evidence_attached: bool | None = Field(
         default=None, description="Whether fare evidence is attached"
     )
     driving_cost: Decimal | None = Field(
-        default=None, description="Estimated driving cost for the trip"
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+        description="Estimated driving cost for the trip",
     )
     flight_cost: Decimal | None = Field(
-        default=None, description="Estimated flight cost for the trip"
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+        description="Estimated flight cost for the trip",
     )
     comparable_hotels: list[Decimal] | None = Field(
         default=None, description="Comparable hotel nightly rates"
     )
     distance_from_office_miles: float | None = Field(
-        default=None, description="Distance from office in miles"
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+        description="Distance from office in miles",
     )
     overnight_stay: bool | None = Field(
         default=None, description="Whether an overnight stay is requested"

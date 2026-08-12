@@ -140,7 +140,7 @@ class FareComparisonRule(PolicyRule):
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.selected_fare is None or context.lowest_fare is None:
-            return self._result(True, "Fare comparison skipped due to missing fare data")
+            return self._result(False, "Fare comparison requires selected and lowest fare data.")
 
         overage = context.selected_fare - context.lowest_fare
         if overage > self.max_over_lowest:
@@ -170,8 +170,10 @@ class CabinClassRule(PolicyRule):
         self.allowed_classes = {c.lower() for c in allowed_classes}
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
-        if context.cabin_class is None or context.flight_duration_hours is None:
-            return self._result(True, "Cabin class check skipped due to missing flight details")
+        if context.cabin_class is None:
+            return self._result(True, "Cabin class was not provided.")
+        if context.flight_duration_hours is None:
+            return self._result(False, "Cabin class check requires flight duration data.")
 
         cabin = context.cabin_class.lower()
         duration = context.flight_duration_hours
@@ -311,7 +313,10 @@ class NonReimbursableRule(PolicyRule):
         self.blocked_keywords = {kw.lower() for kw in blocked_keywords}
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
-        expenses = context.expenses or []
+        if context.expenses is None:
+            return self._result(False, "Expense details are required to check non-reimbursable items.")
+
+        expenses = context.expenses
         for expense in expenses:
             description = expense.description.lower()
             if any(keyword in description for keyword in self.blocked_keywords):
