@@ -140,6 +140,15 @@ The portal now exposes a practical admin/runtime layer for the current product s
 - `/portal/manager/reviews` and `/portal/manager/reviews/{review_id}` expose role-aware review actions. Read-only roles can inspect review state, while approve-capable roles can record review and exception decisions; the UI treats `actor_role` as a simulated role view rather than as the authenticated caller identity.
 - The admin views are intentionally lightweight and in-repo. They are not a full enterprise identity marketplace, SSO admin console, or policy-authoring studio.
 
+## Trip-planner handoff capability
+
+The browser handoff from `trip-planner` uses an HMAC-signed, short-lived HttpOnly
+cookie instead of placing traveler data or a bearer token in the URL. The first
+capability may complete one handoff form. TPP then replaces it with a capability
+whose subject is the exact saved draft ID and whose permission set contains only
+`view`. Normal authenticated portal authorization takes precedence when present,
+and the capability alone cannot submit, approve, reject, or enumerate drafts.
+
 ## Later hardening work
 
 The following still remain future hardening items rather than shipped-now product surface:

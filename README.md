@@ -93,6 +93,10 @@ The same runtime now also exposes a minimal browser-facing workflow portal:
 - Open `http://127.0.0.1:8000/portal` for the portal home.
 - Use `http://127.0.0.1:8000/portal/requests/new` to draft and review a travel
   request through the canonical form fields.
+- A sibling `trip-planner` app can POST its known business-trip fields to
+  `/portal/handoff`. TPP then collects the traveler and organization-specific
+  fields, creates a local draft, and generates the organization's Excel workbook
+  for review and download without granting submission permission.
 - The review screen reuses the repo's canonical conversion, policy snapshot,
   and spreadsheet/export seams before submitting through the existing proposal
   contract.
@@ -140,6 +144,13 @@ The portal stays intentionally small and server-rendered. It lets a traveler
 capture draft trip details, see missing canonical inputs before submission,
 review policy-lite posture, and download the generated itinerary and summary
 artifacts before triggering the existing proposal submission seam.
+
+The cross-repo handoff is more restrictive than a normal authenticated portal
+session. `POST /portal/handoff` issues a short-lived, HttpOnly browser capability;
+after the form is completed, that capability can view and download only the
+newly created draft. It does not authorize `/portal/submit/{draft_id}`. Configure
+`TPP_HANDOFF_SIGNING_SECRET` with at least 16 characters in deployed environments;
+local `trip-planner` runtime startup supplies an isolated development secret.
 
 Portal draft and submission state now persist to a transactional SQL store.
 By default the service uses a local SQLite file at

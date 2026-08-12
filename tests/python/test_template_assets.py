@@ -1,3 +1,4 @@
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -22,18 +23,38 @@ def test_template_asset_loads_and_matches_mapping() -> None:
     assert template_path.name == template_file
 
     workbook = load_workbook(template_path)
-    sheet = workbook.active
+    worksheet_name = mapping.metadata.get("worksheet")
+    assert isinstance(worksheet_name, str)
+    sheet = workbook[worksheet_name]
 
     for cell_ref in mapping.cells.values():
         coordinate_from_string(cell_ref)
-        assert sheet[cell_ref].value not in (None, "")
+        assert sheet[cell_ref].style_id != 0
+
+    for checkbox_config in mapping.checkboxes.values():
+        cell_ref = checkbox_config.get("cell")
+        assert isinstance(cell_ref, str)
+        coordinate_from_string(cell_ref)
+        assert sheet[cell_ref].style_id != 0
 
     for formula_config in mapping.formulas.values():
         cell_ref = formula_config.get("cell")
         formula = formula_config.get("formula")
         assert isinstance(cell_ref, str)
         assert isinstance(formula, str)
-        assert sheet[cell_ref].value == formula
+        assert isinstance(sheet[cell_ref].value, str)
+        assert sheet[cell_ref].value.startswith("=")
+
+    source_file = mapping.metadata.get("source_file")
+    source_sha256 = mapping.metadata.get("source_sha256")
+    runtime_sha256 = mapping.metadata.get("runtime_sha256")
+    assert isinstance(source_file, str)
+    assert isinstance(source_sha256, str)
+    assert isinstance(runtime_sha256, str)
+    source_path = Path(source_file)
+    assert sha256(source_path.read_bytes()).hexdigest() == source_sha256
+    assert sha256(template_path.read_bytes()).hexdigest() == runtime_sha256
+    workbook.close()
 
 
 def test_template_mapping_requires_template_asset(tmp_path: Path) -> None:

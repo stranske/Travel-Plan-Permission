@@ -12,6 +12,9 @@
     "cost_center": { "type": "string" },
     "destination_zip": { "type": "string", "pattern": "^[0-9]{5}(-[0-9]{4})?$" },
     "city_state": { "type": "string" },
+    "event_dates": { "type": "string" },
+    "departure_city_airport": { "type": "string" },
+    "return_city_airport": { "type": "string" },
     "depart_date": { "type": "string", "format": "date" },
     "return_date": { "type": "string", "format": "date" },
     "event_registration_cost": { "type": "number", "minimum": 0 },
@@ -37,6 +40,7 @@
     },
     "lowest_cost_roundtrip": { "type": "number", "minimum": 0 },
     "parking_estimate": { "type": "number", "minimum": 0 },
+    "ground_transport_estimate": { "type": "number", "minimum": 0 },
 
     "hotel": {
       "type": "object",
@@ -64,6 +68,34 @@
     },
 
     "ground_transport_pref": { "type": "string" },
+    "ground_transport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mosers_vehicle_planned": { "type": "boolean" },
+        "mileage_planned": { "type": "boolean" },
+        "mileage_miles": { "type": "number", "minimum": 0 },
+        "mileage_cost": { "type": "number", "minimum": 0 },
+        "rideshare_planned": { "type": "boolean" },
+        "rideshare_cost": { "type": "number", "minimum": 0 },
+        "shuttle_planned": { "type": "boolean" },
+        "shuttle_cost": { "type": "number", "minimum": 0 },
+        "rental_planned": { "type": "boolean" },
+        "rental_cost": { "type": "number", "minimum": 0 },
+        "rental_company": { "type": "string" },
+        "rental_daily_rate": { "type": "number", "minimum": 0 },
+        "rental_reason": { "type": "string" }
+      }
+    },
+    "meal_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "breakfast": { "type": "integer", "minimum": 0 },
+        "lunch": { "type": "integer", "minimum": 0 },
+        "dinner": { "type": "integer", "minimum": 0 }
+      }
+    },
     "notes": { "type": "string" },
 
     "attachments": {

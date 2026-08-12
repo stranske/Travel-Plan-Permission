@@ -10,7 +10,7 @@ from typing import Any
 
 import yaml
 
-DEFAULT_TEMPLATE_VERSION = "ITIN-2025.1"
+DEFAULT_TEMPLATE_VERSION = "ITIN-2026.1"
 
 
 def _package_mapping_resource() -> resources.abc.Traversable | None:
@@ -53,9 +53,14 @@ class TemplateMapping:
     metadata: dict[str, object]
 
     def missing_fields(self, required_fields: Iterable[str]) -> list[str]:
-        """Return any required fields that lack a cell mapping."""
+        """Return required fields not represented by the template contract."""
 
-        return [field for field in required_fields if field not in self.cells]
+        covered_fields = set(self.cells) | set(self.dropdowns) | set(self.checkboxes)
+        for metadata_key in ("derived_fields", "unmapped_fields"):
+            declared = self.metadata.get(metadata_key, ())
+            if isinstance(declared, dict | list | tuple | set):
+                covered_fields.update(str(field) for field in declared)
+        return [field for field in required_fields if field not in covered_fields]
 
 
 def load_template_mapping(
