@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib import resources
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
@@ -9,6 +10,16 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .config_loader import YamlConfigLoaderMixin
+
+
+def _package_providers_resource() -> resources.abc.Traversable | None:
+    """Return the provider registry shipped inside the installed package, if present."""
+
+    try:
+        resource = resources.files("travel_plan_permission").joinpath("config", "providers.yaml")
+    except ModuleNotFoundError:
+        return None
+    return resource if resource.is_file() else None
 
 
 class ProviderType(StrEnum):
@@ -126,10 +137,10 @@ class ProviderRegistry(YamlConfigLoaderMixin, BaseModel):
     @classmethod
     def _resolve_config_path(cls, path: str | Path | None) -> Path | None:
         if path is None:
-            default_path = cls._default_config_path()
-            if default_path is None:
-                raise FileNotFoundError("No providers.yaml file found")
-            return default_path
+            # Return None rather than raising so YamlConfigLoaderMixin.from_file can
+            # fall through to the packaged resource. Raising here made an installed
+            # wheel unusable even though the config ships inside the package.
+            return cls._default_config_path()
 
         candidate = Path(path)
         if candidate.is_absolute() and candidate.exists():
@@ -140,6 +151,11 @@ class ProviderRegistry(YamlConfigLoaderMixin, BaseModel):
             if relative_candidate.exists():
                 return relative_candidate
         return candidate
+
+    @staticmethod
+    def _read_default_config_resource() -> str | None:
+        resource = _package_providers_resource()
+        return resource.read_text(encoding="utf-8") if resource is not None else None
 
     @staticmethod
     def _missing_config_message() -> str:

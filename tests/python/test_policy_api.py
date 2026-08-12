@@ -1008,3 +1008,66 @@ def test_get_evaluation_result_rejects_mismatched_execution_id(
         match="PlannerProposalEvaluationRequest.execution_id does not match",
     ):
         get_evaluation_result(trip_plan, request)
+
+
+def test_runtime_config_files_are_packaged() -> None:
+    """Every runtime YAML the default engines need must live inside the package.
+
+    The parent-directory search each engine performs only succeeds in a source
+    checkout, so a file present solely at the repository root is absent from a
+    built wheel and the engine cannot construct. See issue #1434.
+    """
+
+    from importlib import resources
+
+    package_config = resources.files("travel_plan_permission").joinpath("config")
+    for filename in ("policy.yaml", "validation.yaml", "providers.yaml", "approval_rules.yaml"):
+        assert package_config.joinpath(filename).is_file(), (
+            f"{filename} is not packaged; a built wheel would omit it and the "
+            "corresponding engine would raise FileNotFoundError"
+        )
+
+
+def test_default_engines_construct_from_installed_wheel(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The default engines must construct with no source-tree config available.
+
+    This simulates an installed distribution by disabling the parent-directory
+    search, leaving the packaged resource as the only possible source.
+    """
+
+    from travel_plan_permission import policy as policy_module
+    from travel_plan_permission import providers as providers_module
+    from travel_plan_permission import validation as validation_module
+
+    monkeypatch.setattr(policy_module, "_default_policy_path", lambda: None)
+    monkeypatch.setattr(
+        validation_module.PolicyValidator, "_default_config_path", staticmethod(lambda: None)
+    )
+    monkeypatch.setattr(
+        providers_module.ProviderRegistry, "_default_config_path", staticmethod(lambda: None)
+    )
+
+    assert policy_module.PolicyEngine.from_file() is not None
+    assert validation_module.PolicyValidator.from_file() is not None
+    assert providers_module.ProviderRegistry.from_file() is not None
+
+
+def test_planner_verdict_path_works_without_source_tree_config(
+    monkeypatch: pytest.MonkeyPatch, trip_plan: TripPlan
+) -> None:
+    """check_trip_plan must not raise FileNotFoundError in an installed distribution.
+
+    It constructs both PolicyEngine and PolicyValidator, so it needs two packaged
+    files. This is the entry point that was unusable from a wheel.
+    """
+
+    from travel_plan_permission import policy as policy_module
+    from travel_plan_permission import validation as validation_module
+
+    monkeypatch.setattr(policy_module, "_default_policy_path", lambda: None)
+    monkeypatch.setattr(
+        validation_module.PolicyValidator, "_default_config_path", staticmethod(lambda: None)
+    )
+
+    result = check_trip_plan(trip_plan)
+    assert result.status in {"pass", "fail"}

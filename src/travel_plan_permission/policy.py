@@ -8,6 +8,7 @@ message that includes the relevant threshold or policy text.
 
 from __future__ import annotations
 
+from importlib import resources
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -363,6 +364,21 @@ def _default_policy_path() -> Path | None:
     return None
 
 
+def _package_policy_resource() -> resources.abc.Traversable | None:
+    """Return the policy config shipped inside the installed package, if present.
+
+    The parent-directory search above only succeeds in a source checkout. An
+    installed distribution has no repository root to walk, so the packaged copy
+    is what makes ``PolicyEngine.from_file()`` work from a wheel.
+    """
+
+    try:
+        resource = resources.files("travel_plan_permission").joinpath("config", "policy.yaml")
+    except ModuleNotFoundError:
+        return None
+    return resource if resource.is_file() else None
+
+
 class PolicyEngine(YamlConfigLoaderMixin):
     """Execute all policy-lite rules and aggregate their results."""
 
@@ -460,6 +476,11 @@ class PolicyEngine(YamlConfigLoaderMixin):
     @staticmethod
     def _default_config_path() -> Path | None:
         return _default_policy_path()
+
+    @staticmethod
+    def _read_default_config_resource() -> str | None:
+        resource = _package_policy_resource()
+        return resource.read_text(encoding="utf-8") if resource is not None else None
 
     @staticmethod
     def _missing_config_message() -> str:
