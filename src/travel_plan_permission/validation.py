@@ -13,6 +13,11 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config_loader import YamlConfigLoaderMixin, load_rules
+from .models import ExpenseCategory
+from .providers import ProviderRegistry, provider_type_for_category
+
+if TYPE_CHECKING:
+    from .models import TripPlan
 
 
 def _package_validation_resource() -> resources.abc.Traversable | None:
@@ -23,13 +28,6 @@ def _package_validation_resource() -> resources.abc.Traversable | None:
     except ModuleNotFoundError:
         return None
     return resource if resource.is_file() else None
-
-
-from .models import ExpenseCategory
-from .providers import ProviderRegistry, provider_type_for_category
-
-if TYPE_CHECKING:
-    from .models import TripPlan
 
 
 class ValidationSeverity(StrEnum):
