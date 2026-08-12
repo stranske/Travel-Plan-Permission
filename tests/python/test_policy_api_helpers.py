@@ -380,9 +380,7 @@ def test_policy_version_hash_changes_with_validation_rules() -> None:
     )
 
     version_hash = policy_api._policy_version(engine, validator)
-    validator.rules[0] = validator.rules[0].model_copy(
-        update={"max_consecutive_days": 6}
-    )
+    validator.rules[0] = validator.rules[0].model_copy(update={"max_consecutive_days": 6})
 
     assert policy_api._policy_version(engine, validator) != version_hash
 
@@ -400,9 +398,7 @@ def test_check_trip_plan_preserves_non_blocking_validation_error_severity(
     )
     monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: PolicyEngine([]))
     monkeypatch.setattr(PolicyValidator, "from_file", lambda *_args, **_kwargs: validator)
-    monkeypatch.setattr(
-        validator, "validate_plan", lambda *_args, **_kwargs: [validation_result]
-    )
+    monkeypatch.setattr(validator, "validate_plan", lambda *_args, **_kwargs: [validation_result])
 
     result = policy_api.check_trip_plan(base_plan)
 

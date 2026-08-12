@@ -980,9 +980,7 @@ def _policy_version(engine: PolicyEngine, validator: PolicyValidator | None = No
 
     rule_config: dict[str, object] = {"policy_lite_rules": engine.describe_rules()}
     if validator is not None:
-        rule_config["validation_rules"] = [
-            rule.model_dump(mode="json") for rule in validator.rules
-        ]
+        rule_config["validation_rules"] = [rule.model_dump(mode="json") for rule in validator.rules]
     version = PolicyVersion.from_config(None, rule_config)
     return version.config_hash
 
@@ -1876,9 +1874,7 @@ def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
     ]
     has_blocking = any(
         not result.passed and result.severity == Severity.BLOCKING for result in policy_results
-    ) or any(
-        result.is_blocking for result in validation_results
-    )
+    ) or any(result.is_blocking for result in validation_results)
     status: PolicyCheckStatus = "fail" if has_blocking else "pass"
     return PolicyCheckResult(
         status=status,
