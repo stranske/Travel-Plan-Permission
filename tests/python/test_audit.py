@@ -7,10 +7,14 @@ import io
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from travel_plan_permission import audit
+
+if TYPE_CHECKING:
+    from travel_plan_permission import http_service
 
 
 @pytest.fixture
@@ -674,14 +678,13 @@ class TestEmitPoints:
 
 
 def _seed_pending_manager_review(
-    store: "http_service.PlannerProposalStore",
+    store: http_service.PlannerProposalStore,
     *,
     review_id: str = "audit-atomicity-review",
     draft_id: str = "audit-atomicity-draft",
 ) -> str:
     from decimal import Decimal
 
-    from travel_plan_permission import http_service
     from travel_plan_permission.models import TripPlan
     from travel_plan_permission.policy_api import (
         PlannerAuthContract,
@@ -753,6 +756,7 @@ def test_audit_event_is_discarded_when_state_persistence_fails(
     assert store.store is not None
 
     def fail_save_snapshot(_snapshot: dict[str, object], *, replace: bool = False) -> None:
+        del replace
         raise RuntimeError("forced portal-state persistence failure")
 
     store.store.save_snapshot = fail_save_snapshot  # type: ignore[method-assign]
@@ -776,6 +780,46 @@ def test_audit_event_is_discarded_when_state_persistence_fails(
     assert restored is not None
     assert restored.status == ReviewStatus.PENDING_MANAGER_REVIEW
     assert len(action_events) == 0
+
+
+def test_manager_action_retries_durable_audit_outbox_after_delivery_failure(
+    tmp_path: Path,
+) -> None:
+    from travel_plan_permission import http_service
+    from travel_plan_permission.review_workflow import ReviewAction, ReviewStatus
+
+    class FailingAuditStore:
+        def write(self, _event: audit.AuditEvent) -> None:
+            raise OSError("forced audit delivery failure")
+
+    state_path = tmp_path / "portal-state.sqlite3"
+    proposal_store = http_service.PlannerProposalStore(state_path=state_path)
+    review_id = _seed_pending_manager_review(proposal_store)
+    proposal_store._persist_state()
+    audit.set_default_store(FailingAuditStore())  # type: ignore[arg-type]
+
+    updated = proposal_store.apply_manager_review_action(
+        review_id,
+        action=ReviewAction.APPROVE,
+        actor_id="manager-17",
+        rationale="Approve while audit delivery is unavailable.",
+    )
+
+    assert updated.status == ReviewStatus.APPROVED
+    reloaded = http_service.PlannerProposalStore(state_path=state_path)
+    restored = reloaded.lookup_manager_review(review_id)
+    assert restored is not None
+    assert restored.status == ReviewStatus.APPROVED
+    assert len(reloaded.pending_audit_events) == 1
+
+    durable = audit.SQLiteAuditEventStore(tmp_path / "audit.sqlite3")
+    durable.initialize()
+    audit.set_default_store(durable)
+    reloaded._flush_pending_audit_events()
+
+    assert len(reloaded.pending_audit_events) == 0
+    assert len(list(durable.query(event_type=audit.EVENT_PROPOSAL_STATUS_CHANGE))) == 1
+    durable.close()
 
 
 def test_audit_event_survives_a_successful_action(

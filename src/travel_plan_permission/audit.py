@@ -249,7 +249,7 @@ class SQLiteAuditEventStore:
         row = event.as_row()
         with self._lock:
             conn.execute(
-                "INSERT INTO audit_events "
+                "INSERT OR IGNORE INTO audit_events "
                 "(id, occurred_at, actor_subject, actor_role, event_type, "
                 " outcome, target_kind, target_id, metadata_json) "
                 "VALUES (:id, :occurred_at, :actor_subject, :actor_role, "
