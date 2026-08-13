@@ -32,6 +32,19 @@ jobs:
       coverage-min: '80'
     secrets: inherit
 
+  module-boundaries:
+    name: Module Size Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Verify legacy module size ceilings
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest tests/python/test_policy_api.py::test_module_sizes_stay_under_threshold -q
+
   orchestration:
     name: LangGraph Orchestration CI
     runs-on: ubuntu-latest

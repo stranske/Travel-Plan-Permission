@@ -10,7 +10,7 @@ import sys
 import tempfile
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, cast
@@ -33,19 +33,17 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 
 from . import audit, demo_seed
-from .approval import ApprovalEngine
+from .expense_review import build_expense_review_state
 from .export import ExportService
 from .intake_requirements import (
     PlannerIntakeRequirementCatalog,
     get_intake_requirement_catalog,
 )
 from .models import (
-    ApprovalStatus,
     ExceptionRequest,
     ExceptionStatus,
     ExceptionType,
     ExpenseCategory,
-    ExpenseItem,
     ExpenseReport,
     TripPlan,
 )
@@ -87,7 +85,7 @@ from .portal_review import (
     portal_review_state,
     portal_validation_state,
 )
-from .receipts import Receipt, ReceiptExtractionResult, ReceiptProcessor
+from .receipts import ReceiptExtractionResult
 from .review_workflow import (
     ReviewAction,
     ReviewHistoryEvent,
@@ -1524,138 +1522,15 @@ def _expense_review_state(
     *,
     proposal_store: PlannerProposalStore | None = None,
 ) -> ExpensePortalReviewState:
-    missing_fields = [
-        field_name for field_name in _EXPENSE_REQUIRED_FIELDS if not answers.get(field_name)
-    ]
-    validation_errors: list[str] = []
-    review_warnings: list[str] = []
-    receipt_state = "missing"
-    receipt_extraction: ReceiptExtractionResult | None = None
-    expense_report: ExpenseReport | None = None
-    artifacts: dict[str, PortalArtifact] = {}
-
-    linkage_validation = _ExpenseLinkageValidation()
-
-    ocr_text = answers.get("receipt_ocr_text")
-    if isinstance(ocr_text, str) and ocr_text.strip():
-        receipt_extraction = ReceiptProcessor.extract_from_text(ocr_text)
-
-    if not missing_fields:
-        linkage_validation = _validate_expense_linkage(proposal_store, answers)
-        validation_errors.extend(linkage_validation.errors)
-        try:
-            category = ExpenseCategory(str(answers["expense_category"]))
-            expense_amount = Decimal(str(answers["expense_amount"]))
-            expense_date = date.fromisoformat(str(answers["expense_date"]))
-            receipt_reference = answers.get("receipt_file_reference")
-            receipt: Receipt | None = None
-            if receipt_reference:
-                if not all(
-                    (
-                        answers.get("receipt_file_size_bytes"),
-                        answers.get("receipt_total"),
-                        answers.get("receipt_date"),
-                        answers.get("receipt_vendor"),
-                    )
-                ):
-                    validation_errors.append(
-                        "Receipt uploads require file size, total, date, and vendor details."
-                    )
-                    receipt_state = "incomplete"
-                else:
-                    receipt = Receipt.from_manual_entry(
-                        total=Decimal(str(answers["receipt_total"])),
-                        date=date.fromisoformat(str(answers["receipt_date"])),
-                        vendor=str(answers["receipt_vendor"]),
-                        file_reference=str(receipt_reference),
-                        file_size_bytes=int(str(answers["receipt_file_size_bytes"])),
-                        paid_by_third_party=bool(answers.get("receipt_paid_by_third_party")),
-                    )
-                    receipt_state = "attached"
-                    if receipt_extraction is not None:
-                        mismatches: list[str] = []
-                        if (
-                            receipt_extraction.vendor is not None
-                            and receipt_extraction.vendor != receipt.vendor
-                        ):
-                            mismatches.append("vendor")
-                        if (
-                            receipt_extraction.total is not None
-                            and receipt_extraction.total != receipt.total
-                        ):
-                            mismatches.append("total")
-                        if (
-                            receipt_extraction.date is not None
-                            and receipt_extraction.date != receipt.date
-                        ):
-                            mismatches.append("date")
-                        if mismatches:
-                            review_warnings.append(
-                                "Manual receipt entry overrides OCR values for "
-                                + ", ".join(mismatches)
-                                + "."
-                            )
-            else:
-                review_warnings.append(
-                    "Receipt missing: reviewers should hold reimbursement until the traveler uploads support."
-                )
-
-            if not linkage_validation.blocks_export:
-                expense = ExpenseItem(
-                    category=category,
-                    description=str(answers["expense_description"]),
-                    vendor=str(answers.get("expense_vendor") or "") or None,
-                    amount=expense_amount,
-                    expense_date=expense_date,
-                    receipt_attached=receipt is not None,
-                    receipt_url=str(receipt_reference) if receipt_reference else None,
-                    receipt_references=[receipt] if receipt is not None else [],
-                    third_party_paid_explanation=(
-                        str(answers["third_party_paid_explanation"])
-                        if answers.get("third_party_paid_explanation")
-                        else None
-                    ),
-                )
-                expense_report = ExpenseReport(
-                    report_id=f"EXP-{draft_id.upper()}",
-                    trip_id=str(answers["trip_id"]),
-                    traveler_name=str(answers["traveler_name"]),
-                    cost_center=str(answers.get("cost_center") or "") or None,
-                    expenses=[expense],
-                )
-                expense_report = ApprovalEngine.from_file().evaluate_report(expense_report)
-                if expense_report.approval_status == ApprovalStatus.FLAGGED:
-                    review_warnings.append(
-                        "Policy warning: manager or accounting review is required before reimbursement."
-                    )
-                artifacts = _expense_export_artifacts(
-                    draft_id=draft_id,
-                    expense_report=expense_report,
-                )
-        except ValidationError as exc:
-            validation_errors.extend(
-                f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
-                for error in exc.errors()
-            )
-        except FileNotFoundError:
-            validation_errors.append(
-                "Approval rules configuration is unavailable; expense policy review cannot be completed."
-            )
-        except InvalidOperation:
-            validation_errors.append("One or more currency amounts are not valid decimal values.")
-        except ValueError as exc:
-            validation_errors.append(str(exc))
-
-    return ExpensePortalReviewState(
-        draft_id=draft_id,
-        answers=answers,
-        missing_fields=missing_fields,
-        validation_errors=validation_errors,
-        receipt_state=receipt_state,
-        receipt_extraction=receipt_extraction,
-        expense_report=expense_report,
-        review_warnings=review_warnings,
-        artifacts=artifacts,
+    return cast(
+        ExpensePortalReviewState,
+        build_expense_review_state(
+            draft_id, answers, proposal_store=proposal_store,
+            required_fields=_EXPENSE_REQUIRED_FIELDS,
+            linkage_validator=_validate_expense_linkage,
+            artifact_builder=_expense_export_artifacts,
+            state_factory=ExpensePortalReviewState,
+        ),
     )
 
 

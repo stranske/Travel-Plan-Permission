@@ -42,6 +42,7 @@ from .security import (
 )
 from .validation import PolicyValidator, ValidationResult
 from .workbook_ooxml import render_mapped_workbook
+from .workbook_population import populate_travel_workbook
 
 PolicyIssueSeverity = Literal["info", "warning", "error"]
 PolicyCheckStatus = Literal["pass", "fail"]
@@ -2021,32 +2022,10 @@ def _populate_travel_workbook(
     canonical_plan: CanonicalTripPlan | None = None,
     report: UnfilledMappingReport | None = None,
 ) -> None:
-    worksheet_name = mapping.metadata.get("worksheet")
-    if isinstance(worksheet_name, str):
-        if worksheet_name not in wb.sheetnames:
-            raise ValueError(
-                f"Template worksheet '{worksheet_name}' was not found; "
-                f"available worksheets: {', '.join(wb.sheetnames)}"
-            )
-        ws = wb[worksheet_name]
-    else:
-        ws = wb.active
-
-    for mapped_value in _mapped_cell_values(
-        plan,
-        mapping,
-        canonical_plan=canonical_plan,
-        report=report,
-    ):
-        ws[mapped_value.cell] = mapped_value.value
-        if mapped_value.number_format is not None:
-            ws[mapped_value.cell].number_format = mapped_value.number_format
-
-    for formula_config in mapping.formulas.values():
-        formula_cell = formula_config.get("cell")
-        formula_value = formula_config.get("formula")
-        if isinstance(formula_cell, str) and isinstance(formula_value, str):
-            ws[formula_cell] = formula_value
+    populate_travel_workbook(
+        wb, plan, mapping, canonical_plan=canonical_plan, report=report,
+        mapped_cell_values=_mapped_cell_values,
+    )
 
 
 def render_travel_spreadsheet_bytes(
