@@ -23,6 +23,17 @@ configured retention window (default 7 years, override via
 ``TPP_AUDIT_RETENTION_DAYS``). External SIEM forwarding and immutable
 storage primitives (hash chains, write-once filesystems) remain out of
 scope for v1, per the issue.
+
+**Atomicity contract (issue #1436).** A durable action audit event must be
+committed if and only if the portal state mutation it describes is
+durably persisted. Emit-sites that pair a state change with
+:func:`write_audit_event` must route both through
+``PlannerProposalStore._persist_state_with_audit`` (or an equivalent helper)
+so that ``save_snapshot`` succeeds before any durable audit row is written
+and in-memory mutations roll back when persistence fails. Validation-only
+paths (for example rejected HTTP requests) may write truthful
+``auth.request`` events without a state mutation, but must not emit action
+events such as ``proposal.status_change``.
 """
 
 from __future__ import annotations
@@ -34,12 +45,12 @@ import os
 import sqlite3
 import sys
 import threading
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
-from typing import IO, Protocol, runtime_checkable
+from typing import IO, Any, Protocol, cast, runtime_checkable
 from uuid import uuid4
 
 EVENT_AUTH_REQUEST = "auth.request"
@@ -238,7 +249,7 @@ class SQLiteAuditEventStore:
         row = event.as_row()
         with self._lock:
             conn.execute(
-                "INSERT INTO audit_events "
+                "INSERT OR IGNORE INTO audit_events "
                 "(id, occurred_at, actor_subject, actor_role, event_type, "
                 " outcome, target_kind, target_id, metadata_json) "
                 "VALUES (:id, :occurred_at, :actor_subject, :actor_role, "
@@ -531,6 +542,65 @@ def open_default_store(path: Path | str) -> SQLiteAuditEventStore:
     store.initialize()
     set_default_store(store)
     return store
+
+
+def install_store_from_env() -> None:
+    """Install a SQLite-backed durable audit store when configured via env."""
+
+    raw = os.getenv(AUDIT_PATH_ENV_VAR)
+    if not raw:
+        return
+    open_default_store(Path(raw).expanduser())
+
+
+def pending_event_from_state(serialized: dict[str, Any]) -> AuditEvent:
+    """Deserialize a pending outbox event from portal state snapshot JSON."""
+
+    return AuditEvent(
+        id=str(serialized["id"]),
+        occurred_at=datetime.fromisoformat(str(serialized["occurred_at"])),
+        event_type=str(serialized["event_type"]),
+        actor_subject=str(serialized["actor_subject"]),
+        actor_role=cast(str | None, serialized.get("actor_role")),
+        outcome=str(serialized["outcome"]),
+        target_kind=cast(str | None, serialized.get("target_kind")),
+        target_id=cast(str | None, serialized.get("target_id")),
+        metadata=cast(dict[str, object], json.loads(str(serialized["metadata_json"]))),
+    )
+
+
+def flush_pending_outbox(
+    pending_events: list[AuditEvent],
+    persist_snapshot: Callable[[], None] | None = None,
+) -> None:
+    """Deliver committed outbox events and retain failed deliveries."""
+
+    if not pending_events:
+        return
+    target_store = get_default_store()
+    remaining: list[AuditEvent] = []
+    for event in pending_events:
+        try:
+            target_store.write(event)
+        except Exception:
+            remaining.append(event)
+    if len(remaining) == len(pending_events):
+        return
+    pending_events[:] = remaining
+    if persist_snapshot is not None:
+        persist_snapshot()
+
+
+def persist_outbox_with_snapshot(
+    pending_events: list[AuditEvent],
+    new_events: tuple[AuditEvent, ...],
+    persist_snapshot: Callable[[], None],
+) -> None:
+    """Commit portal state and its audit outbox before attempting delivery."""
+
+    pending_events.extend(new_events)
+    persist_snapshot()
+    flush_pending_outbox(pending_events, persist_snapshot)
 
 
 _DEFAULT_AUDIT_STATE_PATH = "var/portal-audit-events.sqlite3"

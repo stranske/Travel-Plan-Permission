@@ -7,10 +7,14 @@ import io
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from travel_plan_permission import audit
+
+if TYPE_CHECKING:
+    from travel_plan_permission import http_service
 
 
 @pytest.fixture
@@ -671,3 +675,209 @@ class TestEmitPoints:
         assert row.metadata["to_status"] == ReviewStatus.APPROVED.value
         assert row.target_kind == "manager_review"
         assert row.target_id == review.review_id
+
+
+def _seed_pending_manager_review(
+    store: http_service.PlannerProposalStore,
+    *,
+    review_id: str = "audit-atomicity-review",
+    draft_id: str = "audit-atomicity-draft",
+) -> str:
+    from decimal import Decimal
+
+    from travel_plan_permission.models import TripPlan
+    from travel_plan_permission.policy_api import (
+        PlannerAuthContract,
+        PlannerPolicySnapshot,
+        PlannerVersionContract,
+        PolicyCheckResult,
+    )
+    from travel_plan_permission.review_workflow import ReviewRequest, ReviewStatus
+
+    trip = TripPlan(
+        trip_id="T-atomic",
+        traveler_name="Alice",
+        destination="New York",
+        departure_date=datetime(2026, 5, 1, tzinfo=UTC).date(),
+        return_date=datetime(2026, 5, 5, tzinfo=UTC).date(),
+        purpose="Conference",
+        estimated_cost=Decimal("1500.00"),
+    )
+    policy_result = PolicyCheckResult(status="pass", issues=[], policy_version="v1")
+    policy_snapshot = PlannerPolicySnapshot(
+        trip_id="T-atomic",
+        freshness="current",
+        generated_at=datetime(2026, 4, 30, tzinfo=UTC),
+        expires_at=datetime(2026, 5, 30, tzinfo=UTC),
+        policy_status="pass",
+        auth=PlannerAuthContract(
+            endpoint="/planner/policy/snapshot",
+            required_permission="view",
+            auth_scheme="bearer",
+        ),
+        versioning=PlannerVersionContract(
+            contract_version="1.0",
+            policy_version="v1",
+            compatible_with_planner_cache=True,
+            etag="abc123",
+        ),
+    )
+    now = datetime.now(UTC)
+    review = ReviewRequest(
+        review_id=review_id,
+        draft_id=draft_id,
+        trip_plan=trip,
+        policy_snapshot=policy_snapshot,
+        policy_result=policy_result,
+        status=ReviewStatus.PENDING_MANAGER_REVIEW,
+        submitted_at=now,
+        updated_at=now,
+        history=(),
+    )
+    store.manager_reviews.reviews_by_id[review.review_id] = review
+    store.manager_reviews.review_ids_by_draft_id[review.draft_id] = review.review_id
+    return review.review_id
+
+
+def test_audit_event_is_discarded_when_state_persistence_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from travel_plan_permission import http_service
+    from travel_plan_permission.review_workflow import ReviewAction, ReviewStatus
+
+    state_path = tmp_path / "portal-state.sqlite3"
+    audit_path = tmp_path / "audit.sqlite3"
+    monkeypatch.setenv(audit.AUDIT_PATH_ENV_VAR, str(audit_path))
+    audit.open_default_store(audit_path)
+    store = http_service.PlannerProposalStore(state_path=state_path)
+    review_id = _seed_pending_manager_review(store)
+    store._persist_state()
+    assert store.store is not None
+
+    def fail_save_snapshot(_snapshot: dict[str, object], *, replace: bool = False) -> None:
+        del replace
+        raise RuntimeError("forced portal-state persistence failure")
+
+    store.store.save_snapshot = fail_save_snapshot  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="forced portal-state persistence failure"):
+        store.apply_manager_review_action(
+            review_id,
+            action=ReviewAction.APPROVE,
+            actor_id="manager-17",
+            rationale="Approved by the atomicity test.",
+        )
+
+    in_memory = store.lookup_manager_review(review_id)
+    reloaded = http_service.PlannerProposalStore(state_path=state_path)
+    restored = reloaded.lookup_manager_review(review_id)
+    durable = audit.get_default_store()
+    action_events = list(durable.query(event_type=audit.EVENT_PROPOSAL_STATUS_CHANGE))
+
+    assert in_memory is not None
+    assert in_memory.status == ReviewStatus.PENDING_MANAGER_REVIEW
+    assert restored is not None
+    assert restored.status == ReviewStatus.PENDING_MANAGER_REVIEW
+    assert len(action_events) == 0
+
+
+def test_manager_action_retries_durable_audit_outbox_after_delivery_failure(
+    tmp_path: Path,
+) -> None:
+    from travel_plan_permission import http_service
+    from travel_plan_permission.review_workflow import ReviewAction, ReviewStatus
+
+    class FailingAuditStore:
+        def write(self, _event: audit.AuditEvent) -> None:
+            raise OSError("forced audit delivery failure")
+
+    state_path = tmp_path / "portal-state.sqlite3"
+    proposal_store = http_service.PlannerProposalStore(state_path=state_path)
+    review_id = _seed_pending_manager_review(proposal_store)
+    proposal_store._persist_state()
+    audit.set_default_store(FailingAuditStore())  # type: ignore[arg-type]
+
+    updated = proposal_store.apply_manager_review_action(
+        review_id,
+        action=ReviewAction.APPROVE,
+        actor_id="manager-17",
+        rationale="Approve while audit delivery is unavailable.",
+    )
+
+    assert updated.status == ReviewStatus.APPROVED
+    reloaded = http_service.PlannerProposalStore(state_path=state_path)
+    restored = reloaded.lookup_manager_review(review_id)
+    assert restored is not None
+    assert restored.status == ReviewStatus.APPROVED
+    assert len(reloaded.pending_audit_events) == 1
+
+    durable = audit.SQLiteAuditEventStore(tmp_path / "audit.sqlite3")
+    durable.initialize()
+    audit.set_default_store(durable)
+    reloaded._flush_pending_audit_events()
+
+    assert len(reloaded.pending_audit_events) == 0
+    assert len(list(durable.query(event_type=audit.EVENT_PROPOSAL_STATUS_CHANGE))) == 1
+    durable.close()
+
+
+def test_audit_event_survives_a_successful_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from travel_plan_permission import http_service
+    from travel_plan_permission.review_workflow import ReviewAction, ReviewStatus
+
+    state_path = tmp_path / "portal-state.sqlite3"
+    audit_path = tmp_path / "audit.sqlite3"
+    monkeypatch.setenv(audit.AUDIT_PATH_ENV_VAR, str(audit_path))
+    audit.open_default_store(audit_path)
+    store = http_service.PlannerProposalStore(state_path=state_path)
+    review_id = _seed_pending_manager_review(store)
+    store._persist_state()
+
+    store.apply_manager_review_action(
+        review_id,
+        action=ReviewAction.APPROVE,
+        actor_id="manager-17",
+        rationale="Approved by the atomicity test.",
+    )
+
+    reloaded = http_service.PlannerProposalStore(state_path=state_path)
+    restored = reloaded.lookup_manager_review(review_id)
+    durable = audit.get_default_store()
+    action_events = list(durable.query(event_type=audit.EVENT_PROPOSAL_STATUS_CHANGE))
+
+    assert restored is not None
+    assert restored.status == ReviewStatus.APPROVED
+    assert len(action_events) == 1
+    assert action_events[0].metadata["to_status"] == ReviewStatus.APPROVED.value
+
+
+def test_invalid_request_writes_no_action_audit_event(
+    store: audit.SQLiteAuditEventStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from travel_plan_permission import planner_auth
+
+    audit.set_default_store(store)
+    monkeypatch.setenv("TPP_BASE_URL", "https://tpp.example/")
+    monkeypatch.setenv("TPP_OIDC_PROVIDER", "azure_ad")
+    monkeypatch.setenv("TPP_AUTH_MODE", "static-token")
+    monkeypatch.setenv("TPP_ACCESS_TOKEN", "secret-token")
+
+    config = planner_auth.PlannerAuthConfig.from_env()
+    with pytest.raises(PermissionError):
+        planner_auth.authenticate_request(
+            "Bearer wrong-token",
+            config=config,
+            required_permission=planner_auth.Permission.VIEW,
+            route="GET /api/itineraries",
+        )
+
+    auth_events = list(store.query(event_type=audit.EVENT_AUTH_REQUEST))
+    action_events = list(store.query(event_type=audit.EVENT_PROPOSAL_STATUS_CHANGE))
+    assert len(auth_events) == 1
+    assert auth_events[0].outcome == audit.OUTCOME_FAILURE
+    assert len(action_events) == 0

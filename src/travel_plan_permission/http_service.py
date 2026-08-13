@@ -618,19 +618,6 @@ def _portal_state_is_ephemeral() -> bool:
     return _path_is_under_tmp(_default_portal_state_path())
 
 
-def _install_audit_store_from_env() -> None:
-    """Install a SQLite-backed durable audit store when configured via env.
-
-    Honors ``TPP_AUDIT_STATE_PATH``. When unset, the module-level default
-    remains a :class:`audit.NullAuditEventStore`, which sinks all writes —
-    matching legacy in-memory behavior.
-    """
-
-    raw = os.getenv(audit.AUDIT_PATH_ENV_VAR)
-    if not raw:
-        return
-    audit.open_default_store(Path(raw).expanduser())
-
 
 @dataclass
 class PlannerProposalStore:
@@ -643,6 +630,7 @@ class PlannerProposalStore:
     manager_reviews: ReviewWorkflowStore = field(default_factory=ReviewWorkflowStore)
     exception_requests_by_draft_id: dict[str, list[ExceptionRequest]] = field(default_factory=dict)
     security: SecurityModel = field(default_factory=SecurityModel)
+    pending_audit_events: list[audit.AuditEvent] = field(default_factory=list)
     state_path: Path | None = None
     store: PortalStateStore | None = None
 
@@ -653,6 +641,7 @@ class PlannerProposalStore:
             self.store = resolve_portal_state_store(self.state_path)
         if self.store is not None:
             self._load_state()
+            self._flush_pending_audit_events()
 
     def remember_plan(self, trip_plan: TripPlan) -> None:
         """Store the latest planner trip payload by trip identifier."""
@@ -676,40 +665,57 @@ class PlannerProposalStore:
     ) -> None:
         """Store proposal context keyed by the stable execution identifier."""
 
-        self.remember_plan(trip_plan)
         execution_id = response.result_payload.get("execution_id")
         if not isinstance(execution_id, str):
             raise ValueError("Planner proposal response missing required string execution_id")
+        prior_plan = self.plans_by_trip_id.get(trip_plan.trip_id)
+        prior_submission = self.proposals_by_execution_id.get(execution_id)
+        prior_pending_count = len(self.pending_audit_events)
+        self.plans_by_trip_id[trip_plan.trip_id] = trip_plan.model_copy(deep=True)
         self.proposals_by_execution_id[execution_id] = StoredProposal(
             trip_plan=trip_plan.model_copy(deep=True),
             request=request.model_copy(deep=True),
             response=response.model_copy(deep=True),
         )
-        audit.write_audit_event(
-            audit.EVENT_PROPOSAL_CREATED,
-            actor_subject="planner-service",
-            outcome=audit.OUTCOME_SUCCESS,
-            target_kind="proposal",
-            target_id=request.proposal_id,
-            metadata={
-                "trip_id": trip_plan.trip_id,
-                "execution_id": execution_id,
-            },
+        submission_events = (
+            audit.AuditEvent(
+                audit.EVENT_PROPOSAL_CREATED,
+                actor_subject="planner-service",
+                outcome=audit.OUTCOME_SUCCESS,
+                target_kind="proposal",
+                target_id=request.proposal_id,
+                metadata={
+                    "trip_id": trip_plan.trip_id,
+                    "execution_id": execution_id,
+                },
+            ),
+            audit.AuditEvent(
+                audit.EVENT_PROPOSAL_STATUS_CHANGE,
+                actor_subject="planner-service",
+                outcome="submitted",
+                target_kind="proposal",
+                target_id=request.proposal_id,
+                metadata={
+                    "trip_id": trip_plan.trip_id,
+                    "execution_id": execution_id,
+                    "from_status": None,
+                    "to_status": "submitted",
+                },
+            ),
         )
-        audit.write_audit_event(
-            audit.EVENT_PROPOSAL_STATUS_CHANGE,
-            actor_subject="planner-service",
-            outcome="submitted",
-            target_kind="proposal",
-            target_id=request.proposal_id,
-            metadata={
-                "trip_id": trip_plan.trip_id,
-                "execution_id": execution_id,
-                "from_status": None,
-                "to_status": "submitted",
-            },
-        )
-        self._persist_state()
+        try:
+            self._persist_state_with_audit(*submission_events)
+        except Exception:
+            if prior_plan is None:
+                del self.plans_by_trip_id[trip_plan.trip_id]
+            else:
+                self.plans_by_trip_id[trip_plan.trip_id] = prior_plan
+            if prior_submission is None:
+                del self.proposals_by_execution_id[execution_id]
+            else:
+                self.proposals_by_execution_id[execution_id] = prior_submission
+            del self.pending_audit_events[prior_pending_count:]
+            raise
 
     def lookup_submission(self, execution_id: str) -> StoredProposal | None:
         """Return a previously stored proposal submission by execution identifier."""
@@ -920,34 +926,50 @@ class PlannerProposalStore:
         """Persist a manager decision against an existing review request."""
 
         prior = self.manager_reviews.lookup(review_id)
-        from_status = prior.status.value if prior is not None else None
-        updated = self.manager_reviews.apply_action(
-            review_id,
-            action=action,
-            actor_id=actor_id,
-            rationale=rationale,
+        if prior is None:
+            raise KeyError(f"No manager review found for '{review_id}'.")
+        from_status = prior.status.value
+        prior_review = self.manager_reviews._copy_review(
+            self.manager_reviews.reviews_by_id[review_id]
         )
-        self.security.audit_log.record(
-            event_type=AuditEventType.REVIEW,
-            actor=actor_id,
-            subject=review_id,
-            outcome=action.value,
-            metadata={"draft_id": updated.draft_id, "status": updated.status.value},
-        )
-        audit.write_audit_event(
-            audit.EVENT_PROPOSAL_STATUS_CHANGE,
-            actor_subject=actor_id,
-            outcome=updated.status.value,
-            target_kind="manager_review",
-            target_id=review_id,
-            metadata={
-                "draft_id": updated.draft_id,
-                "action": action.value,
-                "from_status": from_status,
-                "to_status": updated.status.value,
-            },
-        )
-        self._persist_state()
+        prior_audit_event_count = len(self.security.audit_log.events)
+        prior_pending_audit_count = len(self.pending_audit_events)
+
+        try:
+            updated = self.manager_reviews.apply_action(
+                review_id,
+                action=action,
+                actor_id=actor_id,
+                rationale=rationale,
+            )
+            self.security.audit_log.record(
+                event_type=AuditEventType.REVIEW,
+                actor=actor_id,
+                subject=review_id,
+                outcome=action.value,
+                metadata={"draft_id": updated.draft_id, "status": updated.status.value},
+            )
+
+            review_event = audit.AuditEvent(
+                audit.EVENT_PROPOSAL_STATUS_CHANGE,
+                actor_subject=actor_id,
+                outcome=updated.status.value,
+                target_kind="manager_review",
+                target_id=review_id,
+                metadata={
+                    "draft_id": updated.draft_id,
+                    "action": action.value,
+                    "from_status": from_status,
+                    "to_status": updated.status.value,
+                },
+            )
+
+            self._persist_state_with_audit(review_event)
+        except Exception:
+            self.manager_reviews.reviews_by_id[review_id] = prior_review
+            del self.security.audit_log.events[prior_audit_event_count:]
+            del self.pending_audit_events[prior_pending_audit_count:]
+            raise
         return updated
 
     def list_exception_requests(self, draft_id: str) -> list[ExceptionRequest]:
@@ -1072,6 +1094,35 @@ class PlannerProposalStore:
             return
         self.store.save_snapshot(self._serialize_state(), replace=True)
 
+    def _persist_state_with_audit(self, *events: audit.AuditEvent) -> None:
+        """Commit state and its audit outbox before attempting delivery."""
+
+        store = self.store
+        if store is None:
+            audit.persist_outbox_with_snapshot(
+                self.pending_audit_events,
+                events,
+                lambda: None,
+            )
+            return
+        audit.persist_outbox_with_snapshot(
+            self.pending_audit_events,
+            events,
+            lambda: store.save_snapshot(self._serialize_state(), replace=True),
+        )
+
+    def _flush_pending_audit_events(self) -> None:
+        """Deliver committed outbox events and retain failed deliveries."""
+
+        store = self.store
+        if store is None:
+            audit.flush_pending_outbox(self.pending_audit_events)
+            return
+        audit.flush_pending_outbox(
+            self.pending_audit_events,
+            lambda: store.save_snapshot(self._serialize_state(), replace=True),
+        )
+
     def _load_state(self) -> None:
         if self.store is None:
             return
@@ -1136,6 +1187,10 @@ class PlannerProposalStore:
             _audit_log_event_from_state(serialized)
             for serialized in payload.get("audit_events", [])
         ]
+        self.pending_audit_events = [
+            audit.pending_event_from_state(serialized)
+            for serialized in payload.get("pending_audit_events", [])
+        ]
 
     def _serialize_state(self) -> dict[str, object]:
         return {
@@ -1188,6 +1243,9 @@ class PlannerProposalStore:
             },
             "audit_events": [
                 _audit_log_event_to_state(event) for event in self.security.audit_log.events
+            ],
+            "pending_audit_events": [
+                event.as_row() for event in self.pending_audit_events
             ],
         }
 
@@ -2557,7 +2615,7 @@ def register_planner_api_routes(app: FastAPI, proposal_store: PlannerProposalSto
 def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     """Create the planner-facing ASGI application."""
 
-    _install_audit_store_from_env()
+    audit.install_store_from_env()
     proposal_store = store or PlannerProposalStore(state_path=_default_portal_state_path())
     app = FastAPI(
         title="Travel Plan Permission Planner Service",
