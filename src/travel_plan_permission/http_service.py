@@ -1097,7 +1097,8 @@ class PlannerProposalStore:
     def _persist_state_with_audit(self, *events: audit.AuditEvent) -> None:
         """Commit state and its audit outbox before attempting delivery."""
 
-        if self.store is None:
+        store = self.store
+        if store is None:
             audit.persist_outbox_with_snapshot(
                 self.pending_audit_events,
                 events,
@@ -1107,18 +1108,19 @@ class PlannerProposalStore:
         audit.persist_outbox_with_snapshot(
             self.pending_audit_events,
             events,
-            lambda: self.store.save_snapshot(self._serialize_state(), replace=True),
+            lambda: store.save_snapshot(self._serialize_state(), replace=True),
         )
 
     def _flush_pending_audit_events(self) -> None:
         """Deliver committed outbox events and retain failed deliveries."""
 
-        if self.store is None:
+        store = self.store
+        if store is None:
             audit.flush_pending_outbox(self.pending_audit_events)
             return
         audit.flush_pending_outbox(
             self.pending_audit_events,
-            lambda: self.store.save_snapshot(self._serialize_state(), replace=True),
+            lambda: store.save_snapshot(self._serialize_state(), replace=True),
         )
 
     def _load_state(self) -> None:
