@@ -14,14 +14,14 @@ from .models import ApprovalStatus, ExpenseCategory, ExpenseItem, ExpenseReport
 from .receipts import Receipt, ReceiptExtractionResult, ReceiptProcessor
 
 
-def build_expense_review_state(
+def build_expense_review_state[StoreT](
     draft_id: str,
     answers: dict[str, object],
     *,
-    proposal_store: object | None,
+    proposal_store: StoreT | None,
     required_fields: tuple[str, ...],
-    linkage_validator: Callable[[object | None, dict[str, object]], Any],
-    artifact_builder: Callable[..., dict[str, object]],
+    linkage_validator: Callable[[StoreT | None, dict[str, object]], Any],
+    artifact_builder: Callable[..., dict[str, Any]],
     state_factory: Callable[..., object],
 ) -> object:
     """Build expense validation, report, and export state without route coupling."""
