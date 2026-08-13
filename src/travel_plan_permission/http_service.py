@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import json
 import logging
 import os
 import sys
@@ -619,19 +618,6 @@ def _portal_state_is_ephemeral() -> bool:
     return _path_is_under_tmp(_default_portal_state_path())
 
 
-def _install_audit_store_from_env() -> None:
-    """Install a SQLite-backed durable audit store when configured via env.
-
-    Honors ``TPP_AUDIT_STATE_PATH``. When unset, the module-level default
-    remains a :class:`audit.NullAuditEventStore`, which sinks all writes —
-    matching legacy in-memory behavior.
-    """
-
-    raw = os.getenv(audit.AUDIT_PATH_ENV_VAR)
-    if not raw:
-        return
-    audit.open_default_store(Path(raw).expanduser())
-
 
 @dataclass
 class PlannerProposalStore:
@@ -1109,36 +1095,31 @@ class PlannerProposalStore:
         self.store.save_snapshot(self._serialize_state(), replace=True)
 
     def _persist_state_with_audit(self, *events: audit.AuditEvent) -> None:
-        """Commit state and its audit outbox before attempting delivery.
+        """Commit state and its audit outbox before attempting delivery."""
 
-        Portal state and durable audit rows may live in different databases, so
-        they cannot share one transaction.  The state transaction therefore
-        stores an outbox first; a failed delivery leaves the committed state
-        and its exact idempotency key together for a later retry.
-        """
-
-        self.pending_audit_events.extend(events)
-        if self.store is not None:
-            self.store.save_snapshot(self._serialize_state(), replace=True)
-        self._flush_pending_audit_events()
+        if self.store is None:
+            audit.persist_outbox_with_snapshot(
+                self.pending_audit_events,
+                events,
+                lambda: None,
+            )
+            return
+        audit.persist_outbox_with_snapshot(
+            self.pending_audit_events,
+            events,
+            lambda: self.store.save_snapshot(self._serialize_state(), replace=True),
+        )
 
     def _flush_pending_audit_events(self) -> None:
         """Deliver committed outbox events and retain failed deliveries."""
 
-        if not self.pending_audit_events:
+        if self.store is None:
+            audit.flush_pending_outbox(self.pending_audit_events)
             return
-        target_store = audit.get_default_store()
-        remaining: list[audit.AuditEvent] = []
-        for event in self.pending_audit_events:
-            try:
-                target_store.write(event)
-            except Exception:
-                remaining.append(event)
-        if len(remaining) == len(self.pending_audit_events):
-            return
-        self.pending_audit_events = remaining
-        if self.store is not None:
-            self.store.save_snapshot(self._serialize_state(), replace=True)
+        audit.flush_pending_outbox(
+            self.pending_audit_events,
+            lambda: self.store.save_snapshot(self._serialize_state(), replace=True),
+        )
 
     def _load_state(self) -> None:
         if self.store is None:
@@ -1205,7 +1186,7 @@ class PlannerProposalStore:
             for serialized in payload.get("audit_events", [])
         ]
         self.pending_audit_events = [
-            _pending_audit_event_from_state(serialized)
+            audit.pending_event_from_state(serialized)
             for serialized in payload.get("pending_audit_events", [])
         ]
 
@@ -1262,7 +1243,7 @@ class PlannerProposalStore:
                 _audit_log_event_to_state(event) for event in self.security.audit_log.events
             ],
             "pending_audit_events": [
-                _pending_audit_event_to_state(event) for event in self.pending_audit_events
+                event.as_row() for event in self.pending_audit_events
             ],
         }
 
@@ -1327,24 +1308,6 @@ def _audit_log_event_from_state(serialized: dict[str, Any]) -> AuditLogEvent:
         outcome=serialized["outcome"],
         metadata=dict(serialized.get("metadata", {})),
         timestamp=datetime.fromisoformat(serialized["timestamp"]),
-    )
-
-
-def _pending_audit_event_to_state(event: audit.AuditEvent) -> dict[str, object]:
-    return event.as_row()
-
-
-def _pending_audit_event_from_state(serialized: dict[str, Any]) -> audit.AuditEvent:
-    return audit.AuditEvent(
-        id=str(serialized["id"]),
-        occurred_at=datetime.fromisoformat(str(serialized["occurred_at"])),
-        event_type=str(serialized["event_type"]),
-        actor_subject=str(serialized["actor_subject"]),
-        actor_role=cast(str | None, serialized.get("actor_role")),
-        outcome=str(serialized["outcome"]),
-        target_kind=cast(str | None, serialized.get("target_kind")),
-        target_id=cast(str | None, serialized.get("target_id")),
-        metadata=cast(dict[str, object], json.loads(str(serialized["metadata_json"]))),
     )
 
 
@@ -2650,7 +2613,7 @@ def register_planner_api_routes(app: FastAPI, proposal_store: PlannerProposalSto
 def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     """Create the planner-facing ASGI application."""
 
-    _install_audit_store_from_env()
+    audit.install_store_from_env()
     proposal_store = store or PlannerProposalStore(state_path=_default_portal_state_path())
     app = FastAPI(
         title="Travel Plan Permission Planner Service",

@@ -45,12 +45,12 @@ import os
 import sqlite3
 import sys
 import threading
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
-from typing import IO, Protocol, runtime_checkable
+from typing import IO, Any, Protocol, cast, runtime_checkable
 from uuid import uuid4
 
 EVENT_AUTH_REQUEST = "auth.request"
@@ -542,6 +542,65 @@ def open_default_store(path: Path | str) -> SQLiteAuditEventStore:
     store.initialize()
     set_default_store(store)
     return store
+
+
+def install_store_from_env() -> None:
+    """Install a SQLite-backed durable audit store when configured via env."""
+
+    raw = os.getenv(AUDIT_PATH_ENV_VAR)
+    if not raw:
+        return
+    open_default_store(Path(raw).expanduser())
+
+
+def pending_event_from_state(serialized: dict[str, Any]) -> AuditEvent:
+    """Deserialize a pending outbox event from portal state snapshot JSON."""
+
+    return AuditEvent(
+        id=str(serialized["id"]),
+        occurred_at=datetime.fromisoformat(str(serialized["occurred_at"])),
+        event_type=str(serialized["event_type"]),
+        actor_subject=str(serialized["actor_subject"]),
+        actor_role=cast(str | None, serialized.get("actor_role")),
+        outcome=str(serialized["outcome"]),
+        target_kind=cast(str | None, serialized.get("target_kind")),
+        target_id=cast(str | None, serialized.get("target_id")),
+        metadata=cast(dict[str, object], json.loads(str(serialized["metadata_json"]))),
+    )
+
+
+def flush_pending_outbox(
+    pending_events: list[AuditEvent],
+    persist_snapshot: Callable[[], None] | None = None,
+) -> None:
+    """Deliver committed outbox events and retain failed deliveries."""
+
+    if not pending_events:
+        return
+    target_store = get_default_store()
+    remaining: list[AuditEvent] = []
+    for event in pending_events:
+        try:
+            target_store.write(event)
+        except Exception:
+            remaining.append(event)
+    if len(remaining) == len(pending_events):
+        return
+    pending_events[:] = remaining
+    if persist_snapshot is not None:
+        persist_snapshot()
+
+
+def persist_outbox_with_snapshot(
+    pending_events: list[AuditEvent],
+    new_events: tuple[AuditEvent, ...],
+    persist_snapshot: Callable[[], None],
+) -> None:
+    """Commit portal state and its audit outbox before attempting delivery."""
+
+    pending_events.extend(new_events)
+    persist_snapshot()
+    flush_pending_outbox(pending_events, persist_snapshot)
 
 
 _DEFAULT_AUDIT_STATE_PATH = "var/portal-audit-events.sqlite3"
