@@ -9,6 +9,7 @@ where Postgres syntax requires (e.g. ``ON CONFLICT`` parameter ordering).
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -51,11 +52,12 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
 
 
 class PostgresPortalStateStore(SqlSnapshotStore):
-    """Postgres-backed portal state store using namespaced ``tpp`` schema."""
+    """Postgres-backed portal state store using one locked shared connection."""
 
     def __init__(self, database_url: str) -> None:
         self._database_url = database_url
         self._conn: Connection | None = None
+        self._write_lock = threading.RLock()
 
     @property
     def database_url(self) -> str:
@@ -98,7 +100,7 @@ class PostgresPortalStateStore(SqlSnapshotStore):
     @contextmanager
     def _transaction(self) -> Iterator[Cursor[object]]:
         conn = self._connection()
-        with conn.transaction(), conn.cursor() as cur:
+        with self._write_lock, conn.transaction(), conn.cursor() as cur:
             yield cur
 
     def _delete_absent_records(

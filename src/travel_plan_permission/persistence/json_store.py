@@ -44,7 +44,8 @@ class JsonPortalStateStore:
         result: dict[str, Any] = json.loads(self._path.read_text(encoding="utf-8"))
         return result
 
-    def save_snapshot(self, snapshot: dict[str, object]) -> None:
+    def save_snapshot(self, snapshot: dict[str, object], *, replace: bool = False) -> None:
+        del replace  # JSON preserves its legacy full-snapshot replacement semantics.
         self._path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = self._path.with_suffix(f"{self._path.suffix}.tmp")
         temp_path.write_text(

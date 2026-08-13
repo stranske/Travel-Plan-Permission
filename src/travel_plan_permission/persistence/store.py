@@ -40,14 +40,15 @@ class PortalStateStore(Protocol):
         ``PlannerProposalStore._serialize_state``.
         """
 
-    def save_snapshot(self, snapshot: dict[str, object]) -> None:
+    def save_snapshot(self, snapshot: dict[str, object], *, replace: bool = False) -> None:
         """Persist a serialized snapshot.
 
-        Implementations should reconcile each namespace declared in
-        :data:`RECORD_NAMESPACES` within a single transaction: delete rows whose
-        keys are absent from the incoming namespace, then upsert the current
-        records. Singleton mappings (e.g. ``review_ids_by_draft_id``) may be
-        stored as a single blob.
+        Mapped namespaces are merged per record by default so independent
+        writers cannot delete records they did not read.  Callers that own the
+        complete authoritative namespace, such as LRU eviction, pass
+        ``replace=True`` to remove rows absent from the snapshot. Singleton
+        mappings (e.g. ``review_ids_by_draft_id``) may be stored as a single
+        blob.
         """
 
     def close(self) -> None:

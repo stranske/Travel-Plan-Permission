@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -54,11 +55,17 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
 
 
 class SQLitePortalStateStore(SqlSnapshotStore):
-    """SQLite-backed portal state store using WAL journal mode."""
+    """SQLite-backed portal state store using WAL and a per-store write lock.
+
+    The HTTP service shares one store instance across synchronous routes.  The
+    lock serializes ``BEGIN IMMEDIATE``/commit pairs on that one SQLite
+    connection; WAL still permits concurrent readers.
+    """
 
     def __init__(self, path: Path) -> None:
         self._path = Path(path).expanduser()
         self._conn: sqlite3.Connection | None = None
+        self._write_lock = threading.RLock()
 
     @property
     def path(self) -> Path:
@@ -80,7 +87,7 @@ class SQLitePortalStateStore(SqlSnapshotStore):
 
     def initialize(self) -> None:
         conn = self._connection()
-        with _transaction(conn):
+        with _transaction(conn, self._write_lock):
             for stmt in _SCHEMA_STATEMENTS:
                 conn.execute(stmt)
             conn.execute(
@@ -100,7 +107,7 @@ class SQLitePortalStateStore(SqlSnapshotStore):
 
     def _transaction(self) -> _transaction:
         conn = self._connection()
-        return _transaction(conn)
+        return _transaction(conn, self._write_lock)
 
     def _delete_absent_records(
         self, handle: sqlite3.Connection, namespace: str, record_keys: list[str]
@@ -182,15 +189,26 @@ def _now_iso() -> str:
 class _transaction:  # noqa: N801 — context-manager style is the public surface here
     """Best-effort BEGIN IMMEDIATE/COMMIT context manager."""
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    def __init__(
+        self, conn: sqlite3.Connection, write_lock: threading.RLock | None = None
+    ) -> None:
         self._conn = conn
+        self._write_lock = write_lock or threading.RLock()
 
     def __enter__(self) -> sqlite3.Connection:
-        self._conn.execute("BEGIN IMMEDIATE")
+        self._write_lock.acquire()
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+        except BaseException:
+            self._write_lock.release()
+            raise
         return self._conn
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        if exc_type is None:
-            self._conn.execute("COMMIT")
-        else:
-            self._conn.execute("ROLLBACK")
+        try:
+            if exc_type is None:
+                self._conn.execute("COMMIT")
+            else:
+                self._conn.execute("ROLLBACK")
+        finally:
+            self._write_lock.release()
