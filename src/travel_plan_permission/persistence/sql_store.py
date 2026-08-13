@@ -25,13 +25,14 @@ class SqlSnapshotStore(PortalStateStore, ABC):
             snapshot[namespace] = self._coerce_payload(payload)
         return snapshot
 
-    def save_snapshot(self, snapshot: dict[str, object]) -> None:
+    def save_snapshot(self, snapshot: dict[str, object], *, replace: bool = False) -> None:
         now = self._now()
         with self._transaction() as handle:
             for namespace, value in snapshot.items():
                 if namespace in RECORD_NAMESPACES and isinstance(value, dict):
-                    record_keys = [str(record_key) for record_key in value]
-                    self._delete_absent_records(handle, namespace, record_keys)
+                    if replace:
+                        record_keys = [str(record_key) for record_key in value]
+                        self._delete_absent_records(handle, namespace, record_keys)
                     for record_key, payload in value.items():
                         self._upsert_record(handle, namespace, str(record_key), payload, now)
                 else:

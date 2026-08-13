@@ -72,7 +72,7 @@ class TestSQLitePortalStateStore:
         finally:
             store.close()
 
-    def test_save_snapshot_reconciles_absent_records(self, tmp_path: Path) -> None:
+    def test_replace_snapshot_reconciles_absent_records(self, tmp_path: Path) -> None:
         path = tmp_path / "concurrent.sqlite3"
         store_a = SQLitePortalStateStore(path)
         store_a.initialize()
@@ -80,7 +80,9 @@ class TestSQLitePortalStateStore:
 
         store_b = SQLitePortalStateStore(path)
         store_b.initialize()
-        store_b.save_snapshot({"portal_drafts_by_id": {"beta": _draft_payload({"who": "b"})}})
+        store_b.save_snapshot(
+            {"portal_drafts_by_id": {"beta": _draft_payload({"who": "b"})}}, replace=True
+        )
 
         loaded = SQLitePortalStateStore(path)
         loaded.initialize()
@@ -146,7 +148,7 @@ class TestSQLitePortalStateStore:
 
         store_b = SQLitePortalStateStore(path)
         store_b.initialize()
-        store_b.save_snapshot({"trip_states_by_execution_id": {}})
+        store_b.save_snapshot({"trip_states_by_execution_id": {}}, replace=True)
 
         loaded = SQLitePortalStateStore(path)
         loaded.initialize()
@@ -164,7 +166,7 @@ class TestSQLitePortalStateStore:
 
         store_b = SQLitePortalStateStore(path)
         store_b.initialize()
-        store_b.save_snapshot({"expense_drafts_by_id": {}})
+        store_b.save_snapshot({"expense_drafts_by_id": {}}, replace=True)
 
         loaded = SQLitePortalStateStore(path)
         loaded.initialize()
@@ -174,26 +176,23 @@ class TestSQLitePortalStateStore:
         store_b.close()
         loaded.close()
 
-    def test_reconcile_is_transactional_for_threaded_writers(self, tmp_path: Path) -> None:
+    def test_shared_singleton_store_survives_concurrent_writes(self, tmp_path: Path) -> None:
         path = tmp_path / "threads.sqlite3"
         bootstrap = SQLitePortalStateStore(path)
         bootstrap.initialize()
-        bootstrap.close()
+        store = bootstrap
 
         errors: list[BaseException] = []
 
         def worker(draft_id: str) -> None:
             try:
-                store = SQLitePortalStateStore(path)
-                store.initialize()
                 store.save_snapshot(
                     {"portal_drafts_by_id": {draft_id: _draft_payload({"id": draft_id})}}
                 )
-                store.close()
             except BaseException as exc:  # pragma: no cover — surfaced via assertion
                 errors.append(exc)
 
-        ids = [f"t-{i:03d}" for i in range(8)]
+        ids = [f"t-{i:03d}" for i in range(12)]
         threads = [threading.Thread(target=worker, args=(draft_id,)) for draft_id in ids]
         for t in threads:
             t.start()
@@ -201,13 +200,38 @@ class TestSQLitePortalStateStore:
             t.join()
         assert not errors
 
-        store = SQLitePortalStateStore(path)
-        store.initialize()
         snapshot = store.load_snapshot()
         store.close()
         assert snapshot is not None
-        assert len(snapshot["portal_drafts_by_id"]) == 1
-        assert next(iter(snapshot["portal_drafts_by_id"])) in set(ids)
+        assert set(snapshot["portal_drafts_by_id"]) == set(ids)
+
+    def test_concurrent_writers_do_not_lose_each_others_records(self, tmp_path: Path) -> None:
+        path = tmp_path / "concurrent-merge.sqlite3"
+        store = SQLitePortalStateStore(path)
+        store.initialize()
+        barrier = threading.Barrier(2)
+        errors: list[BaseException] = []
+
+        def worker(draft_id: str) -> None:
+            try:
+                barrier.wait()
+                store.save_snapshot(
+                    {"portal_drafts_by_id": {draft_id: _draft_payload({"id": draft_id})}}
+                )
+            except BaseException as exc:  # pragma: no cover — surfaced via assertion
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker, args=(draft_id,)) for draft_id in ("A", "B")]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert not errors
+        snapshot = store.load_snapshot()
+        store.close()
+        assert snapshot is not None
+        assert set(snapshot["portal_drafts_by_id"]) == {"A", "B"}
 
     def test_lru_evicted_portal_drafts_stay_evicted_after_restart(self, tmp_path: Path) -> None:
         state_path = tmp_path / "portal-runtime-state.sqlite3"
@@ -632,7 +656,8 @@ class TestPostgresPortalStateStore:
                     "d2": {"answers": {}},
                 },
                 "exception_requests_by_draft_id": {},
-            }
+            },
+            replace=True,
         )
 
         delete_calls = [

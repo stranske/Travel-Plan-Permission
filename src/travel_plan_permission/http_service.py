@@ -1072,7 +1072,7 @@ class PlannerProposalStore:
     def _persist_state(self) -> None:
         if self.store is None:
             return
-        self.store.save_snapshot(self._serialize_state())
+        self.store.save_snapshot(self._serialize_state(), replace=True)
 
     def _load_state(self) -> None:
         if self.store is None:
