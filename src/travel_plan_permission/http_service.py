@@ -13,6 +13,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, cast
 from urllib.parse import parse_qs
 from uuid import uuid4
@@ -685,31 +686,33 @@ class PlannerProposalStore:
             request=request.model_copy(deep=True),
             response=response.model_copy(deep=True),
         )
-        audit.write_audit_event(
-            audit.EVENT_PROPOSAL_CREATED,
-            actor_subject="planner-service",
-            outcome=audit.OUTCOME_SUCCESS,
-            target_kind="proposal",
-            target_id=request.proposal_id,
-            metadata={
-                "trip_id": trip_plan.trip_id,
-                "execution_id": execution_id,
-            },
-        )
-        audit.write_audit_event(
-            audit.EVENT_PROPOSAL_STATUS_CHANGE,
-            actor_subject="planner-service",
-            outcome="submitted",
-            target_kind="proposal",
-            target_id=request.proposal_id,
-            metadata={
-                "trip_id": trip_plan.trip_id,
-                "execution_id": execution_id,
-                "from_status": None,
-                "to_status": "submitted",
-            },
-        )
-        self._persist_state()
+        def write_submission_audit() -> None:
+            audit.write_audit_event(
+                audit.EVENT_PROPOSAL_CREATED,
+                actor_subject="planner-service",
+                outcome=audit.OUTCOME_SUCCESS,
+                target_kind="proposal",
+                target_id=request.proposal_id,
+                metadata={
+                    "trip_id": trip_plan.trip_id,
+                    "execution_id": execution_id,
+                },
+            )
+            audit.write_audit_event(
+                audit.EVENT_PROPOSAL_STATUS_CHANGE,
+                actor_subject="planner-service",
+                outcome="submitted",
+                target_kind="proposal",
+                target_id=request.proposal_id,
+                metadata={
+                    "trip_id": trip_plan.trip_id,
+                    "execution_id": execution_id,
+                    "from_status": None,
+                    "to_status": "submitted",
+                },
+            )
+
+        self._persist_state_with_audit(write_submission_audit)
 
     def lookup_submission(self, execution_id: str) -> StoredProposal | None:
         """Return a previously stored proposal submission by execution identifier."""
@@ -920,34 +923,49 @@ class PlannerProposalStore:
         """Persist a manager decision against an existing review request."""
 
         prior = self.manager_reviews.lookup(review_id)
-        from_status = prior.status.value if prior is not None else None
-        updated = self.manager_reviews.apply_action(
-            review_id,
-            action=action,
-            actor_id=actor_id,
-            rationale=rationale,
+        if prior is None:
+            raise KeyError(f"No manager review found for '{review_id}'.")
+        from_status = prior.status.value
+        prior_review = self.manager_reviews._copy_review(
+            self.manager_reviews.reviews_by_id[review_id]
         )
-        self.security.audit_log.record(
-            event_type=AuditEventType.REVIEW,
-            actor=actor_id,
-            subject=review_id,
-            outcome=action.value,
-            metadata={"draft_id": updated.draft_id, "status": updated.status.value},
-        )
-        audit.write_audit_event(
-            audit.EVENT_PROPOSAL_STATUS_CHANGE,
-            actor_subject=actor_id,
-            outcome=updated.status.value,
-            target_kind="manager_review",
-            target_id=review_id,
-            metadata={
-                "draft_id": updated.draft_id,
-                "action": action.value,
-                "from_status": from_status,
-                "to_status": updated.status.value,
-            },
-        )
-        self._persist_state()
+        prior_audit_event_count = len(self.security.audit_log.events)
+
+        try:
+            updated = self.manager_reviews.apply_action(
+                review_id,
+                action=action,
+                actor_id=actor_id,
+                rationale=rationale,
+            )
+            self.security.audit_log.record(
+                event_type=AuditEventType.REVIEW,
+                actor=actor_id,
+                subject=review_id,
+                outcome=action.value,
+                metadata={"draft_id": updated.draft_id, "status": updated.status.value},
+            )
+
+            def write_review_audit() -> None:
+                audit.write_audit_event(
+                    audit.EVENT_PROPOSAL_STATUS_CHANGE,
+                    actor_subject=actor_id,
+                    outcome=updated.status.value,
+                    target_kind="manager_review",
+                    target_id=review_id,
+                    metadata={
+                        "draft_id": updated.draft_id,
+                        "action": action.value,
+                        "from_status": from_status,
+                        "to_status": updated.status.value,
+                    },
+                )
+
+            self._persist_state_with_audit(write_review_audit)
+        except Exception:
+            self.manager_reviews.reviews_by_id[review_id] = prior_review
+            del self.security.audit_log.events[prior_audit_event_count:]
+            raise
         return updated
 
     def list_exception_requests(self, draft_id: str) -> list[ExceptionRequest]:
@@ -1071,6 +1089,22 @@ class PlannerProposalStore:
         if self.store is None:
             return
         self.store.save_snapshot(self._serialize_state(), replace=True)
+
+    def _persist_state_with_audit(self, *audit_writers: Callable[[], None]) -> None:
+        """Persist portal state, then flush durable audit events.
+
+        Durable audit rows are written only after ``save_snapshot`` succeeds so
+        a persistence failure cannot leave orphaned action events. When no SQL
+        store is configured, audit writers run immediately.
+        """
+
+        if self.store is None:
+            for writer in audit_writers:
+                writer()
+            return
+        self.store.save_snapshot(self._serialize_state(), replace=True)
+        for writer in audit_writers:
+            writer()
 
     def _load_state(self) -> None:
         if self.store is None:

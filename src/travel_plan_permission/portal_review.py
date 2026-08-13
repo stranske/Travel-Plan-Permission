@@ -1,4 +1,10 @@
-"""Shared portal validation and review-state builders."""
+"""Shared portal validation and review-state builders.
+
+Review transitions that mutate persisted manager-review state and emit durable
+audit events are committed atomically by :class:`http_service.PlannerProposalStore`
+via ``_persist_state_with_audit``; this module only computes derived portal
+review context and does not write audit rows directly.
+"""
 
 from __future__ import annotations
 

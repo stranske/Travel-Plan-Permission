@@ -23,6 +23,17 @@ configured retention window (default 7 years, override via
 ``TPP_AUDIT_RETENTION_DAYS``). External SIEM forwarding and immutable
 storage primitives (hash chains, write-once filesystems) remain out of
 scope for v1, per the issue.
+
+**Atomicity contract (issue #1436).** A durable action audit event must be
+committed if and only if the portal state mutation it describes is
+durably persisted. Emit-sites that pair a state change with
+:func:`write_audit_event` must route both through
+``PlannerProposalStore._persist_state_with_audit`` (or an equivalent helper)
+so that ``save_snapshot`` succeeds before any durable audit row is written
+and in-memory mutations roll back when persistence fails. Validation-only
+paths (for example rejected HTTP requests) may write truthful
+``auth.request`` events without a state mutation, but must not emit action
+events such as ``proposal.status_change``.
 """
 
 from __future__ import annotations
