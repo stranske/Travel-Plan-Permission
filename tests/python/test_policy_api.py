@@ -41,6 +41,19 @@ from travel_plan_permission import (
 )
 
 
+def test_module_sizes_stay_under_threshold() -> None:
+    """Keep new behavior out of the two legacy integration god-modules."""
+
+    source_root = Path(__file__).parents[2] / "src" / "travel_plan_permission"
+    limits = {"http_service.py": 2700, "policy_api.py": 2160}
+    observed = {
+        filename: len((source_root / filename).read_text(encoding="utf-8").splitlines())
+        for filename in limits
+    }
+
+    assert all(observed[filename] <= limit for filename, limit in limits.items()), observed
+
+
 @pytest.fixture()
 def trip_plan() -> TripPlan:
     return TripPlan(
