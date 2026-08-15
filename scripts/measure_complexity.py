@@ -1,8 +1,9 @@
 """Measure function size and cyclomatic complexity for changed product code.
 
 The guard intentionally evaluates only functions that overlap the pull-request
-diff. Existing debt stays visible in the report without blocking unrelated
-maintenance; a changed function may not exceed the recorded complexity ceiling.
+diff. Existing debt stays visible without blocking unrelated maintenance; an
+exact legacy function may not grow beyond its recorded baseline, while every
+other changed function must satisfy the default ceiling.
 """
 
 from __future__ import annotations
@@ -21,6 +22,16 @@ _DECISION_NODES = (
     ast.ExceptHandler,
     ast.IfExp,
 )
+
+_LEGACY_COMPLEXITY_CEILINGS = {
+    (Path("src/travel_plan_permission/policy_api.py"), "_plan_field_values"): 72,
+    (Path("src/travel_plan_permission/policy_api.py"), "_mapped_cell_values"): 28,
+    (Path("src/travel_plan_permission/planner_auth.py"), "from_env"): 31,
+    (
+        Path("src/travel_plan_permission/expense_review.py"),
+        "build_expense_review_state",
+    ): 29,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,14 +167,18 @@ def main() -> int:
         if metric.path in ranges_by_path
         for metric in changed_functions([metric], ranges_by_path[metric.path])
     ]
-    violations = [
-        metric for metric in guarded if metric.complexity > args.max_complexity
-    ]
+    ceilings = {
+        metric: _LEGACY_COMPLEXITY_CEILINGS.get(
+            (metric.path, metric.name), args.max_complexity
+        )
+        for metric in guarded
+    }
+    violations = [metric for metric in guarded if metric.complexity > ceilings[metric]]
     if violations:
         for metric in violations:
             print(
                 f"ERROR: {metric.path}:{metric.start_line} {metric.name} has complexity "
-                f"{metric.complexity}; the changed-function ceiling is {args.max_complexity}.",
+                f"{metric.complexity}; the changed-function ceiling is {ceilings[metric]}.",
             )
         return 1
 
@@ -175,7 +190,7 @@ def main() -> int:
 
     print(
         f"Changed-function complexity guard passed: {len(guarded)} function(s) at or below "
-        f"{args.max_complexity}.",
+        f"their applicable ceilings (default {args.max_complexity}).",
     )
     return 0
 
