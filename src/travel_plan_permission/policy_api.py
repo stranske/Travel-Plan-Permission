@@ -6,24 +6,19 @@ import json
 import re
 import tempfile
 from collections.abc import Sequence
-from dataclasses import dataclass
-from dataclasses import field as dataclass_field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from hashlib import sha256
 from importlib import resources
 from io import BytesIO
 from pathlib import Path
-from typing import Literal
 
 from openpyxl import load_workbook
 from openpyxl.workbook import Workbook
-from pydantic import BaseModel, Field
 
 from .canonical import CanonicalTripPlan
 from .mapping import TemplateMapping, load_template_mapping
 from .models import (
-    ApprovalEvent,
     ExceptionRequest,
     ExpenseCategory,
     ExpenseItem,
@@ -32,6 +27,48 @@ from .models import (
     TripStatus,
 )
 from .policy import PolicyContext, PolicyEngine, PolicyResult, Severity
+from .policy_contract_models import (
+    _DOCUMENTATION_RULE_IDS,
+    _PLANNER_POLICY_CONTRACT_VERSION,
+    _PLANNER_POLICY_TTL,
+    PlannerApprovalTrigger,
+    PlannerAuthContract,
+    PlannerBlockingIssue,
+    PlannerCorrelationId,
+    PlannerErrorRecord,
+    PlannerEvaluationOutcome,
+    PlannerExceptionRequirement,
+    PlannerExecutionState,
+    PlannerOperationType,
+    PlannerPolicyRequirement,
+    PlannerPolicyScoreEffect,
+    PlannerPolicyScoreExplanation,
+    PlannerPolicySnapshot,
+    PlannerPolicySnapshotRequest,
+    PlannerPreferredAlternative,
+    PlannerProposalEvaluationRequest,
+    PlannerProposalEvaluationResult,
+    PlannerProposalExecutionStatus,
+    PlannerProposalOperationResponse,
+    PlannerProposalStatus,
+    PlannerProposalStatusPayload,
+    PlannerProposalStatusRequest,
+    PlannerProposalSubmissionRequest,
+    PlannerReoptimizationGuidance,
+    PlannerRetryMetadata,
+    PlannerTransportPattern,
+    PlannerVersionContract,
+    PolicyCheckResult,
+    PolicyCheckStatus,
+    PolicyIssue,
+    PolicyIssueSeverity,
+    PolicySnapshotFreshness,
+    ReconciliationResult,
+    ReconciliationStatus,
+    UnfilledMappingEntry,
+    UnfilledMappingReport,
+    _MappedCellValue,
+)
 from .policy_versioning import PolicyVersion
 from .providers import ProviderRegistry, ProviderType, provider_type_for_category
 from .receipts import Receipt, summarize_receipts
@@ -43,36 +80,6 @@ from .security import (
 from .validation import PolicyValidator, ValidationResult
 from .workbook_ooxml import render_mapped_workbook
 from .workbook_population import populate_travel_workbook
-
-PolicyIssueSeverity = Literal["info", "warning", "error"]
-PolicyCheckStatus = Literal["pass", "fail"]
-ReconciliationStatus = Literal["under_budget", "on_budget", "over_budget"]
-PolicySnapshotFreshness = Literal["current", "stale", "invalidated"]
-PlannerOperationType = Literal[
-    "submit_proposal",
-    "poll_execution_status",
-    "get_evaluation_result",
-]
-PlannerProposalStatus = Literal["pending", "succeeded", "failed", "unavailable"]
-PlannerTransportPattern = Literal["sync", "async", "deferred"]
-PlannerEvaluationOutcome = Literal[
-    "compliant",
-    "non_compliant",
-    "exception_required",
-]
-PlannerExecutionState = Literal[
-    "accepted",
-    "running",
-    "succeeded",
-    "failed",
-    "deferred",
-    "retry_scheduled",
-    "cancelled",
-]
-PolicyIssueContextValue = str | int | float | bool | None
-_PLANNER_POLICY_CONTRACT_VERSION = "2026-04-11"
-_PLANNER_POLICY_TTL = timedelta(hours=24)
-_DOCUMENTATION_RULE_IDS = frozenset({"fare_evidence", "hotel_comparison", "third_party_paid"})
 
 __all__ = [
     "PolicyIssueSeverity",
@@ -124,492 +131,6 @@ __all__ = [
 ]
 
 
-class PolicyIssue(BaseModel):
-    """Single policy rule violation or advisory."""
-
-    code: str = Field(..., description="Stable policy rule code")
-    message: str = Field(..., description="Human-readable policy message")
-    severity: PolicyIssueSeverity = Field(..., description="Severity of the issue")
-    context: dict[str, PolicyIssueContextValue] = Field(
-        default_factory=dict, description="Additional rule context"
-    )
-
-
-class PolicyCheckResult(BaseModel):
-    """Aggregated policy check results for a trip plan."""
-
-    status: PolicyCheckStatus = Field(..., description="Pass/fail status")
-    issues: list[PolicyIssue] = Field(
-        default_factory=list, description="Policy issues raised by the check"
-    )
-    policy_version: str = Field(..., description="Deterministic policy version identifier")
-
-
-class PlannerPolicySnapshotRequest(BaseModel):
-    """Planner-facing request envelope for policy snapshot fetch."""
-
-    trip_id: str = Field(..., description="Trip identifier for the snapshot request")
-    requested_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
-        description="When the planner requested the snapshot",
-    )
-    snapshot_generated_at: datetime | None = Field(
-        default=None,
-        description="Previous snapshot timestamp when re-evaluating freshness",
-    )
-    known_policy_version: str | None = Field(
-        default=None,
-        description="Policy version already cached by the planner, if any",
-    )
-    invalidate_reason: str | None = Field(
-        default=None,
-        description="Explicit invalidation reason when the cached snapshot is unusable",
-    )
-
-
-class PlannerPolicyRequirement(BaseModel):
-    """Planner-facing requirement line item for booking or documentation rules."""
-
-    code: str = Field(..., description="Stable rule identifier")
-    summary: str = Field(..., description="Human-readable planner guidance")
-    severity: PolicyIssueSeverity = Field(..., description="Planner-facing severity")
-
-
-class PlannerApprovalTrigger(BaseModel):
-    """Reason the planner should surface approval or waiver handling."""
-
-    code: str = Field(..., description="Stable trigger identifier")
-    summary: str = Field(..., description="Human-readable trigger summary")
-    blocking: bool = Field(..., description="Whether the trigger blocks submission")
-    source: Literal["policy_rule", "exception_request"] = Field(
-        ..., description="Origin of the trigger"
-    )
-
-
-class PlannerAuthContract(BaseModel):
-    """Authentication contract for the planner-facing policy snapshot seam."""
-
-    endpoint: str = Field(..., description="Stable planner-facing endpoint identifier")
-    required_permission: str = Field(..., description="Permission required to read the snapshot")
-    auth_scheme: str = Field(..., description="Authentication scheme to use")
-    supported_sso: list[str] = Field(
-        default_factory=list,
-        description="Supported SSO providers for bearer token acquisition",
-    )
-
-
-class PlannerVersionContract(BaseModel):
-    """Versioning metadata needed by the planner cache and transport layer."""
-
-    contract_version: str = Field(..., description="Version of the snapshot contract")
-    policy_version: str = Field(..., description="Deterministic policy version hash")
-    planner_known_policy_version: str | None = Field(
-        default=None,
-        description="Policy version supplied by the planner cache, if any",
-    )
-    compatible_with_planner_cache: bool = Field(
-        ..., description="Whether the planner cache matches the current policy version"
-    )
-    etag: str = Field(..., description="Stable cache validator for the snapshot")
-
-
-class PlannerPolicySnapshot(BaseModel):
-    """Planner-facing snapshot response for policy metadata and runtime gating."""
-
-    trip_id: str = Field(..., description="Trip identifier")
-    freshness: PolicySnapshotFreshness = Field(
-        ..., description="Freshness state for the snapshot payload"
-    )
-    generated_at: datetime = Field(..., description="When this snapshot was generated")
-    expires_at: datetime = Field(..., description="When the snapshot becomes stale")
-    invalidated_at: datetime | None = Field(
-        default=None, description="When the snapshot was explicitly invalidated"
-    )
-    invalidation_reason: str | None = Field(
-        default=None, description="Why the snapshot is invalidated"
-    )
-    policy_status: PolicyCheckStatus = Field(
-        ..., description="Current blocking-policy pass/fail status"
-    )
-    booking_requirements: list[PlannerPolicyRequirement] = Field(
-        default_factory=list,
-        description="Booking-time requirements the planner should surface",
-    )
-    documentation_rules: list[PlannerPolicyRequirement] = Field(
-        default_factory=list,
-        description="Documentation rules the planner should enforce or request",
-    )
-    approval_triggers: list[PlannerApprovalTrigger] = Field(
-        default_factory=list,
-        description="Current triggers that require approval or a waiver workflow",
-    )
-    auth: PlannerAuthContract = Field(
-        ..., description="Authentication guidance for this transport seam"
-    )
-    versioning: PlannerVersionContract = Field(
-        ..., description="Versioning metadata for caching and compatibility"
-    )
-
-
-class PlannerCorrelationId(BaseModel):
-    """Stable correlation identifier for planner-originated operations."""
-
-    value: str = Field(..., description="Correlation identifier value")
-    issued_by: str = Field(
-        default="trip-planner", description="System that minted the correlation ID"
-    )
-
-
-class PlannerRetryMetadata(BaseModel):
-    """Retry guidance for non-terminal planner-facing operations."""
-
-    attempt: int = Field(..., ge=0, description="Current attempt count")
-    max_attempts: int = Field(..., ge=1, description="Maximum retry attempts")
-    retryable: bool = Field(..., description="Whether another retry should be attempted")
-    backoff_seconds: float | None = Field(
-        default=None, ge=0, description="Suggested delay before retrying"
-    )
-    next_retry_at: datetime | None = Field(
-        default=None, description="Recommended timestamp for the next retry"
-    )
-    reason: str = Field(..., description="Human-readable retry reason")
-
-
-class PlannerErrorRecord(BaseModel):
-    """Structured error detail for failed or unavailable proposal work."""
-
-    code: str = Field(..., description="Stable error code")
-    message: str = Field(..., description="Human-readable error summary")
-    category: str = Field(..., description="Broad error category")
-    retryable: bool = Field(..., description="Whether retrying may succeed")
-    details: dict[str, object] = Field(
-        default_factory=dict, description="Additional structured error context"
-    )
-
-
-class PlannerProposalExecutionStatus(BaseModel):
-    """Execution status surfaced to the planner transport seam."""
-
-    state: PlannerExecutionState = Field(..., description="Current execution state")
-    terminal: bool = Field(..., description="Whether the execution has finished")
-    summary: str = Field(..., description="Human-readable execution summary")
-    external_status: str = Field(..., description="Transport or HTTP-style status summary")
-    poll_after_seconds: float | None = Field(
-        default=None, ge=0, description="Suggested poll interval for non-terminal states"
-    )
-    updated_at: datetime | None = Field(
-        default=None, description="When the execution state last changed"
-    )
-
-
-class PlannerProposalStatusPayload(BaseModel):
-    """Canonical trip proposal status details carried by a poll response."""
-
-    trip_id: str = Field(..., description="Trip identifier linked to the proposal")
-    proposal_id: str = Field(..., description="Stable planner proposal identifier")
-    proposal_version: str = Field(..., description="Planner proposal version identifier")
-    execution_id: str = Field(..., description="Execution identifier returned on submit")
-    status: TripStatus = Field(..., description="Current canonical trip proposal status")
-    approval_history: tuple[ApprovalEvent, ...] = Field(
-        default_factory=tuple,
-        description="Immutable approval and override history for this proposal",
-    )
-    validation_results: list[ValidationResult] = Field(
-        default_factory=list,
-        description="Latest validation results attached to the proposal",
-    )
-    exception_requests: list[ExceptionRequest] = Field(
-        default_factory=list,
-        description="Current exception requests linked to the proposal",
-    )
-
-
-class PlannerProposalSubmissionRequest(BaseModel):
-    """Planner-facing submission request contract for proposal execution."""
-
-    trip_id: str = Field(..., description="Trip identifier linked to the proposal")
-    proposal_id: str = Field(..., description="Stable planner proposal identifier")
-    proposal_version: str = Field(..., description="Planner proposal version identifier")
-    payload: dict[str, object] = Field(
-        default_factory=dict, description="Planner proposal payload or envelope"
-    )
-    request_id: str | None = Field(
-        default=None, description="Optional caller-supplied request identifier"
-    )
-    correlation_id: PlannerCorrelationId | None = Field(
-        default=None, description="Optional caller-supplied correlation identifier"
-    )
-    transport_pattern: PlannerTransportPattern = Field(
-        default="deferred", description="Expected transport pattern for execution"
-    )
-    organization_id: str | None = Field(
-        default=None, description="Optional organization or tenant identifier"
-    )
-    submitted_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
-        description="When the planner submitted the proposal",
-    )
-    service_available: bool = Field(
-        default=True,
-        description="Whether the planner-facing submission seam is currently available",
-    )
-
-
-class PlannerProposalStatusRequest(BaseModel):
-    """Planner-facing polling request contract for proposal execution status."""
-
-    trip_id: str = Field(..., description="Trip identifier linked to the execution")
-    proposal_id: str = Field(..., description="Stable planner proposal identifier")
-    proposal_version: str = Field(..., description="Planner proposal version identifier")
-    execution_id: str = Field(..., description="Execution identifier returned on submit")
-    request_id: str | None = Field(
-        default=None, description="Optional caller-supplied poll request identifier"
-    )
-    correlation_id: PlannerCorrelationId | None = Field(
-        default=None, description="Optional caller-supplied correlation identifier"
-    )
-    transport_pattern: PlannerTransportPattern = Field(
-        default="deferred", description="Expected transport pattern for polling"
-    )
-    requested_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
-        description="When the planner polled the execution status",
-    )
-    service_available: bool = Field(
-        default=True,
-        description="Whether the planner-facing status seam is currently available",
-    )
-
-
-class PlannerProposalOperationResponse(BaseModel):
-    """Planner-facing response envelope for submission and polling operations."""
-
-    operation: PlannerOperationType = Field(..., description="Operation that produced the response")
-    submission_status: PlannerProposalStatus = Field(
-        ..., description="Planner-friendly lifecycle status for the submission"
-    )
-    request_id: str = Field(..., description="Stable request identifier")
-    correlation_id: PlannerCorrelationId = Field(
-        ..., description="Correlation identifier shared across related operations"
-    )
-    transport_pattern: PlannerTransportPattern = Field(
-        ..., description="Transport pattern used by the operation"
-    )
-    execution_status: PlannerProposalExecutionStatus | None = Field(
-        default=None, description="Execution-state detail when an execution exists"
-    )
-    result_payload: dict[str, object] = Field(
-        default_factory=dict, description="Structured linkage payload for the planner"
-    )
-    proposal_status: PlannerProposalStatusPayload | None = Field(
-        default=None,
-        description="Canonical status readback details when polling a stored proposal",
-    )
-    error: PlannerErrorRecord | None = Field(
-        default=None, description="Structured error detail when the operation failed"
-    )
-    retry: PlannerRetryMetadata | None = Field(
-        default=None, description="Retry guidance for non-terminal or unavailable states"
-    )
-    received_at: datetime = Field(..., description="When this response was produced")
-    status_endpoint: str | None = Field(
-        default=None, description="Stable endpoint for follow-up status checks"
-    )
-
-
-class PlannerProposalEvaluationRequest(BaseModel):
-    """Planner-facing request for a deterministic evaluation result payload."""
-
-    trip_id: str = Field(..., description="Trip identifier linked to the execution")
-    proposal_id: str = Field(..., description="Stable planner proposal identifier")
-    proposal_version: str = Field(..., description="Planner proposal version identifier")
-    execution_id: str = Field(..., description="Execution identifier returned on submit")
-    request_id: str | None = Field(
-        default=None, description="Optional caller-supplied evaluation request identifier"
-    )
-    correlation_id: PlannerCorrelationId | None = Field(
-        default=None, description="Optional caller-supplied correlation identifier"
-    )
-    requested_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
-        description="When the planner requested the evaluation result",
-    )
-
-
-class PlannerBlockingIssue(BaseModel):
-    """Blocking issue detail the planner should surface directly to the user."""
-
-    code: str = Field(..., description="Stable blocking issue code")
-    message: str = Field(..., description="Human-readable blocking issue summary")
-    field_path: str | None = Field(
-        default=None, description="Relevant planner field or payload path"
-    )
-    resolution: str = Field(..., description="Deterministic next step for remediation")
-
-
-class PlannerPreferredAlternative(BaseModel):
-    """Preferred alternative surfaced when the current proposal is non-compliant."""
-
-    category: str = Field(..., description="Alternative category such as airfare")
-    title: str = Field(..., description="Human-readable alternative label")
-    rationale: str = Field(..., description="Why the alternative is preferred")
-    suggested_value: str | None = Field(
-        default=None, description="Suggested machine-readable replacement value"
-    )
-
-
-class PlannerPolicyScoreEffect(BaseModel):
-    """Single policy or preference effect applied to proposal scoring."""
-
-    code: str = Field(..., description="Stable policy or preference effect code")
-    category: Literal["hard_block", "soft_penalty", "preference_tradeoff"] = Field(
-        ..., description="How the effect changes proposal scoring"
-    )
-    score_delta: int = Field(
-        ..., description="Deterministic score movement applied to the base score"
-    )
-    blocking: bool = Field(
-        default=False, description="Whether this effect prevents approval regardless of score"
-    )
-    message: str = Field(..., description="Human-readable explanation for the effect")
-
-
-class PlannerPolicyScoreExplanation(BaseModel):
-    """Business-mode policy scoring explanation for planner proposal ranking."""
-
-    base_preference_score: int = Field(
-        ..., ge=0, le=100, description="Score before business policy effects"
-    )
-    final_preference_score: int = Field(
-        ..., ge=0, le=100, description="Score after business policy effects"
-    )
-    hard_blocked: bool = Field(
-        ..., description="Whether a hard policy constraint forced the final score to zero"
-    )
-    effects: list[PlannerPolicyScoreEffect] = Field(
-        default_factory=list,
-        description="Ordered hard-block, soft-penalty, and preference-tradeoff effects",
-    )
-    summary: str = Field(..., description="Short explanation of the final scoring posture")
-
-
-class PlannerExceptionRequirement(BaseModel):
-    """Exception workflow requirement the planner must track or display."""
-
-    type: str = Field(..., description="Stable exception type identifier")
-    status: str = Field(..., description="Current exception workflow status")
-    approval_level: str | None = Field(
-        default=None, description="Current approval level required for the exception"
-    )
-    summary: str = Field(..., description="Human-readable exception workflow summary")
-
-
-class PlannerReoptimizationGuidance(BaseModel):
-    """Structured reoptimization guidance for planner follow-up flows."""
-
-    code: str = Field(..., description="Stable reoptimization guidance code")
-    summary: str = Field(..., description="Human-readable guidance summary")
-    actions: list[str] = Field(
-        default_factory=list,
-        description="Deterministic follow-up actions for the planner",
-    )
-
-
-class PlannerProposalEvaluationResult(BaseModel):
-    """Planner-facing evaluation result contract for a proposal execution."""
-
-    trip_id: str = Field(..., description="Trip identifier linked to the execution")
-    proposal_id: str = Field(..., description="Stable planner proposal identifier")
-    proposal_version: str = Field(..., description="Planner proposal version identifier")
-    execution_id: str = Field(..., description="Execution identifier returned on submit")
-    request_id: str = Field(..., description="Stable evaluation request identifier")
-    correlation_id: PlannerCorrelationId = Field(
-        ..., description="Correlation identifier shared across proposal operations"
-    )
-    outcome: PlannerEvaluationOutcome = Field(..., description="Planner-facing evaluation outcome")
-    result_endpoint: str = Field(
-        ..., description="Stable endpoint for re-fetching this evaluation result"
-    )
-    status_endpoint: str = Field(
-        ..., description="Stable endpoint for the execution status linkage"
-    )
-    policy_result: PolicyCheckResult = Field(
-        ..., description="Underlying policy evaluation snapshot for this proposal"
-    )
-    blocking_issues: list[PlannerBlockingIssue] = Field(
-        default_factory=list,
-        description="Blocking issues that must be resolved before success",
-    )
-    preferred_alternatives: list[PlannerPreferredAlternative] = Field(
-        default_factory=list,
-        description="Preferred alternatives surfaced for non-compliant results",
-    )
-    score_explanation: PlannerPolicyScoreExplanation = Field(
-        ..., description="How business policy constraints modified proposal preference scoring"
-    )
-    exception_requirements: list[PlannerExceptionRequirement] = Field(
-        default_factory=list,
-        description="Exception workflow requirements that remain in flight",
-    )
-    reoptimization_guidance: list[PlannerReoptimizationGuidance] = Field(
-        default_factory=list,
-        description="Deterministic follow-up guidance for the planner runtime",
-    )
-    generated_at: datetime = Field(..., description="When this result payload was generated")
-
-
-class ReconciliationResult(BaseModel):
-    """Summary of post-trip expense reconciliation."""
-
-    trip_id: str = Field(..., description="Trip identifier")
-    report_id: str = Field(..., description="Generated expense report identifier")
-    planned_total: Decimal = Field(..., description="Estimated trip total")
-    actual_total: Decimal = Field(..., description="Actual reconciled spend")
-    variance: Decimal = Field(..., description="Actual minus planned spend variance")
-    status: ReconciliationStatus = Field(..., description="Budget reconciliation status")
-    receipt_count: int = Field(..., ge=0, description="Number of receipts")
-    receipts_by_type: dict[str, int] = Field(
-        default_factory=dict, description="Receipt counts by file type"
-    )
-    expenses_by_category: dict[ExpenseCategory, Decimal] = Field(
-        default_factory=dict, description="Actual spend grouped by category"
-    )
-
-
-@dataclass(frozen=True)
-class UnfilledMappingEntry:
-    """Details for a mapping entry that could not be populated."""
-
-    field: str
-    cell: str | None
-    reason: str
-
-
-@dataclass
-class UnfilledMappingReport:
-    """Structured summary of unfilled mapping entries."""
-
-    cells: list[UnfilledMappingEntry] = dataclass_field(default_factory=list)
-    dropdowns: list[UnfilledMappingEntry] = dataclass_field(default_factory=list)
-    checkboxes: list[UnfilledMappingEntry] = dataclass_field(default_factory=list)
-
-    def add(self, section: str, field: str, cell: str | None, reason: str) -> None:
-        entry = UnfilledMappingEntry(field=field, cell=cell, reason=reason)
-        if section == "cells":
-            self.cells.append(entry)
-        elif section == "dropdowns":
-            self.dropdowns.append(entry)
-        elif section == "checkboxes":
-            self.checkboxes.append(entry)
-
-
-@dataclass(frozen=True)
-class _MappedCellValue:
-    cell: str
-    value: object
-    number_format: str | None = None
-
-
 _TEMPLATE_FILENAME = "Travel_Itinerary_Form_Jan_1_2026_runtime.xlsx"
 _CURRENCY_FIELDS = {
     "air_travel_airport_parking_cost",
@@ -650,7 +171,9 @@ def _default_template_path(template_file: str | None = None) -> Path:
         if candidate.exists():
             return candidate
     try:
-        resource = resources.files("travel_plan_permission").joinpath("templates", template_name)
+        resource = resources.files("travel_plan_permission").joinpath(
+            "templates", template_name
+        )
     except ModuleNotFoundError:
         resource = None
     if resource is not None and resource.is_file():
@@ -672,7 +195,9 @@ def _default_template_bytes(template_file: str | None = None) -> bytes:
         if candidate.exists():
             return candidate.read_bytes()
     try:
-        resource = resources.files("travel_plan_permission").joinpath("templates", template_name)
+        resource = resources.files("travel_plan_permission").joinpath(
+            "templates", template_name
+        )
     except ModuleNotFoundError:
         resource = None
     if resource is not None and resource.is_file():
@@ -735,9 +260,15 @@ def _plan_field_values(
         else plan.lowest_fare
     )
     default_meal_count = trip_nights
-    canonical_meal_counts = canonical_plan.meal_counts if canonical_plan is not None else None
-    comparable_hotels = canonical_plan.comparable_hotels if canonical_plan is not None else None
-    canonical_ground = canonical_plan.ground_transport if canonical_plan is not None else None
+    canonical_meal_counts = (
+        canonical_plan.meal_counts if canonical_plan is not None else None
+    )
+    comparable_hotels = (
+        canonical_plan.comparable_hotels if canonical_plan is not None else None
+    )
+    canonical_ground = (
+        canonical_plan.ground_transport if canonical_plan is not None else None
+    )
 
     def ground_choice(*terms: str) -> bool:
         return bool(normalized_ground_transport) and any(
@@ -746,7 +277,8 @@ def _plan_field_values(
 
     rideshare_planned = (
         canonical_ground.rideshare_planned
-        if canonical_ground is not None and canonical_ground.rideshare_planned is not None
+        if canonical_ground is not None
+        and canonical_ground.rideshare_planned is not None
         else ground_choice("rideshare", "taxi")
     )
     shuttle_planned = (
@@ -770,13 +302,21 @@ def _plan_field_values(
         and canonical_ground.mosers_vehicle_planned is not None
         else ground_choice("mosers", "organization vehicle")
     )
-    mileage_miles = canonical_ground.mileage_miles if canonical_ground is not None else None
-    mileage_cost = canonical_ground.mileage_cost if canonical_ground is not None else None
+    mileage_miles = (
+        canonical_ground.mileage_miles if canonical_ground is not None else None
+    )
+    mileage_cost = (
+        canonical_ground.mileage_cost if canonical_ground is not None else None
+    )
     if mileage_cost is None and mileage_miles is not None:
         # The supplied 2026 organizational workbook fixes its calculator at $0.725/mile.
         mileage_cost = mileage_miles * Decimal("0.725")
-    rideshare_cost = canonical_ground.rideshare_cost if canonical_ground is not None else None
-    shuttle_cost = canonical_ground.shuttle_cost if canonical_ground is not None else None
+    rideshare_cost = (
+        canonical_ground.rideshare_cost if canonical_ground is not None else None
+    )
+    shuttle_cost = (
+        canonical_ground.shuttle_cost if canonical_ground is not None else None
+    )
     rental_cost = canonical_ground.rental_cost if canonical_ground is not None else None
     if rideshare_planned and rideshare_cost is None:
         rideshare_cost = ground_transport_estimate
@@ -785,7 +325,11 @@ def _plan_field_values(
     if rental_planned and rental_cost is None:
         rental_cost = ground_transport_estimate
     destination_ground_cost = sum(
-        (amount for amount in (rideshare_cost, shuttle_cost, rental_cost) if amount is not None),
+        (
+            amount
+            for amount in (rideshare_cost, shuttle_cost, rental_cost)
+            if amount is not None
+        ),
         Decimal("0"),
     )
     if destination_ground_cost == 0 and ground_transport_estimate is not None:
@@ -850,9 +394,9 @@ def _plan_field_values(
                 if selected_airfare is not None and lowest_airfare is not None
                 else None
             ),
-            "hotel_comparison_reviewed": bool(comparable_hotels)
-            if comparable_hotels is not None
-            else None,
+            "hotel_comparison_reviewed": (
+                bool(comparable_hotels) if comparable_hotels is not None else None
+            ),
             "meal_counts.breakfast": (
                 canonical_meal_counts.breakfast
                 if canonical_meal_counts is not None
@@ -879,10 +423,14 @@ def _plan_field_values(
             "ground_transport.shuttle_cost": shuttle_cost,
             "ground_transport.rental_cost": rental_cost,
             "ground_transport.rental_company": (
-                canonical_ground.rental_company if canonical_ground is not None else None
+                canonical_ground.rental_company
+                if canonical_ground is not None
+                else None
             ),
             "ground_transport.rental_daily_rate": (
-                canonical_ground.rental_daily_rate if canonical_ground is not None else None
+                canonical_ground.rental_daily_rate
+                if canonical_ground is not None
+                else None
             ),
             "ground_transport.rental_reason": (
                 canonical_ground.rental_reason if canonical_ground is not None else None
@@ -976,12 +524,16 @@ def _normalize_dropdown_value(value: object, options: object) -> object:
     return value
 
 
-def _policy_version(engine: PolicyEngine, validator: PolicyValidator | None = None) -> str:
+def _policy_version(
+    engine: PolicyEngine, validator: PolicyValidator | None = None
+) -> str:
     """Version the policy sources represented by a given API response."""
 
     rule_config: dict[str, object] = {"policy_lite_rules": engine.describe_rules()}
     if validator is not None:
-        rule_config["validation_rules"] = [rule.model_dump(mode="json") for rule in validator.rules]
+        rule_config["validation_rules"] = [
+            rule.model_dump(mode="json") for rule in validator.rules
+        ]
     version = PolicyVersion.from_config(None, rule_config)
     return version.config_hash
 
@@ -1134,7 +686,9 @@ def _proposal_request_id(
 ) -> str:
     if provided:
         return provided
-    return _stable_operation_id("req", operation, trip_id, proposal_id, proposal_version)
+    return _stable_operation_id(
+        "req", operation, trip_id, proposal_id, proposal_version
+    )
 
 
 def _proposal_correlation_id(
@@ -1151,14 +705,16 @@ def _proposal_correlation_id(
     )
 
 
-def _proposal_execution_id(*, trip_id: str, proposal_id: str, proposal_version: str) -> str:
+def _proposal_execution_id(
+    *, trip_id: str, proposal_id: str, proposal_version: str
+) -> str:
     return _stable_operation_id("exec", trip_id, proposal_id, proposal_version)
 
 
 def _proposal_status_endpoint(*, proposal_id: str, execution_id: str) -> str:
-    return PLANNER_EXECUTION_STATUS_ENDPOINT.replace(":proposal_id", proposal_id).replace(
-        ":execution_id", execution_id
-    )
+    return PLANNER_EXECUTION_STATUS_ENDPOINT.replace(
+        ":proposal_id", proposal_id
+    ).replace(":execution_id", execution_id)
 
 
 def _result_endpoint(*, execution_id: str) -> str:
@@ -1219,7 +775,9 @@ def _proposal_response_for_plan(
     execution_id = _proposal_execution_id(
         trip_id=trip_id, proposal_id=proposal_id, proposal_version=proposal_version
     )
-    status_endpoint = _proposal_status_endpoint(proposal_id=proposal_id, execution_id=execution_id)
+    status_endpoint = _proposal_status_endpoint(
+        proposal_id=proposal_id, execution_id=execution_id
+    )
     base_payload = _proposal_result_payload(
         trip_id=trip_id,
         proposal_id=proposal_id,
@@ -1316,8 +874,12 @@ def _proposal_response_for_plan(
             proposal_status=status_payload,
         )
 
-    pending_state: PlannerExecutionState = "running" if transport_pattern == "async" else "deferred"
-    queue_state = "running" if transport_pattern == "async" else "waiting_for_policy_engine"
+    pending_state: PlannerExecutionState = (
+        "running" if transport_pattern == "async" else "deferred"
+    )
+    queue_state = (
+        "running" if transport_pattern == "async" else "waiting_for_policy_engine"
+    )
     poll_after_seconds = 15.0 if transport_pattern == "async" else 30.0
 
     return PlannerProposalOperationResponse(
@@ -1412,7 +974,9 @@ def _preferred_alternatives(plan: TripPlan) -> list[PlannerPreferredAlternative]
         if airfare_provider_type is not None
         else []
     )
-    airfare_allowed = [vendor for vendor in allowed_vendors if vendor != airfare_provider]
+    airfare_allowed = [
+        vendor for vendor in allowed_vendors if vendor != airfare_provider
+    ]
     if airfare_provider and airfare_allowed:
         alternatives.append(
             PlannerPreferredAlternative(
@@ -1484,13 +1048,12 @@ def _score_explanation(
             0,
             min(
                 100,
-                base_score + sum(effect.score_delta for effect in effects if not effect.blocking),
+                base_score
+                + sum(effect.score_delta for effect in effects if not effect.blocking),
             ),
         )
         if any(effect.category == "soft_penalty" for effect in effects):
-            summary = (
-                "Soft policy constraints reduced the preference score without blocking submission."
-            )
+            summary = "Soft policy constraints reduced the preference score without blocking submission."
         elif effects:
             summary = "Preference tradeoffs changed the score while business policy still passed."
         else:
@@ -1517,7 +1080,9 @@ def _exception_requirements(
                 type=request.type.value,
                 status=request.status.value,
                 approval_level=(
-                    request.approval_level.value if request.approval_level is not None else None
+                    request.approval_level.value
+                    if request.approval_level is not None
+                    else None
                 ),
                 summary=(
                     f"{request.type.value.replace('_', ' ')} exception is "
@@ -1676,7 +1241,8 @@ def get_policy_snapshot(
             contract_version=_PLANNER_POLICY_CONTRACT_VERSION,
             policy_version=policy_version,
             planner_known_policy_version=request.known_policy_version,
-            compatible_with_planner_cache=request.known_policy_version in (None, policy_version),
+            compatible_with_planner_cache=request.known_policy_version
+            in (None, policy_version),
             etag=_planner_snapshot_etag(plan, policy_version=policy_version),
         ),
     )
@@ -1722,7 +1288,9 @@ def submit_proposal(
         organization_id=request.organization_id,
     )
     if request.payload:
-        response.result_payload["submitted_payload_keys"] = sorted(request.payload.keys())
+        response.result_payload["submitted_payload_keys"] = sorted(
+            request.payload.keys()
+        )
     return response
 
 
@@ -1874,7 +1442,8 @@ def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
         *[_issue_from_validation_result(result) for result in validation_results],
     ]
     has_blocking = any(
-        not result.passed and result.severity == Severity.BLOCKING for result in policy_results
+        not result.passed and result.severity == Severity.BLOCKING
+        for result in policy_results
     ) or any(result.is_blocking for result in validation_results)
     status: PolicyCheckStatus = "fail" if has_blocking else "pass"
     return PolicyCheckResult(
@@ -1893,7 +1462,9 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
     providers = {
         provider.name
         for provider_type in ProviderType
-        for provider in registry.lookup(provider_type, destination, reference_date=reference_date)
+        for provider in registry.lookup(
+            provider_type, destination, reference_date=reference_date
+        )
     }
     return sorted(providers, key=str.lower)
 
@@ -1906,7 +1477,9 @@ def _allowed_vendors_for_type(plan: TripPlan, provider_type: ProviderType) -> li
     reference_date = plan.departure_date
     providers = {
         provider.name
-        for provider in registry.lookup(provider_type, destination, reference_date=reference_date)
+        for provider in registry.lookup(
+            provider_type, destination, reference_date=reference_date
+        )
     }
     return sorted(providers, key=str.lower)
 
@@ -1935,7 +1508,9 @@ def _mapped_cell_values(
                     report.add("cells", field_name, cell, "invalid_currency")
                 continue
             mapped_values.append(
-                _MappedCellValue(cell=cell, value=amount, number_format=_CURRENCY_FORMAT)
+                _MappedCellValue(
+                    cell=cell, value=amount, number_format=_CURRENCY_FORMAT
+                )
             )
             continue
         if field_name in _INTEGER_FIELDS:
@@ -2023,7 +1598,11 @@ def _populate_travel_workbook(
     report: UnfilledMappingReport | None = None,
 ) -> None:
     populate_travel_workbook(
-        wb, plan, mapping, canonical_plan=canonical_plan, report=report,
+        wb,
+        plan,
+        mapping,
+        canonical_plan=canonical_plan,
+        report=report,
         mapped_cell_values=_mapped_cell_values,
     )
 
@@ -2092,14 +1671,18 @@ def fill_travel_spreadsheet(
 
     output_path = Path(output_path)
     output_path.write_bytes(
-        render_travel_spreadsheet_bytes(plan, canonical_plan=canonical_plan, report=report)
+        render_travel_spreadsheet_bytes(
+            plan, canonical_plan=canonical_plan, report=report
+        )
     )
     return output_path
 
 
 def _expense_from_receipt(receipt: Receipt) -> ExpenseItem:
     explanation = (
-        "Third-party payment recorded on receipt." if receipt.paid_by_third_party else None
+        "Third-party payment recorded on receipt."
+        if receipt.paid_by_third_party
+        else None
     )
     return ExpenseItem(
         category=ExpenseCategory.OTHER,
