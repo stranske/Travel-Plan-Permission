@@ -57,6 +57,15 @@ jobs:
         with:
           force-full: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'verify:full') || github.event_name == 'schedule' }}
 
+  generated-delivery-seal:
+    name: generated delivery seal
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require an exact-head delivery seal
+        uses: stranske/Workflows/.github/actions/generated-delivery-seal@632eb20586f8403219d101e8a982b62efeb94104
+
   python-ci:
     name: Python CI
     needs: detect
@@ -258,7 +267,7 @@ jobs:
 
   summary:
     name: gate-summary
-    needs: [detect, python-ci, orchestration-tests, cross-repo-smoke]
+    needs: [detect, generated-delivery-seal, python-ci, orchestration-tests, cross-repo-smoke]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
@@ -280,6 +289,7 @@ jobs:
         id: summarize
         env:
           DETECT_RESULT: ${{ needs.detect.result || 'skipped' }}
+          DELIVERY_SEAL_RESULT: ${{ needs.generated-delivery-seal.result || 'skipped' }}
           PYTHON_RESULT: ${{ needs.python-ci.result || 'skipped' }}
           ORCHESTRATION_RESULT: ${{ needs.orchestration-tests.result || 'skipped' }}
           CROSS_REPO_SMOKE_RESULT: ${{ needs.cross-repo-smoke.result || 'skipped' }}
@@ -287,6 +297,7 @@ jobs:
           set -euo pipefail
 
           python_result="${PYTHON_RESULT:-skipped}"
+          delivery_seal_result="${DELIVERY_SEAL_RESULT:-skipped}"
           orchestration_result="${ORCHESTRATION_RESULT:-skipped}"
           cross_repo_smoke_result="${CROSS_REPO_SMOKE_RESULT:-skipped}"
 
@@ -296,6 +307,8 @@ jobs:
 
           [[ "${python_result}" == "failure" ]] && \
             failed_desc="${failed_desc:+${failed_desc}; }Python CI failed"
+          [[ "${delivery_seal_result}" == "failure" ]] && \
+            failed_desc="${failed_desc:+${failed_desc}; }generated delivery seal failed"
           [[ "${orchestration_result}" == "failure" ]] && \
             failed_desc="${failed_desc:+${failed_desc}; }orchestration tests failed"
           [[ "${cross_repo_smoke_result}" == "failure" ]] && \
@@ -303,6 +316,8 @@ jobs:
 
           [[ "${python_result}" == "cancelled" ]] && \
             cancelled_desc="${cancelled_desc:+${cancelled_desc}; }Python CI cancelled"
+          [[ "${delivery_seal_result}" == "cancelled" ]] && \
+            cancelled_desc="${cancelled_desc:+${cancelled_desc}; }generated delivery seal cancelled"
           [[ "${orchestration_result}" == "cancelled" ]] && \
             cancelled_desc="${cancelled_desc:+${cancelled_desc}; }orchestration tests cancelled"
           [[ "${cross_repo_smoke_result}" == "cancelled" ]] && \
@@ -315,13 +330,14 @@ jobs:
             state="error"
             description="${cancelled_desc}"
           elif [[ ("${python_result}" == "success" || "${python_result}" == "skipped") && \
+                  ("${delivery_seal_result}" == "success" || "${delivery_seal_result}" == "skipped") && \
                   ("${orchestration_result}" == "success" || "${orchestration_result}" == "skipped") && \
                   ("${cross_repo_smoke_result}" == "success" || "${cross_repo_smoke_result}" == "skipped") ]]; then
             state="success"
             description="All checks passed"
           else
             state="pending"
-            description="Gate status pending (python=${python_result}, orchestration=${orchestration_result}, cross-repo-smoke=${cross_repo_smoke_result})"
+            description="Gate status pending (seal=${delivery_seal_result}, python=${python_result}, orchestration=${orchestration_result}, cross-repo-smoke=${cross_repo_smoke_result})"
           fi
 
           detect_result="${DETECT_RESULT:-skipped}"
