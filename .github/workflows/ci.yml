@@ -45,6 +45,19 @@ jobs:
           python -m pip install -e ".[dev]"
           python -m pytest tests/python/test_policy_api.py::test_module_sizes_stay_under_threshold -q
 
+  complexity-guard:
+    name: Changed Function Complexity Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Reject changed product functions above the recorded ceiling
+        run: python scripts/measure_complexity.py --changed-from origin/main --max-complexity 25
+
   orchestration:
     name: LangGraph Orchestration CI
     runs-on: ubuntu-latest
