@@ -101,7 +101,7 @@ librt==0.13.0 ; platform_python_implementation != 'PyPy'
     # via mypy
 markupsafe==3.0.3
     # via jinja2
-mypy==2.3.0
+mypy==2.3.1
     # via travel-plan-permission (pyproject.toml)
 mypy-extensions==1.1.0
     # via
