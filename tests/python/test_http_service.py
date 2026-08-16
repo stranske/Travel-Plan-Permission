@@ -10,7 +10,7 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -167,25 +167,33 @@ def _get_portal_review(
 
 
 def _portal_form_payload() -> dict[str, str]:
+    today = date.today()
+    booking_date = today - timedelta(days=21)
+    depart_date = today + timedelta(days=45)
+    return_date = depart_date + timedelta(days=4)
+    event_start = depart_date + timedelta(days=1)
+    event_end = depart_date + timedelta(days=3)
     return {
         "traveler_name": "Alex Rivera",
         "business_purpose": "Regional partner summit",
         "cost_center": "OPS-410",
         "city_state": "Seattle, WA",
         "destination_zip": "98101",
-        "event_dates": "10/06/2025 - 10/08/2025",
+        "event_dates": (
+            f"{event_start.strftime('%m/%d/%Y')} - {event_end.strftime('%m/%d/%Y')}"
+        ),
         "departure_city_airport": "Portland (PDX)",
         "return_city_airport": "Seattle (SEA)",
-        "depart_date": "2025-10-05",
-        "return_date": "2025-10-09",
+        "depart_date": depart_date.isoformat(),
+        "return_date": return_date.isoformat(),
         "notes": "Request airport pickup and late checkout.",
         "flight_pref_outbound.carrier_flight": "AS120",
-        "flight_pref_outbound.depart_time": "2025-10-05T07:15",
-        "flight_pref_outbound.arrive_time": "2025-10-05T09:40",
+        "flight_pref_outbound.depart_time": f"{depart_date.isoformat()}T07:15",
+        "flight_pref_outbound.arrive_time": f"{depart_date.isoformat()}T09:40",
         "flight_pref_outbound.roundtrip_cost": "455.25",
         "flight_pref_return.carrier_flight": "AS221",
-        "flight_pref_return.depart_time": "2025-10-09T18:10",
-        "flight_pref_return.arrive_time": "2025-10-09T20:30",
+        "flight_pref_return.depart_time": f"{return_date.isoformat()}T18:10",
+        "flight_pref_return.arrive_time": f"{return_date.isoformat()}T20:30",
         "lowest_cost_roundtrip": "430.00",
         "hotel.name": "Pine Street Suites",
         "hotel.address": "120 Pine St",
@@ -206,7 +214,7 @@ def _portal_form_payload() -> dict[str, str]:
         "attestations.budget_ok": "true",
         "parking_estimate": "35.00",
         "event_registration_cost": "320.00",
-        "booking_date": "2025-09-20",
+        "booking_date": booking_date.isoformat(),
         "selected_fare": "455.25",
         "lowest_fare": "430.00",
         "cabin_class": "economy",

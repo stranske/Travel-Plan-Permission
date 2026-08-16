@@ -29,6 +29,7 @@ from .policy_api import (
     get_policy_snapshot,
     render_travel_spreadsheet_bytes,
 )
+from .policy import Severity
 from .prompt_flow import build_output_bundle, generate_questions, required_field_gaps
 
 if TYPE_CHECKING:
@@ -131,9 +132,24 @@ def _portal_artifacts(
 
 
 def _blocking_policy_codes(policy_result: PolicyCheckResult | None) -> list[str]:
-    if policy_result is None or policy_result.status != "fail":
+    if policy_result is None:
         return []
-    return [issue.code for issue in policy_result.issues if issue.severity == "error"]
+    codes: list[str] = []
+    for issue in policy_result.issues:
+        context = issue.context or {}
+        if context.get("blocking") is True:
+            codes.append(issue.code)
+            continue
+        if context.get("blocking") is False:
+            continue
+        raw_severity = context.get("severity")
+        if raw_severity is not None and str(raw_severity).lower() == Severity.BLOCKING:
+            codes.append(issue.code)
+            continue
+        # Synthetic portal-review tests use severity=error without context.
+        if issue.severity == "error" and not context:
+            codes.append(issue.code)
+    return codes
 
 
 def portal_validation_state(
@@ -208,6 +224,8 @@ def portal_review_state(
             canonical_trip_plan_to_model(canonical_plan),
             answers,
         )
+        if trip_plan.expenses is None:
+            trip_plan = trip_plan.model_copy(update={"expenses": []})
         policy_snapshot = get_policy_snapshot(
             trip_plan,
             PlannerPolicySnapshotRequest(trip_id=trip_plan.trip_id),
