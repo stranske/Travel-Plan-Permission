@@ -2,21 +2,20 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
-
-from travel_plan_permission.http_service import (
-    PlannerProposalStore,
-    PortalArtifact,
-    create_app,
-)
-from travel_plan_permission.policy_api import PolicyCheckResult, PolicyIssue
-from travel_plan_permission import portal_review
-
 from tests.python.test_http_service import (
     AUTH_HEADER,
     _create_portal_draft,
     _get_portal_review,
     _set_runtime_env,
 )
+
+from travel_plan_permission import portal_review
+from travel_plan_permission.http_service import (
+    PlannerProposalStore,
+    PortalArtifact,
+    create_app,
+)
+from travel_plan_permission.policy_api import PolicyCheckResult, PolicyIssue
 
 
 def _blocking_policy_result() -> PolicyCheckResult:

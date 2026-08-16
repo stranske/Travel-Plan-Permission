@@ -103,9 +103,11 @@ def build_expense_review_state[StoreT](
                     receipt_attached=receipt is not None,
                     receipt_url=str(receipt_reference) if receipt_reference else None,
                     receipt_references=[receipt] if receipt is not None else [],
-                    third_party_paid_explanation=str(answers["third_party_paid_explanation"])
-                    if answers.get("third_party_paid_explanation")
-                    else None,
+                    third_party_paid_explanation=(
+                        str(answers["third_party_paid_explanation"])
+                        if answers.get("third_party_paid_explanation")
+                        else None
+                    ),
                 )
                 expense_report = ApprovalEngine.from_file().evaluate_report(
                     ExpenseReport(

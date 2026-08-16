@@ -171,9 +171,7 @@ def _default_template_path(template_file: str | None = None) -> Path:
         if candidate.exists():
             return candidate
     try:
-        resource = resources.files("travel_plan_permission").joinpath(
-            "templates", template_name
-        )
+        resource = resources.files("travel_plan_permission").joinpath("templates", template_name)
     except ModuleNotFoundError:
         resource = None
     if resource is not None and resource.is_file():
@@ -195,9 +193,7 @@ def _default_template_bytes(template_file: str | None = None) -> bytes:
         if candidate.exists():
             return candidate.read_bytes()
     try:
-        resource = resources.files("travel_plan_permission").joinpath(
-            "templates", template_name
-        )
+        resource = resources.files("travel_plan_permission").joinpath("templates", template_name)
     except ModuleNotFoundError:
         resource = None
     if resource is not None and resource.is_file():
@@ -255,20 +251,12 @@ def _plan_field_values(
         else plan.expense_breakdown.get(ExpenseCategory.AIRFARE)
     )
     lowest_airfare = (
-        canonical_plan.lowest_cost_roundtrip
-        if canonical_plan is not None
-        else plan.lowest_fare
+        canonical_plan.lowest_cost_roundtrip if canonical_plan is not None else plan.lowest_fare
     )
     default_meal_count = trip_nights
-    canonical_meal_counts = (
-        canonical_plan.meal_counts if canonical_plan is not None else None
-    )
-    comparable_hotels = (
-        canonical_plan.comparable_hotels if canonical_plan is not None else None
-    )
-    canonical_ground = (
-        canonical_plan.ground_transport if canonical_plan is not None else None
-    )
+    canonical_meal_counts = canonical_plan.meal_counts if canonical_plan is not None else None
+    comparable_hotels = canonical_plan.comparable_hotels if canonical_plan is not None else None
+    canonical_ground = canonical_plan.ground_transport if canonical_plan is not None else None
 
     def ground_choice(*terms: str) -> bool:
         return bool(normalized_ground_transport) and any(
@@ -277,8 +265,7 @@ def _plan_field_values(
 
     rideshare_planned = (
         canonical_ground.rideshare_planned
-        if canonical_ground is not None
-        and canonical_ground.rideshare_planned is not None
+        if canonical_ground is not None and canonical_ground.rideshare_planned is not None
         else ground_choice("rideshare", "taxi")
     )
     shuttle_planned = (
@@ -298,25 +285,16 @@ def _plan_field_values(
     )
     mosers_vehicle_planned = (
         canonical_ground.mosers_vehicle_planned
-        if canonical_ground is not None
-        and canonical_ground.mosers_vehicle_planned is not None
+        if canonical_ground is not None and canonical_ground.mosers_vehicle_planned is not None
         else ground_choice("mosers", "organization vehicle")
     )
-    mileage_miles = (
-        canonical_ground.mileage_miles if canonical_ground is not None else None
-    )
-    mileage_cost = (
-        canonical_ground.mileage_cost if canonical_ground is not None else None
-    )
+    mileage_miles = canonical_ground.mileage_miles if canonical_ground is not None else None
+    mileage_cost = canonical_ground.mileage_cost if canonical_ground is not None else None
     if mileage_cost is None and mileage_miles is not None:
         # The supplied 2026 organizational workbook fixes its calculator at $0.725/mile.
         mileage_cost = mileage_miles * Decimal("0.725")
-    rideshare_cost = (
-        canonical_ground.rideshare_cost if canonical_ground is not None else None
-    )
-    shuttle_cost = (
-        canonical_ground.shuttle_cost if canonical_ground is not None else None
-    )
+    rideshare_cost = canonical_ground.rideshare_cost if canonical_ground is not None else None
+    shuttle_cost = canonical_ground.shuttle_cost if canonical_ground is not None else None
     rental_cost = canonical_ground.rental_cost if canonical_ground is not None else None
     if rideshare_planned and rideshare_cost is None:
         rideshare_cost = ground_transport_estimate
@@ -325,11 +303,7 @@ def _plan_field_values(
     if rental_planned and rental_cost is None:
         rental_cost = ground_transport_estimate
     destination_ground_cost = sum(
-        (
-            amount
-            for amount in (rideshare_cost, shuttle_cost, rental_cost)
-            if amount is not None
-        ),
+        (amount for amount in (rideshare_cost, shuttle_cost, rental_cost) if amount is not None),
         Decimal("0"),
     )
     if destination_ground_cost == 0 and ground_transport_estimate is not None:
@@ -354,9 +328,7 @@ def _plan_field_values(
                 canonical_plan.event_dates
                 if canonical_plan is not None and canonical_plan.event_dates
                 else (
-                    f"{depart_date:%m/%d/%Y} - {return_date:%m/%d/%Y}"
-                    if valid_trip_dates
-                    else None
+                    f"{depart_date:%m/%d/%Y} - {return_date:%m/%d/%Y}" if valid_trip_dates else None
                 )
             ),
             "departure_city_airport": (
@@ -385,9 +357,7 @@ def _plan_field_values(
             ),
             "parking_estimate": parking_estimate,
             "parking_daily_rate": (
-                parking_estimate / Decimal(trip_nights)
-                if parking_estimate is not None
-                else None
+                parking_estimate / Decimal(trip_nights) if parking_estimate is not None else None
             ),
             "airfare_within_threshold": (
                 selected_airfare <= lowest_airfare + Decimal("200")
@@ -423,14 +393,10 @@ def _plan_field_values(
             "ground_transport.shuttle_cost": shuttle_cost,
             "ground_transport.rental_cost": rental_cost,
             "ground_transport.rental_company": (
-                canonical_ground.rental_company
-                if canonical_ground is not None
-                else None
+                canonical_ground.rental_company if canonical_ground is not None else None
             ),
             "ground_transport.rental_daily_rate": (
-                canonical_ground.rental_daily_rate
-                if canonical_ground is not None
-                else None
+                canonical_ground.rental_daily_rate if canonical_ground is not None else None
             ),
             "ground_transport.rental_reason": (
                 canonical_ground.rental_reason if canonical_ground is not None else None
@@ -524,16 +490,12 @@ def _normalize_dropdown_value(value: object, options: object) -> object:
     return value
 
 
-def _policy_version(
-    engine: PolicyEngine, validator: PolicyValidator | None = None
-) -> str:
+def _policy_version(engine: PolicyEngine, validator: PolicyValidator | None = None) -> str:
     """Version the policy sources represented by a given API response."""
 
     rule_config: dict[str, object] = {"policy_lite_rules": engine.describe_rules()}
     if validator is not None:
-        rule_config["validation_rules"] = [
-            rule.model_dump(mode="json") for rule in validator.rules
-        ]
+        rule_config["validation_rules"] = [rule.model_dump(mode="json") for rule in validator.rules]
     version = PolicyVersion.from_config(None, rule_config)
     return version.config_hash
 
@@ -686,9 +648,7 @@ def _proposal_request_id(
 ) -> str:
     if provided:
         return provided
-    return _stable_operation_id(
-        "req", operation, trip_id, proposal_id, proposal_version
-    )
+    return _stable_operation_id("req", operation, trip_id, proposal_id, proposal_version)
 
 
 def _proposal_correlation_id(
@@ -705,16 +665,14 @@ def _proposal_correlation_id(
     )
 
 
-def _proposal_execution_id(
-    *, trip_id: str, proposal_id: str, proposal_version: str
-) -> str:
+def _proposal_execution_id(*, trip_id: str, proposal_id: str, proposal_version: str) -> str:
     return _stable_operation_id("exec", trip_id, proposal_id, proposal_version)
 
 
 def _proposal_status_endpoint(*, proposal_id: str, execution_id: str) -> str:
-    return PLANNER_EXECUTION_STATUS_ENDPOINT.replace(
-        ":proposal_id", proposal_id
-    ).replace(":execution_id", execution_id)
+    return PLANNER_EXECUTION_STATUS_ENDPOINT.replace(":proposal_id", proposal_id).replace(
+        ":execution_id", execution_id
+    )
 
 
 def _result_endpoint(*, execution_id: str) -> str:
@@ -775,9 +733,7 @@ def _proposal_response_for_plan(
     execution_id = _proposal_execution_id(
         trip_id=trip_id, proposal_id=proposal_id, proposal_version=proposal_version
     )
-    status_endpoint = _proposal_status_endpoint(
-        proposal_id=proposal_id, execution_id=execution_id
-    )
+    status_endpoint = _proposal_status_endpoint(proposal_id=proposal_id, execution_id=execution_id)
     base_payload = _proposal_result_payload(
         trip_id=trip_id,
         proposal_id=proposal_id,
@@ -874,12 +830,8 @@ def _proposal_response_for_plan(
             proposal_status=status_payload,
         )
 
-    pending_state: PlannerExecutionState = (
-        "running" if transport_pattern == "async" else "deferred"
-    )
-    queue_state = (
-        "running" if transport_pattern == "async" else "waiting_for_policy_engine"
-    )
+    pending_state: PlannerExecutionState = "running" if transport_pattern == "async" else "deferred"
+    queue_state = "running" if transport_pattern == "async" else "waiting_for_policy_engine"
     poll_after_seconds = 15.0 if transport_pattern == "async" else 30.0
 
     return PlannerProposalOperationResponse(
@@ -974,9 +926,7 @@ def _preferred_alternatives(plan: TripPlan) -> list[PlannerPreferredAlternative]
         if airfare_provider_type is not None
         else []
     )
-    airfare_allowed = [
-        vendor for vendor in allowed_vendors if vendor != airfare_provider
-    ]
+    airfare_allowed = [vendor for vendor in allowed_vendors if vendor != airfare_provider]
     if airfare_provider and airfare_allowed:
         alternatives.append(
             PlannerPreferredAlternative(
@@ -1048,12 +998,13 @@ def _score_explanation(
             0,
             min(
                 100,
-                base_score
-                + sum(effect.score_delta for effect in effects if not effect.blocking),
+                base_score + sum(effect.score_delta for effect in effects if not effect.blocking),
             ),
         )
         if any(effect.category == "soft_penalty" for effect in effects):
-            summary = "Soft policy constraints reduced the preference score without blocking submission."
+            summary = (
+                "Soft policy constraints reduced the preference score without blocking submission."
+            )
         elif effects:
             summary = "Preference tradeoffs changed the score while business policy still passed."
         else:
@@ -1080,9 +1031,7 @@ def _exception_requirements(
                 type=request.type.value,
                 status=request.status.value,
                 approval_level=(
-                    request.approval_level.value
-                    if request.approval_level is not None
-                    else None
+                    request.approval_level.value if request.approval_level is not None else None
                 ),
                 summary=(
                     f"{request.type.value.replace('_', ' ')} exception is "
@@ -1241,8 +1190,7 @@ def get_policy_snapshot(
             contract_version=_PLANNER_POLICY_CONTRACT_VERSION,
             policy_version=policy_version,
             planner_known_policy_version=request.known_policy_version,
-            compatible_with_planner_cache=request.known_policy_version
-            in (None, policy_version),
+            compatible_with_planner_cache=request.known_policy_version in (None, policy_version),
             etag=_planner_snapshot_etag(plan, policy_version=policy_version),
         ),
     )
@@ -1288,9 +1236,7 @@ def submit_proposal(
         organization_id=request.organization_id,
     )
     if request.payload:
-        response.result_payload["submitted_payload_keys"] = sorted(
-            request.payload.keys()
-        )
+        response.result_payload["submitted_payload_keys"] = sorted(request.payload.keys())
     return response
 
 
@@ -1442,8 +1388,7 @@ def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
         *[_issue_from_validation_result(result) for result in validation_results],
     ]
     has_blocking = any(
-        not result.passed and result.severity == Severity.BLOCKING
-        for result in policy_results
+        not result.passed and result.severity == Severity.BLOCKING for result in policy_results
     ) or any(result.is_blocking for result in validation_results)
     status: PolicyCheckStatus = "fail" if has_blocking else "pass"
     return PolicyCheckResult(
@@ -1462,9 +1407,7 @@ def list_allowed_vendors(plan: TripPlan) -> list[str]:
     providers = {
         provider.name
         for provider_type in ProviderType
-        for provider in registry.lookup(
-            provider_type, destination, reference_date=reference_date
-        )
+        for provider in registry.lookup(provider_type, destination, reference_date=reference_date)
     }
     return sorted(providers, key=str.lower)
 
@@ -1477,9 +1420,7 @@ def _allowed_vendors_for_type(plan: TripPlan, provider_type: ProviderType) -> li
     reference_date = plan.departure_date
     providers = {
         provider.name
-        for provider in registry.lookup(
-            provider_type, destination, reference_date=reference_date
-        )
+        for provider in registry.lookup(provider_type, destination, reference_date=reference_date)
     }
     return sorted(providers, key=str.lower)
 
@@ -1508,9 +1449,7 @@ def _mapped_cell_values(
                     report.add("cells", field_name, cell, "invalid_currency")
                 continue
             mapped_values.append(
-                _MappedCellValue(
-                    cell=cell, value=amount, number_format=_CURRENCY_FORMAT
-                )
+                _MappedCellValue(cell=cell, value=amount, number_format=_CURRENCY_FORMAT)
             )
             continue
         if field_name in _INTEGER_FIELDS:
@@ -1671,18 +1610,14 @@ def fill_travel_spreadsheet(
 
     output_path = Path(output_path)
     output_path.write_bytes(
-        render_travel_spreadsheet_bytes(
-            plan, canonical_plan=canonical_plan, report=report
-        )
+        render_travel_spreadsheet_bytes(plan, canonical_plan=canonical_plan, report=report)
     )
     return output_path
 
 
 def _expense_from_receipt(receipt: Receipt) -> ExpenseItem:
     explanation = (
-        "Third-party payment recorded on receipt."
-        if receipt.paid_by_third_party
-        else None
+        "Third-party payment recorded on receipt." if receipt.paid_by_third_party else None
     )
     return ExpenseItem(
         category=ExpenseCategory.OTHER,

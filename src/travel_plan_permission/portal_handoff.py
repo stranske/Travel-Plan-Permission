@@ -25,9 +25,7 @@ def _decode(value: str) -> bytes:
 def resolve_handoff_signing_secret() -> str:
     """Use a dedicated secret when available, otherwise the configured planner token."""
 
-    secret = os.getenv(_SIGNING_SECRET_ENV, "").strip() or os.getenv(
-        "TPP_ACCESS_TOKEN", ""
-    ).strip()
+    secret = os.getenv(_SIGNING_SECRET_ENV, "").strip() or os.getenv("TPP_ACCESS_TOKEN", "").strip()
     if len(secret) < 16:
         raise ValueError(
             "TPP handoff links require TPP_HANDOFF_SIGNING_SECRET or a TPP_ACCESS_TOKEN "
@@ -56,9 +54,7 @@ def issue_handoff_token(
 def issue_pending_handoff_token(*, secret: str, now: int | None = None) -> str:
     """Return a capability that may complete one browser handoff form."""
 
-    return issue_handoff_token(
-        f"pending:{secrets.token_urlsafe(18)}", secret=secret, now=now
-    )
+    return issue_handoff_token(f"pending:{secrets.token_urlsafe(18)}", secret=secret, now=now)
 
 
 def verify_handoff_token(

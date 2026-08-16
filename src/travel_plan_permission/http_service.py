@@ -115,9 +115,7 @@ __all__ = [
     "main",
 ]
 
-_TEMPLATES = Jinja2Templates(
-    directory=str(Path(__file__).resolve().parent / "templates")
-)
+_TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 _PORTAL_CANONICAL_FIELDS: tuple[str, ...] = (
     "traveler_name",
     "business_purpose",
@@ -425,9 +423,7 @@ def _resolve_role_view(role_name: str | None) -> RoleView:
         role = RoleName(role_name or RoleName.TRAVELER.value)
     except ValueError:
         role = RoleName.TRAVELER
-    permissions = tuple(
-        sorted(DEFAULT_ROLES[role].permissions, key=lambda item: item.value)
-    )
+    permissions = tuple(sorted(DEFAULT_ROLES[role].permissions, key=lambda item: item.value))
     return RoleView(role=role, permissions=permissions)
 
 
@@ -487,9 +483,7 @@ class PlannerProposalStore:
     portal_drafts_by_id: dict[str, PortalDraft] = field(default_factory=dict)
     expense_drafts_by_id: dict[str, PortalDraft] = field(default_factory=dict)
     manager_reviews: ReviewWorkflowStore = field(default_factory=ReviewWorkflowStore)
-    exception_requests_by_draft_id: dict[str, list[ExceptionRequest]] = field(
-        default_factory=dict
-    )
+    exception_requests_by_draft_id: dict[str, list[ExceptionRequest]] = field(default_factory=dict)
     security: SecurityModel = field(default_factory=SecurityModel)
     pending_audit_events: list[audit.AuditEvent] = field(default_factory=list)
     state_path: Path | None = None
@@ -528,9 +522,7 @@ class PlannerProposalStore:
 
         execution_id = response.result_payload.get("execution_id")
         if not isinstance(execution_id, str):
-            raise ValueError(
-                "Planner proposal response missing required string execution_id"
-            )
+            raise ValueError("Planner proposal response missing required string execution_id")
         prior_plan = self.plans_by_trip_id.get(trip_plan.trip_id)
         prior_submission = self.proposals_by_execution_id.get(execution_id)
         prior_pending_count = len(self.pending_audit_events)
@@ -882,9 +874,7 @@ class PlannerProposalStore:
 
         requests = self.exception_requests_by_draft_id.get(draft_id)
         if requests is None or exception_index < 0 or exception_index >= len(requests):
-            raise KeyError(
-                f"No exception request {exception_index} found for draft '{draft_id}'."
-            )
+            raise KeyError(f"No exception request {exception_index} found for draft '{draft_id}'.")
         target = requests[exception_index]
         if approved:
             target.approve(approver_id=actor_id, notes=notes)
@@ -1001,16 +991,10 @@ class PlannerProposalStore:
         self.proposals_by_execution_id = {
             execution_id: StoredProposal(
                 trip_plan=TripPlan.model_validate(serialized["trip_plan"]),
-                request=PlannerProposalSubmissionRequest.model_validate(
-                    serialized["request"]
-                ),
-                response=PlannerProposalOperationResponse.model_validate(
-                    serialized["response"]
-                ),
+                request=PlannerProposalSubmissionRequest.model_validate(serialized["request"]),
+                response=PlannerProposalOperationResponse.model_validate(serialized["response"]),
             )
-            for execution_id, serialized in payload.get(
-                "proposals_by_execution_id", {}
-            ).items()
+            for execution_id, serialized in payload.get("proposals_by_execution_id", {}).items()
         }
         self.portal_drafts_by_id = {
             draft_id: _portal_draft_from_state(draft_id, serialized)
@@ -1029,9 +1013,7 @@ class PlannerProposalStore:
                     policy_snapshot=PlannerPolicySnapshot.model_validate(
                         serialized["policy_snapshot"]
                     ),
-                    policy_result=PolicyCheckResult.model_validate(
-                        serialized["policy_result"]
-                    ),
+                    policy_result=PolicyCheckResult.model_validate(serialized["policy_result"]),
                     status=ReviewStatus(serialized["status"]),
                     submitted_at=datetime.fromisoformat(serialized["submitted_at"]),
                     updated_at=datetime.fromisoformat(serialized["updated_at"]),
@@ -1039,9 +1021,7 @@ class PlannerProposalStore:
                         ReviewHistoryEvent(
                             event_type=event_payload["event_type"],
                             actor_id=event_payload["actor_id"],
-                            timestamp=datetime.fromisoformat(
-                                event_payload["timestamp"]
-                            ),
+                            timestamp=datetime.fromisoformat(event_payload["timestamp"]),
                             status=ReviewStatus(event_payload["status"]),
                             rationale=event_payload.get("rationale"),
                         )
@@ -1053,9 +1033,7 @@ class PlannerProposalStore:
             review_ids_by_draft_id=dict(payload.get("review_ids_by_draft_id", {})),
         )
         self.exception_requests_by_draft_id = {
-            draft_id: [
-                ExceptionRequest.model_validate(item) for item in serialized_requests
-            ]
+            draft_id: [ExceptionRequest.model_validate(item) for item in serialized_requests]
             for draft_id, serialized_requests in payload.get(
                 "exception_requests_by_draft_id", {}
             ).items()
@@ -1119,12 +1097,9 @@ class PlannerProposalStore:
                 for draft_id, requests in self.exception_requests_by_draft_id.items()
             },
             "audit_events": [
-                _audit_log_event_to_state(event)
-                for event in self.security.audit_log.events
+                _audit_log_event_to_state(event) for event in self.security.audit_log.events
             ],
-            "pending_audit_events": [
-                event.as_row() for event in self.pending_audit_events
-            ],
+            "pending_audit_events": [event.as_row() for event in self.pending_audit_events],
         }
 
 
@@ -1159,14 +1134,10 @@ def _portal_draft_from_state(draft_id: str, serialized: dict[str, Any]) -> Porta
                 content=base64.b64decode(artifact_payload["content"]),
                 media_type=artifact_payload["media_type"],
             )
-            for artifact_name, artifact_payload in serialized.get(
-                "cached_artifacts", {}
-            ).items()
+            for artifact_name, artifact_payload in serialized.get("cached_artifacts", {}).items()
         },
         submission_response=(
-            PlannerProposalOperationResponse.model_validate(
-                serialized["submission_response"]
-            )
+            PlannerProposalOperationResponse.model_validate(serialized["submission_response"])
             if serialized.get("submission_response") is not None
             else None
         ),
@@ -1322,9 +1293,7 @@ def _expense_export_artifacts(
 ) -> dict[str, PortalArtifact]:
     service = ExportService()
     csv_filename, csv_content = service.to_csv([expense_report], batch_id=draft_id)
-    excel_filename, excel_content = service.to_excel(
-        [expense_report], batch_id=draft_id
-    )
+    excel_filename, excel_content = service.to_excel([expense_report], batch_id=draft_id)
     return {
         "expense-csv": PortalArtifact(
             filename=csv_filename,
@@ -1373,9 +1342,7 @@ def _resolve_expense_linkage(
             traveler_name=manager_review.trip_plan.traveler_name,
             trip_id=manager_review.trip_plan.trip_id,
         )
-    exception_requests = proposal_store.exception_requests_by_draft_id.get(
-        approved_request_id
-    )
+    exception_requests = proposal_store.exception_requests_by_draft_id.get(approved_request_id)
     if exception_requests:
         approved = next(
             (
@@ -1422,9 +1389,7 @@ def _validate_expense_linkage(
             f"Approved request id '{approved_request_id}' was not found in the "
             "manager-review or exception-request stores.",
         )
-        return _ExpenseLinkageValidation(
-            errors=missing_linkage_errors, blocks_export=True
-        )
+        return _ExpenseLinkageValidation(errors=missing_linkage_errors, blocks_export=True)
     errors: list[str] = []
     if not resolution.is_approved:
         errors.append(
@@ -1564,9 +1529,7 @@ def _manager_review_queue_context(
         "request": request,
         "reviews": reviews,
         "role_view": role_view,
-        "actor_permissions": tuple(
-            sorted(auth_context.permissions, key=lambda item: item.value)
-        ),
+        "actor_permissions": tuple(sorted(auth_context.permissions, key=lambda item: item.value)),
         "role_can_approve": auth_context.can(Permission.APPROVE),
         "role_can_configure": auth_context.can(Permission.CONFIGURE),
     }
@@ -1586,9 +1549,7 @@ def _manager_review_detail_context(
         "request": request,
         "review": review,
         "role_view": role_view,
-        "actor_permissions": tuple(
-            sorted(auth_context.permissions, key=lambda item: item.value)
-        ),
+        "actor_permissions": tuple(sorted(auth_context.permissions, key=lambda item: item.value)),
         "role_can_approve": auth_context.can(Permission.APPROVE),
         "role_can_configure": auth_context.can(Permission.CONFIGURE),
         "exceptions": exceptions or [],
@@ -1611,9 +1572,7 @@ def _admin_dashboard_context(
     return {
         "request": request,
         "role_view": role_view,
-        "actor_permissions": tuple(
-            sorted(auth_context.permissions, key=lambda item: item.value)
-        ),
+        "actor_permissions": tuple(sorted(auth_context.permissions, key=lambda item: item.value)),
         "role_can_approve": auth_context.can(Permission.APPROVE),
         "role_can_configure": auth_context.can(Permission.CONFIGURE),
         "available_roles": tuple(RoleName),
@@ -1777,9 +1736,7 @@ def register_portal_routes(
     @app.post("/portal/expenses/review")
     async def portal_expense_review(request: Request) -> Response:
         answers = _expense_answers_from_encoded_body(await request.body())
-        review = _expense_review_state(
-            "preview", answers, proposal_store=proposal_store
-        )
+        review = _expense_review_state("preview", answers, proposal_store=proposal_store)
         if review.missing_fields or review.validation_errors:
             return _TEMPLATES.TemplateResponse(
                 request=request,
@@ -1792,9 +1749,7 @@ def register_portal_routes(
             draft.draft_id, answers, proposal_store=proposal_store
         )
         if persisted_review.artifacts:
-            proposal_store.cache_expense_artifacts(
-                draft.draft_id, persisted_review.artifacts
-            )
+            proposal_store.cache_expense_artifacts(draft.draft_id, persisted_review.artifacts)
         return RedirectResponse(
             url=request.url_for("portal_expense_detail", draft_id=draft.draft_id),
             status_code=status.HTTP_303_SEE_OTHER,
@@ -1831,9 +1786,7 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
             required_fields=_PORTAL_REQUIRED_FIELDS,
             canonical_payload_builder=_canonical_payload_from_answers,
             submission_response=draft.submission_response,
-            manager_review=proposal_store.lookup_manager_review_for_draft(
-                draft.draft_id
-            ),
+            manager_review=proposal_store.lookup_manager_review_for_draft(draft.draft_id),
         )
         if review.artifacts and not draft.cached_artifacts:
             proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
@@ -1860,9 +1813,7 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No expense portal draft found for '{draft_id}'.",
             )
-        review = _expense_review_state(
-            draft.draft_id, draft.answers, proposal_store=proposal_store
-        )
+        review = _expense_review_state(draft.draft_id, draft.answers, proposal_store=proposal_store)
         if review.artifacts and not draft.cached_artifacts:
             proposal_store.cache_expense_artifacts(draft.draft_id, review.artifacts)
         return _TEMPLATES.TemplateResponse(
@@ -1887,9 +1838,7 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
             keep_blank_values=True,
         )
         try:
-            exception_type = ExceptionType(
-                parsed.get("exception_type", [""])[-1].strip()
-            )
+            exception_type = ExceptionType(parsed.get("exception_type", [""])[-1].strip())
         except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1903,9 +1852,7 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
             draft.answers,
             required_fields=_PORTAL_REQUIRED_FIELDS,
             canonical_payload_builder=_canonical_payload_from_answers,
-            manager_review=proposal_store.lookup_manager_review_for_draft(
-                draft.draft_id
-            ),
+            manager_review=proposal_store.lookup_manager_review_for_draft(draft.draft_id),
         )
         if review.artifacts and not draft.cached_artifacts:
             proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
@@ -1932,9 +1879,7 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
                 supporting_docs=[supporting_doc] if supporting_doc else [],
             )
         except ValidationError as exc:
-            messages = "; ".join(
-                error["msg"] for error in exc.errors() if error.get("msg")
-            )
+            messages = "; ".join(error["msg"] for error in exc.errors() if error.get("msg"))
             return _TEMPLATES.TemplateResponse(
                 request=request,
                 name="review_summary.html",
@@ -1975,11 +1920,7 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
             required_fields=_PORTAL_REQUIRED_FIELDS,
             canonical_payload_builder=_canonical_payload_from_answers,
         )
-        if (
-            review.trip_plan is None
-            or review.missing_fields
-            or review.validation_errors
-        ):
+        if review.trip_plan is None or review.missing_fields or review.validation_errors:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Complete the request review before submitting the portal draft.",
@@ -2101,9 +2042,7 @@ def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) 
             route=_route_identifier(request),
         )
         role_view = _resolve_role_view(actor_role)
-        parsed = parse_qs(
-            (await request.body()).decode("utf-8"), keep_blank_values=True
-        )
+        parsed = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
         action_name = parsed.get("action", [""])[-1].strip()
         actor_id = parsed.get("actor_id", [""])[-1].strip()
         rationale = parsed.get("rationale", [""])[-1].strip()
@@ -2151,9 +2090,7 @@ def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) 
                     refreshed,
                     role_view=role_view,
                     auth_context=auth_context,
-                    exceptions=proposal_store.list_exception_requests(
-                        refreshed.draft_id
-                    ),
+                    exceptions=proposal_store.list_exception_requests(refreshed.draft_id),
                     audit_events=[
                         event
                         for event in proposal_store.list_audit_events()
@@ -2212,17 +2149,12 @@ def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) ->
         resolved_role = _resolve_role_view(actor_role).role.value
         if review is not None:
             return RedirectResponse(
-                url=str(
-                    request.url_for(
-                        "portal_manager_review_detail", review_id=review.review_id
-                    )
-                )
+                url=str(request.url_for("portal_manager_review_detail", review_id=review.review_id))
                 + f"?actor_role={resolved_role}",
                 status_code=status.HTTP_303_SEE_OTHER,
             )
         return RedirectResponse(
-            url=str(request.url_for("portal_admin_dashboard"))
-            + f"?actor_role={resolved_role}",
+            url=str(request.url_for("portal_admin_dashboard")) + f"?actor_role={resolved_role}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -2262,9 +2194,7 @@ def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) ->
         )
 
 
-def register_artifact_routes(
-    app: FastAPI, proposal_store: PlannerProposalStore
-) -> None:
+def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
     """Register portal and expense artifact download routes."""
 
     @app.get("/portal/review/{draft_id}/artifacts/{artifact_name}")
@@ -2320,18 +2250,14 @@ def register_artifact_routes(
                 "provider": auth_context.provider,
                 "permissions": [
                     permission.value
-                    for permission in sorted(
-                        auth_context.permissions, key=lambda item: item.value
-                    )
+                    for permission in sorted(auth_context.permissions, key=lambda item: item.value)
                 ],
             },
         )
         return Response(
             content=artifact.content,
             media_type=artifact.media_type,
-            headers={
-                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
-            },
+            headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
         )
 
     @app.get("/portal/expenses/{draft_id}/artifacts/{artifact_name}")
@@ -2349,8 +2275,7 @@ def register_artifact_routes(
         if linkage_validation.blocks_export:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Expense export is blocked: "
-                + "; ".join(linkage_validation.errors),
+                detail="Expense export is blocked: " + "; ".join(linkage_validation.errors),
             )
         artifacts = draft.cached_artifacts
         if not artifacts:
@@ -2376,9 +2301,7 @@ def register_artifact_routes(
         return Response(
             content=artifact.content,
             media_type=artifact.media_type,
-            headers={
-                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
-            },
+            headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
         )
 
 
@@ -2386,9 +2309,7 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
     """Create the planner-facing ASGI application."""
 
     audit.install_store_from_env()
-    proposal_store = store or PlannerProposalStore(
-        state_path=_default_portal_state_path()
-    )
+    proposal_store = store or PlannerProposalStore(state_path=_default_portal_state_path())
     app = FastAPI(
         title="Travel Plan Permission Planner Service",
         version="0.1.0",

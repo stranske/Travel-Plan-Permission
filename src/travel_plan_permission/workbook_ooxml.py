@@ -79,11 +79,7 @@ def _worksheet_member(archive: zipfile.ZipFile, worksheet_name: str) -> str:
 
 def _excel_serial(value: date | datetime, *, date_1904: bool) -> Decimal:
     epoch = datetime(1904, 1, 1) if date_1904 else datetime(1899, 12, 30)
-    moment = (
-        value
-        if isinstance(value, datetime)
-        else datetime(value.year, value.month, value.day)
-    )
+    moment = value if isinstance(value, datetime) else datetime(value.year, value.month, value.day)
     delta = moment - epoch
     return Decimal(delta.days) + Decimal(delta.seconds) / Decimal(86400)
 
@@ -100,9 +96,7 @@ def _write_cell_value(cell: ET.Element, value: object, *, date_1904: bool) -> No
         return
     if isinstance(value, date):
         cell.attrib.pop("t", None)
-        ET.SubElement(cell, _tag("v")).text = format(
-            _excel_serial(value, date_1904=date_1904), "f"
-        )
+        ET.SubElement(cell, _tag("v")).text = format(_excel_serial(value, date_1904=date_1904), "f")
         return
     if isinstance(value, Decimal | int | float):
         cell.attrib.pop("t", None)
@@ -137,11 +131,7 @@ def _update_worksheet(
     date_1904: bool,
 ) -> bytes:
     root = ET.fromstring(sheet_xml)
-    existing_cells = {
-        cell.attrib["r"]: cell
-        for cell in root.iter(_tag("c"))
-        if "r" in cell.attrib
-    }
+    existing_cells = {cell.attrib["r"]: cell for cell in root.iter(_tag("c")) if "r" in cell.attrib}
     target_cells = set(cell_values) | set(cell_formulas)
     missing = [
         cell_ref
@@ -206,5 +196,7 @@ def render_mapped_workbook(
         }
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as rendered:
             for item in archive.infolist():
-                rendered.writestr(item, replacements.get(item.filename, archive.read(item.filename)))
+                rendered.writestr(
+                    item, replacements.get(item.filename, archive.read(item.filename))
+                )
     return output.getvalue()
