@@ -314,7 +314,9 @@ class NonReimbursableRule(PolicyRule):
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.expenses is None:
-            return self._result(False, "Expense details are required to check non-reimbursable items.")
+            return self._result(
+                False, "Expense details are required to check non-reimbursable items."
+            )
 
         expenses = context.expenses
         for expense in expenses:

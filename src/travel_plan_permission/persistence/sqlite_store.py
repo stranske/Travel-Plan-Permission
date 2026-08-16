@@ -189,9 +189,7 @@ def _now_iso() -> str:
 class _transaction:  # noqa: N801 — context-manager style is the public surface here
     """Best-effort BEGIN IMMEDIATE/COMMIT context manager."""
 
-    def __init__(
-        self, conn: sqlite3.Connection, write_lock: threading.RLock | None = None
-    ) -> None:
+    def __init__(self, conn: sqlite3.Connection, write_lock: threading.RLock | None = None) -> None:
         self._conn = conn
         self._write_lock = write_lock or threading.RLock()
 

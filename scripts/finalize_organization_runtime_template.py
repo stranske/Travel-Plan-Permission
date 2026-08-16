@@ -55,14 +55,10 @@ def finalize_template(path: Path, *, check: bool = False) -> tuple[int, str]:
                 raise ValueError(f"{frozen} Federal Meal Total Rates ZIP formulas remain")
             return 0, hashlib.sha256(path.read_bytes()).hexdigest()
 
-        with tempfile.NamedTemporaryFile(
-            dir=path.parent, suffix=".xlsx", delete=False
-        ) as handle:
+        with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".xlsx", delete=False) as handle:
             temporary_path = Path(handle.name)
         try:
-            with zipfile.ZipFile(
-                temporary_path, "w", compression=zipfile.ZIP_DEFLATED
-            ) as output:
+            with zipfile.ZipFile(temporary_path, "w", compression=zipfile.ZIP_DEFLATED) as output:
                 for item in source.infolist():
                     output.writestr(
                         item, updated_sheet if item.filename == member else source.read(item)

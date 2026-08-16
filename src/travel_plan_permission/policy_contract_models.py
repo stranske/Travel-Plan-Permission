@@ -41,9 +41,7 @@ PlannerExecutionState = Literal[
 PolicyIssueContextValue = str | int | float | bool | None
 _PLANNER_POLICY_CONTRACT_VERSION = "2026-04-11"
 _PLANNER_POLICY_TTL = timedelta(hours=24)
-_DOCUMENTATION_RULE_IDS = frozenset(
-    {"fare_evidence", "hotel_comparison", "third_party_paid"}
-)
+_DOCUMENTATION_RULE_IDS = frozenset({"fare_evidence", "hotel_comparison", "third_party_paid"})
 
 
 class PolicyIssue(BaseModel):
@@ -64,9 +62,7 @@ class PolicyCheckResult(BaseModel):
     issues: list[PolicyIssue] = Field(
         default_factory=list, description="Policy issues raised by the check"
     )
-    policy_version: str = Field(
-        ..., description="Deterministic policy version identifier"
-    )
+    policy_version: str = Field(..., description="Deterministic policy version identifier")
 
 
 class PlannerPolicySnapshotRequest(BaseModel):
@@ -114,9 +110,7 @@ class PlannerAuthContract(BaseModel):
     """Authentication contract for the planner-facing policy snapshot seam."""
 
     endpoint: str = Field(..., description="Stable planner-facing endpoint identifier")
-    required_permission: str = Field(
-        ..., description="Permission required to read the snapshot"
-    )
+    required_permission: str = Field(..., description="Permission required to read the snapshot")
     auth_scheme: str = Field(..., description="Authentication scheme to use")
     supported_sso: list[str] = Field(
         default_factory=list,
@@ -191,9 +185,7 @@ class PlannerRetryMetadata(BaseModel):
 
     attempt: int = Field(..., ge=0, description="Current attempt count")
     max_attempts: int = Field(..., ge=1, description="Maximum retry attempts")
-    retryable: bool = Field(
-        ..., description="Whether another retry should be attempted"
-    )
+    retryable: bool = Field(..., description="Whether another retry should be attempted")
     backoff_seconds: float | None = Field(
         default=None, ge=0, description="Suggested delay before retrying"
     )
@@ -221,9 +213,7 @@ class PlannerProposalExecutionStatus(BaseModel):
     state: PlannerExecutionState = Field(..., description="Current execution state")
     terminal: bool = Field(..., description="Whether the execution has finished")
     summary: str = Field(..., description="Human-readable execution summary")
-    external_status: str = Field(
-        ..., description="Transport or HTTP-style status summary"
-    )
+    external_status: str = Field(..., description="Transport or HTTP-style status summary")
     poll_after_seconds: float | None = Field(
         default=None,
         ge=0,
@@ -239,15 +229,9 @@ class PlannerProposalStatusPayload(BaseModel):
 
     trip_id: str = Field(..., description="Trip identifier linked to the proposal")
     proposal_id: str = Field(..., description="Stable planner proposal identifier")
-    proposal_version: str = Field(
-        ..., description="Planner proposal version identifier"
-    )
-    execution_id: str = Field(
-        ..., description="Execution identifier returned on submit"
-    )
-    status: TripStatus = Field(
-        ..., description="Current canonical trip proposal status"
-    )
+    proposal_version: str = Field(..., description="Planner proposal version identifier")
+    execution_id: str = Field(..., description="Execution identifier returned on submit")
+    status: TripStatus = Field(..., description="Current canonical trip proposal status")
     approval_history: tuple[ApprovalEvent, ...] = Field(
         default_factory=tuple,
         description="Immutable approval and override history for this proposal",
@@ -267,9 +251,7 @@ class PlannerProposalSubmissionRequest(BaseModel):
 
     trip_id: str = Field(..., description="Trip identifier linked to the proposal")
     proposal_id: str = Field(..., description="Stable planner proposal identifier")
-    proposal_version: str = Field(
-        ..., description="Planner proposal version identifier"
-    )
+    proposal_version: str = Field(..., description="Planner proposal version identifier")
     payload: dict[str, object] = Field(
         default_factory=dict, description="Planner proposal payload or envelope"
     )
@@ -300,12 +282,8 @@ class PlannerProposalStatusRequest(BaseModel):
 
     trip_id: str = Field(..., description="Trip identifier linked to the execution")
     proposal_id: str = Field(..., description="Stable planner proposal identifier")
-    proposal_version: str = Field(
-        ..., description="Planner proposal version identifier"
-    )
-    execution_id: str = Field(
-        ..., description="Execution identifier returned on submit"
-    )
+    proposal_version: str = Field(..., description="Planner proposal version identifier")
+    execution_id: str = Field(..., description="Execution identifier returned on submit")
     request_id: str | None = Field(
         default=None, description="Optional caller-supplied poll request identifier"
     )
@@ -328,9 +306,7 @@ class PlannerProposalStatusRequest(BaseModel):
 class PlannerProposalOperationResponse(BaseModel):
     """Planner-facing response envelope for submission and polling operations."""
 
-    operation: PlannerOperationType = Field(
-        ..., description="Operation that produced the response"
-    )
+    operation: PlannerOperationType = Field(..., description="Operation that produced the response")
     submission_status: PlannerProposalStatus = Field(
         ..., description="Planner-friendly lifecycle status for the submission"
     )
@@ -369,12 +345,8 @@ class PlannerProposalEvaluationRequest(BaseModel):
 
     trip_id: str = Field(..., description="Trip identifier linked to the execution")
     proposal_id: str = Field(..., description="Stable planner proposal identifier")
-    proposal_version: str = Field(
-        ..., description="Planner proposal version identifier"
-    )
-    execution_id: str = Field(
-        ..., description="Execution identifier returned on submit"
-    )
+    proposal_version: str = Field(..., description="Planner proposal version identifier")
+    execution_id: str = Field(..., description="Execution identifier returned on submit")
     request_id: str | None = Field(
         default=None,
         description="Optional caller-supplied evaluation request identifier",
@@ -444,9 +416,7 @@ class PlannerPolicyScoreExplanation(BaseModel):
         default_factory=list,
         description="Ordered hard-block, soft-penalty, and preference-tradeoff effects",
     )
-    summary: str = Field(
-        ..., description="Short explanation of the final scoring posture"
-    )
+    summary: str = Field(..., description="Short explanation of the final scoring posture")
 
 
 class PlannerExceptionRequirement(BaseModel):
@@ -476,19 +446,13 @@ class PlannerProposalEvaluationResult(BaseModel):
 
     trip_id: str = Field(..., description="Trip identifier linked to the execution")
     proposal_id: str = Field(..., description="Stable planner proposal identifier")
-    proposal_version: str = Field(
-        ..., description="Planner proposal version identifier"
-    )
-    execution_id: str = Field(
-        ..., description="Execution identifier returned on submit"
-    )
+    proposal_version: str = Field(..., description="Planner proposal version identifier")
+    execution_id: str = Field(..., description="Execution identifier returned on submit")
     request_id: str = Field(..., description="Stable evaluation request identifier")
     correlation_id: PlannerCorrelationId = Field(
         ..., description="Correlation identifier shared across proposal operations"
     )
-    outcome: PlannerEvaluationOutcome = Field(
-        ..., description="Planner-facing evaluation outcome"
-    )
+    outcome: PlannerEvaluationOutcome = Field(..., description="Planner-facing evaluation outcome")
     result_endpoint: str = Field(
         ..., description="Stable endpoint for re-fetching this evaluation result"
     )
@@ -518,9 +482,7 @@ class PlannerProposalEvaluationResult(BaseModel):
         default_factory=list,
         description="Deterministic follow-up guidance for the planner runtime",
     )
-    generated_at: datetime = Field(
-        ..., description="When this result payload was generated"
-    )
+    generated_at: datetime = Field(..., description="When this result payload was generated")
 
 
 class ReconciliationResult(BaseModel):
@@ -531,9 +493,7 @@ class ReconciliationResult(BaseModel):
     planned_total: Decimal = Field(..., description="Estimated trip total")
     actual_total: Decimal = Field(..., description="Actual reconciled spend")
     variance: Decimal = Field(..., description="Actual minus planned spend variance")
-    status: ReconciliationStatus = Field(
-        ..., description="Budget reconciliation status"
-    )
+    status: ReconciliationStatus = Field(..., description="Budget reconciliation status")
     receipt_count: int = Field(..., ge=0, description="Number of receipts")
     receipts_by_type: dict[str, int] = Field(
         default_factory=dict, description="Receipt counts by file type"

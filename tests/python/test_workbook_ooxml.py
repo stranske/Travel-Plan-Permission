@@ -32,9 +32,7 @@ def test_render_mapped_workbook_changes_only_workbook_and_target_worksheet() -> 
     with ZipFile(BytesIO(template_bytes)) as source, ZipFile(BytesIO(output_bytes)) as output:
         assert source.namelist() == output.namelist()
         changed = {
-            member
-            for member in source.namelist()
-            if source.read(member) != output.read(member)
+            member for member in source.namelist() if source.read(member) != output.read(member)
         }
         assert changed == {"xl/workbook.xml", "xl/worksheets/sheet1.xml"}
         sheet_xml = output.read("xl/worksheets/sheet1.xml")

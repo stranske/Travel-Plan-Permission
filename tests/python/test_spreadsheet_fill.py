@@ -323,13 +323,9 @@ def test_fill_travel_spreadsheet_populates_mileage_and_air_comparison(tmp_path) 
 
 def test_washington_business_canary_prepares_organizational_workbook(tmp_path) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1]
-        / "fixtures"
-        / "washington_dc_business_trip.json"
+        Path(__file__).resolve().parents[1] / "fixtures" / "washington_dc_business_trip.json"
     )
-    canonical_plan = CanonicalTripPlan.model_validate_json(
-        fixture_path.read_text(encoding="utf-8")
-    )
+    canonical_plan = CanonicalTripPlan.model_validate_json(fixture_path.read_text(encoding="utf-8"))
     trip_plan = canonical_trip_plan_to_model(canonical_plan)
     template_path = policy_api._default_template_path()
     template_bytes = template_path.read_bytes()

@@ -83,15 +83,11 @@ def measure_file(path: Path) -> list[FunctionMetric]:
                     path=path,
                     name=node.name,
                     start_line=node.lineno,
-                    end_line=(
-                        node.end_lineno if node.end_lineno is not None else node.lineno
-                    ),
+                    end_line=(node.end_lineno if node.end_lineno is not None else node.lineno),
                     complexity=_complexity(node),
                 )
             )
-    return sorted(
-        metrics, key=lambda metric: (metric.path, metric.start_line, metric.name)
-    )
+    return sorted(metrics, key=lambda metric: (metric.path, metric.start_line, metric.name))
 
 
 def changed_line_ranges(diff: str) -> dict[Path, list[range]]:
@@ -114,15 +110,12 @@ def changed_line_ranges(diff: str) -> dict[Path, list[range]]:
     return result
 
 
-def changed_functions(
-    metrics: list[FunctionMetric], ranges: list[range]
-) -> list[FunctionMetric]:
+def changed_functions(metrics: list[FunctionMetric], ranges: list[range]) -> list[FunctionMetric]:
     return [
         metric
         for metric in metrics
         if any(
-            metric.start_line < changed_range.stop
-            and changed_range.start <= metric.end_line
+            metric.start_line < changed_range.stop and changed_range.start <= metric.end_line
             for changed_range in ranges
         )
     ]
@@ -168,9 +161,7 @@ def main() -> int:
         for metric in changed_functions([metric], ranges_by_path[metric.path])
     ]
     ceilings = {
-        metric: _LEGACY_COMPLEXITY_CEILINGS.get(
-            (metric.path, metric.name), args.max_complexity
-        )
+        metric: _LEGACY_COMPLEXITY_CEILINGS.get((metric.path, metric.name), args.max_complexity)
         for metric in guarded
     }
     violations = [metric for metric in guarded if metric.complexity > ceilings[metric]]

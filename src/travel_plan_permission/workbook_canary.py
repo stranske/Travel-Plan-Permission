@@ -30,9 +30,7 @@ def prepare_organization_workbook_canary(
 ) -> dict[str, Any]:
     """Create a no-submission workbook and verify its critical contract."""
 
-    canonical = CanonicalTripPlan.model_validate_json(
-        fixture_path.read_text(encoding="utf-8")
-    )
+    canonical = CanonicalTripPlan.model_validate_json(fixture_path.read_text(encoding="utf-8"))
     fill_travel_spreadsheet(
         canonical_trip_plan_to_model(canonical),
         output_path,
@@ -63,9 +61,7 @@ def prepare_organization_workbook_canary(
         for cell_ref, expected in _PRESERVED_FORMULAS.items():
             actual = sheet[cell_ref].value
             if actual != expected:
-                raise RuntimeError(
-                    f"Organization workbook formula {cell_ref} drifted: {actual!r}"
-                )
+                raise RuntimeError(f"Organization workbook formula {cell_ref} drifted: {actual!r}")
         if not workbook.calculation.fullCalcOnLoad or not workbook.calculation.forceFullCalc:
             raise RuntimeError("Organization workbook is not marked for full Excel recalculation")
     finally:

@@ -174,9 +174,7 @@ def register_planner_api_routes(app: FastAPI, proposal_store: Any) -> None:
         if stored.request.proposal_id != proposal_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    f"Execution '{execution_id}' does not belong to proposal '{proposal_id}'."
-                ),
+                detail=(f"Execution '{execution_id}' does not belong to proposal '{proposal_id}'."),
             )
         status_request = _submission_status_request(
             stored,
