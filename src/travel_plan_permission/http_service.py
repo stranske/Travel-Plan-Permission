@@ -2220,6 +2220,7 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
             draft.answers,
             required_fields=_PORTAL_REQUIRED_FIELDS,
             canonical_payload_builder=_canonical_payload_from_answers,
+            generate_artifacts=not bool(draft.cached_artifacts),
         )
         if review.policy_blocking_codes:
             raise HTTPException(

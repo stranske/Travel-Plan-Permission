@@ -1567,7 +1567,7 @@ def test_portal_review_persists_policy_readiness_answers(monkeypatch) -> None:
     assert response.status_code == 200
     assert 'data-template="review-summary"' in response.text
     assert "<dt>booking_date</dt>" in response.text
-    assert "<dd>2025-09-20</dd>" in response.text
+    assert f"<dd>{(date.today() - timedelta(days=21)).isoformat()}</dd>" in response.text
     assert "<dt>cabin_class</dt>" in response.text
     assert "<dd>economy</dd>" in response.text
     assert "<dt>driving_cost</dt>" in response.text

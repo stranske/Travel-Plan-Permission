@@ -200,6 +200,7 @@ def portal_review_state(
     *,
     required_fields: tuple[str, ...],
     canonical_payload_builder: Callable[[dict[str, object]], dict[str, object]],
+    generate_artifacts: bool = True,
     submission_response: PlannerProposalOperationResponse | None = None,
     manager_review: ReviewRequest | None = None,
 ) -> PortalReviewState:
@@ -232,7 +233,7 @@ def portal_review_state(
         )
         policy_result = check_trip_plan(trip_plan)
         policy_blocking_codes = _blocking_policy_codes(policy_result)
-        if not policy_blocking_codes:
+        if not policy_blocking_codes and generate_artifacts:
             artifacts = _portal_artifacts(
                 canonical=canonical_plan,
                 plan=trip_plan,
