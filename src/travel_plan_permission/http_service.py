@@ -2285,14 +2285,22 @@ def register_artifact_routes(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No portal draft found for '{draft_id}'.",
             )
+        review = portal_review_state(
+            draft.draft_id,
+            draft.answers,
+            required_fields=_PORTAL_REQUIRED_FIELDS,
+            canonical_payload_builder=_canonical_payload_from_answers,
+        )
+        if review.policy_blocking_codes:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "message": "Artifact download blocked by policy verdict.",
+                    "blocking_codes": review.policy_blocking_codes,
+                },
+            )
         artifacts = draft.cached_artifacts
         if not artifacts:
-            review = portal_review_state(
-                draft.draft_id,
-                draft.answers,
-                required_fields=_PORTAL_REQUIRED_FIELDS,
-                canonical_payload_builder=_canonical_payload_from_answers,
-            )
             artifacts = review.artifacts
             if artifacts:
                 proposal_store.cache_portal_artifacts(draft.draft_id, artifacts)

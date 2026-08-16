@@ -4,6 +4,10 @@ Review transitions that mutate persisted manager-review state and emit durable
 audit events are committed atomically by :class:`http_service.PlannerProposalStore`
 via ``_persist_state_with_audit``; this module only computes derived portal
 review context and does not write audit rows directly.
+
+Blocking policy verdicts (``PolicyCheckResult.status == "fail"``) prevent
+workbook artifact generation and block artifact downloads. Advisory-severity
+findings alone do not gate artifact production or download.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from .policy_api import (
     PlannerPolicySnapshot,
     PlannerPolicySnapshotRequest,
     PlannerProposalOperationResponse,
+    PolicyCheckResult,
     check_trip_plan,
     get_policy_snapshot,
     render_travel_spreadsheet_bytes,
@@ -83,6 +88,7 @@ class PortalReviewState:
     trip_plan: TripPlan | None
     policy_snapshot: PlannerPolicySnapshot | None
     policy_result: Any | None
+    policy_blocking_codes: list[str]
     artifacts: dict[str, PortalArtifact]
     submission_response: PlannerProposalOperationResponse | None = None
     manager_review: ReviewRequest | None = None
@@ -124,6 +130,12 @@ def _portal_artifacts(
     }
 
 
+def _blocking_policy_codes(policy_result: PolicyCheckResult | None) -> list[str]:
+    if policy_result is None or policy_result.status != "fail":
+        return []
+    return [issue.code for issue in policy_result.issues if issue.severity == "error"]
+
+
 def portal_validation_state(
     answers: dict[str, object],
     *,
@@ -161,6 +173,7 @@ def portal_validation_state(
         trip_plan=None,
         policy_snapshot=None,
         policy_result=None,
+        policy_blocking_codes=[],
         artifacts={},
     )
 
@@ -187,6 +200,7 @@ def portal_review_state(
     trip_plan: TripPlan | None = None
     policy_snapshot: PlannerPolicySnapshot | None = None
     policy_result: Any | None = None
+    policy_blocking_codes: list[str] = []
     artifacts: dict[str, PortalArtifact] = {}
 
     if not missing_fields and canonical_plan is not None and not validation_errors:
@@ -199,11 +213,13 @@ def portal_review_state(
             PlannerPolicySnapshotRequest(trip_id=trip_plan.trip_id),
         )
         policy_result = check_trip_plan(trip_plan)
-        artifacts = _portal_artifacts(
-            canonical=canonical_plan,
-            plan=trip_plan,
-            answers=answers,
-        )
+        policy_blocking_codes = _blocking_policy_codes(policy_result)
+        if not policy_blocking_codes:
+            artifacts = _portal_artifacts(
+                canonical=canonical_plan,
+                plan=trip_plan,
+                answers=answers,
+            )
 
     return PortalReviewState(
         draft_id=draft_id,
@@ -216,6 +232,7 @@ def portal_review_state(
         trip_plan=trip_plan,
         policy_snapshot=policy_snapshot,
         policy_result=policy_result,
+        policy_blocking_codes=policy_blocking_codes,
         artifacts=artifacts,
         submission_response=submission_response,
         manager_review=manager_review,
