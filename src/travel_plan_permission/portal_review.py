@@ -20,6 +20,7 @@ from pydantic import ValidationError
 
 from .canonical import CanonicalTripPlan, canonical_trip_plan_to_model
 from .models import TripPlan
+from .policy import Severity
 from .policy_api import (
     PlannerPolicySnapshot,
     PlannerPolicySnapshotRequest,
@@ -29,7 +30,6 @@ from .policy_api import (
     get_policy_snapshot,
     render_travel_spreadsheet_bytes,
 )
-from .policy import Severity
 from .prompt_flow import build_output_bundle, generate_questions, required_field_gaps
 
 if TYPE_CHECKING:

@@ -179,9 +179,7 @@ def _portal_form_payload() -> dict[str, str]:
         "cost_center": "OPS-410",
         "city_state": "Seattle, WA",
         "destination_zip": "98101",
-        "event_dates": (
-            f"{event_start.strftime('%m/%d/%Y')} - {event_end.strftime('%m/%d/%Y')}"
-        ),
+        "event_dates": (f"{event_start.strftime('%m/%d/%Y')} - {event_end.strftime('%m/%d/%Y')}"),
         "departure_city_airport": "Portland (PDX)",
         "return_city_airport": "Seattle (SEA)",
         "depart_date": depart_date.isoformat(),
