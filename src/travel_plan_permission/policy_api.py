@@ -569,7 +569,7 @@ def _issue_from_result(result: PolicyResult) -> PolicyIssue:
         code=result.rule_id,
         message=result.message,
         severity=_issue_severity(result),
-        context={"rule_id": result.rule_id, "severity": result.severity},
+        context={"rule_id": result.rule_id, "severity": result.severity, "outcome": result.outcome},
     )
 
 
