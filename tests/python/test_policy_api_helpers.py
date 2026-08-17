@@ -12,7 +12,7 @@ from openpyxl import Workbook, load_workbook
 import travel_plan_permission.policy_api as policy_api
 from travel_plan_permission import ExpenseCategory, Receipt, TripPlan
 from travel_plan_permission.mapping import TemplateMapping
-from travel_plan_permission.policy import PolicyEngine, PolicyResult, Severity
+from travel_plan_permission.policy import PolicyEngine, PolicyResult, RuleOutcome, Severity
 from travel_plan_permission.policy_versioning import PolicyVersion
 from travel_plan_permission.validation import (
     DurationLimitRule,
@@ -413,6 +413,7 @@ def test_issue_from_result_formats_context() -> None:
         severity=Severity.BLOCKING,
         passed=False,
         message="Stop",
+        outcome=RuleOutcome.FAILED,
     )
 
     issue = policy_api._issue_from_result(result)
@@ -420,7 +421,11 @@ def test_issue_from_result_formats_context() -> None:
     assert issue.code == "blocking_rule"
     assert issue.message == "Stop"
     assert issue.severity == "error"
-    assert issue.context == {"rule_id": "blocking_rule", "severity": "blocking"}
+    assert issue.context == {
+        "rule_id": "blocking_rule",
+        "severity": "blocking",
+        "outcome": RuleOutcome.FAILED,
+    }
 
 
 def test_expense_from_receipt_tracks_third_party_payment() -> None:
