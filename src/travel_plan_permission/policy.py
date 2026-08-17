@@ -29,6 +29,15 @@ class Severity(str):
     INFO = "info"
 
 
+class RuleOutcome(str):
+    """Explicit rule evaluation outcome."""
+
+    PASSED = "passed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    MISSING_DATA = "missing_data"
+
+
 @dataclass
 class PolicyResult:
     """Result of evaluating a single policy rule."""
@@ -37,6 +46,7 @@ class PolicyResult:
     severity: str
     passed: bool
     message: str
+    outcome: str = RuleOutcome.PASSED
 
 
 @dataclass
@@ -70,6 +80,21 @@ class PolicyContext:
     third_party_payments: list[dict[str, object]] | None = None
 
 
+def _has_flight_leg(context: PolicyContext) -> bool:
+    """Return True when the trip context includes evidence of an air-travel leg."""
+
+    return any(
+        getattr(context, field, None) is not None
+        for field in (
+            "flight_duration_hours",
+            "selected_fare",
+            "lowest_fare",
+            "flight_cost",
+            "cabin_class",
+        )
+    )
+
+
 class PolicyRule(ABC):
     """Base class for all policy-lite rules."""
 
@@ -87,13 +112,22 @@ class PolicyRule(ABC):
     def message(self) -> str:
         """Return the policy message associated with the rule."""
 
-    def _result(self, passed: bool, message: str | None = None) -> PolicyResult:
+    def _outcome(self, outcome: str, message: str | None = None) -> PolicyResult:
+        passed = outcome in {RuleOutcome.PASSED, RuleOutcome.SKIPPED}
+        severity = self.severity if not passed else Severity.INFO
+        if outcome == RuleOutcome.MISSING_DATA and self.severity == Severity.BLOCKING:
+            severity = Severity.BLOCKING
         return PolicyResult(
             rule_id=self.rule_id,
-            severity=self.severity if not passed else Severity.INFO,
+            severity=severity,
             passed=passed,
             message=message or self.message(),
+            outcome=outcome,
         )
+
+    def _result(self, passed: bool, message: str | None = None) -> PolicyResult:
+        outcome = RuleOutcome.PASSED if passed else RuleOutcome.FAILED
+        return self._outcome(outcome, message)
 
     def metadata(self) -> dict[str, object]:
         """Return static metadata about the rule for documentation surfaces."""
@@ -114,7 +148,9 @@ class AdvanceBookingRule(PolicyRule):
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.booking_date is None or context.departure_date is None:
-            return self._result(True, "Advance booking check skipped due to missing dates")
+            return self._outcome(
+                RuleOutcome.SKIPPED, "Advance booking check skipped due to missing dates"
+            )
 
         days_notice = (context.departure_date - context.booking_date).days
         if days_notice < self.days_required:
@@ -170,10 +206,29 @@ class CabinClassRule(PolicyRule):
         self.allowed_classes = {c.lower() for c in allowed_classes}
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
-        if context.cabin_class is None:
-            return self._result(True, "Cabin class was not provided.")
-        if context.flight_duration_hours is None:
-            return self._result(False, "Cabin class check requires flight duration data.")
+        if not _has_flight_leg(context):
+            return self._outcome(
+                RuleOutcome.SKIPPED,
+                "Cabin class check not applicable without a flight leg.",
+            )
+
+        if context.cabin_class is None or context.flight_duration_hours is None:
+            if self.severity == Severity.BLOCKING:
+                missing: list[str] = []
+                if context.cabin_class is None:
+                    missing.append("cabin_class")
+                if context.flight_duration_hours is None:
+                    missing.append("flight_duration_hours")
+                return self._outcome(
+                    RuleOutcome.MISSING_DATA,
+                    (
+                        "Cabin class check requires "
+                        f"{', '.join(missing)} for flight trips."
+                    ),
+                )
+            return self._outcome(
+                RuleOutcome.SKIPPED, "Cabin class check skipped due to missing flight details"
+            )
 
         cabin = context.cabin_class.lower()
         duration = context.flight_duration_hours
@@ -220,8 +275,9 @@ class DrivingVsFlyingRule(PolicyRule):
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.driving_cost is None or context.flight_cost is None:
-            return self._result(
-                True, "Driving vs flying comparison skipped due to missing estimates"
+            return self._outcome(
+                RuleOutcome.SKIPPED,
+                "Driving vs flying comparison skipped due to missing estimates",
             )
 
         if context.driving_cost > context.flight_cost:
@@ -270,9 +326,11 @@ class LocalOvernightRule(PolicyRule):
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if not context.overnight_stay:
-            return self._result(True, "No overnight stay requested")
+            return self._outcome(RuleOutcome.SKIPPED, "No overnight stay requested")
         if context.distance_from_office_miles is None:
-            return self._result(True, "Local overnight check skipped due to missing distance data")
+            return self._outcome(
+                RuleOutcome.SKIPPED, "Local overnight check skipped due to missing distance data"
+            )
         if context.distance_from_office_miles < self.min_distance_miles:
             return self._result(
                 False,
@@ -340,7 +398,9 @@ class ThirdPartyPaidRule(PolicyRule):
         super().__init__(severity)
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
-        payments = context.third_party_payments or []
+        if context.third_party_payments is None or not context.third_party_payments:
+            return self._outcome(RuleOutcome.SKIPPED, "No third-party payments provided.")
+        payments = context.third_party_payments
         for payment in payments:
             itemized = bool(payment.get("itemized"))
             description = str(payment.get("description", "third-party payment"))
@@ -500,7 +560,8 @@ class PolicyEngine(YamlConfigLoaderMixin):
         return [
             result
             for result in self.validate(context)
-            if result.severity == Severity.BLOCKING and not result.passed
+            if result.outcome in {RuleOutcome.FAILED, RuleOutcome.MISSING_DATA}
+            and result.severity == Severity.BLOCKING
         ]
 
     def describe_rules(self) -> list[dict[str, object]]:

@@ -61,6 +61,7 @@ from .policy import (
     PolicyEngine,
     PolicyResult,
     PolicyRule,
+    RuleOutcome,
     Severity,
     ThirdPartyPaidRule,
 )
@@ -217,6 +218,7 @@ __all__ = [
     "PolicyEngine",
     "PolicyResult",
     "PolicyRule",
+    "RuleOutcome",
     "PolicyCheckResult",
     "PolicyCheckStatus",
     "PolicyIssueSeverity",
