@@ -46,6 +46,31 @@ def test_policy_lite_skips_local_overnight_when_not_overnight() -> None:
     assert "local_overnight" not in rule_ids
 
 
+@pytest.mark.parametrize(
+    ("rule_id", "context_kwargs"),
+    [
+        ("cabin_class", {"cabin_class": None, "flight_duration_hours": 4.0}),
+        ("third_party_paid", {"third_party_payments": None}),
+    ],
+)
+def test_blocking_cabin_class_and_third_party_fail_closed_on_absent_input(
+    rule_id: str, context_kwargs: dict[str, object]
+) -> None:
+    engine = PolicyEngine.from_yaml(
+        f"""
+rules:
+  {rule_id}:
+    severity: blocking
+"""
+    )
+    context = PolicyContext(**context_kwargs)
+    results = {result.rule_id: result for result in engine.validate(context)}
+
+    result = results[rule_id]
+    assert not result.passed
+    assert result.severity == Severity.BLOCKING
+
+
 def test_blocking_rules_fail_closed_on_absent_or_nonfinite_input() -> None:
     """Blocking policy controls reject incomplete evidence and invalid HTTP-model values."""
 

@@ -171,6 +171,8 @@ class CabinClassRule(PolicyRule):
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.cabin_class is None:
+            if self.severity == Severity.BLOCKING:
+                return self._result(False, "Cabin class is required for policy evaluation.")
             return self._result(True, "Cabin class was not provided.")
         if context.flight_duration_hours is None:
             return self._result(False, "Cabin class check requires flight duration data.")
@@ -340,7 +342,16 @@ class ThirdPartyPaidRule(PolicyRule):
         super().__init__(severity)
 
     def evaluate(self, context: PolicyContext) -> PolicyResult:
-        payments = context.third_party_payments or []
+        if context.third_party_payments is None:
+            if self.severity == Severity.BLOCKING:
+                return self._result(
+                    False,
+                    "Third-party payment details are required for policy evaluation.",
+                )
+            return self._result(
+                True, "Third-party payments check skipped due to missing payment data"
+            )
+        payments = context.third_party_payments
         for payment in payments:
             itemized = bool(payment.get("itemized"))
             description = str(payment.get("description", "third-party payment"))
