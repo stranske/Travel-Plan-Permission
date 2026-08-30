@@ -784,7 +784,7 @@ def test_portal_home_and_request_form_render() -> None:
     assert "Draft a travel request through the real service runtime." in form.text
 
 
-def test_portal_request_form_get_stays_lightweight() -> None:
+def test_draft_entry_form_get_stays_lightweight() -> None:
     client = TestClient(create_app())
 
     response = client.get("/portal/draft/new?traveler_name=Alex+Rivera")
