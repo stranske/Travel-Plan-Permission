@@ -1486,7 +1486,6 @@ def _portal_template_context(
             "public transit",
             "personal vehicle",
         ),
-        "optional_fields": _PORTAL_OPTIONAL_FIELDS,
         "error_message": error_message,
         "form_action": form_action,
         "handoff_active": handoff_active,
@@ -1521,17 +1520,10 @@ def _expense_template_context(
 def _manager_review_queue_context(
     request: Request,
     reviews: list[ReviewRequest],
-    *,
-    role_view: RoleView,
-    auth_context: PlannerAuthContext,
 ) -> dict[str, object]:
     return {
         "request": request,
         "reviews": reviews,
-        "role_view": role_view,
-        "actor_permissions": tuple(sorted(auth_context.permissions, key=lambda item: item.value)),
-        "role_can_approve": auth_context.can(Permission.APPROVE),
-        "role_can_configure": auth_context.can(Permission.CONFIGURE),
     }
 
 
@@ -1549,7 +1541,6 @@ def _manager_review_detail_context(
         "request": request,
         "review": review,
         "role_view": role_view,
-        "actor_permissions": tuple(sorted(auth_context.permissions, key=lambda item: item.value)),
         "role_can_approve": auth_context.can(Permission.APPROVE),
         "role_can_configure": auth_context.can(Permission.CONFIGURE),
         "exceptions": exceptions or [],
@@ -1574,7 +1565,6 @@ def _admin_dashboard_context(
         "role_view": role_view,
         "actor_permissions": tuple(sorted(auth_context.permissions, key=lambda item: item.value)),
         "role_can_approve": auth_context.can(Permission.APPROVE),
-        "role_can_configure": auth_context.can(Permission.CONFIGURE),
         "available_roles": tuple(RoleName),
         "reviews": reviews,
         "exception_entries": exception_entries,
@@ -1970,22 +1960,18 @@ def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) 
     def portal_manager_review_queue(
         request: Request,
         authorization: str | None = Header(default=None),
-        actor_role: str | None = Query(default=RoleName.TRAVELER.value),
     ) -> HTMLResponse:
-        auth_context = _authorize_request(
+        _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
             route=_route_identifier(request),
         )
-        role_view = _resolve_role_view(actor_role)
         return _TEMPLATES.TemplateResponse(
             request=request,
             name="manager_review_queue.html",
             context=_manager_review_queue_context(
                 request,
                 proposal_store.list_manager_reviews(),
-                role_view=role_view,
-                auth_context=auth_context,
             ),
         )
 
