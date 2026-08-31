@@ -89,7 +89,7 @@ class ReceiptProcessor:
     """Minimal OCR-backed processing for receipts."""
 
     TOTAL_PATTERN = re.compile(
-        r"(?:total|total due|amount due|balance due|grand total)[^0-9]*([0-9]+(?:[.,][0-9]{2})?)",
+        r"(?:total|total due|amount due|balance due|grand total)[^0-9]*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?|[0-9]+(?:\.[0-9]{2})?)",
         re.IGNORECASE,
     )
     DATE_PATTERN = re.compile(r"(\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", re.IGNORECASE)
