@@ -33,7 +33,8 @@ def store(tmp_path):
 # ---------------------------------------------------------------------------------------------
 
 
-def test_a_correct_schema_passes(store, tmp_path):
+@pytest.mark.usefixtures("store")
+def test_a_correct_schema_passes(tmp_path):
     """The control: a guard that rejected everything would satisfy the mismatch test below."""
     with sqlite3.connect(tmp_path / "audit.db") as conn:
         audit._validate_audit_events_schema(conn)
@@ -69,7 +70,7 @@ def test_a_missing_table_is_reported_as_missing(tmp_path):
 # ---------------------------------------------------------------------------------------------
 
 
-def test_unparseable_metadata_is_preserved_verbatim(store):
+def test_unparseable_metadata_is_preserved_verbatim():
     """An audit log may not lose evidence because it cannot parse it.
 
     Dropping the blob would leave an event that says something happened with no detail; keeping
@@ -91,7 +92,7 @@ def test_unparseable_metadata_is_preserved_verbatim(store):
 
 
 @pytest.mark.parametrize("blank", [None, ""])
-def test_absent_metadata_is_an_empty_mapping_not_a_raw_marker(store, blank):
+def test_absent_metadata_is_an_empty_mapping_not_a_raw_marker(blank):
     """No metadata and unreadable metadata are different findings; only the second needs `_raw`."""
     row = (
         "evt-2",
@@ -107,7 +108,7 @@ def test_absent_metadata_is_an_empty_mapping_not_a_raw_marker(store, blank):
     assert audit._row_to_event(row).metadata == {}
 
 
-def test_readable_metadata_is_decoded(store):
+def test_readable_metadata_is_decoded():
     row = (
         "evt-3",
         datetime.now(UTC).isoformat(),
