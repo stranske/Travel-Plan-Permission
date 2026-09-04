@@ -1128,12 +1128,14 @@ def get_policy_snapshot(
     )
 
     engine = PolicyEngine.from_file()
+    validator = PolicyValidator.from_file()
     context = _context_from_plan(plan)
     results = engine.validate(context)
-    policy_version = _policy_version(engine)
+    validation_results = validator.validate_plan(plan)
+    policy_version = _policy_version(engine, validator)
     has_blocking = any(
         not result.passed and result.severity == Severity.BLOCKING for result in results
-    )
+    ) or any(result.is_blocking for result in validation_results)
     rule_metadata = engine.describe_rules()
 
     booking_requirements = [
@@ -1156,6 +1158,15 @@ def get_policy_snapshot(
         for result in results
         if not result.passed
     ]
+    approval_triggers.extend(
+        PlannerApprovalTrigger(
+            code=result.code,
+            summary=result.message,
+            blocking=result.is_blocking,
+            source="validation_rule",
+        )
+        for result in validation_results
+    )
     approval_triggers.extend(
         PlannerApprovalTrigger(
             code=exception_request.type.value,
