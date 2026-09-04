@@ -1612,6 +1612,31 @@ def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
     assert "Submission result" in submit.text
 
 
+def test_portal_submit_rejects_blocking_policy_verdict(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+    original_portal_review_state = http_service.portal_review_state
+
+    def blocked_portal_review_state(*args, **kwargs):
+        review = original_portal_review_state(*args, **kwargs)
+        return replace(review, policy_blocking_codes=["fare_evidence"])
+
+    monkeypatch.setattr(http_service, "portal_review_state", blocked_portal_review_state)
+    draft_id, _location = _create_portal_draft(client)
+
+    submit = client.post(
+        f"/portal/review/{draft_id}/submit",
+        headers=AUTH_HEADER,
+        follow_redirects=False,
+    )
+
+    assert submit.status_code == 409
+    assert submit.json()["detail"]["blocking_codes"] == ["fare_evidence"]
+    assert store.lookup_manager_review_for_draft(draft_id) is None
+    assert store.proposals_by_execution_id == {}
+
+
 def test_portal_draft_submission_redirects_without_authorization_header(
     monkeypatch,
 ) -> None:

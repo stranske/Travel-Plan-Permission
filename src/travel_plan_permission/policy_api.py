@@ -1222,6 +1222,60 @@ def submit_proposal(
         proposal_version=request.proposal_version,
         provided=request.correlation_id,
     )
+    policy_result = check_trip_plan(plan)
+    blocking_codes = [
+        issue.code
+        for issue in policy_result.issues
+        if issue.severity == "error" and (issue.context or {}).get("blocking") is not False
+    ]
+    if (
+        policy_result.status == "fail"
+        and plan.status not in {TripStatus.REJECTED, TripStatus.APPROVED, TripStatus.COMPLETED}
+    ):
+        return PlannerProposalOperationResponse(
+            operation="submit_proposal",
+            submission_status="failed",
+            request_id=request_id,
+            correlation_id=correlation_id,
+            transport_pattern=request.transport_pattern,
+            execution_status=PlannerProposalExecutionStatus(
+                state="failed",
+                terminal=True,
+                summary="Proposal submission blocked by the current policy verdict.",
+                external_status="409 Conflict",
+                updated_at=submitted_at,
+            ),
+            result_payload={
+                **_proposal_result_payload(
+                    trip_id=request.trip_id,
+                    proposal_id=request.proposal_id,
+                    proposal_version=request.proposal_version,
+                    execution_id=_proposal_execution_id(
+                        trip_id=request.trip_id,
+                        proposal_id=request.proposal_id,
+                        proposal_version=request.proposal_version,
+                    ),
+                    queue_state="blocked_by_policy",
+                ),
+                "blocking_codes": blocking_codes,
+            },
+            error=PlannerErrorRecord(
+                code="proposal_blocked_by_policy",
+                message="The proposal has blocking policy violations and cannot be submitted.",
+                category="policy",
+                retryable=False,
+                details={"blocking_codes": blocking_codes},
+            ),
+            received_at=submitted_at,
+            status_endpoint=_proposal_status_endpoint(
+                proposal_id=request.proposal_id,
+                execution_id=_proposal_execution_id(
+                    trip_id=request.trip_id,
+                    proposal_id=request.proposal_id,
+                    proposal_version=request.proposal_version,
+                ),
+            ),
+        )
     response = _proposal_response_for_plan(
         operation="submit_proposal",
         plan=plan,
