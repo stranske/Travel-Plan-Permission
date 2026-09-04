@@ -149,7 +149,12 @@ class AdvanceBookingRule(PolicyRule):
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.booking_date is None or context.departure_date is None:
             return self._outcome(
-                RuleOutcome.SKIPPED, "Advance booking check skipped due to missing dates"
+                (
+                    RuleOutcome.MISSING_DATA
+                    if self.severity == Severity.BLOCKING
+                    else RuleOutcome.SKIPPED
+                ),
+                "Advance booking check requires booking and departure dates.",
             )
 
         days_notice = (context.departure_date - context.booking_date).days
@@ -329,7 +334,12 @@ class LocalOvernightRule(PolicyRule):
             return self._outcome(RuleOutcome.SKIPPED, "No overnight stay requested")
         if context.distance_from_office_miles is None:
             return self._outcome(
-                RuleOutcome.SKIPPED, "Local overnight check skipped due to missing distance data"
+                (
+                    RuleOutcome.MISSING_DATA
+                    if self.severity == Severity.BLOCKING
+                    else RuleOutcome.SKIPPED
+                ),
+                "Local overnight check requires distance-from-office data.",
             )
         if context.distance_from_office_miles < self.min_distance_miles:
             return self._result(
