@@ -101,7 +101,7 @@ class PlannerApprovalTrigger(BaseModel):
     code: str = Field(..., description="Stable trigger identifier")
     summary: str = Field(..., description="Human-readable trigger summary")
     blocking: bool = Field(..., description="Whether the trigger blocks submission")
-    source: Literal["policy_rule", "exception_request"] = Field(
+    source: Literal["policy_rule", "validation_rule", "exception_request"] = Field(
         ..., description="Origin of the trigger"
     )
 
