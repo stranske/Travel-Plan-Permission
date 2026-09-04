@@ -1915,6 +1915,14 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Complete the request review before submitting the portal draft.",
             )
+        if review.policy_blocking_codes:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": "Portal proposal submission blocked by policy verdict.",
+                    "blocking_codes": review.policy_blocking_codes,
+                },
+            )
         submission_request = PlannerProposalSubmissionRequest(
             trip_id=review.trip_plan.trip_id,
             proposal_id=f"{review.trip_plan.trip_id.lower()}-portal-request",

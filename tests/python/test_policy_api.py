@@ -583,7 +583,14 @@ def test_get_policy_snapshot_etag_changes_when_plan_changes(
     assert original.versioning.etag != changed.versioning.etag
 
 
-def test_submit_proposal_returns_pending_contract(trip_plan: TripPlan) -> None:
+def test_submit_proposal_returns_pending_contract(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        policy_api_module,
+        "check_trip_plan",
+        lambda _plan: PolicyCheckResult(status="pass", issues=[], policy_version="v1"),
+    )
     request = PlannerProposalSubmissionRequest(
         trip_id=trip_plan.trip_id,
         proposal_id="proposal-123",
@@ -603,6 +610,44 @@ def test_submit_proposal_returns_pending_contract(trip_plan: TripPlan) -> None:
     assert response.status_endpoint is not None
     assert response.result_payload["proposal_id"] == request.proposal_id
     assert response.result_payload["submitted_payload_keys"] == ["selected_options"]
+
+
+def test_submit_proposal_rejects_blocking_policy_verdict(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        policy_api_module,
+        "check_trip_plan",
+        lambda _plan: PolicyCheckResult(
+            status="fail",
+            issues=[
+                PolicyIssue(
+                    code="fare_evidence",
+                    message="Fare evidence is required.",
+                    severity="error",
+                    context={"blocking": True},
+                )
+            ],
+            policy_version="v1",
+        ),
+    )
+
+    response = submit_proposal(
+        trip_plan,
+        PlannerProposalSubmissionRequest(
+            trip_id=trip_plan.trip_id,
+            proposal_id="proposal-blocked",
+            proposal_version="proposal-v1",
+        ),
+    )
+
+    assert response.submission_status == "failed"
+    assert response.execution_status is not None
+    assert response.execution_status.terminal is True
+    assert response.error is not None
+    assert response.error.code == "proposal_blocked_by_policy"
+    assert response.result_payload["queue_state"] == "blocked_by_policy"
+    assert response.result_payload["blocking_codes"] == ["fare_evidence"]
 
 
 def test_submit_proposal_returns_succeeded_contract_for_approved_trip(
