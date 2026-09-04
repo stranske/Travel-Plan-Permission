@@ -1230,7 +1230,6 @@ def submit_proposal(
     ]
     if (
         policy_result.status == "fail"
-        and request.service_available
         and plan.status not in {TripStatus.REJECTED, TripStatus.APPROVED, TripStatus.COMPLETED}
     ):
         return PlannerProposalOperationResponse(

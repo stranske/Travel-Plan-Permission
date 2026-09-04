@@ -638,6 +638,7 @@ def test_submit_proposal_rejects_blocking_policy_verdict(
             trip_id=trip_plan.trip_id,
             proposal_id="proposal-blocked",
             proposal_version="proposal-v1",
+            service_available=False,
         ),
     )
 
@@ -694,8 +695,13 @@ def test_submit_proposal_returns_failed_contract_for_rejected_trip(
 
 
 def test_submit_proposal_returns_unavailable_contract_when_service_down(
-    trip_plan: TripPlan,
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(
+        policy_api_module,
+        "check_trip_plan",
+        lambda _plan: PolicyCheckResult(status="pass", issues=[], policy_version="v1"),
+    )
     request = PlannerProposalSubmissionRequest(
         trip_id=trip_plan.trip_id,
         proposal_id="proposal-123",
