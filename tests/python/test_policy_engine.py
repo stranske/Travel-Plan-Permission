@@ -98,6 +98,14 @@ rules:
             PolicyContext(),
         ),
         (
+            AdvanceBookingRule(days_required=10, severity=Severity.BLOCKING),
+            PolicyContext(booking_date=date(2025, 1, 1)),
+        ),
+        (
+            AdvanceBookingRule(days_required=10, severity=Severity.BLOCKING),
+            PolicyContext(departure_date=date(2025, 1, 11)),
+        ),
+        (
             LocalOvernightRule(min_distance_miles=50, severity=Severity.BLOCKING),
             PolicyContext(overnight_stay=True),
         ),
@@ -109,6 +117,26 @@ def test_blocking_rules_emit_missing_data_not_skipped(rule, context):
     assert result.outcome == RuleOutcome.MISSING_DATA
     assert result.passed is False
     assert result.severity == Severity.BLOCKING
+
+
+@pytest.mark.parametrize(
+    ("rule", "context"),
+    [
+        (
+            AdvanceBookingRule(days_required=10, severity=Severity.ADVISORY),
+            PolicyContext(booking_date=date(2025, 1, 1)),
+        ),
+        (
+            LocalOvernightRule(min_distance_miles=50, severity=Severity.ADVISORY),
+            PolicyContext(overnight_stay=True),
+        ),
+    ],
+)
+def test_advisory_rules_skip_missing_data(rule, context):
+    result = rule.evaluate(context)
+
+    assert result.outcome == RuleOutcome.SKIPPED
+    assert result.passed is True
 
 
 def test_policy_engine_from_file_defaults():
