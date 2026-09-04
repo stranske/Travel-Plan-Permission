@@ -522,12 +522,15 @@ def test_get_policy_snapshot_returns_current_contract(trip_plan: TripPlan) -> No
 
 def test_get_policy_snapshot_includes_validation_blocking_triggers(
     trip_plan: TripPlan,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Planner snapshots expose blocking validation.yaml controls, not just policy-lite rules."""
 
     plan = trip_plan.model_copy(
         update={"estimated_cost": Decimal("99999.00")}
     )
+    validator = PolicyValidator.from_file()
+    monkeypatch.setattr(PolicyValidator, "from_file", lambda *_args, **_kwargs: validator)
 
     snapshot = get_policy_snapshot(plan)
 
@@ -538,7 +541,19 @@ def test_get_policy_snapshot_includes_validation_blocking_triggers(
         and trigger.source == "validation_rule"
         for trigger in snapshot.approval_triggers
     )
-    assert snapshot.versioning.policy_version == check_trip_plan(plan).policy_version
+    baseline_version = snapshot.versioning.policy_version
+    baseline_etag = snapshot.versioning.etag
+
+    bud_rule = next(rule for rule in validator.rules if rule.code == "BUD-001")
+    rule_index = validator.rules.index(bud_rule)
+    validator.rules[rule_index] = bud_rule.model_copy(
+        update={"trip_limit": Decimal("4500")}
+    )
+
+    rotated = get_policy_snapshot(plan)
+
+    assert rotated.versioning.policy_version != baseline_version
+    assert rotated.versioning.etag != baseline_etag
 
 
 def test_get_policy_snapshot_reports_stale_cache(trip_plan: TripPlan) -> None:
