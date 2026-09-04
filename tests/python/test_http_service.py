@@ -1817,7 +1817,7 @@ def test_manager_review_detail_hides_decision_form_for_read_only_role(
 def test_portal_admin_console_surfaces_permissions_runtime_and_audit_history(
     monkeypatch,
 ) -> None:
-    _set_runtime_env(monkeypatch)
+    _set_bootstrap_runtime_env(monkeypatch)
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
@@ -1834,19 +1834,28 @@ def test_portal_admin_console_surfaces_permissions_runtime_and_audit_history(
     )
     client.post(
         f"/portal/review/{draft_id}/submit",
-        headers=AUTH_HEADER,
+        headers=_bootstrap_auth_header(
+            subject="finance-admin",
+            permissions=(Permission.VIEW, Permission.CREATE, Permission.CONFIGURE),
+        ),
         follow_redirects=True,
     )
     review = store.lookup_manager_review_for_draft(draft_id)
     assert review is not None
     client.get(
         f"/portal/review/{draft_id}/artifacts/summary",
-        headers=AUTH_HEADER,
+        headers=_bootstrap_auth_header(
+            subject="finance-admin",
+            permissions=(Permission.VIEW, Permission.CREATE, Permission.CONFIGURE),
+        ),
     )
 
     console = client.get(
         "/portal/admin?actor_role=finance_admin",
-        headers=AUTH_HEADER,
+        headers=_bootstrap_auth_header(
+            subject="finance-admin",
+            permissions=(Permission.VIEW, Permission.CONFIGURE),
+        ),
     )
 
     assert console.status_code == 200
@@ -1854,18 +1863,18 @@ def test_portal_admin_console_surfaces_permissions_runtime_and_audit_history(
     assert "Role view simulation" in console.text
     assert "Authenticated token permissions" in console.text
     assert "finance_admin" in console.text
-    assert "static-token" in console.text
+    assert "bootstrap-token" in console.text
     assert "advance_booking" in console.text
     assert "artifact_downloaded" in console.text
 
 
-def test_portal_admin_console_requires_admin_role_view(monkeypatch) -> None:
+def test_portal_admin_console_requires_authenticated_admin_permission(monkeypatch) -> None:
     _set_bootstrap_runtime_env(monkeypatch)
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
     forbidden = client.get(
-        "/portal/admin?actor_role=traveler",
+        "/portal/admin?actor_role=finance_admin",
         headers=_bootstrap_auth_header(
             subject="viewer-only",
             permissions=(Permission.VIEW,),
@@ -1873,7 +1882,17 @@ def test_portal_admin_console_requires_admin_role_view(monkeypatch) -> None:
     )
 
     assert forbidden.status_code == 403
-    assert forbidden.json()["detail"] == "Admin diagnostics require an administrator role view."
+
+    allowed = client.get(
+        "/portal/admin?actor_role=traveler",
+        headers=_bootstrap_auth_header(
+            subject="configure-capable",
+            permissions=(Permission.VIEW, Permission.CONFIGURE),
+        ),
+    )
+
+    assert allowed.status_code == 200
+    assert "traveler" in allowed.text
 
 
 def test_manager_review_detail_uses_authenticated_permissions_for_actions(
@@ -2380,7 +2399,7 @@ def test_audit_events_queryable_from_admin_after_restart(monkeypatch, tmp_path) 
         "/portal/admin",
         headers=_bootstrap_auth_header(
             subject="planner-admin",
-            permissions=(Permission.VIEW,),
+            permissions=(Permission.VIEW, Permission.CONFIGURE),
         ),
     )
 
