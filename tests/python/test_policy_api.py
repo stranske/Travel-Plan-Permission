@@ -538,6 +538,7 @@ def test_get_policy_snapshot_includes_validation_blocking_triggers(
         and trigger.source == "validation_rule"
         for trigger in snapshot.approval_triggers
     )
+    assert snapshot.versioning.policy_version == check_trip_plan(plan).policy_version
 
 
 def test_get_policy_snapshot_reports_stale_cache(trip_plan: TripPlan) -> None:
