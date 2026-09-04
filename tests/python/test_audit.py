@@ -782,6 +782,60 @@ def test_audit_event_is_discarded_when_state_persistence_fails(
     assert len(action_events) == 0
 
 
+def test_proposal_submission_rolls_back_when_state_persistence_fails(
+    tmp_path: Path,
+) -> None:
+    """A rejected durable write must not leave a queryable in-memory proposal."""
+    from decimal import Decimal
+
+    from travel_plan_permission import http_service
+    from travel_plan_permission.models import TripPlan
+    from travel_plan_permission.policy_api import (
+        PlannerProposalSubmissionRequest,
+        submit_proposal,
+    )
+
+    state_path = tmp_path / "portal-state.sqlite3"
+    store = http_service.PlannerProposalStore(state_path=state_path)
+    trip = TripPlan(
+        trip_id="T-submission-atomicity",
+        traveler_name="Alice",
+        destination="New York",
+        departure_date=datetime(2026, 5, 1, tzinfo=UTC).date(),
+        return_date=datetime(2026, 5, 5, tzinfo=UTC).date(),
+        purpose="Conference",
+        estimated_cost=Decimal("1500.00"),
+    )
+    request = PlannerProposalSubmissionRequest(
+        trip_id=trip.trip_id,
+        proposal_id="proposal-submission-atomicity",
+        proposal_version="v1",
+    )
+    response = submit_proposal(trip, request)
+    execution_id = response.result_payload["execution_id"]
+    assert isinstance(execution_id, str)
+    assert store.store is not None
+
+    def fail_save_snapshot(
+        _snapshot: dict[str, object], *, replace: bool = False
+    ) -> None:
+        del replace
+        raise RuntimeError("forced proposal-state persistence failure")
+
+    store.store.save_snapshot = fail_save_snapshot  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="forced proposal-state persistence failure"):
+        store.record_submission(trip, request, response)
+
+    assert store.lookup_trip_plan(trip.trip_id) is None
+    assert store.lookup_submission(execution_id) is None
+    assert store.pending_audit_events == []
+
+    reloaded = http_service.PlannerProposalStore(state_path=state_path)
+    assert reloaded.lookup_trip_plan(trip.trip_id) is None
+    assert reloaded.lookup_submission(execution_id) is None
+
+
 def test_manager_action_retries_durable_audit_outbox_after_delivery_failure(
     tmp_path: Path,
 ) -> None:
