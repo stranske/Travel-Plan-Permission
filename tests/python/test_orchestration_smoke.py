@@ -15,7 +15,9 @@ from travel_plan_permission.orchestration import graph as orchestration_graph
 
 def _fixture_trip_input() -> tuple[TripPlan, CanonicalTripPlan | None]:
     fixture_path = (
-        Path(__file__).resolve().parents[1] / "fixtures" / "sample_trip_plan_minimal.json"
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "sample_trip_plan_minimal.json"
     )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
     trip_input = load_trip_plan_input(payload)
@@ -70,6 +72,12 @@ def test_policy_graph_records_missing_policy_inputs(tmp_path: Path) -> None:
     assert "selected_fare" in fare.get("missing_fields", [])
     assert isinstance(fare.get("missing_fields"), list)
     assert fare.get("message", "").startswith("Missing required inputs:")
+    assert state.policy_result is not None
+    issue_ids = {issue["code"] for issue in state.policy_result["issues"]}
+    assert rule_ids <= issue_ids
+    assert not rule_ids.intersection(
+        {"cabin_class", "driving_vs_flying", "local_overnight", "meal_per_diem"}
+    )
 
 
 def test_policy_graph_persists_planner_runtime_seam(tmp_path: Path) -> None:
