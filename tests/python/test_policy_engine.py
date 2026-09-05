@@ -12,9 +12,86 @@ from travel_plan_permission import (
 )
 from travel_plan_permission.policy import (
     AdvanceBookingRule,
+    CabinClassRule,
     LocalOvernightRule,
     RuleOutcome,
 )
+
+
+def test_cabin_class_blocking_rejects_nan_duration() -> None:
+    engine = PolicyEngine.from_yaml("""
+rules:
+  cabin_class:
+    severity: blocking
+""")
+    context = PolicyContext(
+        cabin_class="premium",
+        flight_duration_hours=float("nan"),
+        selected_fare=Decimal("100"),
+    )
+
+    result = next(r for r in engine.validate(context) if r.rule_id == "cabin_class")
+
+    assert result.passed is False
+    assert result.outcome == RuleOutcome.MISSING_DATA
+    assert result.severity == Severity.BLOCKING
+    assert "flight_duration_hours" in result.message
+    assert result in engine.blocking_results(context)
+
+
+@pytest.mark.parametrize("duration", [None, float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("cabin", [None, "economy", "premium"])
+@pytest.mark.parametrize(
+    "severity", [Severity.BLOCKING, Severity.ADVISORY, Severity.INFO]
+)
+def test_cabin_class_invalid_duration_uses_missing_data_policy(
+    duration: float | None, cabin: str | None, severity: str
+) -> None:
+    rule = CabinClassRule(5, ["economy"], severity)
+    context = PolicyContext(
+        cabin_class=cabin,
+        flight_duration_hours=duration,
+        selected_fare=Decimal("100"),
+    )
+
+    result = rule.evaluate(context)
+
+    if severity == Severity.BLOCKING:
+        assert result.passed is False
+        assert result.outcome == RuleOutcome.MISSING_DATA
+        assert "flight_duration_hours" in result.message
+    else:
+        assert result.passed is True
+        assert result.outcome == RuleOutcome.SKIPPED
+
+
+@pytest.mark.parametrize(
+    ("cabin", "duration", "passed"),
+    [
+        ("premium", 4.0, False),
+        ("premium", 5.0, False),
+        ("premium", 5.1, True),
+        ("economy", 4.0, True),
+    ],
+)
+def test_cabin_class_finite_duration_preserves_threshold(
+    cabin: str, duration: float, passed: bool
+) -> None:
+    rule = CabinClassRule(5, ["economy"], Severity.BLOCKING)
+
+    result = rule.evaluate(
+        PolicyContext(cabin_class=cabin, flight_duration_hours=duration)
+    )
+
+    assert result.passed is passed
+    assert result.outcome == (RuleOutcome.PASSED if passed else RuleOutcome.FAILED)
+
+
+def test_cabin_class_without_flight_remains_inapplicable() -> None:
+    result = CabinClassRule(5, ["economy"], Severity.BLOCKING).evaluate(PolicyContext())
+
+    assert result.passed is True
+    assert result.outcome == RuleOutcome.SKIPPED
 
 
 def test_policy_engine_evaluates_all_rules():

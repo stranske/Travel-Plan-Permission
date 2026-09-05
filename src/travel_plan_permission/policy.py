@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from importlib import resources
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -219,12 +220,13 @@ class CabinClassRule(PolicyRule):
                 "Cabin class check not applicable without a flight leg.",
             )
 
-        if context.cabin_class is None or context.flight_duration_hours is None:
+        duration = context.flight_duration_hours
+        if context.cabin_class is None or duration is None or not isfinite(duration):
             if self.severity == Severity.BLOCKING:
                 missing: list[str] = []
                 if context.cabin_class is None:
                     missing.append("cabin_class")
-                if context.flight_duration_hours is None:
+                if duration is None or not isfinite(duration):
                     missing.append("flight_duration_hours")
                 return self._outcome(
                     RuleOutcome.MISSING_DATA,
@@ -238,7 +240,6 @@ class CabinClassRule(PolicyRule):
             )
 
         cabin = context.cabin_class.lower()
-        duration = context.flight_duration_hours
         if duration <= self.long_haul_hours and cabin not in self.allowed_classes:
             return self._result(
                 False,
