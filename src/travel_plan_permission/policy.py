@@ -18,6 +18,8 @@ from math import isfinite
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from .config_loader import YamlConfigLoaderMixin
 from .models import ExpenseItem
 
@@ -501,7 +503,10 @@ class PolicyEngine(YamlConfigLoaderMixin):
 
     @classmethod
     def from_yaml(cls, content: str) -> PolicyEngine:
-        config = cls._load_yaml_mapping(content)
+        config = yaml.safe_load(content)
+        # Empty/null documents retain defaults; other falsey values are invalid.
+        if config is None:
+            config = {}
         _validate_rule_names(config)
 
         fare_comparison_cfg = _load_rule_config(

@@ -303,6 +303,22 @@ def test_policy_engine_rejects_unknown_rule_fields(rule_name: str, field: str) -
     assert field in str(exc_info.value)
 
 
+@pytest.mark.parametrize("content", ["false", "0", "[]", "[blocking]", "blocking"])
+def test_policy_engine_rejects_non_mapping_document(
+    content: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "policy.yaml"
+    path.write_text(content, encoding="utf-8")
+    monkeypatch.setenv("TEST_POLICY_YAML", content)
+    for load in (
+        lambda: PolicyEngine.from_yaml(content),
+        lambda: PolicyEngine.from_file(path),
+        lambda: PolicyEngine.from_environment("TEST_POLICY_YAML"),
+    ):
+        with pytest.raises(ValueError, match="policy.yaml: configuration must be a mapping"):
+            load()
+
+
 @pytest.mark.parametrize(
     "value", ["null", "false", "0", "[]", "[severity, blocking]", "blocking"]
 )
@@ -316,7 +332,7 @@ def test_policy_engine_rejects_non_mapping_rules(value: str, level: str) -> None
 
 
 @pytest.mark.parametrize(
-    "content", ["", "{}", "rules: {}", "rules:\n  fare_comparison: {}"]
+    "content", ["", "# no overrides", "null", "{}", "rules: {}", "rules:\n  fare_comparison: {}"]
 )
 def test_policy_engine_omitted_rules_preserve_defaults(content: str) -> None:
     engine = PolicyEngine.from_yaml(content)
