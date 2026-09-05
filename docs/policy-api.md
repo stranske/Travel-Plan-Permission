@@ -61,7 +61,7 @@ Example JSON structure (matches `PolicyCheckResult` in
   "issues": [
     {
       "code": "ADV-001",
-      "message": "Trips must be booked at least 7 days in advance; only 1 days provided",
+      "message": "Trips must be booked at least 7 days in advance; only 2 days provided",
       "severity": "error",
       "context": {
         "rule_id": "ADV-001",
