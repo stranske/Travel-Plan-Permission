@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -97,8 +98,6 @@ def test_cabin_class_without_flight_remains_inapplicable() -> None:
 def test_policy_engine_evaluates_all_rules():
     yaml_content = """
 rules:
-  advance_booking:
-    days_required: 10
   fare_comparison:
     max_over_lowest: 150
 """
@@ -252,8 +251,6 @@ def test_policy_engine_from_file_defaults():
 def test_policy_messages_include_thresholds_from_config():
     engine = PolicyEngine.from_yaml("""
 rules:
-  advance_booking:
-    days_required: 21
   fare_comparison:
     max_over_lowest: 175
 """)
@@ -267,9 +264,82 @@ rules:
 
     results = {result.rule_id: result for result in engine.validate(context)}
 
-    # Legacy policy.yaml entries must not re-enable a second submission verdict.
+    # Submission validation remains owned by validation.yaml.
     assert "advance_booking" not in results
 
     fare = results["fare_comparison"]
     assert not fare.passed
     assert "175" in fare.message
+
+
+@pytest.mark.parametrize(
+    "rule_name", ["fare_comparision", "advance_booking", "unknown", "123"]
+)
+def test_policy_engine_rejects_unknown_rule_configuration(rule_name: str) -> None:
+    with pytest.raises(ValueError, match="policy.yaml: unknown rule") as exc_info:
+        PolicyEngine.from_yaml(f"rules:\n  {rule_name}: {{max_over_lowest: 5}}\n")
+    assert rule_name in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "rule_name",
+    [
+        "fare_comparison",
+        "cabin_class",
+        "fare_evidence",
+        "driving_vs_flying",
+        "hotel_comparison",
+        "local_overnight",
+        "meal_per_diem",
+        "non_reimbursable",
+        "third_party_paid",
+    ],
+)
+@pytest.mark.parametrize("field", ["severty", "123"])
+def test_policy_engine_rejects_unknown_rule_fields(rule_name: str, field: str) -> None:
+    with pytest.raises(ValueError, match="policy.yaml: unknown field") as exc_info:
+        PolicyEngine.from_yaml(f"rules:\n  {rule_name}: {{{field}: blocking}}\n")
+    assert f"rules.{rule_name}" in str(exc_info.value)
+    assert field in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "value", ["null", "false", "0", "[]", "[severity, blocking]", "blocking"]
+)
+@pytest.mark.parametrize("level", ["rules", "rule"])
+def test_policy_engine_rejects_non_mapping_rules(value: str, level: str) -> None:
+    content = (
+        f"rules: {value}" if level == "rules" else f"rules:\n  fare_comparison: {value}"
+    )
+    with pytest.raises(ValueError, match="policy.yaml: rules.*must be a mapping"):
+        PolicyEngine.from_yaml(content)
+
+
+@pytest.mark.parametrize(
+    "content", ["", "{}", "rules: {}", "rules:\n  fare_comparison: {}"]
+)
+def test_policy_engine_omitted_rules_preserve_defaults(content: str) -> None:
+    engine = PolicyEngine.from_yaml(content)
+    assert len(engine.rules) == 9
+    context = PolicyContext(selected_fare=Decimal("401"), lowest_fare=Decimal("200"))
+    result = next(r for r in engine.validate(context) if r.rule_id == "fare_comparison")
+    assert result.passed is False
+    assert result.severity == Severity.BLOCKING
+    assert "200" in result.message
+
+
+def test_policy_engine_invalid_config_rejected_from_file_and_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = "rules:\n  fare_comparision: {max_over_lowest: 5}"
+    path = tmp_path / "policy.yaml"
+    path.write_text(content, encoding="utf-8")
+    monkeypatch.setenv("TEST_POLICY_YAML", content)
+    for load in (
+        lambda: PolicyEngine.from_file(path),
+        lambda: PolicyEngine.from_environment("TEST_POLICY_YAML"),
+    ):
+        with pytest.raises(
+            ValueError, match="policy.yaml: unknown rule.*fare_comparision"
+        ):
+            load()

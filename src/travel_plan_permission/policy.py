@@ -428,9 +428,43 @@ class ThirdPartyPaidRule(PolicyRule):
         return "Third-party paid expenses must be itemized and excluded."
 
 
-def _load_rule_config(config: dict[str, Any], key: str, default: dict[str, Any]) -> dict[str, Any]:
-    rules_cfg: dict[str, Any] = config.get("rules", {}) or {}
-    rule_cfg: dict[str, Any] = rules_cfg.get(key, {}) or {}
+_SUPPORTED_RULE_IDS = frozenset(
+    rule.rule_id
+    for rule in (
+        FareComparisonRule,
+        CabinClassRule,
+        FareEvidenceRule,
+        DrivingVsFlyingRule,
+        HotelComparisonRule,
+        LocalOvernightRule,
+        MealPerDiemRule,
+        NonReimbursableRule,
+        ThirdPartyPaidRule,
+    )
+)
+
+
+def _validate_rule_names(config: dict[str, Any]) -> None:
+    if not isinstance(config, dict):
+        raise ValueError("policy.yaml: configuration must be a mapping")
+    rules_cfg = config.get("rules", {})
+    if not isinstance(rules_cfg, dict):
+        raise ValueError("policy.yaml: rules must be a mapping")
+    for key in rules_cfg:
+        if key not in _SUPPORTED_RULE_IDS:
+            raise ValueError(f"policy.yaml: unknown rule {key!r} in rules")
+
+
+def _load_rule_config(
+    config: dict[str, Any], key: str, default: dict[str, Any]
+) -> dict[str, Any]:
+    rules_cfg = config.get("rules", {})
+    rule_cfg = rules_cfg.get(key, {})
+    if not isinstance(rule_cfg, dict):
+        raise ValueError(f"policy.yaml: rules.{key} must be a mapping")
+    for field in rule_cfg:
+        if field not in default:
+            raise ValueError(f"policy.yaml: unknown field {field!r} in rules.{key}")
     merged = default.copy()
     merged.update(rule_cfg)
     return merged
@@ -468,6 +502,7 @@ class PolicyEngine(YamlConfigLoaderMixin):
     @classmethod
     def from_yaml(cls, content: str) -> PolicyEngine:
         config = cls._load_yaml_mapping(content)
+        _validate_rule_names(config)
 
         fare_comparison_cfg = _load_rule_config(
             config,

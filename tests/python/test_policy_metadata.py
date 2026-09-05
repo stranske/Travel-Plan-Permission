@@ -4,9 +4,6 @@ from travel_plan_permission import PolicyEngine
 def test_describe_rules_reflects_configuration() -> None:
     yaml_content = """
 rules:
-  advance_booking:
-    days_required: 21
-    severity: blocking
   fare_comparison:
     max_over_lowest: 150
   cabin_class:

@@ -295,18 +295,18 @@ def evaluation_date(monkeypatch: pytest.MonkeyPatch) -> date:
     return today
 
 
-@pytest.mark.parametrize("legacy_policy", [False, True], ids=["default", "legacy-yaml"])
+@pytest.mark.parametrize("custom_policy", [False, True], ids=["default", "custom-yaml"])
 def test_check_trip_plan_enforces_validation_blocking_rules(
     trip_plan: TripPlan,
     evaluation_date: date,
     monkeypatch: pytest.MonkeyPatch,
-    legacy_policy: bool,
+    custom_policy: bool,
 ) -> None:
     """Every blocking validation.yaml control reaches the planner verdict path."""
 
-    if legacy_policy:
+    if custom_policy:
         engine = PolicyEngine.from_yaml(
-            "rules:\n  advance_booking:\n    days_required: 21\n"
+            "rules:\n  fare_comparison:\n    max_over_lowest: 150\n"
         )
         monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
 
