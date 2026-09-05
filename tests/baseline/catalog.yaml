@@ -3,8 +3,8 @@
 # Surfaces:
 #   * ApprovalEngine.evaluate_expense  (config/approval_rules.yaml)
 #   * PolicyEngine.validate            (config/policy.yaml)
-# Advance-booking is owned by validation.yaml; this kit does not evaluate it.
-# Submission thresholds and ADV-001 are covered by test_policy_api.py.
+#   * PolicyValidator.validate_plan   (config/validation.yaml)
+# The separate validation section below exercises the submission validator.
 #
 # Same shape as the Counter_Risk / TMP / trip-planner kits. A "scenario" is the
 # BASE request (expense list + policy context) with an optional ordered `patch`
@@ -251,3 +251,31 @@ priority_metrics:
   - policy.advisory_violation_count
   - policy.n_passed
   - requires_escalation
+
+# Submission validation uses its own TripPlan inputs and golden/directional gate.
+# Fixed dates avoid dependence on the day pytest runs. Costs are explicit anchors,
+# not derived from the live threshold, so increasing trip_limit breaks the gate.
+validation:
+  base:
+    reference_date: "2025-01-01"
+    plan:
+      trip_id: BASELINE-VALIDATION
+      traveler_name: Baseline Traveler
+      destination: Chicago, IL
+      departure_date: "2025-01-20"
+      return_date: "2025-01-22"
+      purpose: Conference
+      estimated_cost: "1000"
+  scenarios:
+    - id: validation_base
+      plan: {}
+    - id: validation_over_budget
+      plan:
+        estimated_cost: "7500"
+  directionals:
+    - id: validation_blocking_budget
+      scenario: validation_over_budget
+      control: validation_base
+      metric: validation.BUD-001.blocking
+      direction: increase
+      enforce: true
