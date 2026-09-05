@@ -1,7 +1,5 @@
+# Advance-booking submission gates are owned by validation.yaml (ADV-001).
 rules:
-  advance_booking:
-    days_required: 14
-    severity: advisory
   fare_comparison:
     max_over_lowest: 200
     severity: blocking

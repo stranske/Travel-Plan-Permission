@@ -55,7 +55,6 @@ rules:
 
     results = {result.rule_id: result for result in engine.validate(context)}
     assert set(results.keys()) == {
-        "advance_booking",
         "fare_comparison",
         "cabin_class",
         "fare_evidence",
@@ -67,7 +66,6 @@ rules:
         "third_party_paid",
     }
 
-    assert not results["advance_booking"].passed
     assert not results["fare_comparison"].passed
     assert not results["cabin_class"].passed
     assert not results["fare_evidence"].passed
@@ -169,7 +167,7 @@ def test_policy_engine_from_file_defaults():
     )
 
     results = engine.validate(context)
-    assert len(results) == 10
+    assert len(results) == 9
     assert all(result.passed for result in results)
     assert engine.blocking_results(context) == []
 
@@ -192,9 +190,8 @@ rules:
 
     results = {result.rule_id: result for result in engine.validate(context)}
 
-    advance = results["advance_booking"]
-    assert not advance.passed
-    assert "21" in advance.message
+    # Legacy policy.yaml entries must not re-enable a second submission verdict.
+    assert "advance_booking" not in results
 
     fare = results["fare_comparison"]
     assert not fare.passed

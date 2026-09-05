@@ -42,9 +42,13 @@ Two **deterministic** evaluators (no DB / network / LLM):
 - `travel_plan_permission.approval.ApprovalEngine.evaluate_expense` — walks the
   ordered rules in `config/approval_rules.yaml` and returns an
   `ApprovalDecision` (auto-approved / flagged / pending) per expense.
-- `travel_plan_permission.policy.PolicyEngine.validate` — runs the 10 policy-lite
+- `travel_plan_permission.policy.PolicyEngine.validate` — runs the 9 policy-lite
   rules in `config/policy.yaml` against a `PolicyContext`, returning per-rule
   pass/fail with blocking/advisory severity.
+
+Advance-booking now belongs to `PolicyValidator` / `validation.yaml`; this kit
+checks that booking dates add no duplicate policy-lite penalty. Submission
+notice thresholds and the `ADV-001` verdict are tested in `test_policy_api.py`.
 
 The adapter reads the **live config files** (`ApprovalEngine.from_file()` /
 `PolicyEngine.from_file()`), so the goldens track the shipped policy, and a
@@ -93,7 +97,7 @@ Approval side:
 
 Policy side:
 
-- fixed rule set: `n_rules == 10`; `n_passed + violation_count == 10`
+- fixed rule set: `n_rules == 9`; `n_passed + violation_count == 9`
 - severity partition: `blocking + advisory == violation_count`
 - per-rule pass flags are 0/1 and sum to `n_passed`
 

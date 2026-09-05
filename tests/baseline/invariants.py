@@ -20,7 +20,7 @@ Approval side
 
 Policy side
   * the rule set is fixed by config:
-        n_rules == 10  and  n_passed + violation_count == n_rules
+        n_rules == 9  and  n_passed + violation_count == n_rules
   * severity partition (every violation is blocking OR advisory; the surface
     never emits "info" failures):
         blocking_violation_count + advisory_violation_count == violation_count
@@ -126,7 +126,7 @@ def check_scenario(scenario: dict[str, Any], base_request: dict[str, Any]) -> li
     violations = m["policy.violation_count"]
     blocking = m["policy.blocking_violation_count"]
     advisory = m["policy.advisory_violation_count"]
-    add("policy.rule_count_fixed", n_rules == 10, f"n_rules={n_rules}")
+    add("policy.rule_count_fixed", n_rules == 9, f"n_rules={n_rules}")
     add(
         "policy.pass_violation_partition",
         n_passed + violations == n_rules,

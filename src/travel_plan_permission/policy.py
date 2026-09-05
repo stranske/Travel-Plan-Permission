@@ -140,6 +140,8 @@ class PolicyRule(ABC):
 
 
 class AdvanceBookingRule(PolicyRule):
+    """Legacy standalone rule; submission notice is owned by PolicyValidator."""
+
     rule_id = "advance_booking"
 
     def __init__(self, days_required: int, severity: str) -> None:
@@ -466,11 +468,6 @@ class PolicyEngine(YamlConfigLoaderMixin):
     def from_yaml(cls, content: str) -> PolicyEngine:
         config = cls._load_yaml_mapping(content)
 
-        advance_cfg = _load_rule_config(
-            config,
-            "advance_booking",
-            {"days_required": 14, "severity": Severity.ADVISORY},
-        )
         fare_comparison_cfg = _load_rule_config(
             config,
             "fare_comparison",
@@ -517,10 +514,6 @@ class PolicyEngine(YamlConfigLoaderMixin):
         )
 
         rules: list[PolicyRule] = [
-            AdvanceBookingRule(
-                days_required=int(advance_cfg["days_required"]),
-                severity=str(advance_cfg["severity"]),
-            ),
             FareComparisonRule(
                 max_over_lowest=Decimal(fare_comparison_cfg["max_over_lowest"]),
                 severity=str(fare_comparison_cfg["severity"]),

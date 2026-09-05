@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import travel_plan_permission.policy_api as policy_api_module
+import travel_plan_permission.validation as validation_module
 from travel_plan_permission import (
     ExceptionRequest,
     ExceptionType,
@@ -281,14 +282,37 @@ def test_check_trip_plan_passes_when_all_rules_pass(
     assert result.issues == []
 
 
+@pytest.fixture()
+def evaluation_date(monkeypatch: pytest.MonkeyPatch) -> date:
+    today = date(2026, 1, 15)
+
+    class FixedDate(date):
+        @classmethod
+        def today(cls) -> "FixedDate":
+            return cls(today.year, today.month, today.day)
+
+    monkeypatch.setattr(validation_module, "date", FixedDate)
+    return today
+
+
+@pytest.mark.parametrize("legacy_policy", [False, True], ids=["default", "legacy-yaml"])
 def test_check_trip_plan_enforces_validation_blocking_rules(
     trip_plan: TripPlan,
+    evaluation_date: date,
+    monkeypatch: pytest.MonkeyPatch,
+    legacy_policy: bool,
 ) -> None:
     """Every blocking validation.yaml control reaches the planner verdict path."""
 
+    if legacy_policy:
+        engine = PolicyEngine.from_yaml(
+            "rules:\n  advance_booking:\n    days_required: 21\n"
+        )
+        monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
+
     validator = PolicyValidator.from_file()
     expected_codes = {rule.code for rule in validator.rules if rule.blocking}
-    future_departure = date.today() + timedelta(days=30)
+    future_departure = evaluation_date + timedelta(days=30)
     proof_plans = [
         trip_plan.model_copy(
             update={
@@ -299,8 +323,9 @@ def test_check_trip_plan_enforces_validation_blocking_rules(
         ),
         trip_plan.model_copy(
             update={
-                "departure_date": date.today() + timedelta(days=1),
-                "return_date": date.today() + timedelta(days=4),
+                "booking_date": evaluation_date,
+                "departure_date": evaluation_date + timedelta(days=1),
+                "return_date": evaluation_date + timedelta(days=4),
                 "estimated_cost": Decimal("1000.00"),
             }
         ),
@@ -310,12 +335,52 @@ def test_check_trip_plan_enforces_validation_blocking_rules(
     observed_codes = {issue.code for result in results for issue in result.issues}
 
     assert expected_codes <= observed_codes
+    advance_issues = [
+        issue for issue in results[1].issues if issue.code in {"advance_booking", "ADV-001"}
+    ]
+    assert [issue.code for issue in advance_issues] == ["ADV-001"]
+    assert advance_issues[0].context["source"] == "validation.yaml"
+    assert advance_issues[0].severity == "error"
+    assert advance_issues[0].context["blocking"] is True
+    assert results[1].status == "fail"
     budget_result = results[0]
     assert budget_result.status == "fail"
     assert any(
         issue.code == "BUD-001" and issue.context["source"] == "validation.yaml"
         for issue in budget_result.issues
     )
+
+
+@pytest.mark.parametrize(
+    ("destination", "notice_days", "expected_codes"),
+    [
+        ("New York, NY", 6, ["ADV-001"]),
+        ("New York, NY", 7, []),
+        ("International conference", 13, ["ADV-001"]),
+        ("International conference", 14, []),
+    ],
+)
+def test_check_trip_plan_uses_validation_notice_thresholds(
+    trip_plan: TripPlan,
+    evaluation_date: date,
+    destination: str,
+    notice_days: int,
+    expected_codes: list[str],
+) -> None:
+    departure = evaluation_date + timedelta(days=notice_days)
+    plan = trip_plan.model_copy(
+        update={
+            "destination": destination,
+            # Even an early booking cannot override the submission notice gate.
+            "booking_date": evaluation_date - timedelta(days=30),
+            "departure_date": departure,
+            "return_date": departure + timedelta(days=4),
+        }
+    )
+    result = check_trip_plan(plan)
+    assert [
+        issue.code for issue in result.issues if issue.code in {"advance_booking", "ADV-001"}
+    ] == expected_codes
 
 
 def test_check_trip_plan_skips_cost_comparison_when_estimates_missing(

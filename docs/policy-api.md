@@ -60,12 +60,15 @@ Example JSON structure (matches `PolicyCheckResult` in
   "status": "fail",
   "issues": [
     {
-      "code": "advance_booking",
-      "message": "Flights must be booked 14 days in advance",
-      "severity": "warning",
+      "code": "ADV-001",
+      "message": "Trips must be booked at least 7 days in advance; only 2 days provided",
+      "severity": "error",
       "context": {
-        "rule_id": "advance_booking",
-        "severity": "advisory"
+        "rule_id": "ADV-001",
+        "rule_name": "default_advance_booking",
+        "severity": "error",
+        "source": "validation.yaml",
+        "blocking": true
       }
     }
   ],
@@ -102,9 +105,9 @@ Example JSON structure for the planner-facing policy snapshot contract:
   "policy_status": "fail",
   "booking_requirements": [
     {
-      "code": "advance_booking",
-      "summary": "Bookings must be made 14 days before departure.",
-      "severity": "warning"
+      "code": "fare_comparison",
+      "summary": "Selected fare cannot exceed the lowest comparable fare by more than $200.",
+      "severity": "error"
     }
   ],
   "documentation_rules": [

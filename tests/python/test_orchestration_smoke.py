@@ -65,11 +65,11 @@ def test_policy_graph_records_missing_policy_inputs(tmp_path: Path) -> None:
     missing = state.policy_missing_inputs
     assert missing
     rule_ids = {entry.get("rule_id") for entry in missing}
-    assert "advance_booking" in rule_ids
-    advance_booking = next(entry for entry in missing if entry.get("rule_id") == "advance_booking")
-    assert "booking_date" in advance_booking.get("missing_fields", [])
-    assert isinstance(advance_booking.get("missing_fields"), list)
-    assert advance_booking.get("message", "").startswith("Missing required inputs:")
+    assert "advance_booking" not in rule_ids
+    fare = next(entry for entry in missing if entry.get("rule_id") == "fare_comparison")
+    assert "selected_fare" in fare.get("missing_fields", [])
+    assert isinstance(fare.get("missing_fields"), list)
+    assert fare.get("message", "").startswith("Missing required inputs:")
 
 
 def test_policy_graph_persists_planner_runtime_seam(tmp_path: Path) -> None:

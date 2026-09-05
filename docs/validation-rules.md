@@ -36,6 +36,15 @@ Each validation result contains:
 - `blocking` - Whether the violation prevents submission
 - `is_blocking` - Property that returns `True` when `blocking=True` AND `severity='error'`
 
+Advance-booking submission gates have one owner: `validation.yaml` and
+`PolicyValidator`. Notice is measured from the evaluation date to departure;
+the default blocking rule emits `ADV-001` below 7 domestic or 14 international
+days. `check_trip_plan` returns that validation issue directly. `policy.yaml`
+no longer registers an independent booking-date advisory, including when a
+legacy `advance_booking` entry remains in a custom policy file. Migrate its
+thresholds to `validation.yaml`. The standalone `policy.AdvanceBookingRule`
+class remains available for compatibility with explicit callers.
+
 ### Available Rules
 
 | Rule Type | Configuration Keys | Behavior |
@@ -90,7 +99,6 @@ active rule IDs along with their required `PolicyContext` inputs.
 
 | Rule ID | Default severity | Configuration keys | Required context fields | Behavior |
 | --- | --- | --- | --- | --- |
-| `advance_booking` | `advisory` | `days_required` | `booking_date`, `departure_date` | Require bookings be made at least the configured days before departure (default 14). |
 | `fare_comparison` | `blocking` | `max_over_lowest` | `selected_fare`, `lowest_fare` | Selected fare cannot exceed the lowest comparable fare by more than the configured amount (default $200). |
 | `cabin_class` | `blocking` | `long_haul_hours`, `allowed_classes` | `cabin_class`, `flight_duration_hours` | Flights at or under the long-haul threshold must use one of the allowed cabin classes (default ≤5 hours must be economy). |
 | `fare_evidence` | `blocking` | — | `fare_evidence_attached` | A screenshot or other fare evidence must be attached. |

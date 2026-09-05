@@ -3,6 +3,8 @@
 # Surfaces:
 #   * ApprovalEngine.evaluate_expense  (config/approval_rules.yaml)
 #   * PolicyEngine.validate            (config/policy.yaml)
+# Advance-booking is owned by validation.yaml; this kit does not evaluate it.
+# Submission thresholds and ADV-001 are covered by test_policy_api.py.
 #
 # Same shape as the Counter_Risk / TMP / trip-planner kits. A "scenario" is the
 # BASE request (expense list + policy context) with an optional ordered `patch`
@@ -19,14 +21,13 @@
 #        100 < amount < 5000 (non-meal) -> pending (no rule resolves)
 #        amount >= 5000              -> flagged (high_amount_flag)
 #        meals & amount >= 300       -> flagged (meals_manager_review)
-#   policy.yaml -- 10 rules; the base context is built to PASS all of them.
+#   policy.yaml -- 9 rules; the base context is built to PASS all of them.
 
 # ---------------------------------------------------------------------------
 # Base request: a fully-compliant trip.
 #
 # Two small expenses, each <= $100 -> both auto-approved, report auto_approved.
 # Policy context satisfies every rule:
-#   advance_booking : 14+ days notice (booked 2025-01-01, departs 2025-01-20)
 #   fare_comparison : selected 300 vs lowest 250 -> overage 50 <= 200
 #   cabin_class     : economy, 4h flight (<= 5h long-haul) -> economy allowed
 #   fare_evidence   : attached
@@ -92,8 +93,8 @@ scenarios:
     patch:
       - {op: add_expense, category: meals, description: Client dinner with alcohol, amount: 80.00}
 
-  # Book only 3 days before departure (< 14 required). advance_booking is an
-  # ADVISORY rule -> one advisory violation, no new blocking violation.
+  # Changing booking_date has no effect on policy-lite: advance-booking is
+  # evaluated by PolicyValidator on the submission path, not this surface.
   - id: late_booking
     patch:
       - {op: set_context, field: booking_date, value: "2025-01-17"}
@@ -114,9 +115,8 @@ scenarios:
     patch:
       - {op: set_context, field: fare_evidence_attached, value: false}
 
-  # A maximally non-compliant trip: a flagged high expense AND four policy
-  # breaches (1 advisory: late booking; 3 blocking: fare overage, business
-  # cabin, missing evidence). Exercises the combined escalation signal.
+  # A flagged high expense AND three blocking policy breaches: fare overage,
+  # business cabin, missing evidence. Exercises the combined escalation signal.
   - id: many_violations
     patch:
       - {op: set_expense_amount, index: 0, value: 7500.00}
@@ -180,19 +180,19 @@ directionals:
     metric: policy.blocking_violation_count
     direction: increase
     enforce: true
-  # Booking late raises the (advisory) violation count.
-  - id: late_booking_raises_violations
+  # Legacy booking dates no longer create a duplicate policy-lite verdict.
+  - id: late_booking_leaves_violations_unchanged
     scenario: late_booking
     control: base
     metric: policy.violation_count
-    direction: increase
+    direction: unchanged
     enforce: true
-  # ...and it is advisory, not blocking.
-  - id: late_booking_raises_advisory
+  # No advisory penalty duplicates the validation submission gate.
+  - id: late_booking_leaves_advisory_unchanged
     scenario: late_booking
     control: base
     metric: policy.advisory_violation_count
-    direction: increase
+    direction: unchanged
     enforce: true
   # An over-budget fare raises blocking violations.
   - id: fare_overage_raises_blocking
