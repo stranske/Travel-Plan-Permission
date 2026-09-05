@@ -43,6 +43,7 @@ dev = [
     "pyarrow>=23.0.1",
     "hypothesis>=6.0.0",
     "langgraph>=0.2.0",
+    "pytest-regressions",
 ]
 ocr = [
     "Pillow>=10.0.0",

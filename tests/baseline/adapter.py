@@ -6,7 +6,7 @@ context) into a flat ``dict[str, float|int]`` of named scalar outcomes.
 Everything else -- directional checks, invariants, golden masters, the coverage
 manifest -- is generic and lives in ``baseline_kit``.
 
-Target surfaces (both deterministic: no DB, no network, no LLM):
+Target surfaces (deterministic: no DB, no network, no LLM):
 
 * ``travel_plan_permission.approval.ApprovalEngine.evaluate_expense`` -- maps a
   single :class:`ExpenseItem` to an :class:`ApprovalDecision` (auto-approved /
@@ -16,6 +16,11 @@ Target surfaces (both deterministic: no DB, no network, no LLM):
 * ``travel_plan_permission.policy.PolicyEngine.validate`` -- maps a
   :class:`PolicyContext` to a list of :class:`PolicyResult` (per-rule pass/fail
   with blocking/advisory severity) using ``config/policy.yaml``.
+
+* ``travel_plan_permission.validation.PolicyValidator.validate_plan`` -- runs
+  ``config/validation.yaml`` through the sibling ``run_validation_scenario``.
+  Its catalog section supplies a base TripPlan, shallow field overrides, and
+  an explicit reference date; outputs count all and blocking violations by code.
 
 Scenario model
 --------------
@@ -110,7 +115,9 @@ def _coerce_context_value(field: str, value: Any) -> Any:
     return value
 
 
-def apply_patch(base_request: dict[str, Any], patch: list[dict[str, Any]] | None) -> dict[str, Any]:
+def apply_patch(
+    base_request: dict[str, Any], patch: list[dict[str, Any]] | None
+) -> dict[str, Any]:
     """Return a deep copy of ``base_request`` with ``patch`` operations applied."""
     request = copy.deepcopy(base_request)
     expenses: list[dict[str, Any]] = request.setdefault("expenses", [])
@@ -182,7 +189,9 @@ def _build_context(raw_context: dict[str, Any], expense_items: list[Any]) -> Any
 # ---------------------------------------------------------------------------
 
 
-def run_scenario(scenario: dict[str, Any], base_request: dict[str, Any]) -> dict[str, float]:
+def run_scenario(
+    scenario: dict[str, Any], base_request: dict[str, Any]
+) -> dict[str, float]:
     """Apply a scenario's patch, run both engines, flatten to scalar metrics.
 
     Deterministic: rule order is fixed by config; no wall-clock fields are read.
@@ -239,7 +248,9 @@ def run_scenario(scenario: dict[str, Any], base_request: dict[str, Any]) -> dict
         "approval.any_flagged": int(n_flagged > 0),
         "approval.requested_amount": float(requested_amount),
         "approval.auto_approved_amount": float(auto_approved_amount),
-        "approval.report_flagged": int(report.approval_status == ApprovalStatus.FLAGGED),
+        "approval.report_flagged": int(
+            report.approval_status == ApprovalStatus.FLAGGED
+        ),
         "approval.report_auto_approved": int(
             report.approval_status == ApprovalStatus.AUTO_APPROVED
         ),
@@ -279,3 +290,36 @@ def metric_names() -> list[str]:
         "policy.advisory_violation_count",
         "requires_escalation",
     ]
+
+
+def run_validation_scenario(
+    scenario: dict[str, Any], base: dict[str, Any]
+) -> dict[str, float]:
+    """Run the production validation config on a catalog plan at a fixed date.
+
+    The validation catalog is independent of the expense/policy scenarios. Plan
+    overrides replace whole fields (including mappings); neither input is mutated.
+    Every configured code has zero-valued metrics even when it produces no result.
+    """
+    from travel_plan_permission.models import TripPlan
+    from travel_plan_permission.validation import PolicyValidator
+
+    raw_plan = copy.deepcopy(base["plan"])
+    raw_plan.update(copy.deepcopy(scenario.get("plan", {})))
+    plan = TripPlan.model_validate(raw_plan)
+    reference_date = date.fromisoformat(str(base["reference_date"]))
+    validator = PolicyValidator.from_file()
+    results = validator.validate_plan(plan, reference_date=reference_date)
+    flat: dict[str, float] = {
+        "validation.n_violations": len(results),
+        "validation.n_blocking": sum(result.is_blocking for result in results),
+    }
+    for code in sorted(
+        {rule.code for rule in validator.rules} | {r.code for r in results}
+    ):
+        by_code = [result for result in results if result.code == code]
+        flat[f"validation.{code}.violations"] = len(by_code)
+        flat[f"validation.{code}.blocking"] = sum(
+            result.is_blocking for result in by_code
+        )
+    return flat
