@@ -299,6 +299,7 @@ def test_check_trip_plan_enforces_validation_blocking_rules(
         ),
         trip_plan.model_copy(
             update={
+                "booking_date": date.today(),
                 "departure_date": date.today() + timedelta(days=1),
                 "return_date": date.today() + timedelta(days=4),
                 "estimated_cost": Decimal("1000.00"),
@@ -310,12 +311,47 @@ def test_check_trip_plan_enforces_validation_blocking_rules(
     observed_codes = {issue.code for result in results for issue in result.issues}
 
     assert expected_codes <= observed_codes
+    advance_issues = [
+        issue for issue in results[1].issues if issue.code in {"advance_booking", "ADV-001"}
+    ]
+    assert [issue.code for issue in advance_issues] == ["ADV-001"]
+    assert advance_issues[0].context["source"] == "validation.yaml"
+    assert advance_issues[0].severity == "error"
+    assert results[1].status == "fail"
     budget_result = results[0]
     assert budget_result.status == "fail"
     assert any(
         issue.code == "BUD-001" and issue.context["source"] == "validation.yaml"
         for issue in budget_result.issues
     )
+
+
+@pytest.mark.parametrize(
+    ("destination", "notice_days", "expected_codes"),
+    [
+        ("New York, NY", 6, ["ADV-001"]),
+        ("New York, NY", 7, []),
+        ("International conference", 13, ["ADV-001"]),
+        ("International conference", 14, []),
+    ],
+)
+def test_check_trip_plan_uses_validation_notice_thresholds(
+    trip_plan: TripPlan, destination: str, notice_days: int, expected_codes: list[str]
+) -> None:
+    departure = date.today() + timedelta(days=notice_days)
+    plan = trip_plan.model_copy(
+        update={
+            "destination": destination,
+            # Even an early booking cannot override the submission notice gate.
+            "booking_date": date.today() - timedelta(days=30),
+            "departure_date": departure,
+            "return_date": departure + timedelta(days=4),
+        }
+    )
+    result = check_trip_plan(plan)
+    assert [
+        issue.code for issue in result.issues if issue.code in {"advance_booking", "ADV-001"}
+    ] == expected_codes
 
 
 def test_check_trip_plan_skips_cost_comparison_when_estimates_missing(

@@ -22,8 +22,7 @@ rules:
     engine = PolicyEngine.from_yaml(yaml_content)
     metadata = {item["rule_id"]: item for item in engine.describe_rules()}
 
-    assert metadata["advance_booking"]["severity"] == "blocking"
-    assert "21 days" in metadata["advance_booking"]["description"]
+    assert "advance_booking" not in metadata
     assert "150" in metadata["fare_comparison"]["description"]
     assert metadata["cabin_class"]["severity"] == "advisory"
     assert "premium economy" in metadata["cabin_class"]["description"].lower()
