@@ -1128,7 +1128,7 @@ def get_policy_snapshot(
     )
 
     engine = PolicyEngine.from_file()
-    validator = PolicyValidator.from_file()
+    validator = PolicyValidator.from_runtime_config()
     context = _context_from_plan(plan)
     results = engine.validate(context)
     validation_results = validator.validate_plan(plan)
@@ -1444,7 +1444,7 @@ def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
     """
 
     engine = PolicyEngine.from_file()
-    validator = PolicyValidator.from_file()
+    validator = PolicyValidator.from_runtime_config()
     context = _context_from_plan(plan)
     policy_results = engine.validate(context)
     validation_results = validator.validate_plan(plan)

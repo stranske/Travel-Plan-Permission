@@ -8,6 +8,20 @@ For the operator-facing live-test procedure for these endpoints, including
 environment bootstrap and the blessed smoke workflow, see the
 [`Planner Live-Test Runbook`](./planner-live-test-runbook.md).
 
+## Validation configuration
+
+`check_trip_plan` and `get_policy_snapshot` select validation rules through
+`PolicyValidator.from_runtime_config()`. When `POLICY_CONFIG` is unset, the
+existing default `validation.yaml` lookup (including the packaged fallback)
+applies. When set, `POLICY_CONFIG` contains inline YAML, not a filename, and
+replaces the entire validation rule set. An empty or invalid override raises
+an error; it never silently falls back to the default rules.
+
+Both paths load the configuration on each evaluation and include the selected
+rules in `policy_version`. Changed rule values invalidate the snapshot ETag and
+planner policy cache. Equivalent YAML produces the same policy version.
+`POLICY_CONFIG` does not override `policy.yaml` guidance rules.
+
 ## Data Models
 
 ### TripPlan (input)
