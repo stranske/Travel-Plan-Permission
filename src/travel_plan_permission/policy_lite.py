@@ -61,20 +61,27 @@ def _missing_inputs_for_rule(rule_id: str, context: PolicyContext) -> list[str]:
 def diagnose_missing_inputs(
     context: PolicyContext, engine: PolicyEngine | None = None
 ) -> list[RuleDiagnostic]:
-    """Return diagnostics for rules that cannot evaluate due to missing inputs."""
+    """Explain missing inputs only for rules whose evaluation is unsuccessful.
+
+    Rule evaluation owns applicability and severity-dependent missing-data
+    behavior. The field map supplies detail without turning passed or skipped
+    rules into actionable diagnostics.
+    """
 
     policy_engine = engine or PolicyEngine.from_file()
     diagnostics: list[RuleDiagnostic] = []
-    for rule in policy_engine.rules:
-        missing = _missing_inputs_for_rule(rule.rule_id, context)
+    for result in policy_engine.validate(context):
+        if result.passed:
+            continue
+        missing = _missing_inputs_for_rule(result.rule_id, context)
         if not missing:
             continue
         missing_list = ", ".join(missing)
         diagnostics.append(
             RuleDiagnostic(
-                rule_id=rule.rule_id,
+                rule_id=result.rule_id,
                 missing_fields=missing,
-                message=f"Missing required inputs: {missing_list} (rule '{rule.rule_id}').",
+                message=f"Missing required inputs: {missing_list} (rule '{result.rule_id}').",
             )
         )
     return diagnostics
