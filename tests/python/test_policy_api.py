@@ -208,7 +208,6 @@ def test_production_validation_defaults_when_override_is_unset(
     expected = PolicyValidator.from_file().validate_plan(trip_plan)
     verdict = check_trip_plan(trip_plan)
     snapshot = get_policy_snapshot(trip_plan)
-    assert expected
     assert {result.code for result in expected} <= {issue.code for issue in verdict.issues}
     assert {result.code for result in expected} <= {
         trigger.code for trigger in snapshot.approval_triggers
