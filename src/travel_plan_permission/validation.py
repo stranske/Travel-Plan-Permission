@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
@@ -323,6 +324,18 @@ class PolicyValidator(YamlConfigLoaderMixin):
     @classmethod
     def from_environment(cls, env_var: str = "POLICY_CONFIG") -> PolicyValidator:
         return super().from_environment(env_var)
+
+    @classmethod
+    def from_runtime_config(cls) -> PolicyValidator:
+        """Load inline POLICY_CONFIG YAML, or the default validation configuration.
+
+        An explicitly set override replaces the default rules. Empty or invalid
+        overrides raise instead of silently evaluating a different policy.
+        """
+
+        if "POLICY_CONFIG" in os.environ:
+            return cls.from_environment()
+        return cls.from_file()
 
     def validate_plan(
         self, plan: TripPlan, *, reference_date: date | None = None

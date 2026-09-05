@@ -1,5 +1,6 @@
 import shutil
 import subprocess
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -117,6 +118,101 @@ def test_check_trip_plan_reports_policy_issues(trip_plan: TripPlan) -> None:
     assert any(issue.code == "fare_evidence" for issue in result.issues)
     for issue in result.issues:
         assert issue.context["rule_id"] == issue.code
+
+
+def test_check_trip_plan_honors_configured_validation_source(
+    trip_plan: TripPlan,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real production paths agree on override verdicts, versions, and cache invalidation."""
+
+    plan = trip_plan.model_copy(
+        update={
+            "fare_evidence_attached": True,
+            "selected_fare": Decimal("200"),
+            "lowest_fare": Decimal("200"),
+            "cabin_class": "economy",
+            "flight_duration_hours": 2.0,
+            "expenses": [
+                ExpenseItem(
+                    category=ExpenseCategory.GROUND_TRANSPORT,
+                    description="Airport shuttle",
+                    amount=Decimal("45"),
+                    expense_date=trip_plan.departure_date,
+                )
+            ],
+        }
+    )
+    config = (
+        "rules:\n"
+        "  - type: budget_limit\n"
+        "    name: configured_budget\n"
+        "    code: CONFIG-BUDGET\n"
+        "    blocking: true\n"
+        "    trip_limit: 2000\n"
+    )
+    monkeypatch.setenv("POLICY_CONFIG", config)
+    allowed = check_trip_plan(plan)
+    snapshot = get_policy_snapshot(plan)
+    assert allowed.status == snapshot.policy_status == "pass"
+    assert not any(issue.code == "CONFIG-BUDGET" for issue in allowed.issues)
+    assert allowed.policy_version == snapshot.versioning.policy_version
+
+    # A semantic change at the same configured source must be observed on the next call.
+    monkeypatch.setenv("POLICY_CONFIG", config.replace("2000", "500"))
+    blocked = check_trip_plan(plan)
+    changed_snapshot = get_policy_snapshot(
+        plan,
+        PlannerPolicySnapshotRequest(
+            trip_id=plan.trip_id, known_policy_version=allowed.policy_version
+        ),
+    )
+    assert blocked.status == changed_snapshot.policy_status == "fail"
+    assert any(
+        issue.code == "CONFIG-BUDGET" and issue.context["blocking"] for issue in blocked.issues
+    )
+    assert any(
+        trigger.code == "CONFIG-BUDGET" and trigger.blocking
+        for trigger in changed_snapshot.approval_triggers
+    )
+    assert blocked.policy_version == changed_snapshot.versioning.policy_version
+    assert blocked.policy_version != allowed.policy_version
+    assert changed_snapshot.versioning.etag != snapshot.versioning.etag
+    assert not changed_snapshot.versioning.compatible_with_planner_cache
+
+    monkeypatch.setenv("POLICY_CONFIG", "# Equivalent configuration\n" + config)
+    restored = get_policy_snapshot(plan)
+    assert restored.policy_status == "pass"
+    assert restored.versioning.policy_version == allowed.policy_version
+    assert restored.versioning.etag == snapshot.versioning.etag
+
+
+@pytest.mark.parametrize("content", ["", " ", "rules: []", "rules: [{type: unknown}]"])
+@pytest.mark.parametrize("evaluate", [check_trip_plan, get_policy_snapshot])
+def test_production_validation_override_fails_closed(
+    trip_plan: TripPlan,
+    monkeypatch: pytest.MonkeyPatch,
+    content: str,
+    evaluate: Callable[[TripPlan], object],
+) -> None:
+    monkeypatch.setenv("POLICY_CONFIG", content)
+    with pytest.raises(ValueError):
+        evaluate(trip_plan)
+
+
+def test_production_validation_defaults_when_override_is_unset(
+    trip_plan: TripPlan,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("POLICY_CONFIG", raising=False)
+    expected = PolicyValidator.from_file().validate_plan(trip_plan)
+    verdict = check_trip_plan(trip_plan)
+    snapshot = get_policy_snapshot(trip_plan)
+    assert {result.code for result in expected} <= {issue.code for issue in verdict.issues}
+    assert {result.code for result in expected} <= {
+        trigger.code for trigger in snapshot.approval_triggers
+    }
+    assert verdict.policy_version == snapshot.versioning.policy_version
 
 
 def test_check_trip_plan_triggers_fare_comparison_when_inputs_present(
@@ -305,9 +401,7 @@ def test_check_trip_plan_enforces_validation_blocking_rules(
     """Every blocking validation.yaml control reaches the planner verdict path."""
 
     if custom_policy:
-        engine = PolicyEngine.from_yaml(
-            "rules:\n  fare_comparison:\n    max_over_lowest: 150\n"
-        )
+        engine = PolicyEngine.from_yaml("rules:\n  fare_comparison:\n    max_over_lowest: 150\n")
         monkeypatch.setattr(PolicyEngine, "from_file", lambda *_args, **_kwargs: engine)
 
     validator = PolicyValidator.from_file()
@@ -591,9 +685,7 @@ def test_get_policy_snapshot_includes_validation_blocking_triggers(
 ) -> None:
     """Planner snapshots expose blocking validation.yaml controls, not just policy-lite rules."""
 
-    plan = trip_plan.model_copy(
-        update={"estimated_cost": Decimal("99999.00")}
-    )
+    plan = trip_plan.model_copy(update={"estimated_cost": Decimal("99999.00")})
     validator = PolicyValidator.from_file()
     monkeypatch.setattr(PolicyValidator, "from_file", lambda *_args, **_kwargs: validator)
 
@@ -601,9 +693,7 @@ def test_get_policy_snapshot_includes_validation_blocking_triggers(
 
     assert snapshot.policy_status == "fail"
     assert any(
-        trigger.code == "BUD-001"
-        and trigger.blocking
-        and trigger.source == "validation_rule"
+        trigger.code == "BUD-001" and trigger.blocking and trigger.source == "validation_rule"
         for trigger in snapshot.approval_triggers
     )
     baseline_version = snapshot.versioning.policy_version
@@ -611,9 +701,7 @@ def test_get_policy_snapshot_includes_validation_blocking_triggers(
 
     bud_rule = next(rule for rule in validator.rules if rule.code == "BUD-001")
     rule_index = validator.rules.index(bud_rule)
-    validator.rules[rule_index] = bud_rule.model_copy(
-        update={"trip_limit": Decimal("4500")}
-    )
+    validator.rules[rule_index] = bud_rule.model_copy(update={"trip_limit": Decimal("4500")})
 
     rotated = get_policy_snapshot(plan)
 
