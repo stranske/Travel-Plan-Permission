@@ -2,6 +2,30 @@
 
 This document describes the two validation systems available for trip plans and expenses.
 
+## Checked-in defaults and operator overrides
+
+The tracked defaults in `config/` and their packaged copies in
+`src/travel_plan_permission/config/` must stay byte-identical for `policy.yaml`,
+`validation.yaml`, `providers.yaml`, `approval_rules.yaml`, and
+`excel_mappings.yaml`. Update both copies when changing a shipped default so
+checkout and wheel installations use the same configuration.
+
+Run the parity gate from the repository root:
+
+```bash
+python -m pytest tests/python/test_package_data.py::test_packaged_yaml_matches_repo_defaults
+```
+
+All five cases must pass. A mismatch names both paths in the pytest failure
+output. The same test runs in the normal Python test suite, with results in the
+CI test log. `test_config_parity_guard_detects_one_sided_change` proves that
+changing either temporary copy is detected, including comment-only changes.
+
+Explicit operator override files may intentionally differ from shipped defaults
+and are outside this gate. Existing filesystem-first loading and packaged
+fallback precedence remain unchanged; use an explicit custom file path (as in
+the example below) for deployment-specific rules.
+
 ---
 
 ## Trip Plan Validation (PolicyValidator)
