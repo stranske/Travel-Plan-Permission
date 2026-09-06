@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from xml.sax.saxutils import escape
 
 from jinja2 import BaseLoader, Environment, select_autoescape
 from pydantic import BaseModel, Field
@@ -112,11 +113,19 @@ def _render_email(template: str, context: Mapping[str, object]) -> EmailContent:
     return EmailContent(subject=subject_line, body=cleaned_body)
 
 
+def _pdf_text(value: object) -> str:
+    """Escape dynamic text before ReportLab Paragraph/table rendering."""
+
+    return escape(str(value))
+
+
 def _format_cost_breakdown(costs: Mapping[str, Decimal]) -> list[list[str]]:
     rows = [["Category", "Amount (USD)"]]
     for category, amount in costs.items():
         category_label = getattr(category, "value", category)
-        rows.append([str(category_label), f"${amount.quantize(Decimal('0.01'))}"])
+        rows.append(
+            [_pdf_text(category_label), f"${amount.quantize(Decimal('0.01'))}"]
+        )
     return rows
 
 
@@ -150,13 +159,13 @@ def generate_packet_pdf(
     elements = [
         Paragraph("Travel Approval Packet", styles["Title"]),
         Spacer(1, 0.2 * inch),
-        Paragraph(f"Traveler: {trip_plan.traveler_name}", styles["Normal"]),
-        Paragraph(f"Destination: {trip_plan.destination}", styles["Normal"]),
+        Paragraph(f"Traveler: {_pdf_text(trip_plan.traveler_name)}", styles["Normal"]),
+        Paragraph(f"Destination: {_pdf_text(trip_plan.destination)}", styles["Normal"]),
         Paragraph(
             f"Dates: {trip_plan.departure_date} to {trip_plan.return_date}",
             styles["Normal"],
         ),
-        Paragraph(f"Policy compliance: {compliance_status}", styles["Normal"]),
+        Paragraph(f"Policy compliance: {_pdf_text(compliance_status)}", styles["Normal"]),
         Spacer(1, 0.15 * inch),
         Paragraph("Cost breakdown", styles["Heading2"]),
     ]
@@ -184,11 +193,11 @@ def generate_packet_pdf(
     for event in approval_history:
         history_rows.append(
             [
-                event.approver_id,
-                event.level,
-                event.outcome.value,
+                _pdf_text(event.approver_id),
+                _pdf_text(event.level),
+                _pdf_text(event.outcome.value),
                 event.timestamp.isoformat(),
-                event.justification or "",
+                _pdf_text(event.justification or ""),
             ]
         )
 
