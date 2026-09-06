@@ -30,6 +30,29 @@
 - Accounting handoff artifacts are generated through `ExportService.to_csv()` and `ExportService.to_excel()` so the portal reuses the existing export layer rather than producing ad hoc files.
 - OCR text is optional and advisory: extracted vendor/total/date are surfaced next to the manually entered receipt values so reviewers can spot mismatches before reimbursement.
 
+### Literal text in accounting exports
+
+XLSX exports store vendor, cost center, and receipt-link values as explicit text
+cells, preserving their supplied text even when it begins with a formula marker.
+Amounts remain numeric currency cells. Receipt links remain clickable when their
+target is an HTTP or HTTPS URL; other receipt text is displayed without a hyperlink.
+
+CSV has no cell types. For these three text columns, the exporter prefixes an
+apostrophe when the value begins with `=`, `+`, `-`, `@`, their full-width variants,
+whitespace, an ASCII control character, or DEL. The original value follows the
+prefix unchanged. Other values, including ordinary HTTP(S) receipt URLs, and
+amounts are unchanged. Standard CSV quoting preserves embedded delimiters, quotes,
+and line breaks within a single field.
+
+Import these columns explicitly as **Text**, with formula detection disabled.
+A CSV parser retains the added apostrophe; consumers needing exact original text
+should use the XLSX export. Automatic CSV opening and save/reopen behavior varies
+between spreadsheet applications, so this policy does not promise universal
+formula protection; see [OWASP CSV Injection](https://owasp.org/www-community/attacks/CSV_Injection).
+The artifact regression gate is
+`pytest tests/python/test_export_service.py::test_export_preserves_literal_user_text`:
+it reloads XLSX cell values/types and parses CSV fields without evaluating formulas.
+
 ## Current boundary
 
 - This stage stops at export-ready accounting handoff artifacts and status tracking inside the portal UI.

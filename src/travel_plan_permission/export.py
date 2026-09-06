@@ -7,11 +7,36 @@ import io
 from collections.abc import Callable, Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode, urljoin, urlsplit
 
 from .models import ExpenseReport
 
 ExportRow = dict[str, str]
+
+
+def _csv_literal_text(value: str) -> str:
+    """Prefix ambiguous text with an apostrophe; CSV consumers must import it as text.
+
+    Preserve the original bytes after the prefix, including leading whitespace.
+    This is an export/import convention, not a universal spreadsheet-engine escape.
+    """
+    if value and (
+        value[0] in "=+-@＝＋－＠"
+        or value[0].isspace()
+        or ord(value[0]) < 32
+        or ord(value[0]) == 127
+    ):
+        return "'" + value
+    return value
+
+
+def _is_receipt_hyperlink(value: str) -> bool:
+    """Keep malformed or non-web receipt text visible without a clickable target."""
+    try:
+        target = urlsplit(value)
+    except ValueError:
+        return False
+    return target.scheme in {"http", "https"} and bool(target.netloc)
 
 
 class ExportService:
@@ -82,7 +107,10 @@ class ExportService:
         output = io.StringIO(newline="")
         writer = csv.DictWriter(output, fieldnames=self.schema)
         writer.writeheader()
-        writer.writerows(rows)
+        for row in rows:
+            for field in ("vendor", "cost_center", "receipt_link"):
+                row[field] = _csv_literal_text(row[field])
+            writer.writerow(row)
 
         filename = self._build_filename("csv", batch_id, current_time)
         return filename, output.getvalue()
@@ -118,8 +146,11 @@ class ExportService:
                 ]
             )
             appended_row = ws.max_row
+            # Override openpyxl's formula/error inference for untrusted text.
+            for column in (2, 5, 6):
+                ws.cell(row=appended_row, column=column).data_type = "s"
             receipt_cell = ws.cell(row=appended_row, column=len(self.schema))
-            if row["receipt_link"]:
+            if _is_receipt_hyperlink(row["receipt_link"]):
                 receipt_cell.hyperlink = row["receipt_link"]
                 receipt_cell.style = "Hyperlink"
         amount_column = 3
