@@ -51,6 +51,7 @@ def _set_bootstrap_runtime_env(monkeypatch, *, provider: str = "google") -> None
     monkeypatch.setenv("TPP_OIDC_PROVIDER", provider)
     monkeypatch.setenv("TPP_AUTH_MODE", "bootstrap-token")
     monkeypatch.setenv("TPP_BOOTSTRAP_SIGNING_SECRET", "bootstrap-secret-123")
+    monkeypatch.setenv("TPP_HANDOFF_SIGNING_SECRET", "test-handoff-signing-secret")
 
 
 def _set_oidc_runtime_env(monkeypatch) -> None:
@@ -857,6 +858,72 @@ def test_trip_planner_handoff_can_review_and_download_but_not_submit(monkeypatch
     assert itinerary.content.startswith(b"PK")
     assert submit.status_code == 401
     assert store.lookup_portal_draft(draft_id) is not None
+
+
+@pytest.mark.parametrize("scheme", ["http", "https"])
+def test_direct_draft_scoped_review_session(monkeypatch, scheme) -> None:
+    from travel_plan_permission import portal_handoff
+
+    _set_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    other = store.save_portal_draft(_portal_form_payload())
+    client = TestClient(create_app(store), base_url=f"{scheme}://testserver")
+    issued_at = 2_000_000_000
+    monkeypatch.setattr(portal_handoff.time, "time", lambda: issued_at)
+
+    review = client.post("/portal/draft", data=_portal_form_payload(), follow_redirects=True)
+
+    assert review.status_code == 200
+    assert 'data-template="review-summary"' in review.text
+    assert len(review.history) == 1
+    assert review.history[0].status_code == 303
+    assert "?" not in str(review.url)
+    draft_id = review.url.path.rsplit("/", 1)[-1]
+    cookie = review.history[0].headers["set-cookie"]
+    assert "HttpOnly" in cookie
+    assert "SameSite=lax" in cookie
+    assert "Path=/portal" in cookie
+    assert "Max-Age=900" in cookie
+    assert ("Secure" in cookie) == (scheme == "https")
+    assert "Submit request" not in review.text
+    assert client.get(f"/portal/review/{other.draft_id}").status_code == 401
+    assert client.post(f"/portal/review/{draft_id}/submit").status_code == 401
+    assert client.get("/portal/manager/reviews").status_code == 401
+    # The existing view capability permits only this draft's preview artifacts.
+    artifact = client.get(f"/portal/review/{draft_id}/artifacts/itinerary")
+    assert artifact.status_code == 200
+    assert artifact.content.startswith(b"PK")
+    assert store.lookup_portal_draft(draft_id) is not None
+
+    monkeypatch.setattr(portal_handoff.time, "time", lambda: issued_at + 901)
+    assert client.get(review.url).status_code == 401
+    assert client.get(f"/portal/review/{draft_id}/artifacts/itinerary").status_code == 401
+
+
+@pytest.mark.parametrize("secret", ["", "too-short"])
+def test_direct_draft_signing_failure_preserves_form_without_saving(monkeypatch, secret) -> None:
+    _set_runtime_env(monkeypatch)
+    monkeypatch.setenv("TPP_HANDOFF_SIGNING_SECRET", secret)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+
+    response = client.post("/portal/draft", data=_portal_form_payload())
+
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Your draft has not been saved" in response.text
+    assert 'role="alert"' in response.text
+    assert 'action="/portal/draft"' in response.text
+    assert 'value="Alex Rivera"' in response.text
+    assert "Save draft and review" in response.text
+    assert "set-cookie" not in response.headers
+    assert store.portal_drafts_by_id == {}
+
+    monkeypatch.setenv("TPP_HANDOFF_SIGNING_SECRET", "restored-test-signing-secret")
+    retry = client.post("/portal/draft", data=_portal_form_payload(), follow_redirects=True)
+    assert retry.status_code == 200
+    assert 'data-template="review-summary"' in retry.text
+    assert len(store.portal_drafts_by_id) == 1
 
 
 @pytest.fixture
@@ -2499,11 +2566,13 @@ def test_portal_submit_requires_bearer_token(monkeypatch) -> None:
     assert submit.json()["detail"] == "Missing bearer token."
 
 
-def test_portal_review_surface_requires_bearer_token(monkeypatch) -> None:
+def test_portal_review_surface_requires_bearer_or_scoped_session(monkeypatch) -> None:
     _set_bootstrap_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()))
 
     draft_id, _location = _create_portal_draft(client)
+    # Model an unrelated browser without the creator's scoped view session.
+    client.cookies.clear()
     review = client.get(f"/portal/review/{draft_id}")
 
     assert review.status_code == 401
@@ -2880,6 +2949,8 @@ def test_portal_artifact_download_requires_view_permission(monkeypatch) -> None:
     client = TestClient(create_app(PlannerProposalStore()))
 
     draft_id, _location = _create_portal_draft(client)
+    # Model an unrelated browser without the creator's scoped view session.
+    client.cookies.clear()
     artifact = client.get(f"/portal/review/{draft_id}/artifacts/itinerary")
     create_only_token = mint_bootstrap_token(
         subject="portal-submit-only",
@@ -2940,6 +3011,8 @@ def test_portal_review_detail_and_artifacts_require_view_permission(
     _set_bootstrap_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()))
     draft_id, _location = _create_portal_draft(client)
+    # Model an unrelated browser without the creator's scoped view session.
+    client.cookies.clear()
 
     missing_detail = client.get(f"/portal/review/{draft_id}")
     missing_artifact = client.get(f"/portal/review/{draft_id}/artifacts/summary")
