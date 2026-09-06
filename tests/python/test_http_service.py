@@ -2128,6 +2128,45 @@ def test_exception_approval_enforces_tier(monkeypatch, tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    ("amount", "stored_level", "required_level"),
+    [
+        ("25000", ExceptionApprovalLevel.MANAGER, ExceptionApprovalLevel.BOARD),
+        ("250", ExceptionApprovalLevel.DIRECTOR, ExceptionApprovalLevel.DIRECTOR),
+    ],
+)
+def test_exception_approval_records_enforced_tier_after_restart(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    amount: str,
+    stored_level: ExceptionApprovalLevel,
+    required_level: ExceptionApprovalLevel,
+) -> None:
+    """Approval history retains both derived authority and stored escalation."""
+    _set_bootstrap_runtime_env(monkeypatch)
+    state_path = tmp_path / "approval-tier.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    client = TestClient(create_app(store))
+    draft_id, _location = _create_portal_draft(client)
+    creator = _bootstrap_auth_header(subject="traveler", permissions=(Permission.CREATE,))
+    _seed_tiered_exception(
+        client, draft_id, creator, exception_type="advance_booking", amount=amount
+    )
+    store.exception_requests_by_draft_id[draft_id][0].approval_level = stored_level
+    _set_tier_entitlements(monkeypatch, {"entitled-approver": required_level.value})
+    approver = _bootstrap_auth_header(
+        subject="entitled-approver", permissions=(Permission.VIEW, Permission.APPROVE)
+    )
+    assert _decide_exception(client, draft_id, 0, approver).status_code == 303
+    restored = PlannerProposalStore(state_path=state_path)
+    approved = restored.list_exception_requests(draft_id)[0]
+    assert approved.status is ExceptionStatus.APPROVED
+    assert approved.approval_level is required_level
+    assert approved.approval is not None
+    assert approved.approval.level is required_level
+    assert approved.approval.approver_id == "entitled-approver"
+
+
+@pytest.mark.parametrize(
     "bad_value", ["{not-json", '["director"]', '{"director": "chief"}', '{"": "board"}']
 )
 def test_exception_decision_rejects_malformed_tier_entitlements(

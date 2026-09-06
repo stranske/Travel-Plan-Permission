@@ -33,7 +33,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from . import audit, demo_seed
-from .exception_authority import authorize_exception_tier
+from .exception_authority import authorize_exception_tier, routed_exception_level
 from .expense_review import build_expense_review_state
 from .export import ExportService
 from .http_contract_models import (
@@ -897,7 +897,7 @@ class PlannerProposalStore:
             raise KeyError(f"No exception request {exception_index} found for draft '{draft_id}'.")
         target = requests[exception_index]
         if approved:
-            target.approve(approver_id=actor_id, notes=notes)
+            target.approve(approver_id=actor_id, level=routed_exception_level(target), notes=notes)
             outcome = "approved"
         else:
             target.reject()
