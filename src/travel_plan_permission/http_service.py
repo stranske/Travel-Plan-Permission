@@ -969,6 +969,8 @@ class PlannerProposalStore:
             return
         self.store.save_snapshot(self._serialize_state(), replace=True)
 
+    persist_audit_events = _persist_state
+
     def _persist_state_with_audit(self, *events: audit.AuditEvent) -> None:
         """Commit state and its audit outbox before attempting delivery."""
 
@@ -2191,12 +2193,11 @@ def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) ->
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Exception request not found.",
             ) from exc
-        # Authority is checked BEFORE any decision is recorded, so an
-        # insufficiently entitled caller cannot mutate status or history.
         authorize_exception_tier(
             auth_context,
             pending,
             security=proposal_store.security,
+            persist_audit=proposal_store.persist_audit_events,
             draft_id=draft_id,
             exception_index=exception_index,
         )

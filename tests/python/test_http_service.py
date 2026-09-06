@@ -2127,6 +2127,60 @@ def test_exception_approval_enforces_tier(monkeypatch, tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "bad_value", ["{not-json", '["director"]', '{"director": "chief"}', '{"": "board"}']
+)
+def test_exception_decision_rejects_malformed_tier_entitlements(
+    monkeypatch: pytest.MonkeyPatch, bad_value: str
+) -> None:
+    """Invalid entitlement settings fail closed without changing a request."""
+    _set_bootstrap_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+    draft_id, _location = _create_portal_draft(client)
+    creator = _bootstrap_auth_header(subject="traveler", permissions=(Permission.CREATE,))
+    _seed_tiered_exception(
+        client, draft_id, creator, exception_type="advance_booking", amount="6000"
+    )
+    approver = _bootstrap_auth_header(
+        subject="director", permissions=(Permission.VIEW, Permission.APPROVE)
+    )
+    monkeypatch.setenv(EXCEPTION_TIER_ENTITLEMENT_ENV_VAR, bad_value)
+    assert _decide_exception(client, draft_id, 0, approver).status_code == 503
+    stored = store.list_exception_requests(draft_id)[0]
+    assert stored.status is ExceptionStatus.PENDING
+    assert stored.approval is None
+
+
+def test_exception_denial_audit_survives_restart(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A denied decision must reach storage even when no later write occurs."""
+    _set_bootstrap_runtime_env(monkeypatch)
+    monkeypatch.delenv(EXCEPTION_TIER_ENTITLEMENT_ENV_VAR, raising=False)
+    state_path = tmp_path / "denial-state.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    client = TestClient(create_app(store))
+    draft_id, _location = _create_portal_draft(client)
+    creator = _bootstrap_auth_header(subject="traveler", permissions=(Permission.CREATE,))
+    _seed_tiered_exception(
+        client, draft_id, creator, exception_type="advance_booking", amount="25000"
+    )
+    approver = _bootstrap_auth_header(
+        subject="generic", permissions=(Permission.VIEW, Permission.APPROVE)
+    )
+    assert _decide_exception(client, draft_id, 0, approver).status_code == 403
+    restored = PlannerProposalStore(state_path=state_path)
+    denials = [event for event in restored.list_audit_events() if event.outcome == "denied"]
+    assert len(denials) == 1
+    assert denials[0].actor == "generic"
+    assert denials[0].metadata["required_level"] == "board"
+    assert denials[0].metadata["reason"] == "insufficient_exception_tier_entitlement"
+    stored = restored.list_exception_requests(draft_id)[0]
+    assert stored.status is ExceptionStatus.PENDING
+    assert stored.approval is None
+
+
 @pytest.mark.parametrize("form_actor", ["forged-manager-id", None])
 @pytest.mark.parametrize(
     ("route", "action"),

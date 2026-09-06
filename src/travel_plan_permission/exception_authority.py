@@ -8,6 +8,8 @@ independently of the portal's request plumbing.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from fastapi import HTTPException, status
 
 from .models import (
@@ -61,6 +63,7 @@ def authorize_exception_tier(
     exception: ExceptionRequest,
     *,
     security: SecurityModel,
+    persist_audit: Callable[[], None],
     draft_id: str,
     exception_index: int,
 ) -> ExceptionApprovalLevel:
@@ -91,6 +94,7 @@ def authorize_exception_tier(
             "reason": "insufficient_exception_tier_entitlement",
         },
     )
+    persist_audit()
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail=(
