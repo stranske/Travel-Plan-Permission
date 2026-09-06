@@ -320,16 +320,16 @@ class GroundTransport(BaseModel):
 
     mosers_vehicle_planned: bool | None = None
     mileage_planned: bool | None = None
-    mileage_miles: Decimal | None = Field(default=None, ge=0)
-    mileage_cost: Decimal | None = Field(default=None, ge=0)
+    mileage_miles: Decimal | None = Field(default=None, ge=0, allow_inf_nan=False)
+    mileage_cost: Decimal | None = Field(default=None, ge=0, allow_inf_nan=False)
     rideshare_planned: bool | None = None
-    rideshare_cost: Decimal | None = Field(default=None, ge=0)
+    rideshare_cost: Decimal | None = Field(default=None, ge=0, allow_inf_nan=False)
     shuttle_planned: bool | None = None
-    shuttle_cost: Decimal | None = Field(default=None, ge=0)
+    shuttle_cost: Decimal | None = Field(default=None, ge=0, allow_inf_nan=False)
     rental_planned: bool | None = None
-    rental_cost: Decimal | None = Field(default=None, ge=0)
+    rental_cost: Decimal | None = Field(default=None, ge=0, allow_inf_nan=False)
     rental_company: str | None = None
-    rental_daily_rate: Decimal | None = Field(default=None, ge=0)
+    rental_daily_rate: Decimal | None = Field(default=None, ge=0, allow_inf_nan=False)
     rental_reason: str | None = None
 
     model_config = {"extra": "forbid"}

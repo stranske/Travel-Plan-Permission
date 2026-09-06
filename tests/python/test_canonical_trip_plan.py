@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 import travel_plan_permission.canonical as canonical
 from travel_plan_permission.canonical import (
@@ -242,3 +243,18 @@ def test_canonical_absent_ground_cost_remains_absent() -> None:
 
     assert ExpenseCategory.GROUND_TRANSPORT not in plan.expense_breakdown
     assert "ground_transport" not in plan.expected_costs
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["mileage_miles", "mileage_cost", "rideshare_cost", "shuttle_cost", "rental_cost", "rental_daily_rate"],
+)
+@pytest.mark.parametrize("value", ["Infinity", "-Infinity", "NaN", Decimal("Infinity"), Decimal("NaN")])
+def test_ground_transport_rejects_non_finite_values(field, value) -> None:
+    with pytest.raises(ValidationError, match="finite number"):
+        GroundTransport.model_validate({field: value})
+
+    payload = _load_fixture()
+    payload["ground_transport"] = {field: value}
+    with pytest.raises(ValidationError, match="finite number"):
+        load_trip_plan_input(payload)
