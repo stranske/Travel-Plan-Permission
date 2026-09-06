@@ -363,8 +363,8 @@ def test_policy_engine_invalid_config_rejected_from_file_and_environment(
 
 @pytest.mark.parametrize(
     "distance",
-    [float("nan"), float("inf"), float("-inf"), "invalid", object(), -1],
-    ids=["nan", "positive_inf", "negative_inf", "text", "object", "negative"],
+    [float("nan"), float("inf"), float("-inf"), "invalid", object(), -1, 10**400],
+    ids=["nan", "positive_inf", "negative_inf", "text", "object", "negative", "overflow"],
 )
 def test_local_overnight_rejects_non_finite_distance(distance: object) -> None:
     rule = LocalOvernightRule(min_distance_miles=50, severity=Severity.BLOCKING)

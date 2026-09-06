@@ -348,7 +348,7 @@ class LocalOvernightRule(PolicyRule):
             )
         try:
             distance = float(context.distance_from_office_miles)
-        except (TypeError, ValueError):
+        except (OverflowError, TypeError, ValueError):
             distance = float("nan")
         if not isfinite(distance):
             return self._result(
