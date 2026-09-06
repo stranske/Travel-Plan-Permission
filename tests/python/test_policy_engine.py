@@ -359,3 +359,51 @@ def test_policy_engine_invalid_config_rejected_from_file_and_environment(
             ValueError, match="policy.yaml: unknown rule.*fare_comparision"
         ):
             load()
+
+
+@pytest.mark.parametrize(
+    "distance",
+    [float("nan"), float("inf"), float("-inf"), "invalid", object(), -1, 10**400],
+    ids=["nan", "positive_inf", "negative_inf", "text", "object", "negative", "overflow"],
+)
+def test_local_overnight_rejects_non_finite_distance(distance: object) -> None:
+    rule = LocalOvernightRule(min_distance_miles=50, severity=Severity.BLOCKING)
+    context = PolicyContext(overnight_stay=True, distance_from_office_miles=distance)
+
+    result = rule.evaluate(context)
+
+    assert result.passed is False
+    assert result.outcome == RuleOutcome.FAILED
+    assert "require waiver" in result.message.lower()
+
+
+def test_local_overnight_none_emits_missing_data() -> None:
+    rule = LocalOvernightRule(min_distance_miles=50, severity=Severity.BLOCKING)
+    context = PolicyContext(overnight_stay=True, distance_from_office_miles=None)
+
+    result = rule.evaluate(context)
+
+    assert result.passed is False
+    assert result.outcome == RuleOutcome.MISSING_DATA
+
+
+def test_local_overnight_rejects_subthreshold_distance() -> None:
+    rule = LocalOvernightRule(min_distance_miles=50, severity=Severity.BLOCKING)
+    context = PolicyContext(overnight_stay=True, distance_from_office_miles=10)
+
+    result = rule.evaluate(context)
+
+    assert result.passed is False
+    assert result.outcome == RuleOutcome.FAILED
+    assert "10" in result.message
+
+
+@pytest.mark.parametrize("distance", [50, 75])
+def test_local_overnight_passes_when_distance_meets_minimum(distance: float) -> None:
+    rule = LocalOvernightRule(min_distance_miles=50, severity=Severity.BLOCKING)
+    context = PolicyContext(overnight_stay=True, distance_from_office_miles=distance)
+
+    result = rule.evaluate(context)
+
+    assert result.passed is True
+    assert result.outcome == RuleOutcome.PASSED
