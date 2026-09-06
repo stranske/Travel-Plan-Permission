@@ -1719,13 +1719,35 @@ def register_portal_routes(
                 context=_portal_template_context(request, review, exceptions=[]),
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
+        # Resolve signing configuration before persistence: every saved direct draft
+        # must be reachable by its creator through the existing view-only capability.
+        try:
+            secret = resolve_handoff_signing_secret()
+        except ValueError:
+            context = _portal_template_context(request, review)
+            context["session_error"] = (
+                "Review sessions are temporarily unavailable. Your draft has not been saved. "
+                "Your details are still in this form; try saving again shortly."
+            )
+            return _TEMPLATES.TemplateResponse(
+                request=request,
+                name="draft_entry.html",
+                context=context,
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         draft = proposal_store.save_portal_draft(answers)
         if review.artifacts:
             proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
-        return RedirectResponse(
+        response = RedirectResponse(
             url=request.url_for("portal_review_detail", draft_id=draft.draft_id),
             status_code=status.HTTP_303_SEE_OTHER,
         )
+        _set_handoff_cookie(
+            response,
+            request,
+            issue_handoff_token(draft.draft_id, secret=secret),
+        )
+        return response
 
     @app.post("/portal/expenses/review")
     async def portal_expense_review(

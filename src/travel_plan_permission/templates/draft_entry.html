@@ -24,6 +24,13 @@
         </p>
       </div>
 
+      {% if session_error %}
+        <div class="callout" role="alert" style="margin-bottom: 18px;">
+          <h2>Unable to save your draft yet</h2>
+          <p>{{ session_error }}</p>
+        </div>
+      {% endif %}
+
       <form method="post" action="{{ form_action }}">
         {% include "_portal_form_fields.html" %}
         <div class="actions">

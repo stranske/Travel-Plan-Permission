@@ -149,6 +149,32 @@ whose subject is the exact saved draft ID and whose permission set contains only
 `view`. Normal authenticated portal authorization takes precedence when present,
 and the capability alone cannot submit, approve, reject, or enumerate drafts.
 
+### Direct browser drafts
+
+A successful `POST /portal/draft` issues the same 15-minute view capability for
+that saved draft before redirecting to its review page. The cookie is HttpOnly,
+SameSite=Lax, scoped to `/portal`, and Secure over HTTPS. It permits review and
+existing draft-preview artifact downloads only; submission, exception mutation,
+manager approval and expense exports retain their bearer permission checks.
+Creating another draft replaces the browser's current draft capability.
+
+The direct form checks signing configuration before saving. It uses the stripped
+`TPP_HANDOFF_SIGNING_SECRET` when nonempty, falling back to the stripped
+`TPP_ACCESS_TOKEN` only when the dedicated secret is unset or blank. The selected
+secret must contain at least 16 characters; a nonempty but shorter dedicated
+secret is rejected even when the fallback token is long enough. Invalid signing
+configuration returns HTTP 503 with the entered values and a retry action; no
+draft is saved.
+
+Regression gate:
+
+```bash
+PYTHONPATH=src python -m pytest tests/python/test_http_service.py -k direct_draft -q
+```
+
+Removing cookie issuance from the direct save route must
+fail the follow-redirect review assertion with HTTP 401 instead of 200.
+
 ## Later hardening work
 
 The following still remain future hardening items rather than shipped-now product surface:
