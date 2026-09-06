@@ -137,11 +137,20 @@ class ValidationSnapshotStore:
 
     def __init__(self, base_path: str | Path | None = None):
         default_root = Path(os.getenv("SNAPSHOT_DIR", Path.cwd() / "snapshots"))
-        self.base_path = Path(base_path) if base_path is not None else default_root
+        self.base_path = (Path(base_path) if base_path is not None else default_root).resolve()
         self.base_path.mkdir(parents=True, exist_ok=True)
 
+    def _confined_path(self, path: str | Path) -> Path:
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            candidate = self.base_path / candidate
+        resolved = candidate.resolve()
+        if resolved == self.base_path or not resolved.is_relative_to(self.base_path):
+            raise ValueError("Path must resolve within snapshot store")
+        return resolved
+
     def _trip_path(self, trip_id: str) -> Path:
-        return self.base_path / trip_id
+        return self._confined_path(self.base_path / trip_id)
 
     def last_chain_hash(self, trip_id: str) -> str | None:
         snapshots = self.load_trip_snapshots(trip_id)
@@ -159,14 +168,14 @@ class ValidationSnapshotStore:
         return snapshots
 
     def load_snapshot(self, path: str | Path) -> ValidationSnapshot:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data = json.loads(self._confined_path(path).read_text(encoding="utf-8"))
         return ValidationSnapshot.model_validate(data)
 
     def append(self, snapshot: ValidationSnapshot) -> Path:
         trip_path = self._trip_path(snapshot.trip_id)
         trip_path.mkdir(parents=True, exist_ok=True)
         filename = f"{snapshot.timestamp.isoformat().replace(':', '-')}.json"
-        target = trip_path / filename
+        target = self._confined_path(trip_path / filename)
         serialized = snapshot.model_dump(mode="json")
         payload = json.dumps(serialized, separators=(",", ":"), sort_keys=True)
         if len(payload.encode("utf-8")) > 10_240:
