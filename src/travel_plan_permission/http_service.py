@@ -1724,7 +1724,15 @@ def register_portal_routes(
         )
 
     @app.post("/portal/expenses/review")
-    async def portal_expense_review(request: Request) -> Response:
+    async def portal_expense_review(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> Response:
+        _authorize_request(
+            authorization,
+            required_permission=Permission.CREATE,
+            route=_route_identifier(request),
+        )
         answers = _expense_answers_from_encoded_body(await request.body())
         review = _expense_review_state("preview", answers, proposal_store=proposal_store)
         if review.missing_fields or review.validation_errors:
@@ -1796,7 +1804,16 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
         response_class=HTMLResponse,
         name="portal_expense_detail",
     )
-    def portal_expense_detail(request: Request, draft_id: str) -> HTMLResponse:
+    def portal_expense_detail(
+        request: Request,
+        draft_id: str,
+        authorization: str | None = Header(default=None),
+    ) -> HTMLResponse:
+        _authorize_request(
+            authorization,
+            required_permission=Permission.VIEW,
+            route=_route_identifier(request),
+        )
         draft = proposal_store.lookup_expense_draft(draft_id)
         if draft is None:
             raise HTTPException(
@@ -2257,9 +2274,16 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
 
     @app.get("/portal/expenses/{draft_id}/artifacts/{artifact_name}")
     def portal_expense_artifact(
+        request: Request,
         draft_id: str,
         artifact_name: str,
+        authorization: str | None = Header(default=None),
     ) -> Response:
+        auth_context = _authorize_request(
+            authorization,
+            required_permission=Permission.EXPORT,
+            route=_route_identifier(request),
+        )
         draft = proposal_store.lookup_expense_draft(draft_id)
         if draft is None:
             raise HTTPException(
@@ -2288,7 +2312,7 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
             )
         proposal_store.security.audit_log.record(
             event_type=AuditEventType.EXPORT,
-            actor="expense-portal",
+            actor=auth_context.subject,
             subject=draft_id,
             outcome="artifact_downloaded",
             metadata={"artifact": artifact_name},
