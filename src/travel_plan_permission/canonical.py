@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from .models import ExpenseCategory, TripPlan
+from .models import ExpenseCategory, GroundTransport, TripPlan
 
 _ZIP_PATTERN = re.compile(r"^[0-9]{5}(-[0-9]{4})?$")
 
@@ -74,24 +74,8 @@ class CanonicalMealCounts(BaseModel):
     model_config = {"extra": "forbid"}
 
 
-class CanonicalGroundTransport(BaseModel):
+class CanonicalGroundTransport(GroundTransport):
     """Structured inputs used by the organization workbook's transport calculator."""
-
-    mosers_vehicle_planned: bool | None = None
-    mileage_planned: bool | None = None
-    mileage_miles: Decimal | None = Field(default=None, ge=0)
-    mileage_cost: Decimal | None = Field(default=None, ge=0)
-    rideshare_planned: bool | None = None
-    rideshare_cost: Decimal | None = Field(default=None, ge=0)
-    shuttle_planned: bool | None = None
-    shuttle_cost: Decimal | None = Field(default=None, ge=0)
-    rental_planned: bool | None = None
-    rental_cost: Decimal | None = Field(default=None, ge=0)
-    rental_company: str | None = None
-    rental_daily_rate: Decimal | None = Field(default=None, ge=0)
-    rental_reason: str | None = None
-
-    model_config = {"extra": "forbid"}
 
 
 class CanonicalTripPlan(BaseModel):
@@ -165,22 +149,41 @@ def canonical_trip_plan_to_model(plan: CanonicalTripPlan) -> TripPlan:
     breakdown: dict[ExpenseCategory, Decimal] = {}
     _add_cost(breakdown, ExpenseCategory.CONFERENCE_FEES, plan.event_registration_cost)
 
-    airfare = None
-    if plan.flight_pref_outbound and plan.flight_pref_outbound.roundtrip_cost is not None:
-        airfare = plan.flight_pref_outbound.roundtrip_cost
-    elif plan.lowest_cost_roundtrip is not None:
-        airfare = plan.lowest_cost_roundtrip
+    selected_fare = (
+        plan.flight_pref_outbound.roundtrip_cost if plan.flight_pref_outbound else None
+    )
+    airfare = selected_fare if selected_fare is not None else plan.lowest_cost_roundtrip
     _add_cost(breakdown, ExpenseCategory.AIRFARE, airfare)
 
+    structured_costs = (
+        [
+            amount
+            for amount in (
+                plan.ground_transport.mileage_cost,
+                plan.ground_transport.rideshare_cost,
+                plan.ground_transport.shuttle_cost,
+                plan.ground_transport.rental_cost,
+            )
+            if amount is not None
+        ]
+        if plan.ground_transport is not None
+        else []
+    )
+    # Itemized costs replace the aggregate estimate; parking remains separate.
+    ground_estimate = (
+        sum(structured_costs, Decimal("0"))
+        if structured_costs
+        else plan.ground_transport_estimate
+    )
     ground_transport_total = sum(
         (
             amount
-            for amount in (plan.parking_estimate, plan.ground_transport_estimate)
+            for amount in (plan.parking_estimate, ground_estimate)
             if amount is not None
         ),
         Decimal("0"),
     )
-    if ground_transport_total:
+    if plan.parking_estimate is not None or ground_estimate is not None:
         _add_cost(breakdown, ExpenseCategory.GROUND_TRANSPORT, ground_transport_total)
 
     if plan.hotel and plan.hotel.nightly_rate is not None and plan.hotel.nights is not None:
@@ -209,6 +212,9 @@ def canonical_trip_plan_to_model(plan: CanonicalTripPlan) -> TripPlan:
         return_date=plan.return_date,
         purpose=plan.business_purpose,
         transportation_mode=transportation_mode,
+        selected_fare=selected_fare,
+        lowest_fare=plan.lowest_cost_roundtrip,
+        ground_transport=plan.ground_transport,
         expected_costs=expected_costs,
         estimated_cost=estimated_cost,
         expense_breakdown=breakdown,
