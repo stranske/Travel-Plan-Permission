@@ -2060,7 +2060,7 @@ def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) 
         role_view = _resolve_role_view(actor_role)
         parsed = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
         action_name = parsed.get("action", [""])[-1].strip()
-        actor_id = parsed.get("actor_id", [""])[-1].strip()
+        actor_id = auth_context.subject
         rationale = parsed.get("rationale", [""])[-1].strip()
 
         review = proposal_store.lookup_manager_review(review_id)
@@ -2068,25 +2068,6 @@ def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) 
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No manager review found for '{review_id}'.",
-            )
-        if not actor_id:
-            return _TEMPLATES.TemplateResponse(
-                request=request,
-                name="manager_review_detail.html",
-                context=_manager_review_detail_context(
-                    request,
-                    review,
-                    role_view=role_view,
-                    auth_context=auth_context,
-                    exceptions=proposal_store.list_exception_requests(review.draft_id),
-                    audit_events=[
-                        event
-                        for event in proposal_store.list_audit_events()
-                        if event.subject in {review.review_id, review.draft_id}
-                    ],
-                    error_message="Manager actor ID is required.",
-                ),
-                status_code=status.HTTP_400_BAD_REQUEST,
             )
         try:
             action = ReviewAction(action_name)
@@ -2133,7 +2114,7 @@ def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) ->
         authorization: str | None = Header(default=None),
         actor_role: str | None = Query(default=RoleName.TRAVELER.value),
     ) -> RedirectResponse:
-        _authorize_request(
+        auth_context = _authorize_request(
             authorization,
             required_permission=Permission.APPROVE,
             route=_route_identifier(request),
@@ -2142,12 +2123,7 @@ def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) ->
             (await request.body()).decode("utf-8"),
             keep_blank_values=True,
         )
-        actor_id = parsed.get("actor_id", [""])[-1].strip()
-        if not actor_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Actor ID is required for exception decisions.",
-            )
+        actor_id = auth_context.subject
         try:
             proposal_store.decide_exception_request(
                 draft_id,

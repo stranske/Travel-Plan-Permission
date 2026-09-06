@@ -1837,7 +1837,118 @@ def test_manager_review_decision_updates_status_and_history(monkeypatch) -> None
     assert updated is not None
     assert updated.status.value == "changes_requested"
     assert updated.trip_plan.approval_history[-1].outcome.value == "flagged"
-    assert updated.trip_plan.approval_history[-1].approver_id == "manager-17"
+    assert updated.trip_plan.approval_history[-1].approver_id == "manager-reviewer"
+
+
+@pytest.mark.parametrize("form_actor", ["forged-manager-id", None])
+@pytest.mark.parametrize(
+    ("route", "action"),
+    [
+        ("manager", "approve"),
+        ("manager", "reject"),
+        ("manager", "request_changes"),
+        ("exception", "approve"),
+        ("exception", "reject"),
+    ],
+)
+def test_approval_actor_comes_from_token(
+    monkeypatch, tmp_path: Path, route: str, action: str, form_actor: str | None
+) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    audit_path = tmp_path / "decision-audit.sqlite3"
+    monkeypatch.setenv(audit.AUDIT_PATH_ENV_VAR, str(audit_path))
+    state_path = tmp_path / "decision-state.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    client = TestClient(create_app(store))
+    draft_id, _location = _create_portal_draft(client)
+    creator = _bootstrap_auth_header(subject="traveler", permissions=(Permission.CREATE,))
+    assert (
+        client.post(
+            f"/portal/review/{draft_id}/exceptions",
+            headers=creator,
+            data={
+                "exception_type": "advance_booking",
+                "amount": "6000",
+                "justification": "Need to lock in the only compliant conference fare. " * 2,
+                "supporting_doc": "docs/approval-workflow.md",
+            },
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    assert (
+        client.post(
+            f"/portal/review/{draft_id}/submit",
+            headers=creator,
+            follow_redirects=False,
+        ).status_code
+        == 200
+    )
+    review = store.lookup_manager_review_for_draft(draft_id)
+    assert review is not None
+    headers = _bootstrap_auth_header(
+        subject="authenticated-approver",
+        permissions=(Permission.VIEW, Permission.APPROVE),
+    )
+    for page in [f"/portal/manager/reviews/{review.review_id}", "/portal/admin"]:
+        response = client.get(
+            page,
+            headers=_bootstrap_auth_header(
+                subject="authenticated-approver",
+                permissions=(Permission.VIEW, Permission.APPROVE, Permission.CONFIGURE),
+            ),
+        )
+        assert response.status_code == 200
+        assert 'name="actor_id"' not in response.text
+        assert "Decisions are recorded under your authenticated identity." in response.text
+    payload = {
+        "action": action,
+        "decision": action,
+        "rationale": "Verified decision rationale.",
+        "notes": "Verified decision notes.",
+    }
+    if form_actor is not None:
+        payload["actor_id"] = form_actor
+    url = (
+        f"/portal/manager/reviews/{review.review_id}/decision"
+        if route == "manager"
+        else f"/portal/admin/exceptions/{draft_id}/0/decision"
+    )
+    assert (
+        client.post(url, headers=headers, data=payload, follow_redirects=False).status_code == 303
+    )
+    reopened = PlannerProposalStore(state_path=state_path)
+    expected_outcome = (
+        action if route == "manager" else {"approve": "approved", "reject": "rejected"}[action]
+    )
+    event_type = AuditEventType.REVIEW if route == "manager" else AuditEventType.EXCEPTION
+    events = [
+        event
+        for event in reopened.list_audit_events()
+        if event.event_type == event_type and event.outcome == expected_outcome
+    ]
+    assert len(events) == 1
+    assert events[0].actor == "authenticated-approver"
+    if route == "manager":
+        saved = reopened.lookup_manager_review(review.review_id)
+        assert saved is not None
+        assert saved.trip_plan.approval_history[-1].approver_id == "authenticated-approver"
+        assert saved.history[-1].actor_id == "authenticated-approver"
+        audit_store = audit.SQLiteAuditEventStore(audit_path)
+        audit_store.initialize()
+        try:
+            rows = list(audit_store.query(event_type=audit.EVENT_PROPOSAL_STATUS_CHANGE))
+        finally:
+            audit_store.close()
+        decision_events = [row for row in rows if row.target_id == review.review_id]
+        assert len(decision_events) == 1
+        assert decision_events[0].actor_subject == "authenticated-approver"
+    else:
+        saved_exception = reopened.list_exception_requests(draft_id)[0]
+        assert saved_exception.status.value == expected_outcome
+        if action == "approve":
+            assert saved_exception.approval is not None
+            assert saved_exception.approval.approver_id == "authenticated-approver"
 
 
 def test_manager_review_routes_require_authorization(monkeypatch) -> None:
