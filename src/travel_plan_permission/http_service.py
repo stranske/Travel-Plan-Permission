@@ -2315,7 +2315,14 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
             actor=auth_context.subject,
             subject=draft_id,
             outcome="artifact_downloaded",
-            metadata={"artifact": artifact_name},
+            metadata={
+                "artifact": artifact_name,
+                "provider": auth_context.provider,
+                "permissions": [
+                    permission.value
+                    for permission in sorted(auth_context.permissions, key=lambda item: item.value)
+                ],
+            },
         )
         return Response(
             content=artifact.content,

@@ -934,6 +934,11 @@ def test_expense_routes_enforce_permissions(monkeypatch, permissions) -> None:
             assert event.actor == "expense-accountant"
             assert event.subject == draft.draft_id
             assert event.outcome == "artifact_downloaded"
+            assert event.metadata == {
+                "artifact": path.rsplit("/", 1)[-1],
+                "provider": "google",
+                "permissions": sorted(permission.value for permission in permissions),
+            }
             if path.endswith("expense-csv"):
                 assert b"date,vendor,amount,category,cost_center,receipt_link" in response.content
             else:
