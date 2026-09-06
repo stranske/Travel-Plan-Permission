@@ -889,6 +889,40 @@ def test_direct_draft_scoped_review_session(monkeypatch, scheme) -> None:
     assert client.get(f"/portal/review/{other.draft_id}").status_code == 401
     assert client.post(f"/portal/review/{draft_id}/submit").status_code == 401
     assert client.get("/portal/manager/reviews").status_code == 401
+    store.create_exception_request(
+        draft_id,
+        http_service.ExceptionRequest(
+            type=http_service.ExceptionType.ADVANCE_BOOKING,
+            justification="Need to lock in the only compliant conference fare. " * 2,
+            requestor="traveler-1",
+            amount="6000",
+        ),
+    )
+    exceptions_before = [item.model_dump() for item in store.list_exception_requests(draft_id)]
+    create_exception = client.post(
+        f"/portal/review/{draft_id}/exceptions",
+        data={
+            "exception_type": "advance_booking",
+            "amount": "6000",
+            "justification": "Need to lock in the only compliant conference fare. " * 2,
+            "supporting_doc": "docs/approval-workflow.md",
+        },
+        follow_redirects=False,
+    )
+    assert create_exception.status_code == 401
+    assert [
+        item.model_dump() for item in store.list_exception_requests(draft_id)
+    ] == exceptions_before
+    for decision in ("approve", "reject"):
+        decide_exception = client.post(
+            f"/portal/admin/exceptions/{draft_id}/0/decision?actor_role=approver",
+            data={"actor_id": "forged-approver", "decision": decision, "notes": "Cookie only."},
+            follow_redirects=False,
+        )
+        assert decide_exception.status_code == 401
+        assert [
+            item.model_dump() for item in store.list_exception_requests(draft_id)
+        ] == exceptions_before
     # The existing view capability permits only this draft's preview artifacts.
     artifact = client.get(f"/portal/review/{draft_id}/artifacts/itinerary")
     assert artifact.status_code == 200

@@ -158,9 +158,13 @@ existing draft-preview artifact downloads only; submission, exception mutation,
 manager approval and expense exports retain their bearer permission checks.
 Creating another draft replaces the browser's current draft capability.
 
-The direct form checks signing configuration before saving. If no usable
-`TPP_HANDOFF_SIGNING_SECRET` or fallback `TPP_ACCESS_TOKEN` is configured, it
-returns HTTP 503 with the entered values and a retry action; no draft is saved.
+The direct form checks signing configuration before saving. It uses the stripped
+`TPP_HANDOFF_SIGNING_SECRET` when nonempty, falling back to the stripped
+`TPP_ACCESS_TOKEN` only when the dedicated secret is unset or blank. The selected
+secret must contain at least 16 characters; a nonempty but shorter dedicated
+secret is rejected even when the fallback token is long enough. Invalid signing
+configuration returns HTTP 503 with the entered values and a retry action; no
+draft is saved.
 
 Regression gate:
 
