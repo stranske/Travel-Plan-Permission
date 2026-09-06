@@ -92,3 +92,37 @@ def test_pdf_page_counts_scale_with_complexity() -> None:
 
     assert simple_pages == 1
     assert complex_pages >= 2
+
+
+def test_generate_packet_pdf_escapes_xml_in_user_fields() -> None:
+    """ReportLab paragraphs survive traveler and compliance strings with XML characters."""
+    trip = TripPlan(
+        trip_id="TRIP-XML",
+        traveler_name="Alice <alice@example.com>",
+        destination="AT&T Tower",
+        departure_date=date(2025, 5, 1),
+        return_date=date(2025, 5, 5),
+        purpose="Review <policy> & budget",
+        estimated_cost=Decimal("500.00"),
+        expense_breakdown={"airfare": Decimal("500.00")},
+    )
+
+    pdf_bytes = generate_packet_pdf(
+        trip_plan=trip,
+        compliance_status="Needs review for <special> & edge cases",
+        cost_breakdown=trip.expense_breakdown,
+        approval_history=[
+            ApprovalEvent(
+                approver_id="mgr@corp",
+                level="manager",
+                outcome=ApprovalOutcome.APPROVED,
+                timestamp=datetime(2025, 1, 1, 12, 0, tzinfo=UTC),
+                justification="Approved despite <tag> & ampersand",
+                previous_status=TripStatus.SUBMITTED,
+                new_status=TripStatus.APPROVED,
+            )
+        ],
+    )
+
+    assert pdf_bytes.startswith(b"%PDF-")
+    assert b"/Type /Page" in pdf_bytes
