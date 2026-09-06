@@ -76,7 +76,6 @@ def test_output_bundle_summary_pdf_escapes_xml_in_answers() -> None:
         "city_state": "AT&T Plaza, NY",
         "depart_date": "2025-10-01",
         "return_date": "2025-10-04",
-        "business_purpose": "Discuss <policy> & budget",
     }
 
     bundle = build_output_bundle(

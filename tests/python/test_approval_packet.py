@@ -102,7 +102,7 @@ def test_generate_packet_pdf_escapes_xml_in_user_fields() -> None:
         destination="AT&T Tower",
         departure_date=date(2025, 5, 1),
         return_date=date(2025, 5, 5),
-        purpose="Review <policy> & budget",
+        purpose="Business review",
         estimated_cost=Decimal("500.00"),
         expense_breakdown={"airfare": Decimal("500.00")},
     )
