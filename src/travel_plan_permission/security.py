@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import json
+import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any
 from uuid import uuid4
 
 from . import audit as _audit
+from .models import ExceptionApprovalLevel
 
 
 class Permission(StrEnum):
@@ -155,6 +160,109 @@ class AuditLog:
         """Return audit events filtered by type."""
 
         return [event for event in self.events if event.event_type == event_type]
+
+
+EXCEPTION_TIER_ENTITLEMENT_ENV_VAR = "TPP_EXCEPTION_TIER_ENTITLEMENTS"
+
+#: The routed level that generic ``Permission.APPROVE`` alone is allowed to decide.
+#: Anything above this rank requires an explicit entitlement for the authenticated
+#: subject; see ``docs/exception-policy.md``.
+BASELINE_EXCEPTION_TIER: ExceptionApprovalLevel = ExceptionApprovalLevel.MANAGER
+
+
+def exception_tier_rank(level: ExceptionApprovalLevel) -> int:
+    """Return the ordering rank of an exception approval level."""
+
+    return list(ExceptionApprovalLevel).index(level)
+
+
+class ExceptionTierEntitlementError(ValueError):
+    """Raised when the configured exception-tier entitlement map is unusable."""
+
+
+@dataclass(frozen=True)
+class ExceptionTierEntitlements:
+    """Explicit map of authenticated subject to its highest approvable tier.
+
+    This is deliberately an *allow-list*. A subject that is absent has no
+    higher-tier authority at all: holding generic :attr:`Permission.APPROVE`
+    never implies director or board authority. Deployments are responsible for
+    supplying the real principals; the built-in default is empty so an
+    unconfigured deployment fails closed on director and board exceptions
+    rather than silently granting them.
+    """
+
+    subjects: Mapping[str, ExceptionApprovalLevel] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, str]) -> ExceptionTierEntitlements:
+        """Build entitlements from a ``{subject: level}`` mapping."""
+
+        resolved: dict[str, ExceptionApprovalLevel] = {}
+        for subject, level in raw.items():
+            key = str(subject).strip()
+            if not key:
+                raise ExceptionTierEntitlementError(
+                    "Exception tier entitlements must not contain a blank subject."
+                )
+            try:
+                resolved[key] = ExceptionApprovalLevel(str(level).strip().lower())
+            except ValueError as exc:
+                allowed = ", ".join(item.value for item in ExceptionApprovalLevel)
+                raise ExceptionTierEntitlementError(
+                    f"Unknown exception approval level '{level}' for subject "
+                    f"'{key}'; expected one of: {allowed}."
+                ) from exc
+        return cls(subjects=MappingProxyType(resolved))
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> ExceptionTierEntitlements:
+        """Load entitlements from ``TPP_EXCEPTION_TIER_ENTITLEMENTS`` (JSON object).
+
+        An unset or blank variable yields an empty, fail-closed contract.
+        """
+
+        source = os.environ if env is None else env
+        raw = (source.get(EXCEPTION_TIER_ENTITLEMENT_ENV_VAR) or "").strip()
+        if not raw:
+            return cls()
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ExceptionTierEntitlementError(
+                f"{EXCEPTION_TIER_ENTITLEMENT_ENV_VAR} must be a JSON object "
+                f"mapping subject to approval level: {exc}"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise ExceptionTierEntitlementError(
+                f"{EXCEPTION_TIER_ENTITLEMENT_ENV_VAR} must be a JSON object "
+                "mapping subject to approval level."
+            )
+        return cls.from_mapping(parsed)
+
+    def highest_tier(self, subject: str | None) -> ExceptionApprovalLevel | None:
+        """Return the highest tier explicitly entitled to ``subject``, if any."""
+
+        if not subject:
+            return None
+        return self.subjects.get(subject)
+
+    def permits(self, subject: str | None, level: ExceptionApprovalLevel) -> bool:
+        """Return whether ``subject`` may decide an exception routed at ``level``.
+
+        ``BASELINE_EXCEPTION_TIER`` and below are satisfied by the generic
+        approve permission the route has already checked. Above it, an explicit
+        entitlement of at least equal rank is required.
+        """
+
+        if exception_tier_rank(level) <= exception_tier_rank(BASELINE_EXCEPTION_TIER):
+            return True
+        entitled = self.highest_tier(subject)
+        if entitled is None:
+            return False
+        return exception_tier_rank(entitled) >= exception_tier_rank(level)
 
 
 @dataclass(frozen=True)
