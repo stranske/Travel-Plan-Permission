@@ -228,3 +228,18 @@ def test_snapshot_store_relative_root_stays_anchored_after_cwd_change(tmp_path, 
     assert store.load_snapshot(path) == snapshot
     assert store.load_trip_snapshots(snapshot.trip_id) == [snapshot]
     assert not (elsewhere / "snapshots").exists()
+
+
+@pytest.mark.parametrize("as_string", [False, True])
+def test_relative_snapshot_read_uses_store_root_after_cwd_change(tmp_path, monkeypatch, as_string):
+    store = ValidationSnapshotStore(tmp_path / "snapshots")
+    snapshot = snapshot_from_plan(_plan(), results=[], policy_version="test")
+    path = store.append(snapshot)
+    relative = path.relative_to(store.base_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    assert store.load_snapshot(str(relative) if as_string else relative) == snapshot
+    with pytest.raises(ValueError, match="within snapshot store"):
+        store.load_snapshot("../outside.json")

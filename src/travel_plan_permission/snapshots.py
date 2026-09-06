@@ -141,7 +141,10 @@ class ValidationSnapshotStore:
         self.base_path.mkdir(parents=True, exist_ok=True)
 
     def _confined_path(self, path: str | Path) -> Path:
-        resolved = Path(path).resolve()
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            candidate = self.base_path / candidate
+        resolved = candidate.resolve()
         if resolved == self.base_path or not resolved.is_relative_to(self.base_path):
             raise ValueError("Path must resolve within snapshot store")
         return resolved
