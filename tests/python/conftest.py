@@ -51,7 +51,11 @@ def receipt_hosted_delivery():
 
     def verifier(url, reference, expiry, now):
         try:
-            params = parse_qs(urlsplit(url).query, strict_parsing=True)
+            params = parse_qs(urlsplit(url).query, keep_blank_values=True, strict_parsing=True)
+            if set(params) != {"receipt", "expires", "signature"} or any(
+                len(values) != 1 or not values[0] for values in params.values()
+            ):
+                return False
             expires = params["expires"][0]
             return (
                 params["receipt"] == [reference]

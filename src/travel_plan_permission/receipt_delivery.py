@@ -20,7 +20,7 @@ class ReceiptDelivery:
     verifier: Callable[[str, str, datetime, datetime], bool] | None = None
 
     @staticmethod
-    def _hosted_origin(url: str) -> tuple[str, str, int | None]:
+    def _hosted_origin(url: str) -> tuple[str, str, int]:
         try:
             parsed = urlsplit(url)
             host = (parsed.hostname or "").lower().rstrip(".")
@@ -35,7 +35,10 @@ class ReceiptDelivery:
                 or host.endswith((".example.com", ".example.org", ".example.net", ".invalid"))
             ):
                 raise ValueError
-            return parsed.scheme, host, parsed.port or 443
+            port = parsed.port
+            if port is not None and port < 1:
+                raise ValueError
+            return parsed.scheme, host, 443 if port is None else port
         except (ValueError, TypeError) as exc:
             raise ValueError(
                 "Receipt delivery requires a real HTTPS origin and valid signer URL."

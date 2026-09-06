@@ -336,3 +336,48 @@ def test_receipt_link_requires_real_delivery_mode(tmp_path, receipt_hosted_deliv
     # Receipt-free reports still export without requiring hosted infrastructure.
     report.expenses[0].receipt_url = None
     assert link(ExportService()) == ""
+
+
+@pytest.mark.parametrize("port", ["0", "-1", "65536", "notaport", "443", "8443", "65535"])
+def test_receipt_delivery_validates_explicit_ports(receipt_hosted_delivery, port):
+    from dataclasses import replace
+
+    now = datetime(2025, 1, 20, 10, 0, tzinfo=UTC)
+    origin = receipt_hosted_delivery.origin
+    with_port = f"{origin}:{port}"
+    signer = receipt_hosted_delivery.signer
+    configured = replace(
+        receipt_hosted_delivery,
+        origin=with_port,
+        signer=lambda ref, expiry: signer(ref, expiry).replace(origin, with_port, 1),
+    )
+    if port in {"443", "8443", "65535"}:
+        assert configured.resolve("receipt.pdf", now).startswith(with_port + "/")
+    else:
+        with pytest.raises(ValueError, match="real HTTPS origin"):
+            configured.resolve("receipt.pdf", now)
+        # Validate the signer URL independently of the configured origin.
+        with pytest.raises(ValueError, match="Receipt delivery failed"):
+            replace(configured, origin=origin).resolve("receipt.pdf", now)
+
+
+@pytest.mark.parametrize(
+    "tampering",
+    [
+        "&receipt=receipt.pdf",
+        "&expires=999",
+        "&signature=valid",
+        "&receipt=",
+        "&expires=",
+        "&signature=",
+        "&unexpected=value",
+        "&unexpected=",
+    ],
+)
+def test_receipt_verifier_rejects_query_tampering(receipt_hosted_delivery, tampering):
+    now = datetime(2025, 1, 20, 10, 0, tzinfo=UTC)
+    expiry = now + timedelta(days=7)
+    signed = receipt_hosted_delivery.resolve("receipt.pdf", now)
+    verify = receipt_hosted_delivery.verifier
+    assert verify(signed, "receipt.pdf", expiry, now)
+    assert not verify(signed + tampering, "receipt.pdf", expiry, now)

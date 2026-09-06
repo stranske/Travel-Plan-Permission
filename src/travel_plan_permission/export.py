@@ -165,12 +165,8 @@ class ExportService:
             appended_row = ws.max_row
             # Override openpyxl's formula/error inference for untrusted text.
             for field in ("vendor", "cost_center", "receipt_link"):
-                ws.cell(
-                    row=appended_row, column=self.schema.index(field) + 1
-                ).data_type = "s"
-            receipt_cell = ws.cell(
-                row=appended_row, column=self.schema.index("receipt_link") + 1
-            )
+                ws.cell(row=appended_row, column=self.schema.index(field) + 1).data_type = "s"
+            receipt_cell = ws.cell(row=appended_row, column=self.schema.index("receipt_link") + 1)
             if _is_receipt_hyperlink(row["receipt_link"]):
                 receipt_cell.hyperlink = row["receipt_link"]
                 receipt_cell.style = "Hyperlink"
