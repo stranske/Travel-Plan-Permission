@@ -62,7 +62,7 @@ def _is_receipt_hyperlink(value: str) -> bool:
         target = urlsplit(value)
     except ValueError:
         return False
-    return target.scheme in {"http", "https"} and bool(target.netloc)
+    return target.scheme in {"http", "https"} and bool(target.hostname)
 
 
 class ExportService:
@@ -173,13 +173,17 @@ class ExportService:
             )
             appended_row = ws.max_row
             # Override openpyxl's formula/error inference for untrusted text.
-            for column in (2, 5, 6):
-                ws.cell(row=appended_row, column=column).data_type = "s"
-            receipt_cell = ws.cell(row=appended_row, column=len(self.schema))
+            for field in ("vendor", "cost_center", "receipt_link"):
+                ws.cell(
+                    row=appended_row, column=self.schema.index(field) + 1
+                ).data_type = "s"
+            receipt_cell = ws.cell(
+                row=appended_row, column=self.schema.index("receipt_link") + 1
+            )
             if _is_receipt_hyperlink(row["receipt_link"]):
                 receipt_cell.hyperlink = row["receipt_link"]
                 receipt_cell.style = "Hyperlink"
-        amount_column = 3
+        amount_column = self.schema.index("amount") + 1
         currency_format = "$#,##0.00"
         for cell in ws.iter_cols(min_col=amount_column, max_col=amount_column, min_row=2):
             for amt_cell in cell:

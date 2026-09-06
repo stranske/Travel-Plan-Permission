@@ -102,6 +102,8 @@ def _typical_batch_reports() -> list[ExpenseReport]:
         ("#N/A", "#N/A"),
         ("Ordinary text", "Ordinary text"),
         ("http://[broken", "http://[broken"),
+        ("https://:443/receipt", "https://:443/receipt"),
+        ("https://user@/receipt", "https://user@/receipt"),
         ("http://receipts.example.test/one", "http://receipts.example.test/one"),
         ("https://receipts.example.test/one?x=1&y=2", "https://receipts.example.test/one?x=1&y=2"),
     ],
