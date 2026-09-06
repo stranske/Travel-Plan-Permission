@@ -67,3 +67,24 @@ def test_output_bundle_uses_text_for_invalid_pdf(monkeypatch):
     assert summary["filename"] == "summary.txt"
     assert summary["mime_type"] == "text/plain"
     assert b"Travel Plan Summary" in summary["content"]
+
+
+def test_output_bundle_summary_pdf_escapes_xml_in_answers() -> None:
+    """Summary PDF generation tolerates XML characters in traveler-provided answers."""
+    answers = {
+        "traveler_name": "Alice <alice@example.com>",
+        "city_state": "AT&T Plaza, NY",
+        "depart_date": "2025-10-01",
+        "return_date": "2025-10-04",
+    }
+
+    bundle = build_output_bundle(
+        itinerary_excel=b"excel-bytes",
+        answers=answers,
+    )
+
+    summary = bundle["summary_pdf"]
+    assert summary["filename"] == "summary.pdf"
+    assert summary["mime_type"] == "application/pdf"
+    assert summary["content"].startswith(b"%PDF-")
+    assert b"/Type /Page" in summary["content"]

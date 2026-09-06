@@ -6,6 +6,7 @@ import io
 import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from xml.sax.saxutils import escape
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
@@ -214,10 +215,10 @@ def _build_summary_pdf(summary_lines: Sequence[str]) -> bytes:
         styles = getSampleStyleSheet()
         elements = []
         if summary_lines:
-            elements.append(Paragraph(summary_lines[0], styles["Title"]))
+            elements.append(Paragraph(escape(summary_lines[0]), styles["Title"]))
         for line in summary_lines[1:]:
             elements.append(Spacer(1, 0.12 * inch))
-            elements.append(Paragraph(line, styles["Normal"]))
+            elements.append(Paragraph(escape(line), styles["Normal"]))
         doc.build(elements)
     except Exception:
         return b""
