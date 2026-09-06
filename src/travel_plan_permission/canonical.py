@@ -183,7 +183,7 @@ def canonical_trip_plan_to_model(plan: CanonicalTripPlan) -> TripPlan:
         ),
         Decimal("0"),
     )
-    if ground_transport_total:
+    if plan.parking_estimate is not None or ground_estimate is not None:
         _add_cost(breakdown, ExpenseCategory.GROUND_TRANSPORT, ground_transport_total)
 
     if plan.hotel and plan.hotel.nightly_rate is not None and plan.hotel.nights is not None:

@@ -212,3 +212,33 @@ def test_canonical_zero_transport_cost_does_not_restore_aggregate_estimate() -> 
     assert plan.ground_transport.rideshare_cost == Decimal("0")
     assert plan.expense_breakdown[ExpenseCategory.GROUND_TRANSPORT] == Decimal("36")
     assert plan.estimated_cost == Decimal("1566")
+
+
+@pytest.mark.parametrize(
+    "costs",
+    [
+        {"ground_transport": {"rideshare_cost": "0"}, "ground_transport_estimate": "80"},
+        {"ground_transport_estimate": "0"},
+        {"parking_estimate": "0"},
+    ],
+)
+def test_canonical_explicit_zero_ground_cost_remains_in_breakdowns(costs) -> None:
+    payload = _load_fixture()
+    payload.update(ground_transport=None, ground_transport_estimate=None, parking_estimate=None)
+    payload.update(costs)
+
+    plan = load_trip_plan_input(payload).plan
+
+    assert plan.expense_breakdown[ExpenseCategory.GROUND_TRANSPORT] == Decimal("0")
+    assert plan.expected_costs["ground_transport"] == Decimal("0")
+    assert plan.estimated_cost == Decimal("1530")
+
+
+def test_canonical_absent_ground_cost_remains_absent() -> None:
+    payload = _load_fixture()
+    payload.update(ground_transport=None, ground_transport_estimate=None, parking_estimate=None)
+
+    plan = load_trip_plan_input(payload).plan
+
+    assert ExpenseCategory.GROUND_TRANSPORT not in plan.expense_breakdown
+    assert "ground_transport" not in plan.expected_costs
