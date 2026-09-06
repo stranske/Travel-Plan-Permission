@@ -33,6 +33,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from . import audit, demo_seed
+from .exception_authority import authorize_exception_tier
 from .expense_review import build_expense_review_state
 from .export import ExportService
 from .http_contract_models import (
@@ -862,6 +863,23 @@ class PlannerProposalStore:
         )
         self._persist_state()
         return self.list_exception_requests(draft_id)
+
+    def lookup_exception_request(
+        self,
+        draft_id: str,
+        *,
+        exception_index: int,
+    ) -> ExceptionRequest:
+        """Return a copy of one exception request without deciding it.
+
+        Raises ``KeyError`` for an unknown draft or out-of-range index, matching
+        :meth:`decide_exception_request` so callers can share error handling.
+        """
+
+        requests = self.exception_requests_by_draft_id.get(draft_id)
+        if requests is None or exception_index < 0 or exception_index >= len(requests):
+            raise KeyError(f"No exception request {exception_index} found for draft '{draft_id}'.")
+        return _copy_exception_request(requests[exception_index])
 
     def decide_exception_request(
         self,
@@ -2163,6 +2181,25 @@ def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) ->
             keep_blank_values=True,
         )
         actor_id = auth_context.subject
+        try:
+            pending = proposal_store.lookup_exception_request(
+                draft_id,
+                exception_index=exception_index,
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Exception request not found.",
+            ) from exc
+        # Authority is checked BEFORE any decision is recorded, so an
+        # insufficiently entitled caller cannot mutate status or history.
+        authorize_exception_tier(
+            auth_context,
+            pending,
+            security=proposal_store.security,
+            draft_id=draft_id,
+            exception_index=exception_index,
+        )
         try:
             proposal_store.decide_exception_request(
                 draft_id,

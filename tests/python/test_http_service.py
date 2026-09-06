@@ -26,9 +26,14 @@ from travel_plan_permission.http_service import (
     create_app,
     main,
 )
+from travel_plan_permission.models import ExceptionApprovalLevel, ExceptionStatus
 from travel_plan_permission.planner_auth import mint_bootstrap_token
 from travel_plan_permission.policy_api import PlannerProposalOperationResponse
-from travel_plan_permission.security import AuditEventType, Permission
+from travel_plan_permission.security import (
+    EXCEPTION_TIER_ENTITLEMENT_ENV_VAR,
+    AuditEventType,
+    Permission,
+)
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "planner_integration"
 AUTH_HEADER = {"Authorization": "Bearer dev-token"}
@@ -1948,6 +1953,180 @@ def test_manager_review_decision_updates_status_and_history(monkeypatch) -> None
     assert updated.trip_plan.approval_history[-1].approver_id == "manager-reviewer"
 
 
+def _seed_tiered_exception(
+    client: TestClient,
+    draft_id: str,
+    creator: dict[str, str],
+    *,
+    exception_type: str,
+    amount: str,
+) -> None:
+    assert (
+        client.post(
+            f"/portal/review/{draft_id}/exceptions",
+            headers=creator,
+            data={
+                "exception_type": exception_type,
+                "amount": amount,
+                "justification": ("Documented business need for this routed exception tier. " * 2),
+                "supporting_doc": "docs/exception-policy.md",
+            },
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+
+
+def _decide_exception(
+    client: TestClient,
+    draft_id: str,
+    index: int,
+    headers: dict[str, str],
+    *,
+    decision: str = "approve",
+    actor_role: str = "approver",
+    form_actor: str | None = None,
+):
+    payload: dict[str, str] = {"decision": decision, "notes": "Tier authority check."}
+    if form_actor is not None:
+        payload["actor_id"] = form_actor
+    return client.post(
+        f"/portal/admin/exceptions/{draft_id}/{index}/decision?actor_role={actor_role}",
+        headers=headers,
+        data=payload,
+        follow_redirects=False,
+    )
+
+
+def _set_tier_entitlements(monkeypatch, mapping: dict[str, str]) -> None:
+    monkeypatch.setenv(EXCEPTION_TIER_ENTITLEMENT_ENV_VAR, json.dumps(mapping))
+
+
+def test_exception_approval_enforces_tier(monkeypatch, tmp_path: Path) -> None:
+    """Routed exception levels must be backed by authenticated tier entitlement."""
+
+    _set_bootstrap_runtime_env(monkeypatch)
+    state_path = tmp_path / "tier-state.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    client = TestClient(create_app(store))
+    draft_id, _location = _create_portal_draft(client)
+    creator = _bootstrap_auth_header(subject="traveler", permissions=(Permission.CREATE,))
+
+    # index 0 -> manager (base level, small amount)
+    _seed_tiered_exception(
+        client, draft_id, creator, exception_type="advance_booking", amount="250"
+    )
+    # index 1 -> director (amount >= 5,000)
+    _seed_tiered_exception(
+        client, draft_id, creator, exception_type="advance_booking", amount="6000"
+    )
+    # index 2 -> board (amount >= 20,000)
+    _seed_tiered_exception(
+        client, draft_id, creator, exception_type="advance_booking", amount="25000"
+    )
+    # index 3 -> manager now, director after the 48-hour escalation applied below
+    _seed_tiered_exception(
+        client, draft_id, creator, exception_type="advance_booking", amount="250"
+    )
+
+    seeded = store.list_exception_requests(draft_id)
+    assert [item.approval_level for item in seeded] == [
+        ExceptionApprovalLevel.MANAGER,
+        ExceptionApprovalLevel.DIRECTOR,
+        ExceptionApprovalLevel.BOARD,
+        ExceptionApprovalLevel.MANAGER,
+    ]
+
+    generic = _bootstrap_auth_header(
+        subject="generic-approver",
+        permissions=(Permission.VIEW, Permission.APPROVE),
+    )
+
+    def assert_untouched(index: int) -> None:
+        stored = store.list_exception_requests(draft_id)[index]
+        assert stored.status is ExceptionStatus.PENDING
+        assert stored.approval is None
+
+    # No entitlements configured at all: the deployment default fails closed.
+    monkeypatch.delenv(EXCEPTION_TIER_ENTITLEMENT_ENV_VAR, raising=False)
+    for blocked_index in (1, 2):
+        assert _decide_exception(client, draft_id, blocked_index, generic).status_code == 403
+        assert_untouched(blocked_index)
+
+    # Generic approve still finalizes the baseline manager tier.
+    assert _decide_exception(client, draft_id, 0, generic).status_code == 303
+    approved_manager = store.list_exception_requests(draft_id)[0]
+    assert approved_manager.status is ExceptionStatus.APPROVED
+    assert approved_manager.approval is not None
+    assert approved_manager.approval.approver_id == "generic-approver"
+    assert approved_manager.approval.level is ExceptionApprovalLevel.MANAGER
+
+    # Request-supplied identity/role fields are not authority.
+    _set_tier_entitlements(monkeypatch, {"board-chair": "board", "director-1": "director"})
+    spoofed = _decide_exception(
+        client,
+        draft_id,
+        2,
+        generic,
+        actor_role="finance_admin",
+        form_actor="board-chair",
+    )
+    assert spoofed.status_code == 403
+    assert_untouched(2)
+
+    # A director entitlement does not reach the board tier.
+    director = _bootstrap_auth_header(
+        subject="director-1",
+        permissions=(Permission.VIEW, Permission.APPROVE),
+    )
+    assert _decide_exception(client, draft_id, 2, director).status_code == 403
+    assert_untouched(2)
+
+    # Rejecting is a decision at the routed tier too, so it is gated identically.
+    assert _decide_exception(client, draft_id, 2, generic, decision="reject").status_code == 403
+    assert_untouched(2)
+
+    # The explicitly entitled board subject can finalize the board request.
+    board = _bootstrap_auth_header(
+        subject="board-chair",
+        permissions=(Permission.VIEW, Permission.APPROVE),
+    )
+    assert _decide_exception(client, draft_id, 2, board).status_code == 303
+    approved_board = store.list_exception_requests(draft_id)[2]
+    assert approved_board.status is ExceptionStatus.APPROVED
+    assert approved_board.approval is not None
+    assert approved_board.approval.approver_id == "board-chair"
+    assert approved_board.approval.level is ExceptionApprovalLevel.BOARD
+
+    # ... and the director-entitled subject can finalize the director request.
+    assert _decide_exception(client, draft_id, 1, director).status_code == 303
+    assert store.list_exception_requests(draft_id)[1].status is ExceptionStatus.APPROVED
+
+    # 48-hour escalation raises the tier of an otherwise manager-level request.
+    raw = store.exception_requests_by_draft_id[draft_id][3]
+    assert raw.escalate_if_overdue(reference_time=raw.requested_at + timedelta(hours=49))
+    assert raw.approval_level is ExceptionApprovalLevel.DIRECTOR
+    assert _decide_exception(client, draft_id, 3, generic).status_code == 403
+    assert store.list_exception_requests(draft_id)[3].approval is None
+    assert _decide_exception(client, draft_id, 3, director).status_code == 303
+    escalated = store.list_exception_requests(draft_id)[3]
+    assert escalated.status is ExceptionStatus.APPROVED
+    assert escalated.approval is not None
+    assert escalated.approval.approver_id == "director-1"
+
+    # Every denial was recorded, and no denial mutated decision history.
+    denials = [
+        event
+        for event in store.list_audit_events()
+        if event.event_type is AuditEventType.EXCEPTION and event.outcome == "denied"
+    ]
+    assert len(denials) == 6
+    assert {event.actor for event in denials} == {"generic-approver", "director-1"}
+    assert all(
+        event.metadata["reason"] == "insufficient_exception_tier_entitlement" for event in denials
+    )
+
+
 @pytest.mark.parametrize("form_actor", ["forged-manager-id", None])
 @pytest.mark.parametrize(
     ("route", "action"),
@@ -1963,6 +2142,10 @@ def test_approval_actor_comes_from_token(
     monkeypatch, tmp_path: Path, route: str, action: str, form_actor: str | None
 ) -> None:
     _set_bootstrap_runtime_env(monkeypatch)
+    # The seeded exception below routes to director (amount 6,000), so the
+    # decision maker needs an explicit tier entitlement; this test is about
+    # WHICH identity is recorded, not about tier authority.
+    _set_tier_entitlements(monkeypatch, {"authenticated-approver": "director"})
     audit_path = tmp_path / "decision-audit.sqlite3"
     monkeypatch.setenv(audit.AUDIT_PATH_ENV_VAR, str(audit_path))
     state_path = tmp_path / "decision-state.sqlite3"
@@ -2360,6 +2543,8 @@ def test_exception_creation_requires_create_permission(
 
 def test_exception_decision_updates_review_detail_and_audit_log(monkeypatch) -> None:
     _set_bootstrap_runtime_env(monkeypatch)
+    # Amount 6,000 routes to director; entitle the decision maker explicitly.
+    _set_tier_entitlements(monkeypatch, {"approver-7": "director"})
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
@@ -2410,6 +2595,8 @@ def test_exception_decision_updates_review_detail_and_audit_log(monkeypatch) -> 
 
 def test_exception_rejection_keeps_notes_in_audit_log(monkeypatch) -> None:
     _set_bootstrap_runtime_env(monkeypatch)
+    # Amount 6,000 routes to director; entitle the decision maker explicitly.
+    _set_tier_entitlements(monkeypatch, {"approver-9": "director"})
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
 
