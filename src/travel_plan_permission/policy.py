@@ -346,14 +346,26 @@ class LocalOvernightRule(PolicyRule):
                 ),
                 "Local overnight check requires distance-from-office data.",
             )
-        if context.distance_from_office_miles < self.min_distance_miles:
+        try:
+            distance = float(context.distance_from_office_miles)
+        except (OverflowError, TypeError, ValueError):
+            distance = float("nan")
+        if not isfinite(distance):
             return self._result(
                 False,
-                f"Overnight stays within {self.min_distance_miles} miles require waiver; distance is {context.distance_from_office_miles} miles.",
+                (
+                    f"Overnight stays within {self.min_distance_miles} miles require waiver; "
+                    f"distance is not a finite number ({context.distance_from_office_miles})."
+                ),
+            )
+        if distance < self.min_distance_miles:
+            return self._result(
+                False,
+                f"Overnight stays within {self.min_distance_miles} miles require waiver; distance is {distance} miles.",
             )
         return self._result(
             True,
-            f"Overnight stay is {context.distance_from_office_miles} miles from office (minimum {self.min_distance_miles}).",
+            f"Overnight stay is {distance} miles from office (minimum {self.min_distance_miles}).",
         )
 
     def message(self) -> str:  # pragma: no cover - static template
