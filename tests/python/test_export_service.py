@@ -15,6 +15,7 @@ from decimal import Decimal
 from io import BytesIO, StringIO
 from pathlib import Path
 from time import perf_counter
+from unittest.mock import Mock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -113,7 +114,12 @@ def test_export_preserves_literal_user_text(text: str, csv_text: str) -> None:
     report = _sample_report()
     report.expenses[0].vendor = text
     report.cost_center = text
-    service = ExportService(receipt_signer=lambda _url, _expiry: text)
+    from travel_plan_permission.receipt_delivery import ReceiptDelivery
+
+    # Isolate serialization from delivery validation, which has its own contract tests.
+    delivery = Mock(spec=ReceiptDelivery)
+    delivery.resolve.return_value = text
+    service = ExportService(receipt_delivery=delivery)
     now = datetime(2025, 1, 20, 10, 0, tzinfo=UTC)
 
     _, workbook_content = service.to_excel([report], batch_id="literal", now=now)
@@ -163,9 +169,9 @@ def test_export_literal_text_without_lxml() -> None:
 class TestExportService:
     """Accounting export behavior."""
 
-    def test_csv_header_and_column_order(self) -> None:
+    def test_csv_header_and_column_order(self, receipt_hosted_delivery) -> None:
         """CSV export should be UTF-8 with expected header order."""
-        service = ExportService()
+        service = ExportService(receipt_delivery=receipt_hosted_delivery)
         now = datetime(2025, 1, 20, 10, 0, tzinfo=UTC)
         filename, content = service.to_csv([_sample_report()], batch_id="batch-1", now=now)
 
@@ -175,9 +181,9 @@ class TestExportService:
         # Ensure UTF-8 encodes without errors
         content.encode("utf-8")
 
-    def test_receipt_link_expiry_is_7_days(self) -> None:
+    def test_receipt_link_expiry_is_7_days(self, receipt_hosted_delivery) -> None:
         """Receipt links should expire in exactly 7 days."""
-        service = ExportService()
+        service = ExportService(receipt_delivery=receipt_hosted_delivery)
         now = datetime(2025, 2, 1, 8, 30, tzinfo=UTC)
         _, content = service.to_csv([_sample_report()], batch_id="batch-2", now=now)
         row = content.splitlines()[1].split(",")
@@ -185,15 +191,15 @@ class TestExportService:
 
         parsed = urlparse(receipt_link)
         params = parse_qs(parsed.query)
-        expires_at = params["expires_at"][0]
-        expires_dt = datetime.fromisoformat(expires_at)
+        expires_at = params["expires"][0]
+        expires_dt = datetime.fromtimestamp(int(expires_at), UTC)
 
         assert expires_dt - now == timedelta(days=7)
         assert parsed.scheme in {"http", "https"}
 
-    def test_excel_currency_and_hyperlink(self) -> None:
+    def test_excel_currency_and_hyperlink(self, receipt_hosted_delivery) -> None:
         """Excel export should format amount as currency and set clickable hyperlinks."""
-        service = ExportService()
+        service = ExportService(receipt_delivery=receipt_hosted_delivery)
         now = datetime(2025, 3, 5, 12, 0, tzinfo=UTC)
         filename, content = service.to_excel([_sample_report()], batch_id="batch-3", now=now)
 
@@ -208,9 +214,9 @@ class TestExportService:
         assert receipt_cell.hyperlink is not None
         assert receipt_cell.hyperlink.target.startswith("https://")
 
-    def test_batch_size_limit(self) -> None:
+    def test_batch_size_limit(self, receipt_hosted_delivery) -> None:
         """Batch export should reject more than 100 reports."""
-        service = ExportService()
+        service = ExportService(receipt_delivery=receipt_hosted_delivery)
         reports = [_sample_report() for _ in range(101)]
 
         with pytest.raises(ValueError):
@@ -227,9 +233,9 @@ class TestExportService:
             "receipt_link",
         ]
 
-    def test_typical_batch_exports_have_expected_outputs(self) -> None:
+    def test_typical_batch_exports_have_expected_outputs(self, receipt_hosted_delivery) -> None:
         """Typical batch coverage should stay in the default unit lane."""
-        service = ExportService()
+        service = ExportService(receipt_delivery=receipt_hosted_delivery)
         now = datetime(2025, 4, 1, 9, 0, tzinfo=UTC)
         reports = _typical_batch_reports()
 
@@ -246,9 +252,11 @@ class TestExportService:
         assert sheet.max_row == 201
 
     @pytest.mark.perf
-    def test_exports_complete_within_five_seconds_for_typical_batch(self) -> None:
+    def test_exports_complete_within_five_seconds_for_typical_batch(
+        self, receipt_hosted_delivery
+    ) -> None:
         """CSV and Excel exports should finish quickly for typical batch sizes."""
-        service = ExportService()
+        service = ExportService(receipt_delivery=receipt_hosted_delivery)
         now = datetime(2025, 4, 1, 9, 0, tzinfo=UTC)
         reports = _typical_batch_reports()
 
@@ -258,3 +266,118 @@ class TestExportService:
         elapsed = perf_counter() - start
 
         assert elapsed < 5, f"Exports took too long: {elapsed:.2f}s"
+
+
+def test_receipt_link_requires_real_delivery_mode(tmp_path, receipt_hosted_delivery) -> None:
+    import csv
+    from dataclasses import replace
+    from io import StringIO
+    from pathlib import Path
+    from urllib.parse import unquote, urlsplit
+
+    from travel_plan_permission.receipt_delivery import ReceiptDelivery
+
+    report = _sample_report()
+    report.expenses[0].receipt_url = "receipt.pdf"
+    receipt = tmp_path / "receipt.pdf"
+    receipt.write_bytes(b"source receipt evidence")
+    now = datetime(2025, 2, 1, 8, 30, tzinfo=UTC)
+
+    def link(service):
+        _, content = service.to_csv([report], batch_id="delivery", now=now)
+        assert "receipts.example.com" not in content
+        return next(csv.DictReader(StringIO(content)))["receipt_link"]
+
+    with pytest.raises(ValueError, match="not configured"):
+        link(ExportService())
+    local = ExportService(receipt_delivery=ReceiptDelivery("local-reference", root=tmp_path))
+    reference = link(local)
+    assert urlsplit(reference).query == ""
+    assert Path(unquote(urlsplit(reference).path)).read_bytes() == receipt.read_bytes()
+    for missing in ("absent.pdf", "../outside.pdf", str(receipt)):
+        report.expenses[0].receipt_url = missing
+        with pytest.raises(ValueError, match="cannot be resolved"):
+            link(local)
+    report.expenses[0].receipt_url = "receipt.pdf"
+    receipt.unlink()
+    outside = tmp_path.parent / (tmp_path.name + "-outside.pdf")
+    outside.write_bytes(b"outside root")
+    receipt.symlink_to(outside)
+    with pytest.raises(ValueError, match="cannot be resolved"):
+        link(local)
+
+    receipt.unlink()
+    outside.unlink()
+
+    hosted = ExportService(receipt_delivery=receipt_hosted_delivery)
+    signed = link(hosted)
+    expiry = now + timedelta(days=7)
+    verify = receipt_hosted_delivery.verifier
+    assert verify(signed, "receipt.pdf", expiry, now)
+    assert not verify(signed.replace("receipt.pdf", "other.pdf"), "receipt.pdf", expiry, now)
+    assert not verify(signed, "receipt.pdf", expiry, expiry)
+    assert not verify(signed.replace("expires=", "expires=9"), "receipt.pdf", expiry, now)
+    assert not verify(signed.replace("signature=", "signature=bad"), "receipt.pdf", expiry, now)
+    for invalid in (
+        "https://receipts.example.com/receipt?expires=123",
+        "https://receipts.finance.internal/receipt?expires=123",
+        "https://other.internal/receipt?signature=123",
+        "https://:443/receipt",
+        "file:///receipt",
+        "not-a-url",
+    ):
+        delivery = replace(
+            receipt_hosted_delivery, signer=lambda _ref, _expiry, result=invalid: result
+        )
+        with pytest.raises(ValueError, match="Receipt delivery failed"):
+            link(ExportService(receipt_delivery=delivery))
+    with pytest.raises(ValueError, match="origin, signer, and verifier"):
+        link(ExportService(receipt_delivery=ReceiptDelivery("hosted-signed")))
+    # Receipt-free reports still export without requiring hosted infrastructure.
+    report.expenses[0].receipt_url = None
+    assert link(ExportService()) == ""
+
+
+@pytest.mark.parametrize("port", ["0", "-1", "65536", "notaport", "443", "8443", "65535"])
+def test_receipt_delivery_validates_explicit_ports(receipt_hosted_delivery, port):
+    from dataclasses import replace
+
+    now = datetime(2025, 1, 20, 10, 0, tzinfo=UTC)
+    origin = receipt_hosted_delivery.origin
+    with_port = f"{origin}:{port}"
+    signer = receipt_hosted_delivery.signer
+    configured = replace(
+        receipt_hosted_delivery,
+        origin=with_port,
+        signer=lambda ref, expiry: signer(ref, expiry).replace(origin, with_port, 1),
+    )
+    if port in {"443", "8443", "65535"}:
+        assert configured.resolve("receipt.pdf", now).startswith(with_port + "/")
+    else:
+        with pytest.raises(ValueError, match="real HTTPS origin"):
+            configured.resolve("receipt.pdf", now)
+        # Validate the signer URL independently of the configured origin.
+        with pytest.raises(ValueError, match="Receipt delivery failed"):
+            replace(configured, origin=origin).resolve("receipt.pdf", now)
+
+
+@pytest.mark.parametrize(
+    "tampering",
+    [
+        "&receipt=receipt.pdf",
+        "&expires=999",
+        "&signature=valid",
+        "&receipt=",
+        "&expires=",
+        "&signature=",
+        "&unexpected=value",
+        "&unexpected=",
+    ],
+)
+def test_receipt_verifier_rejects_query_tampering(receipt_hosted_delivery, tampering):
+    now = datetime(2025, 1, 20, 10, 0, tzinfo=UTC)
+    expiry = now + timedelta(days=7)
+    signed = receipt_hosted_delivery.resolve("receipt.pdf", now)
+    verify = receipt_hosted_delivery.verifier
+    assert verify(signed, "receipt.pdf", expiry, now)
+    assert not verify(signed + tampering, "receipt.pdf", expiry, now)

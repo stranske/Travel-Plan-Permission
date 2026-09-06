@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import csv
 import io
-from collections.abc import Callable, Iterable, Iterator
-from datetime import UTC, datetime, timedelta
+from collections.abc import Iterable, Iterator
+from datetime import UTC, datetime
 from decimal import Decimal
-from urllib.parse import urlencode, urljoin, urlsplit
+from urllib.parse import urlsplit
 from zipfile import ZipFile
 
 from .models import ExpenseReport
+from .receipt_delivery import ReceiptDelivery
 
 ExportRow = dict[str, str]
 
@@ -70,14 +71,8 @@ class ExportService:
 
     schema = ["date", "vendor", "amount", "category", "cost_center", "receipt_link"]
 
-    def __init__(
-        self,
-        *,
-        receipt_base_url: str = "https://receipts.example.com",
-        receipt_signer: Callable[[str, datetime], str] | None = None,
-    ) -> None:
-        self.receipt_base_url = receipt_base_url.rstrip("/") + "/"
-        self.receipt_signer = receipt_signer
+    def __init__(self, *, receipt_delivery: ReceiptDelivery | None = None) -> None:
+        self.receipt_delivery = receipt_delivery
 
     def _validate_batch(self, reports: Iterable[ExpenseReport]) -> list[ExpenseReport]:
         materialized = list(reports)
@@ -88,25 +83,21 @@ class ExportService:
     def _build_filename(self, ext: str, batch_id: str, now: datetime) -> str:
         return f"expense_export_{now.date().isoformat()}_{batch_id}.{ext}"
 
-    def _default_signed_link(self, receipt_url: str, expires_at: datetime) -> str:
-        target = urljoin(self.receipt_base_url, receipt_url.lstrip("/"))
-        return f"{target}?{urlencode({'expires_at': expires_at.isoformat()})}"
-
-    def _signed_link(self, receipt_url: str, expires_at: datetime) -> str:
-        if self.receipt_signer is not None:
-            return self.receipt_signer(receipt_url, expires_at)
-        return self._default_signed_link(receipt_url, expires_at)
+    def _receipt_reference(self, reference: str, now: datetime) -> str:
+        if self.receipt_delivery is None:
+            raise ValueError(
+                "Receipt delivery is not configured; select local-reference with "
+                "TPP_RECEIPT_ROOT or configure a hosted signer and verifier."
+            )
+        return self.receipt_delivery.resolve(reference, now)
 
     def _iter_rows(self, reports: list[ExpenseReport], now: datetime) -> Iterator[ExportRow]:
-        expires_at = now + timedelta(days=7)
         for report in reports:
             for expense in report.expenses:
                 reimbursable_amount = expense.reimbursable_amount()
                 amount = reimbursable_amount.quantize(Decimal("0.01"))
                 receipt_link = (
-                    self._signed_link(expense.receipt_url, expires_at)
-                    if expense.receipt_url
-                    else ""
+                    self._receipt_reference(expense.receipt_url, now) if expense.receipt_url else ""
                 )
                 yield {
                     "date": expense.expense_date.isoformat(),
@@ -174,12 +165,8 @@ class ExportService:
             appended_row = ws.max_row
             # Override openpyxl's formula/error inference for untrusted text.
             for field in ("vendor", "cost_center", "receipt_link"):
-                ws.cell(
-                    row=appended_row, column=self.schema.index(field) + 1
-                ).data_type = "s"
-            receipt_cell = ws.cell(
-                row=appended_row, column=self.schema.index("receipt_link") + 1
-            )
+                ws.cell(row=appended_row, column=self.schema.index(field) + 1).data_type = "s"
+            receipt_cell = ws.cell(row=appended_row, column=self.schema.index("receipt_link") + 1)
             if _is_receipt_hyperlink(row["receipt_link"]):
                 receipt_cell.hyperlink = row["receipt_link"]
                 receipt_cell.style = "Hyperlink"

@@ -13,7 +13,7 @@ The exports always include a header row using the following columns in order:
 3. `amount` – Decimal amount with two digits of precision.
 4. `category` – Expense category (matches `ExpenseCategory` enum).
 5. `cost_center` – Cost center associated with the expense report.
-6. `receipt_link` – Signed URL valid for 7 days.
+6. `receipt_link` – Validated local file reference or hosted signed URL, according to the configured delivery mode.
 
 ## File naming
 
@@ -29,7 +29,54 @@ expense_export_{date}_{batch_id}.{ext}
 
 ## Receipt links
 
-Receipt links are signed for 7 days and emitted as clickable hyperlinks in the Excel export. They are intended for short-lived sharing with accounting systems.
+No delivery mode is assumed. Reports without receipts can export without configuration;
+a referenced receipt blocks export with a validation error until delivery is configured.
+The portal uses the same configuration for preview, review, and artifact downloads.
+Downloads regenerate references, so expired hosted URLs or old cached placeholder links
+are never reused as newly validated delivery.
+
+### Local reference mode (no hosting required)
+
+Set `TPP_RECEIPT_MODE=local-reference` and `TPP_RECEIPT_ROOT=/absolute/receipt/root`
+before starting `tpp-planner-service`. Enter receipt paths relative to that root, for
+example `receipts/hotel-folio.pdf`. The exporter checks that the resolved path is a
+readable file beneath the root, including symlink containment, and emits its absolute
+`file:` URI. Absolute inputs, missing files, and traversal outside the root are rejected.
+Python callers use `ExportService(receipt_delivery=ReceiptDelivery("local-reference",
+root=Path("/absolute/receipt/root")))`.
+
+These references do not expire and are not signatures, uploads, or web downloads.
+Accounting must have filesystem access to the same file path; copy the receipts through
+an approved shared filesystem if needed. A browser or spreadsheet may block `file:`
+navigation: resolve the URI path locally instead. No external service is contacted.
+
+### Hosted signed mode (explicit adapter)
+
+Python callers construct `ReceiptDelivery("hosted-signed", origin="https://receipts.your-domain",
+signer=sign_receipt, verifier=verify_receipt)` and pass its `ExportService` into
+`create_app(store, export_service=service)`. Import `ReceiptDelivery` from
+`travel_plan_permission.receipt_delivery`. Setting an environment mode alone cannot
+supply a signer or verifier and therefore cannot enable hosted delivery.
+
+The trusted signer accepts `(receipt_reference, expires_at)` and returns an HTTPS URL.
+The independent verifier accepts `(url, receipt_reference, expires_at, now)` and must
+validate the signature, receipt identity, and exact requested seven-day expiry before
+returning true. Timestamp-only, tampered, expired, cross-origin, malformed, or placeholder
+results must fail. The exporter also enforces HTTPS, origin equality, and rejection of
+example-domain placeholders. Configuration adapters are trusted code; URL syntax alone
+cannot prove a cryptographic signature.
+
+The hosting operator must provide an authenticated receipt lookup, signing keys and
+rotation, and a download endpoint that verifies identity/signature and rejects access
+at or after expiry. IT must approve the receipt host, network access, and credentials.
+This repository does not deploy that endpoint or upload receipts. Use local mode until
+such an adapter exists. Export-time verification is not a substitute for endpoint checks.
+
+Regression evidence: run
+`PYTHONPATH=src python -m pytest tests/python/test_http_service.py::test_portal_receipt_delivery_configuration tests/python/test_export_service.py::test_receipt_link_requires_real_delivery_mode -q`.
+The temporary-file and deterministic HMAC fixtures exercise resolved file bytes, hosted
+verification before expiry, rejection after tampering/expiry, and portal validation
+errors without placeholder output. Capture pytest output with the PR validation evidence.
 
 ## Limits and performance
 
