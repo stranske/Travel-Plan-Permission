@@ -859,6 +859,111 @@ def test_trip_planner_handoff_can_review_and_download_but_not_submit(monkeypatch
     assert store.lookup_portal_draft(draft_id) is not None
 
 
+@pytest.fixture
+def expense_auth_header(monkeypatch) -> dict[str, str]:
+    _set_bootstrap_runtime_env(monkeypatch)
+    return _bootstrap_auth_header(
+        subject="expense-operator",
+        permissions=(Permission.VIEW, Permission.CREATE, Permission.EXPORT),
+    )
+
+
+@pytest.mark.parametrize(
+    "permissions",
+    [None, (Permission.VIEW,), (Permission.CREATE,), (Permission.EXPORT,), tuple(Permission)],
+    ids=["anonymous", "view-only", "create-only", "export-only", "all-permissions"],
+)
+def test_expense_routes_enforce_permissions(monkeypatch, permissions) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    _seed_manager_review(store)
+    draft = store.save_expense_draft(_expense_form_payload())
+    client = TestClient(create_app(store))
+    headers = (
+        _bootstrap_auth_header(subject="expense-accountant", permissions=permissions)
+        if permissions is not None
+        else {}
+    )
+    routes = [
+        ("POST", "/portal/expenses/review", Permission.CREATE, 303),
+        ("GET", f"/portal/expenses/{draft.draft_id}", Permission.VIEW, 200),
+        (
+            "GET",
+            f"/portal/expenses/{draft.draft_id}/artifacts/expense-csv",
+            Permission.EXPORT,
+            200,
+        ),
+        (
+            "GET",
+            f"/portal/expenses/{draft.draft_id}/artifacts/expense-xlsx",
+            Permission.EXPORT,
+            200,
+        ),
+    ]
+    for method, path, required, success_status in routes:
+        allowed = permissions is not None and required in permissions
+        before = store._serialize_state()
+        events_before = list(store.security.audit_log.events)
+        with monkeypatch.context() as denied_guard:
+            if not allowed:
+
+                def unexpected_draft_access(*_args, **_kwargs):
+                    pytest.fail("Denied expense operation accessed draft state")
+
+                for operation in (
+                    "lookup_expense_draft",
+                    "save_expense_draft",
+                    "cache_expense_artifacts",
+                ):
+                    denied_guard.setattr(store, operation, unexpected_draft_access)
+            response = client.request(
+                method,
+                path,
+                headers=headers,
+                data=_expense_form_payload() if method == "POST" else None,
+                follow_redirects=False,
+            )
+        expected = success_status if allowed else (401 if permissions is None else 403)
+        assert response.status_code == expected, (method, path, response.text)
+        if not allowed:
+            assert store._serialize_state() == before
+            assert store.security.audit_log.events == events_before
+        elif required == Permission.EXPORT:
+            event = store.security.audit_log.events[-1]
+            assert event.event_type == AuditEventType.EXPORT
+            assert event.actor == "expense-accountant"
+            assert event.subject == draft.draft_id
+            assert event.outcome == "artifact_downloaded"
+            assert event.metadata == {
+                "artifact": path.rsplit("/", 1)[-1],
+                "provider": "google",
+                "permissions": sorted(permission.value for permission in permissions),
+            }
+            if path.endswith("expense-csv"):
+                assert b"date,vendor,amount,category,cost_center,receipt_link" in response.content
+            else:
+                assert response.content.startswith(b"PK")
+
+    # Permission does not bypass the approved-request linkage contract.
+    if permissions is not None and Permission.CREATE in permissions:
+        before = store._serialize_state()
+        invalid = {**_expense_form_payload(), "approved_request_id": "unknown-request"}
+        response = client.post("/portal/expenses/review", data=invalid, headers=headers)
+        assert response.status_code == 400
+        assert "was not found" in response.text
+        assert store._serialize_state() == before
+    if permissions is not None and Permission.EXPORT in permissions:
+        _seed_manager_review(store, status=http_service.ReviewStatus.REJECTED)
+        events_before = list(store.security.audit_log.events)
+        for artifact_name in ("expense-csv", "expense-xlsx"):
+            response = client.get(
+                f"/portal/expenses/{draft.draft_id}/artifacts/{artifact_name}", headers=headers
+            )
+            assert response.status_code == 403
+            assert "not approved" in response.json()["detail"]
+        assert store.security.audit_log.events == events_before
+
+
 def test_expense_portal_form_renders() -> None:
     client = TestClient(create_app())
 
@@ -869,10 +974,10 @@ def test_expense_portal_form_renders() -> None:
     assert "Receipt intake" in response.text
 
 
-def test_expense_portal_review_surfaces_missing_receipt_warning() -> None:
+def test_expense_portal_review_surfaces_missing_receipt_warning(expense_auth_header) -> None:
     store = PlannerProposalStore()
     _seed_manager_review(store)
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
     payload = _expense_form_payload()
     payload.pop("receipt_file_reference")
     payload.pop("receipt_file_size_bytes")
@@ -896,10 +1001,10 @@ def test_expense_portal_review_surfaces_missing_receipt_warning() -> None:
     assert store.expense_drafts_by_id
 
 
-def test_expense_portal_generates_exports_and_policy_warning() -> None:
+def test_expense_portal_generates_exports_and_policy_warning(expense_auth_header) -> None:
     store = PlannerProposalStore()
     _seed_manager_review(store)
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
     payload = _expense_form_payload()
     payload["expense_amount"] = "7500.00"
     payload["receipt_total"] = "7500.00"
@@ -932,10 +1037,10 @@ def test_expense_portal_generates_exports_and_policy_warning() -> None:
     assert f"{draft_id}.xlsx" in excel_export.headers["content-disposition"]
 
 
-def test_expense_portal_invalid_amount_returns_validation_error() -> None:
+def test_expense_portal_invalid_amount_returns_validation_error(expense_auth_header) -> None:
     store = PlannerProposalStore()
     _seed_manager_review(store)
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
     payload = _expense_form_payload()
     payload["expense_amount"] = "not-a-decimal"
 
@@ -947,10 +1052,11 @@ def test_expense_portal_invalid_amount_returns_validation_error() -> None:
 
 def test_expense_portal_missing_approval_rules_returns_validation_error(
     monkeypatch,
+    expense_auth_header,
 ) -> None:
     store = PlannerProposalStore()
     _seed_manager_review(store)
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
     payload = _expense_form_payload()
 
     monkeypatch.setattr("travel_plan_permission.approval._default_rules_path", lambda: None)
@@ -965,10 +1071,10 @@ def test_expense_portal_missing_approval_rules_returns_validation_error(
     )
 
 
-def test_expense_portal_caches_artifacts_with_persisted_draft_id() -> None:
+def test_expense_portal_caches_artifacts_with_persisted_draft_id(expense_auth_header) -> None:
     store = PlannerProposalStore()
     _seed_manager_review(store)
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
 
     response = client.post(
         "/portal/expenses/review",
@@ -990,10 +1096,10 @@ def test_expense_portal_caches_artifacts_with_persisted_draft_id() -> None:
     assert b"EXP-PREVIEW" not in draft.cached_artifacts["expense-csv"].content
 
 
-def test_expense_artifact_download_revalidates_cached_linkage() -> None:
+def test_expense_artifact_download_revalidates_cached_linkage(expense_auth_header) -> None:
     store = PlannerProposalStore()
     review = _seed_manager_review(store)
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
 
     response = client.post(
         "/portal/expenses/review",
@@ -1026,10 +1132,10 @@ def test_expense_artifact_download_revalidates_cached_linkage() -> None:
     assert excel_export.json() == csv_export.json()
 
 
-def test_expense_portal_rejects_invalid_decimal_input_without_saving() -> None:
+def test_expense_portal_rejects_invalid_decimal_input_without_saving(expense_auth_header) -> None:
     store = PlannerProposalStore()
     _seed_manager_review(store)
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
     payload = _expense_form_payload()
     payload["expense_amount"] = "not-a-decimal"
 
@@ -1044,9 +1150,9 @@ def test_expense_portal_rejects_invalid_decimal_input_without_saving() -> None:
     assert not store.expense_drafts_by_id
 
 
-def test_expense_portal_blocks_export_when_approved_request_id_unknown() -> None:
+def test_expense_portal_blocks_export_when_approved_request_id_unknown(expense_auth_header) -> None:
     store = PlannerProposalStore()
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
     payload = _expense_form_payload()
 
     response = client.post("/portal/expenses/review", data=payload)
@@ -1068,11 +1174,12 @@ def test_expense_portal_blocks_export_when_approved_request_id_unknown() -> None
     ],
 )
 def test_expense_portal_blocks_export_when_linkage_not_approved(
+    expense_auth_header,
     status_value: http_service.ReviewStatus,
 ) -> None:
     store = PlannerProposalStore()
     _seed_manager_review(store, status=status_value)
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
 
     response = client.post("/portal/expenses/review", data=_expense_form_payload())
 
@@ -1084,10 +1191,10 @@ def test_expense_portal_blocks_export_when_linkage_not_approved(
     assert not store.expense_drafts_by_id
 
 
-def test_expense_portal_blocks_export_when_traveler_name_mismatch() -> None:
+def test_expense_portal_blocks_export_when_traveler_name_mismatch(expense_auth_header) -> None:
     store = PlannerProposalStore()
     _seed_manager_review(store, traveler_name="Jamie Park")
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
 
     response = client.post("/portal/expenses/review", data=_expense_form_payload())
 
@@ -1099,10 +1206,10 @@ def test_expense_portal_blocks_export_when_traveler_name_mismatch() -> None:
     assert not store.expense_drafts_by_id
 
 
-def test_expense_portal_blocks_export_when_trip_id_mismatch() -> None:
+def test_expense_portal_blocks_export_when_trip_id_mismatch(expense_auth_header) -> None:
     store = PlannerProposalStore()
     _seed_manager_review(store, trip_id="TRIP-OTHER")
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
 
     response = client.post("/portal/expenses/review", data=_expense_form_payload())
 
@@ -1114,11 +1221,11 @@ def test_expense_portal_blocks_export_when_trip_id_mismatch() -> None:
     assert not store.expense_drafts_by_id
 
 
-def test_expense_portal_bad_linkage_response_hides_export_actions() -> None:
+def test_expense_portal_bad_linkage_response_hides_export_actions(expense_auth_header) -> None:
     """Portal review route should not render export actions when linkage validation fails."""
     store = PlannerProposalStore()
     _seed_manager_review(store, traveler_name="Jamie Park")
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
 
     response = client.post("/portal/expenses/review", data=_expense_form_payload())
 
@@ -1130,7 +1237,7 @@ def test_expense_portal_bad_linkage_response_hides_export_actions() -> None:
     assert not store.expense_drafts_by_id
 
 
-def test_expense_portal_resolves_linkage_via_exception_request_store() -> None:
+def test_expense_portal_resolves_linkage_via_exception_request_store(expense_auth_header) -> None:
     store = PlannerProposalStore()
     portal_draft = store.save_portal_draft({"traveler_name": "Alex Rivera", "trip_id": "TRIP-410"})
     store.create_exception_request(
@@ -1149,7 +1256,7 @@ def test_expense_portal_resolves_linkage_via_exception_request_store() -> None:
     raw.status = http_service.ExceptionStatus.APPROVED
     payload = _expense_form_payload()
     payload["approved_request_id"] = portal_draft.draft_id
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
 
     response = client.post(
         "/portal/expenses/review",
@@ -1170,6 +1277,7 @@ def test_expense_portal_resolves_linkage_via_exception_request_store() -> None:
     ],
 )
 def test_expense_portal_blocks_export_when_exception_request_unapproved(
+    expense_auth_header,
     exception_status: http_service.ExceptionStatus,
 ) -> None:
     store = PlannerProposalStore()
@@ -1190,7 +1298,7 @@ def test_expense_portal_blocks_export_when_exception_request_unapproved(
     raw.status = exception_status
     payload = _expense_form_payload()
     payload["approved_request_id"] = portal_draft.draft_id
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
 
     response = client.post("/portal/expenses/review", data=payload)
 
@@ -1460,11 +1568,13 @@ def test_expense_review_state_emits_artifacts_when_linkage_valid() -> None:
     assert state.artifacts != {}
 
 
-def test_expense_portal_detail_surfaces_validation_errors_when_approval_rescinded() -> None:
+def test_expense_portal_detail_surfaces_validation_errors_when_approval_rescinded(
+    expense_auth_header,
+) -> None:
     """GET detail page re-validates linkage and renders errors even for saved drafts."""
     store = PlannerProposalStore()
     _seed_manager_review(store)
-    client = TestClient(create_app(store))
+    client = TestClient(create_app(store), headers=expense_auth_header)
 
     # Save a valid expense draft while approval is still active.
     save_response = client.post(
@@ -2302,12 +2412,12 @@ def test_portal_review_state_survives_restart(monkeypatch, tmp_path) -> None:
     assert "Generated artifacts" in restored.text
 
 
-def test_expense_review_state_survives_restart(tmp_path) -> None:
+def test_expense_review_state_survives_restart(expense_auth_header, tmp_path) -> None:
     state_path = tmp_path / "portal-runtime-state.sqlite3"
     store = PlannerProposalStore(state_path=state_path)
     _seed_manager_review(store)
 
-    first_client = TestClient(create_app(store))
+    first_client = TestClient(create_app(store), headers=expense_auth_header)
     review = first_client.post(
         "/portal/expenses/review",
         data=_expense_form_payload(),
@@ -2319,7 +2429,9 @@ def test_expense_review_state_survives_restart(tmp_path) -> None:
     assert match is not None
     draft_id = match.group(1)
 
-    second_client = TestClient(create_app(PlannerProposalStore(state_path=state_path)))
+    second_client = TestClient(
+        create_app(PlannerProposalStore(state_path=state_path)), headers=expense_auth_header
+    )
     restored = second_client.get(f"/portal/expenses/{draft_id}")
     csv_export = second_client.get(f"/portal/expenses/{draft_id}/artifacts/expense-csv")
     excel_export = second_client.get(f"/portal/expenses/{draft_id}/artifacts/expense-xlsx")
