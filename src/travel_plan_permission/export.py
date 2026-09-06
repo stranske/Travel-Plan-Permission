@@ -7,11 +7,62 @@ import io
 from collections.abc import Callable, Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode, urljoin, urlsplit
+from zipfile import ZipFile
 
 from .models import ExpenseReport
 
 ExportRow = dict[str, str]
+
+
+def _preserve_xlsx_carriage_returns(content: bytes) -> bytes:
+    """Escape raw CRs that the optional non-lxml writer leaves in worksheet XML.
+
+    XML parsers normalize literal CR/CRLF to LF. Character references preserve
+    the original text on reload, just as openpyxl's lxml backend already does.
+    """
+    output = io.BytesIO()
+    with ZipFile(io.BytesIO(content)) as source:
+        replacements = {}
+        for name in source.namelist():
+            if name.startswith("xl/worksheets/") and name.endswith(".xml"):
+                data = source.read(name)
+                if b"\r" in data:
+                    replacements[name] = data.replace(b"\r", b"&#13;")
+        if not replacements:
+            return content
+        with ZipFile(output, "w") as target:
+            for entry in source.infolist():
+                replacement = replacements.get(entry.filename)
+                target.writestr(
+                    entry, replacement if replacement is not None else source.read(entry)
+                )
+    return output.getvalue()
+
+
+def _csv_literal_text(value: str) -> str:
+    """Prefix ambiguous text with an apostrophe; CSV consumers must import it as text.
+
+    Preserve the original bytes after the prefix, including leading whitespace.
+    This is an export/import convention, not a universal spreadsheet-engine escape.
+    """
+    if value and (
+        value[0] in "=+-@＝＋－＠"
+        or value[0].isspace()
+        or ord(value[0]) < 32
+        or ord(value[0]) == 127
+    ):
+        return "'" + value
+    return value
+
+
+def _is_receipt_hyperlink(value: str) -> bool:
+    """Keep malformed or non-web receipt text visible without a clickable target."""
+    try:
+        target = urlsplit(value)
+    except ValueError:
+        return False
+    return target.scheme in {"http", "https"} and bool(target.hostname)
 
 
 class ExportService:
@@ -82,7 +133,10 @@ class ExportService:
         output = io.StringIO(newline="")
         writer = csv.DictWriter(output, fieldnames=self.schema)
         writer.writeheader()
-        writer.writerows(rows)
+        for row in rows:
+            for field in ("vendor", "cost_center", "receipt_link"):
+                row[field] = _csv_literal_text(row[field])
+            writer.writerow(row)
 
         filename = self._build_filename("csv", batch_id, current_time)
         return filename, output.getvalue()
@@ -118,11 +172,18 @@ class ExportService:
                 ]
             )
             appended_row = ws.max_row
-            receipt_cell = ws.cell(row=appended_row, column=len(self.schema))
-            if row["receipt_link"]:
+            # Override openpyxl's formula/error inference for untrusted text.
+            for field in ("vendor", "cost_center", "receipt_link"):
+                ws.cell(
+                    row=appended_row, column=self.schema.index(field) + 1
+                ).data_type = "s"
+            receipt_cell = ws.cell(
+                row=appended_row, column=self.schema.index("receipt_link") + 1
+            )
+            if _is_receipt_hyperlink(row["receipt_link"]):
                 receipt_cell.hyperlink = row["receipt_link"]
                 receipt_cell.style = "Hyperlink"
-        amount_column = 3
+        amount_column = self.schema.index("amount") + 1
         currency_format = "$#,##0.00"
         for cell in ws.iter_cols(min_col=amount_column, max_col=amount_column, min_row=2):
             for amt_cell in cell:
@@ -138,4 +199,4 @@ class ExportService:
         wb.save(buffer)
 
         filename = self._build_filename("xlsx", batch_id, current_time)
-        return filename, buffer.getvalue()
+        return filename, _preserve_xlsx_carriage_returns(buffer.getvalue())

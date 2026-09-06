@@ -6,9 +6,14 @@ Run opt-in performance coverage with:
 
 from __future__ import annotations
 
+import csv
+import os
+import subprocess
+import sys
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from io import BytesIO
+from io import BytesIO, StringIO
+from pathlib import Path
 from time import perf_counter
 from urllib.parse import parse_qs, urlparse
 
@@ -71,6 +76,88 @@ def _typical_batch_reports() -> list[ExpenseReport]:
             )
         )
     return reports
+
+
+@pytest.mark.parametrize(
+    ("text", "csv_text"),
+    [
+        ("=1+1", "'=1+1"),
+        ("+1+1", "'+1+1"),
+        ("-1+1", "'-1+1"),
+        ("@SUM(1,1)", "'@SUM(1,1)"),
+        ("  =1+1", "'  =1+1"),
+        ("\t=1+1", "'\t=1+1"),
+        ("\r=1+1", "'\r=1+1"),
+        ("\n=1+1", "'\n=1+1"),
+        (" \t\r\n+1+1", "' \t\r\n+1+1"),
+        ("\tplain text", "'\tplain text"),
+        (" leading space", "' leading space"),
+        ("\u00a0=1+1", "'\u00a0=1+1"),
+        ("＝1+1", "'＝1+1"),
+        ("＋1+1", "'＋1+1"),
+        ("－1+1", "'－1+1"),
+        ("＠SUM(1,1)", "'＠SUM(1,1)"),
+        ('=1+1,";=2+2', "'=1+1,\";=2+2"),
+        ('Acme, "West"\n=1+1', 'Acme, "West"\n=1+1'),
+        ("#N/A", "#N/A"),
+        ("Ordinary text", "Ordinary text"),
+        ("http://[broken", "http://[broken"),
+        ("https://:443/receipt", "https://:443/receipt"),
+        ("https://user@/receipt", "https://user@/receipt"),
+        ("http://receipts.example.test/one", "http://receipts.example.test/one"),
+        ("https://receipts.example.test/one?x=1&y=2", "https://receipts.example.test/one?x=1&y=2"),
+    ],
+)
+def test_export_preserves_literal_user_text(text: str, csv_text: str) -> None:
+    """Inspect saved artifacts without evaluating formulas or following links."""
+    report = _sample_report()
+    report.expenses[0].vendor = text
+    report.cost_center = text
+    service = ExportService(receipt_signer=lambda _url, _expiry: text)
+    now = datetime(2025, 1, 20, 10, 0, tzinfo=UTC)
+
+    _, workbook_content = service.to_excel([report], batch_id="literal", now=now)
+    sheet = load_workbook(BytesIO(workbook_content), data_only=False).active
+    for address in ("B2", "E2", "F2"):
+        assert sheet[address].value == text
+        assert sheet[address].data_type == "s"
+    assert sheet["C2"].data_type == "n"
+    assert sheet["C2"].value == 125.5
+    if text.startswith(("http://receipts.", "https://receipts.")):
+        assert sheet["F2"].hyperlink.target == text
+    else:
+        assert sheet["F2"].hyperlink is None
+
+    _, csv_content = service.to_csv([report], batch_id="literal", now=now)
+    rows = list(csv.DictReader(StringIO(csv_content, newline="")))
+    assert len(rows) == 1
+    assert set(rows[0]) == set(service.schema)
+    for field in ("vendor", "cost_center", "receipt_link"):
+        assert rows[0][field] == csv_text
+    assert rows[0]["amount"] == "125.50"
+    assert report.expenses[0].vendor == text
+    assert report.cost_center == text
+
+
+def test_export_literal_text_without_lxml() -> None:
+    """Exercise the actual fallback writer even on developer machines with lxml."""
+    test_file = Path(__file__).resolve()
+    code = (
+        "import openpyxl, runpy\n"
+        "assert not openpyxl.LXML\n"
+        f"test = runpy.run_path({str(test_file)!r})['test_export_preserves_literal_user_text']\n"
+        "for text in ('\\r=1+1', ' \\t\\r\\n+1+1'):\n"
+        '    test(text, "\'" + text)\n'
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        env={**os.environ, "OPENPYXL_LXML": "False"},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 class TestExportService:
