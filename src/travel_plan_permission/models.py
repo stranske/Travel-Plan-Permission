@@ -315,6 +315,26 @@ def build_exception_dashboard(
     }
 
 
+class GroundTransport(BaseModel):
+    """Structured inputs used by the organization workbook's transport calculator."""
+
+    mosers_vehicle_planned: bool | None = None
+    mileage_planned: bool | None = None
+    mileage_miles: Decimal | None = Field(default=None, ge=0)
+    mileage_cost: Decimal | None = Field(default=None, ge=0)
+    rideshare_planned: bool | None = None
+    rideshare_cost: Decimal | None = Field(default=None, ge=0)
+    shuttle_planned: bool | None = None
+    shuttle_cost: Decimal | None = Field(default=None, ge=0)
+    rental_planned: bool | None = None
+    rental_cost: Decimal | None = Field(default=None, ge=0)
+    rental_company: str | None = None
+    rental_daily_rate: Decimal | None = Field(default=None, ge=0)
+    rental_reason: str | None = None
+
+    model_config = {"extra": "forbid"}
+
+
 class TripPlan(BaseModel):
     """A trip plan request for approval."""
 
@@ -341,6 +361,9 @@ class TripPlan(BaseModel):
     expense_breakdown: dict[ExpenseCategory, Decimal] = Field(
         default_factory=dict,
         description="Optional planned spend by category",
+    )
+    ground_transport: GroundTransport | None = Field(
+        default=None, description="Structured planned ground transport and costs"
     )
     booking_date: date | None = Field(
         default=None, description="Date the trip was booked or requested"
