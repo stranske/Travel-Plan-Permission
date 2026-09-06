@@ -1824,6 +1824,10 @@ def test_portal_admin_console_surfaces_permissions_runtime_and_audit_history(
     draft_id, _location = _create_portal_draft(client)
     client.post(
         f"/portal/review/{draft_id}/exceptions",
+        headers=_bootstrap_auth_header(
+            subject="exception-creator",
+            permissions=(Permission.CREATE,),
+        ),
         data={
             "exception_type": "advance_booking",
             "amount": "6000",
@@ -1947,6 +1951,84 @@ def test_manager_review_detail_shows_debug_event_log_for_configure_permission(
     assert "Workflow event log" in detail.text
 
 
+@pytest.mark.parametrize(
+    ("credential", "expected_status"),
+    [("anonymous", 401), ("viewer", 403), ("handoff", 401), ("expired", 403), ("creator", 303)],
+)
+def test_exception_creation_requires_create_permission(
+    monkeypatch, tmp_path: Path, credential: str, expected_status: int
+) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    monkeypatch.setenv("TPP_HANDOFF_SIGNING_SECRET", "test-handoff-signing-secret")
+    state_path = tmp_path / "portal-state.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    client = TestClient(create_app(store))
+    draft_id, _location = _create_portal_draft(client)
+    headers: dict[str, str] = {}
+    if credential in {"viewer", "creator"}:
+        headers = _bootstrap_auth_header(
+            subject="authenticated-creator",
+            permissions=(Permission.VIEW,) if credential == "viewer" else (Permission.CREATE,),
+        )
+    elif credential == "expired":
+        token = mint_bootstrap_token(
+            subject="expired-creator",
+            permissions=(Permission.CREATE,),
+            provider="google",
+            secret="bootstrap-secret-123",
+            expires_in_seconds=600,
+            now=datetime.now(UTC) - timedelta(hours=1),
+        )
+        headers = {"Authorization": f"Bearer {token}"}
+    elif credential == "handoff":
+        client.cookies.set(
+            "tpp_portal_handoff",
+            http_service.issue_handoff_token(draft_id, secret="test-handoff-signing-secret"),
+        )
+        assert client.get(f"/portal/review/{draft_id}").status_code == 200
+
+    before = state_path.read_bytes()
+    response = client.post(
+        f"/portal/review/{draft_id}/exceptions",
+        headers=headers,
+        data={
+            "exception_type": "advance_booking",
+            "amount": "6000",
+            "justification": "Need to lock in the only compliant conference fare. " * 2,
+            "supporting_doc": "docs/approval-workflow.md",
+            "requestor": "forged-requestor",
+            "actor_id": "forged-actor",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == expected_status
+    reopened = PlannerProposalStore(state_path=state_path)
+    if credential != "creator":
+        assert store.list_exception_requests(draft_id) == []
+        assert reopened.list_exception_requests(draft_id) == []
+        assert state_path.read_bytes() == before
+        assert not any(event.outcome == "requested" for event in store.list_audit_events())
+        # Authorization must also precede draft lookup and malformed request parsing.
+        assert (
+            client.post(
+                "/portal/review/missing-draft/exceptions", headers=headers, content=b"invalid"
+            ).status_code
+            == expected_status
+        )
+        return
+
+    requests = reopened.list_exception_requests(draft_id)
+    assert len(requests) == 1
+    assert requests[0].requestor == "authenticated-creator"
+    events = [event for event in reopened.list_audit_events() if event.outcome == "requested"]
+    assert len(events) == 1
+    assert events[0].actor == "authenticated-creator"
+    assert events[0].subject == draft_id
+    draft = reopened.lookup_portal_draft(draft_id)
+    assert draft is not None
+    assert draft.answers["traveler_name"] == _portal_form_payload()["traveler_name"]
+
+
 def test_exception_decision_updates_review_detail_and_audit_log(monkeypatch) -> None:
     _set_bootstrap_runtime_env(monkeypatch)
     store = PlannerProposalStore()
@@ -1955,6 +2037,10 @@ def test_exception_decision_updates_review_detail_and_audit_log(monkeypatch) -> 
     draft_id, _location = _create_portal_draft(client)
     client.post(
         f"/portal/review/{draft_id}/exceptions",
+        headers=_bootstrap_auth_header(
+            subject="exception-creator",
+            permissions=(Permission.CREATE,),
+        ),
         data={
             "exception_type": "advance_booking",
             "amount": "6000",
@@ -2001,6 +2087,10 @@ def test_exception_rejection_keeps_notes_in_audit_log(monkeypatch) -> None:
     draft_id, _location = _create_portal_draft(client)
     client.post(
         f"/portal/review/{draft_id}/exceptions",
+        headers=_bootstrap_auth_header(
+            subject="exception-creator",
+            permissions=(Permission.CREATE,),
+        ),
         data={
             "exception_type": "advance_booking",
             "amount": "6000",
@@ -2037,13 +2127,17 @@ def test_exception_rejection_keeps_notes_in_audit_log(monkeypatch) -> None:
 def test_portal_submit_exception_request_returns_400_for_invalid_payload(
     monkeypatch,
 ) -> None:
-    _set_runtime_env(monkeypatch)
+    _set_bootstrap_runtime_env(monkeypatch)
     client = TestClient(create_app(PlannerProposalStore()), raise_server_exceptions=False)
 
     draft_id, _location = _create_portal_draft(client)
 
     response = client.post(
         f"/portal/review/{draft_id}/exceptions",
+        headers=_bootstrap_auth_header(
+            subject="exception-creator",
+            permissions=(Permission.CREATE,),
+        ),
         data={
             "exception_type": "advance_booking",
             "amount": "-5",

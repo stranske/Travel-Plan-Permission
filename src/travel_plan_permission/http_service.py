@@ -1817,6 +1817,11 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
         request: Request,
         draft_id: str,
     ) -> Response:
+        auth_context = _authorize_request(
+            request.headers.get("Authorization"),
+            required_permission=Permission.CREATE,
+            route=_route_identifier(request),
+        )
         draft = proposal_store.lookup_portal_draft(draft_id)
         if draft is None:
             raise HTTPException(
@@ -1864,7 +1869,7 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
             exception_request = ExceptionRequest(
                 type=exception_type,
                 justification=parsed.get("justification", [""])[-1].strip(),
-                requestor=str(draft.answers.get("traveler_name") or "portal-traveler"),
+                requestor=auth_context.subject,
                 amount=parsed_amount,
                 supporting_docs=[supporting_doc] if supporting_doc else [],
             )
