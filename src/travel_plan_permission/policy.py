@@ -346,7 +346,10 @@ class LocalOvernightRule(PolicyRule):
                 ),
                 "Local overnight check requires distance-from-office data.",
             )
-        distance = float(context.distance_from_office_miles)
+        try:
+            distance = float(context.distance_from_office_miles)
+        except (TypeError, ValueError):
+            distance = float("nan")
         if not isfinite(distance):
             return self._result(
                 False,

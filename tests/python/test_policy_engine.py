@@ -363,10 +363,10 @@ def test_policy_engine_invalid_config_rejected_from_file_and_environment(
 
 @pytest.mark.parametrize(
     "distance",
-    [float("nan"), float("inf"), float("-inf")],
-    ids=["nan", "positive_inf", "negative_inf"],
+    [float("nan"), float("inf"), float("-inf"), "invalid", object(), -1],
+    ids=["nan", "positive_inf", "negative_inf", "text", "object", "negative"],
 )
-def test_local_overnight_rejects_non_finite_distance(distance: float) -> None:
+def test_local_overnight_rejects_non_finite_distance(distance: object) -> None:
     rule = LocalOvernightRule(min_distance_miles=50, severity=Severity.BLOCKING)
     context = PolicyContext(overnight_stay=True, distance_from_office_miles=distance)
 
@@ -398,9 +398,10 @@ def test_local_overnight_rejects_subthreshold_distance() -> None:
     assert "10" in result.message
 
 
-def test_local_overnight_passes_when_distance_meets_minimum() -> None:
+@pytest.mark.parametrize("distance", [50, 75])
+def test_local_overnight_passes_when_distance_meets_minimum(distance: float) -> None:
     rule = LocalOvernightRule(min_distance_miles=50, severity=Severity.BLOCKING)
-    context = PolicyContext(overnight_stay=True, distance_from_office_miles=75)
+    context = PolicyContext(overnight_stay=True, distance_from_office_miles=distance)
 
     result = rule.evaluate(context)
 
