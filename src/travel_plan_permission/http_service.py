@@ -12,6 +12,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from functools import partial
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs
@@ -87,6 +88,7 @@ from .portal_review import (
     portal_review_state,
     portal_validation_state,
 )
+from .receipt_delivery import ReceiptDelivery
 from .review_workflow import (
     ReviewAction,
     ReviewHistoryEvent,
@@ -1290,8 +1292,9 @@ def _expense_export_artifacts(
     *,
     draft_id: str,
     expense_report: ExpenseReport,
+    service: ExportService | None = None,
 ) -> dict[str, PortalArtifact]:
-    service = ExportService()
+    service = service or ExportService()
     csv_filename, csv_content = service.to_csv([expense_report], batch_id=draft_id)
     excel_filename, excel_content = service.to_excel([expense_report], batch_id=draft_id)
     return {
@@ -1432,6 +1435,7 @@ def _expense_review_state(
     answers: dict[str, object],
     *,
     proposal_store: PlannerProposalStore | None = None,
+    export_service: ExportService | None = None,
 ) -> ExpensePortalReviewState:
     return cast(
         ExpensePortalReviewState,
@@ -1441,7 +1445,7 @@ def _expense_review_state(
             proposal_store=proposal_store,
             required_fields=_EXPENSE_REQUIRED_FIELDS,
             linkage_validator=_validate_expense_linkage,
-            artifact_builder=_expense_export_artifacts,
+            artifact_builder=partial(_expense_export_artifacts, service=export_service),
             state_factory=ExpensePortalReviewState,
         ),
     )
@@ -1734,7 +1738,12 @@ def register_portal_routes(
             route=_route_identifier(request),
         )
         answers = _expense_answers_from_encoded_body(await request.body())
-        review = _expense_review_state("preview", answers, proposal_store=proposal_store)
+        review = _expense_review_state(
+            "preview",
+            answers,
+            proposal_store=proposal_store,
+            export_service=request.app.state.expense_export_service,
+        )
         if review.missing_fields or review.validation_errors:
             return _TEMPLATES.TemplateResponse(
                 request=request,
@@ -1744,7 +1753,10 @@ def register_portal_routes(
             )
         draft = proposal_store.save_expense_draft(answers)
         persisted_review = _expense_review_state(
-            draft.draft_id, answers, proposal_store=proposal_store
+            draft.draft_id,
+            answers,
+            proposal_store=proposal_store,
+            export_service=request.app.state.expense_export_service,
         )
         if persisted_review.artifacts:
             proposal_store.cache_expense_artifacts(draft.draft_id, persisted_review.artifacts)
@@ -1820,7 +1832,12 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No expense portal draft found for '{draft_id}'.",
             )
-        review = _expense_review_state(draft.draft_id, draft.answers, proposal_store=proposal_store)
+        review = _expense_review_state(
+            draft.draft_id,
+            draft.answers,
+            proposal_store=proposal_store,
+            export_service=request.app.state.expense_export_service,
+        )
         if review.artifacts and not draft.cached_artifacts:
             proposal_store.cache_expense_artifacts(draft.draft_id, review.artifacts)
         return _TEMPLATES.TemplateResponse(
@@ -2272,14 +2289,15 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Expense export is blocked: " + "; ".join(linkage_validation.errors),
             )
-        artifacts = draft.cached_artifacts
-        if not artifacts:
-            review = _expense_review_state(
-                draft.draft_id, draft.answers, proposal_store=proposal_store
-            )
-            artifacts = review.artifacts
-            if artifacts:
-                proposal_store.cache_expense_artifacts(draft.draft_id, artifacts)
+        review = _expense_review_state(
+            draft.draft_id,
+            draft.answers,
+            proposal_store=proposal_store,
+            export_service=request.app.state.expense_export_service,
+        )
+        if review.validation_errors:
+            raise HTTPException(status_code=400, detail="; ".join(review.validation_errors))
+        artifacts = review.artifacts
         artifact = artifacts.get(artifact_name)
         if artifact is None:
             raise HTTPException(
@@ -2307,7 +2325,9 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
         )
 
 
-def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
+def create_app(
+    store: PlannerProposalStore | None = None, *, export_service: ExportService | None = None
+) -> FastAPI:
     """Create the planner-facing ASGI application."""
 
     audit.install_store_from_env()
@@ -2318,6 +2338,14 @@ def create_app(store: PlannerProposalStore | None = None) -> FastAPI:
         summary="Thin HTTP adapter over the planner-facing policy API builders.",
     )
 
+    receipt_mode = os.environ.get("TPP_RECEIPT_MODE")
+    receipt_root = os.environ.get("TPP_RECEIPT_ROOT")
+    delivery = (
+        ReceiptDelivery(receipt_mode, root=Path(receipt_root) if receipt_root else None)
+        if receipt_mode
+        else None
+    )
+    app.state.expense_export_service = export_service or ExportService(receipt_delivery=delivery)
     demo_mode = demo_seed.demo_mode_enabled()
     if demo_mode:
         try:

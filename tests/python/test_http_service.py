@@ -860,7 +860,12 @@ def test_trip_planner_handoff_can_review_and_download_but_not_submit(monkeypatch
 
 
 @pytest.fixture
-def expense_auth_header(monkeypatch) -> dict[str, str]:
+def expense_auth_header(monkeypatch, tmp_path) -> dict[str, str]:
+    receipt = tmp_path / "receipts" / "hotel-folio.pdf"
+    receipt.parent.mkdir()
+    receipt.write_bytes(b"fixture receipt")
+    monkeypatch.setenv("TPP_RECEIPT_MODE", "local-reference")
+    monkeypatch.setenv("TPP_RECEIPT_ROOT", str(tmp_path))
     _set_bootstrap_runtime_env(monkeypatch)
     return _bootstrap_auth_header(
         subject="expense-operator",
@@ -873,6 +878,7 @@ def expense_auth_header(monkeypatch) -> dict[str, str]:
     [None, (Permission.VIEW,), (Permission.CREATE,), (Permission.EXPORT,), tuple(Permission)],
     ids=["anonymous", "view-only", "create-only", "export-only", "all-permissions"],
 )
+@pytest.mark.usefixtures("expense_auth_header")
 def test_expense_routes_enforce_permissions(monkeypatch, permissions) -> None:
     _set_bootstrap_runtime_env(monkeypatch)
     store = PlannerProposalStore()
@@ -1547,7 +1553,7 @@ def test_expense_review_state_blocks_artifacts_on_trip_mismatch() -> None:
     assert state.artifacts == {}
 
 
-def test_expense_review_state_emits_artifacts_when_linkage_valid() -> None:
+def test_expense_review_state_emits_artifacts_when_linkage_valid(receipt_hosted_delivery) -> None:
     store = PlannerProposalStore()
     _seed_manager_review(store)
     answers = _expense_form_payload()
@@ -1556,6 +1562,7 @@ def test_expense_review_state_emits_artifacts_when_linkage_valid() -> None:
         "draft-410",
         answers,
         proposal_store=store,
+        export_service=http_service.ExportService(receipt_delivery=receipt_hosted_delivery),
     )
 
     linkage_errors = [
@@ -3161,3 +3168,57 @@ def test_portal_state_is_ephemeral_classification(monkeypatch, tmp_path) -> None
     monkeypatch.setenv("TPP_PORTAL_STATE_PATH", "/tmp/tpp/portal-runtime-state.sqlite3")
     monkeypatch.setenv("TPP_PORTAL_DATABASE_URL", "postgresql://user:pw@db.internal/tpp")
     assert http_service._portal_state_is_ephemeral() is False
+
+
+def test_portal_receipt_delivery_configuration(
+    expense_auth_header, tmp_path, monkeypatch, receipt_hosted_delivery
+) -> None:
+    import csv
+    from io import StringIO
+    from pathlib import Path
+    from urllib.parse import parse_qs, unquote, urlsplit
+
+    from travel_plan_permission.export import ExportService
+
+    store = PlannerProposalStore()
+    _seed_manager_review(store)
+    client = TestClient(create_app(store), headers=expense_auth_header)
+    response = client.post("/portal/expenses/review", data=_expense_form_payload())
+    assert response.status_code == 200
+    draft_id = re.search(r"/portal/expenses/([^/]+)/artifacts/expense-csv", response.text).group(1)
+    route = f"/portal/expenses/{draft_id}/artifacts/expense-csv"
+    exported = client.get(route)
+    assert exported.status_code == 200
+    local = next(csv.DictReader(StringIO(exported.text)))["receipt_link"]
+    assert Path(unquote(urlsplit(local).path)).read_bytes() == b"fixture receipt"
+    assert "expires" not in local
+
+    hosted = TestClient(
+        create_app(store, export_service=ExportService(receipt_delivery=receipt_hosted_delivery)),
+        headers=expense_auth_header,
+    )
+    hosted_review = hosted.post("/portal/expenses/review", data=_expense_form_payload())
+    assert hosted_review.status_code == 200
+    exported = hosted.get(route)
+    assert exported.status_code == 200
+    signed = next(csv.DictReader(StringIO(exported.text)))["receipt_link"]
+    expiry = datetime.fromtimestamp(int(parse_qs(urlsplit(signed).query)["expires"][0]), UTC)
+    verify = receipt_hosted_delivery.verifier
+    assert verify(signed, "receipts/hotel-folio.pdf", expiry, datetime.now(UTC))
+    assert not verify(signed, "receipts/hotel-folio.pdf", expiry, expiry)
+    assert not verify(signed + "x", "receipts/hotel-folio.pdf", expiry, datetime.now(UTC))
+
+    # Reconfiguration cannot serve obsolete cached local or placeholder exports.
+    monkeypatch.delenv("TPP_RECEIPT_MODE")
+    unconfigured = TestClient(create_app(store), headers=expense_auth_header)
+    failed = unconfigured.get(route)
+    assert failed.status_code == 400
+    assert "Receipt delivery is not configured" in failed.text
+    assert "receipts.example.com" not in failed.text
+    failed = unconfigured.post("/portal/expenses/review", data=_expense_form_payload())
+    assert failed.status_code == 400
+    assert "TPP_RECEIPT_ROOT" in failed.text
+    (tmp_path / "receipts" / "hotel-folio.pdf").unlink()
+    failed = client.get(route)
+    assert failed.status_code == 400
+    assert "readable file" in failed.text
