@@ -7,9 +7,13 @@ Run opt-in performance coverage with:
 from __future__ import annotations
 
 import csv
+import os
+import subprocess
+import sys
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO, StringIO
+from pathlib import Path
 from time import perf_counter
 from urllib.parse import parse_qs, urlparse
 
@@ -131,6 +135,27 @@ def test_export_preserves_literal_user_text(text: str, csv_text: str) -> None:
     assert rows[0]["amount"] == "125.50"
     assert report.expenses[0].vendor == text
     assert report.cost_center == text
+
+
+def test_export_literal_text_without_lxml() -> None:
+    """Exercise the actual fallback writer even on developer machines with lxml."""
+    test_file = Path(__file__).resolve()
+    code = (
+        "import openpyxl, runpy\n"
+        "assert not openpyxl.LXML\n"
+        f"test = runpy.run_path({str(test_file)!r})['test_export_preserves_literal_user_text']\n"
+        "for text in ('\\r=1+1', ' \\t\\r\\n+1+1'):\n"
+        '    test(text, "\'" + text)\n'
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        env={**os.environ, "OPENPYXL_LXML": "False"},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 class TestExportService:

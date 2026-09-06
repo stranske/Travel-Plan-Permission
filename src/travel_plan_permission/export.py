@@ -8,10 +8,36 @@ from collections.abc import Callable, Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from urllib.parse import urlencode, urljoin, urlsplit
+from zipfile import ZipFile
 
 from .models import ExpenseReport
 
 ExportRow = dict[str, str]
+
+
+def _preserve_xlsx_carriage_returns(content: bytes) -> bytes:
+    """Escape raw CRs that the optional non-lxml writer leaves in worksheet XML.
+
+    XML parsers normalize literal CR/CRLF to LF. Character references preserve
+    the original text on reload, just as openpyxl's lxml backend already does.
+    """
+    output = io.BytesIO()
+    with ZipFile(io.BytesIO(content)) as source:
+        replacements = {}
+        for name in source.namelist():
+            if name.startswith("xl/worksheets/") and name.endswith(".xml"):
+                data = source.read(name)
+                if b"\r" in data:
+                    replacements[name] = data.replace(b"\r", b"&#13;")
+        if not replacements:
+            return content
+        with ZipFile(output, "w") as target:
+            for entry in source.infolist():
+                replacement = replacements.get(entry.filename)
+                target.writestr(
+                    entry, replacement if replacement is not None else source.read(entry)
+                )
+    return output.getvalue()
 
 
 def _csv_literal_text(value: str) -> str:
@@ -169,4 +195,4 @@ class ExportService:
         wb.save(buffer)
 
         filename = self._build_filename("xlsx", batch_id, current_time)
-        return filename, buffer.getvalue()
+        return filename, _preserve_xlsx_carriage_returns(buffer.getvalue())
