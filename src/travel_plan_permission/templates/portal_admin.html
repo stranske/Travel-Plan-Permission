@@ -177,10 +177,7 @@
                   {% if role_can_approve and entry.request.status.value == "pending" %}
                     <form method="post" action="/portal/admin/exceptions/{{ entry.draft_id }}/{{ entry.exception_index }}/decision?actor_role={{ role_view.role.value }}" style="margin-top: 14px;">
                       <div class="stack">
-                        <label>
-                          <span>Actor ID</span>
-                          <input name="actor_id" value="admin-1" />
-                        </label>
+                        <p>Decisions are recorded under your authenticated identity.</p>
                         <label>
                           <span>Decision</span>
                           <select name="decision">

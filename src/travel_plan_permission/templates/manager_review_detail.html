@@ -194,10 +194,7 @@
             {% if role_can_approve %}
               <form method="post" action="/portal/manager/reviews/{{ review.review_id }}/decision?actor_role={{ role_view.role.value }}" style="margin-top: 16px;">
                 <div class="stack">
-                  <label>
-                    <span>Manager actor ID</span>
-                    <input name="actor_id" value="manager-1" />
-                  </label>
+                  <p>Decisions are recorded under your authenticated identity.</p>
                   <label>
                     <span>Decision</span>
                     <select name="action">
@@ -231,10 +228,7 @@
                     {% if role_can_approve and item.status.value == "pending" %}
                       <form method="post" action="/portal/admin/exceptions/{{ review.draft_id }}/{{ loop.index0 }}/decision?actor_role={{ role_view.role.value }}" style="margin-top: 10px;">
                         <div class="stack">
-                          <label>
-                            <span>Actor ID</span>
-                            <input name="actor_id" value="manager-1" />
-                          </label>
+                          <p>Decisions are recorded under your authenticated identity.</p>
                           <label>
                             <span>Decision</span>
                             <select name="decision">
