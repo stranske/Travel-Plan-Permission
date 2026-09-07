@@ -102,6 +102,52 @@ class TestThirdPartyFlagging:
 
 
 class TestReceiptExtraction:
+    @pytest.mark.parametrize(
+        ("raw_date", "expected"),
+        [
+            ("31/12/2025", date(2025, 12, 31)),
+            ("31/12/25", date(2025, 12, 31)),
+            ("15/1/2025", date(2025, 1, 15)),
+            ("15/1/25", date(2025, 1, 15)),
+            ("29/02/2024", date(2024, 2, 29)),
+            ("29/02/24", date(2024, 2, 29)),
+        ],
+    )
+    def test_extract_european_slash_date(self, raw_date: str, expected: date) -> None:
+        text = f"Coffee Shop\nDate: {raw_date}\nTotal: $12.50"
+
+        result = ReceiptProcessor.extract_from_text(text)
+
+        assert result.date == expected
+        assert result.total == Decimal("12.50")
+        assert result.vendor == "Coffee Shop"
+        assert result.text == text
+
+    @pytest.mark.parametrize(
+        ("raw_date", "expected"),
+        [
+            ("2025-12-31", date(2025, 12, 31)),
+            ("12/31/2025", date(2025, 12, 31)),
+            ("12/31/25", date(2025, 12, 31)),
+            ("31-12-2025", date(2025, 12, 31)),
+            ("31-12-25", date(2025, 12, 31)),
+            ("01/07/2025", date(2025, 1, 7)),
+            ("01/07/25", date(2025, 1, 7)),
+        ],
+    )
+    def test_extract_preserves_existing_date_formats(self, raw_date: str, expected: date) -> None:
+        result = ReceiptProcessor.extract_from_text(f"Coffee Shop\nDate: {raw_date}")
+
+        assert result.date == expected
+
+    @pytest.mark.parametrize(
+        "raw_date", ["31/04/2025", "29/02/2025", "29/02/25", "32/01/2025", "15/13/2025"]
+    )
+    def test_extract_rejects_invalid_european_dates(self, raw_date: str) -> None:
+        result = ReceiptProcessor.extract_from_text(f"Coffee Shop\nDate: {raw_date}")
+
+        assert result.date is None
+
     def test_extract_from_text(self) -> None:
         """OCR extraction should parse totals, dates, and vendor."""
 
