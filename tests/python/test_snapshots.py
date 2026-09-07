@@ -253,9 +253,9 @@ def test_load_snapshot_rejects_a_tampered_payload(tmp_path) -> None:
     store = ValidationSnapshotStore(tmp_path)
     snapshot = snapshot_from_plan(_plan(), results=[], policy_version="test")
     path = store.append(snapshot)
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     data["input_data"]["purpose"] = "Vacation in Maui"
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     tampered_bytes = path.read_bytes()
 
     with pytest.raises(ValueError) as error:
@@ -272,9 +272,9 @@ def test_load_snapshot_rejects_a_tampered_hash(tmp_path, field) -> None:
     store = ValidationSnapshotStore(tmp_path)
     snapshot = snapshot_from_plan(_plan(), results=[], policy_version="test")
     path = store.append(snapshot)
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     data[field] = "0" * 64
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(ValueError) as error:
         store.load_snapshot(path)
@@ -290,12 +290,12 @@ def test_load_snapshot_rejects_a_tampered_hash(tmp_path, field) -> None:
 def test_load_snapshot_requires_persisted_hashes(tmp_path, field, change) -> None:
     store = ValidationSnapshotStore(tmp_path)
     path = store.append(snapshot_from_plan(_plan(), results=[], policy_version="test"))
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     if change == "remove":
         del data[field]
     else:
         data[field] = None if change == "null" else ""
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(ValueError) as error:
         store.load_snapshot(path)
@@ -318,14 +318,14 @@ def test_load_trip_snapshots_rejects_a_broken_chain_link(tmp_path, recompute_has
         previous_hash=first.chain_hash,
     )
     second_path = store.append(second)
-    data = json.loads(second_path.read_text())
+    data = json.loads(second_path.read_text(encoding="utf-8"))
     data["previous_hash"] = "0" * 64
     if recompute_hashes:
         # A self-consistent file must still be rejected when it links to the wrong predecessor.
         del data["snapshot_hash"]
         del data["chain_hash"]
         data = ValidationSnapshot.model_validate(data).model_dump(mode="json")
-    second_path.write_text(json.dumps(data))
+    second_path.write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(ValueError) as error:
         store.load_trip_snapshots(first.trip_id)
