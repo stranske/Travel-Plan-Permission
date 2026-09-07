@@ -104,13 +104,14 @@ class AdvanceBookingRule(ValidationRule):
     )
     international_destinations: list[str] = Field(
         default_factory=list,
-        description="Destinations treated as international (case-insensitive substring match)",
+        description="Destinations treated as international (case-insensitive comma-separated component match)",
     )
 
     def _is_international(self, plan: TripPlan) -> bool:
-        destination_lower = plan.destination.lower()
+        components = {component.strip().casefold() for component in plan.destination.split(",")}
         return any(
-            keyword.lower() in destination_lower for keyword in self.international_destinations
+            keyword.strip() and keyword.strip().casefold() in components
+            for keyword in self.international_destinations
         )
 
     def _required_notice(self, plan: TripPlan) -> int | None:

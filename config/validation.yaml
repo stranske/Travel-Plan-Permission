@@ -6,7 +6,59 @@ rules:
     blocking: true
     min_days_domestic: 7
     min_days_international: 14
+    # Match whole comma-separated destination components; extend for other destinations.
     international_destinations:
+      - argentina
+      - australia
+      - austria
+      - belgium
+      - brazil
+      - canada
+      - chile
+      - china
+      - colombia
+      - costa rica
+      - czech republic
+      - czechia
+      - denmark
+      - egypt
+      - finland
+      - france
+      - germany
+      - greece
+      - hong kong
+      - india
+      - indonesia
+      - ireland
+      - israel
+      - italy
+      - japan
+      - kenya
+      - malaysia
+      - mexico
+      - morocco
+      - netherlands
+      - new zealand
+      - nigeria
+      - norway
+      - peru
+      - philippines
+      - poland
+      - portugal
+      - saudi arabia
+      - singapore
+      - south africa
+      - south korea
+      - spain
+      - sweden
+      - switzerland
+      - taiwan
+      - thailand
+      - turkey
+      - united arab emirates
+      - united kingdom
+      - uk
+      - vietnam
       - international
       - overseas
 
