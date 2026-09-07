@@ -1239,10 +1239,11 @@ def submit_proposal(
         for issue in policy_result.issues
         if issue.severity == "error" and (issue.context or {}).get("blocking") is not False
     ]
-    if (
-        policy_result.status == "fail"
-        and plan.status not in {TripStatus.REJECTED, TripStatus.APPROVED, TripStatus.COMPLETED}
-    ):
+    if policy_result.status == "fail" and plan.status not in {
+        TripStatus.REJECTED,
+        TripStatus.APPROVED,
+        TripStatus.COMPLETED,
+    }:
         return PlannerProposalOperationResponse(
             operation="submit_proposal",
             submission_status="failed",

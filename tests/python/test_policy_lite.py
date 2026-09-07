@@ -50,13 +50,9 @@ def test_policy_lite_reports_missing_inputs() -> None:
         assert results[rule_id].severity == Severity.BLOCKING
 
 
-@pytest.mark.parametrize(
-    "severity", [Severity.BLOCKING, Severity.ADVISORY, Severity.INFO]
-)
+@pytest.mark.parametrize("severity", [Severity.BLOCKING, Severity.ADVISORY, Severity.INFO])
 @pytest.mark.parametrize("rule_id", ["advance_booking", "local_overnight"])
-def test_policy_lite_matches_severity_dependent_missing_data(
-    rule_id: str, severity: str
-) -> None:
+def test_policy_lite_matches_severity_dependent_missing_data(rule_id: str, severity: str) -> None:
     rule = (
         AdvanceBookingRule(7, severity)
         if rule_id == "advance_booking"

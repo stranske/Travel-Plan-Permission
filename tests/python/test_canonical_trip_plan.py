@@ -146,9 +146,7 @@ def test_canonical_fares_reach_policy_evaluation(
     assert all("requires selected and lowest" not in issue.message for issue in issues)
 
 
-@pytest.mark.parametrize(
-    ("selected", "lowest"), [(None, "480"), ("550", None), (None, None)]
-)
+@pytest.mark.parametrize(("selected", "lowest"), [(None, "480"), ("550", None), (None, None)])
 def test_canonical_conversion_preserves_missing_fare_fields(
     selected: str | None, lowest: str | None
 ) -> None:
@@ -247,9 +245,18 @@ def test_canonical_absent_ground_cost_remains_absent() -> None:
 
 @pytest.mark.parametrize(
     "field",
-    ["mileage_miles", "mileage_cost", "rideshare_cost", "shuttle_cost", "rental_cost", "rental_daily_rate"],
+    [
+        "mileage_miles",
+        "mileage_cost",
+        "rideshare_cost",
+        "shuttle_cost",
+        "rental_cost",
+        "rental_daily_rate",
+    ],
 )
-@pytest.mark.parametrize("value", ["Infinity", "-Infinity", "NaN", Decimal("Infinity"), Decimal("NaN")])
+@pytest.mark.parametrize(
+    "value", ["Infinity", "-Infinity", "NaN", Decimal("Infinity"), Decimal("NaN")]
+)
 def test_ground_transport_rejects_non_finite_values(field, value) -> None:
     with pytest.raises(ValidationError, match="finite number"):
         GroundTransport.model_validate({field: value})

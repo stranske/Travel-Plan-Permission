@@ -41,9 +41,7 @@ def apply_overdue_escalations(
             outcome="escalated",
             metadata={
                 "exception_index": index,
-                "previous_level": (
-                    previous_level.value if previous_level is not None else None
-                ),
+                "previous_level": (previous_level.value if previous_level is not None else None),
                 "approval_level": (
                     request.approval_level.value if request.approval_level is not None else None
                 ),

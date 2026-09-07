@@ -149,9 +149,7 @@ def canonical_trip_plan_to_model(plan: CanonicalTripPlan) -> TripPlan:
     breakdown: dict[ExpenseCategory, Decimal] = {}
     _add_cost(breakdown, ExpenseCategory.CONFERENCE_FEES, plan.event_registration_cost)
 
-    selected_fare = (
-        plan.flight_pref_outbound.roundtrip_cost if plan.flight_pref_outbound else None
-    )
+    selected_fare = plan.flight_pref_outbound.roundtrip_cost if plan.flight_pref_outbound else None
     airfare = selected_fare if selected_fare is not None else plan.lowest_cost_roundtrip
     _add_cost(breakdown, ExpenseCategory.AIRFARE, airfare)
 
@@ -171,16 +169,10 @@ def canonical_trip_plan_to_model(plan: CanonicalTripPlan) -> TripPlan:
     )
     # Itemized costs replace the aggregate estimate; parking remains separate.
     ground_estimate = (
-        sum(structured_costs, Decimal("0"))
-        if structured_costs
-        else plan.ground_transport_estimate
+        sum(structured_costs, Decimal("0")) if structured_costs else plan.ground_transport_estimate
     )
     ground_transport_total = sum(
-        (
-            amount
-            for amount in (plan.parking_estimate, ground_estimate)
-            if amount is not None
-        ),
+        (amount for amount in (plan.parking_estimate, ground_estimate) if amount is not None),
         Decimal("0"),
     )
     if plan.parking_estimate is not None or ground_estimate is not None:
