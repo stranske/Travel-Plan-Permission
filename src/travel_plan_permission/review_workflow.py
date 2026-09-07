@@ -204,6 +204,9 @@ class ReviewWorkflowStore:
                         policy_snapshot=policy_snapshot,
                         policy_result=policy_result,
                     )
+                    refreshed.trip_plan.approval_history = tuple(
+                        event.model_copy(deep=True) for event in review.trip_plan.approval_history
+                    )
                     review = replace(
                         refreshed,
                         review_id=review.review_id,

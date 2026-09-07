@@ -42,9 +42,7 @@ rules:
 
 @pytest.mark.parametrize("duration", [None, float("nan"), float("inf"), float("-inf")])
 @pytest.mark.parametrize("cabin", [None, "economy", "premium"])
-@pytest.mark.parametrize(
-    "severity", [Severity.BLOCKING, Severity.ADVISORY, Severity.INFO]
-)
+@pytest.mark.parametrize("severity", [Severity.BLOCKING, Severity.ADVISORY, Severity.INFO])
 def test_cabin_class_invalid_duration_uses_missing_data_policy(
     duration: float | None, cabin: str | None, severity: str
 ) -> None:
@@ -80,9 +78,7 @@ def test_cabin_class_finite_duration_preserves_threshold(
 ) -> None:
     rule = CabinClassRule(5, ["economy"], Severity.BLOCKING)
 
-    result = rule.evaluate(
-        PolicyContext(cabin_class=cabin, flight_duration_hours=duration)
-    )
+    result = rule.evaluate(PolicyContext(cabin_class=cabin, flight_duration_hours=duration))
 
     assert result.passed is passed
     assert result.outcome == (RuleOutcome.PASSED if passed else RuleOutcome.FAILED)
@@ -272,9 +268,7 @@ rules:
     assert "175" in fare.message
 
 
-@pytest.mark.parametrize(
-    "rule_name", ["fare_comparision", "advance_booking", "unknown", "123"]
-)
+@pytest.mark.parametrize("rule_name", ["fare_comparision", "advance_booking", "unknown", "123"])
 def test_policy_engine_rejects_unknown_rule_configuration(rule_name: str) -> None:
     with pytest.raises(ValueError, match="policy.yaml: unknown rule") as exc_info:
         PolicyEngine.from_yaml(f"rules:\n  {rule_name}: {{max_over_lowest: 5}}\n")
@@ -319,14 +313,10 @@ def test_policy_engine_rejects_non_mapping_document(
             load()
 
 
-@pytest.mark.parametrize(
-    "value", ["null", "false", "0", "[]", "[severity, blocking]", "blocking"]
-)
+@pytest.mark.parametrize("value", ["null", "false", "0", "[]", "[severity, blocking]", "blocking"])
 @pytest.mark.parametrize("level", ["rules", "rule"])
 def test_policy_engine_rejects_non_mapping_rules(value: str, level: str) -> None:
-    content = (
-        f"rules: {value}" if level == "rules" else f"rules:\n  fare_comparison: {value}"
-    )
+    content = f"rules: {value}" if level == "rules" else f"rules:\n  fare_comparison: {value}"
     with pytest.raises(ValueError, match="policy.yaml: rules.*must be a mapping"):
         PolicyEngine.from_yaml(content)
 
@@ -355,9 +345,7 @@ def test_policy_engine_invalid_config_rejected_from_file_and_environment(
         lambda: PolicyEngine.from_file(path),
         lambda: PolicyEngine.from_environment("TEST_POLICY_YAML"),
     ):
-        with pytest.raises(
-            ValueError, match="policy.yaml: unknown rule.*fare_comparision"
-        ):
+        with pytest.raises(ValueError, match="policy.yaml: unknown rule.*fare_comparision"):
             load()
 
 

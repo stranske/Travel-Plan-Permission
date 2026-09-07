@@ -33,15 +33,11 @@ def test_validation_blocking_budget(
     record_property: Callable[[str, object], None],
 ) -> None:
     directional = next(
-        item
-        for item in _VALIDATION["directionals"]
-        if item["id"] == "validation_blocking_budget"
+        item for item in _VALIDATION["directionals"] if item["id"] == "validation_blocking_budget"
     )
     assert directional["enforce"] is True
     control = adapter.run_validation_scenario(_SCENARIOS[directional["control"]], _BASE)
-    variant = adapter.run_validation_scenario(
-        _SCENARIOS[directional["scenario"]], _BASE
-    )
+    variant = adapter.run_validation_scenario(_SCENARIOS[directional["scenario"]], _BASE)
     metric = directional["metric"]
     evidence = (
         f"{metric}: over-budget={variant[metric]}, control={control[metric]}; "
@@ -51,6 +47,4 @@ def test_validation_blocking_budget(
     assert control["validation.n_blocking"] == 0, evidence
     assert variant["validation.BUD-001.blocking"] == 1, evidence
     assert variant["validation.n_blocking"] == 1, evidence
-    assert evaluate_direction(
-        directional["direction"], variant[metric], control[metric]
-    ), evidence
+    assert evaluate_direction(directional["direction"], variant[metric], control[metric]), evidence

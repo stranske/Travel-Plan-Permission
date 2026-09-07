@@ -232,10 +232,7 @@ class CabinClassRule(PolicyRule):
                     missing.append("flight_duration_hours")
                 return self._outcome(
                     RuleOutcome.MISSING_DATA,
-                    (
-                        "Cabin class check requires "
-                        f"{', '.join(missing)} for flight trips."
-                    ),
+                    ("Cabin class check requires " f"{', '.join(missing)} for flight trips."),
                 )
             return self._outcome(
                 RuleOutcome.SKIPPED, "Cabin class check skipped due to missing flight details"
@@ -469,9 +466,7 @@ def _validate_rule_names(config: dict[str, Any]) -> None:
             raise ValueError(f"policy.yaml: unknown rule {key!r} in rules")
 
 
-def _load_rule_config(
-    config: dict[str, Any], key: str, default: dict[str, Any]
-) -> dict[str, Any]:
+def _load_rule_config(config: dict[str, Any], key: str, default: dict[str, Any]) -> dict[str, Any]:
     rules_cfg = config.get("rules", {})
     rule_cfg = rules_cfg.get(key, {})
     if not isinstance(rule_cfg, dict):

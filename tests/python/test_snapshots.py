@@ -214,7 +214,9 @@ def test_snapshot_store_rejects_external_snapshot_and_file_symlink(tmp_path, ope
     assert outside_path.read_bytes() == original_bytes
 
 
-def test_snapshot_store_relative_root_stays_anchored_after_cwd_change(tmp_path, monkeypatch) -> None:
+def test_snapshot_store_relative_root_stays_anchored_after_cwd_change(
+    tmp_path, monkeypatch
+) -> None:
     monkeypatch.chdir(tmp_path)
     store = ValidationSnapshotStore("snapshots")
     elsewhere = tmp_path / "elsewhere"
