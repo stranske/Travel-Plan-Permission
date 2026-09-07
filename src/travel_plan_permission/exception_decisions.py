@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, status
@@ -12,6 +13,23 @@ from .planner_auth import PlannerAuthContext
 
 if TYPE_CHECKING:
     from .http_service import PlannerProposalStore
+
+
+def escalate_draft_exceptions(proposal_store: PlannerProposalStore, draft_id: str) -> None:
+    """Apply the existing SLA to every draft request and persist changed routing."""
+
+    previous = proposal_store.exception_requests_by_draft_id.get(draft_id, [])
+    refreshed = [request.model_copy(deep=True) for request in previous]
+    now = datetime.now(UTC)
+    changed = [request.escalate_if_overdue(reference_time=now) for request in refreshed]
+    if not any(changed):
+        return
+    proposal_store.exception_requests_by_draft_id[draft_id] = refreshed
+    try:
+        proposal_store._persist_state()
+    except Exception:
+        proposal_store.exception_requests_by_draft_id[draft_id] = previous
+        raise
 
 
 def decide_portal_exception(
@@ -25,6 +43,8 @@ def decide_portal_exception(
 ) -> None:
     """Authorize the routed tier and translate missing or finalized decisions."""
 
+    # Refresh once before authorization; never raise the tier after it succeeds.
+    proposal_store.escalate_exception_requests(draft_id)
     try:
         pending = proposal_store.lookup_exception_request(
             draft_id,

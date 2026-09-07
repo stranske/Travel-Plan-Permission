@@ -34,7 +34,7 @@ from pydantic import ValidationError
 
 from . import audit, demo_seed
 from .exception_authority import routed_exception_level
-from .exception_decisions import decide_portal_exception
+from .exception_decisions import decide_portal_exception, escalate_draft_exceptions
 from .expense_review import build_expense_review_state
 from .export import ExportService
 from .http_contract_models import (
@@ -835,6 +835,7 @@ class PlannerProposalStore:
     def list_exception_requests(self, draft_id: str) -> list[ExceptionRequest]:
         """Return exception requests attached to a draft."""
 
+        self.escalate_exception_requests(draft_id)
         return [
             _copy_exception_request(item)
             for item in self.exception_requests_by_draft_id.get(draft_id, [])
@@ -883,6 +884,10 @@ class PlannerProposalStore:
             raise KeyError(f"No exception request {exception_index} found for draft '{draft_id}'.")
         return _copy_exception_request(requests[exception_index])
 
+    def escalate_exception_requests(self, draft_id: str) -> None:
+        """Persist overdue exception routing before review or authorization."""
+        escalate_draft_exceptions(self, draft_id)
+
     def decide_exception_request(
         self,
         draft_id: str,
@@ -926,7 +931,8 @@ class PlannerProposalStore:
         """Return flattened exception entries ordered by newest draft activity."""
 
         entries: list[DraftExceptionEntry] = []
-        for draft_id, requests in self.exception_requests_by_draft_id.items():
+        for draft_id in self.exception_requests_by_draft_id:
+            requests = self.list_exception_requests(draft_id)
             draft = self.portal_drafts_by_id.get(draft_id)
             review = self.lookup_manager_review_for_draft(draft_id)
             traveler_name = None

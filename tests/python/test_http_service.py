@@ -3764,3 +3764,129 @@ def test_manager_review_bad_input_remains_bad_request(
 
     assert response.status_code == 400
     assert store.lookup_manager_review(review.review_id) == review
+
+
+@pytest.mark.parametrize("decision", ["approve", "reject"])
+def test_exception_escalation_before_authorization(monkeypatch, tmp_path, decision) -> None:
+    """Overdue routing persists even when the old manager authority is denied."""
+    _set_bootstrap_runtime_env(monkeypatch)
+    state_path = tmp_path / "escalation.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    client = TestClient(create_app(store))
+    draft_id, _ = _create_portal_draft(client)
+    creator = _bootstrap_auth_header(subject="traveler", permissions=(Permission.CREATE,))
+    _seed_tiered_exception(
+        client, draft_id, creator, exception_type="advance_booking", amount="250"
+    )
+    raw = store.exception_requests_by_draft_id[draft_id][0]
+    raw.requested_at = datetime.now(UTC) - timedelta(hours=49)
+    generic = _bootstrap_auth_header(subject="manager", permissions=(Permission.APPROVE,))
+    assert _decide_exception(client, draft_id, 0, generic, decision=decision).status_code == 403
+    # Inspect raw and restarted state before any listing can refresh it.
+    escalated = store.exception_requests_by_draft_id[draft_id][0]
+    assert escalated.approval_level is ExceptionApprovalLevel.DIRECTOR
+    assert escalated.status is ExceptionStatus.ESCALATED
+    assert escalated.approval is None
+    restored = PlannerProposalStore(state_path=state_path)
+    persisted = restored.exception_requests_by_draft_id[draft_id][0]
+    assert persisted.model_dump() == escalated.model_dump()
+    denials = [event for event in store.list_audit_events() if event.outcome == "denied"]
+    assert denials[-1].metadata["required_level"] == "director"
+
+    _set_tier_entitlements(monkeypatch, {"director": "director"})
+    director = _bootstrap_auth_header(subject="director", permissions=(Permission.APPROVE,))
+    assert _decide_exception(client, draft_id, 0, director, decision=decision).status_code == 303
+    finalized = store.exception_requests_by_draft_id[draft_id][0]
+    assert finalized.status is (
+        ExceptionStatus.APPROVED if decision == "approve" else ExceptionStatus.REJECTED
+    )
+    assert finalized.escalated_at == escalated.escalated_at
+    if decision == "approve":
+        assert finalized.approval.level is ExceptionApprovalLevel.DIRECTOR
+        assert finalized.approval.approver_id == "director"
+
+
+@pytest.mark.parametrize("surface", ["draft", "admin"])
+def test_exception_listing_escalates_and_persists(monkeypatch, tmp_path, surface) -> None:
+    """Review listings refresh all requests, preserve finals and honor the SLA anchor."""
+    _set_bootstrap_runtime_env(monkeypatch)
+    state_path = tmp_path / "listing.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    now = datetime.now(UTC)
+    overdue = now - timedelta(hours=49)
+    base = http_service.ExceptionRequest(
+        type=http_service.ExceptionType.ADVANCE_BOOKING,
+        amount="250",
+        justification="Time-sensitive business travel requires an exception. " * 2,
+        requestor="traveler",
+        requested_at=overdue,
+    )
+    approved = base.model_copy(deep=True)
+    approved.approve(approver_id="original")
+    rejected = base.model_copy(deep=True)
+    rejected.reject()
+    store.exception_requests_by_draft_id["draft"] = [
+        base,
+        base.model_copy(update={"requested_at": now}),
+        base.model_copy(
+            update={
+                "status": ExceptionStatus.ESCALATED,
+                "approval_level": ExceptionApprovalLevel.DIRECTOR,
+                "escalated_at": overdue,
+            }
+        ),
+        base.model_copy(
+            update={
+                "status": ExceptionStatus.ESCALATED,
+                "approval_level": ExceptionApprovalLevel.DIRECTOR,
+                "escalated_at": now,
+            }
+        ),
+        approved,
+        rejected,
+    ]
+    if surface == "draft":
+        displayed = store.list_exception_requests("draft")
+    else:
+        client = TestClient(create_app(store))
+        admin = _bootstrap_auth_header(subject="admin", permissions=(Permission.CONFIGURE,))
+        response = client.get("/portal/admin", headers=admin)
+        assert response.status_code == 200
+        assert "director" in response.text.lower()
+        assert "board" in response.text.lower()
+        displayed = [entry.request for entry in store.list_exception_entries()]
+    assert sum(item.status is ExceptionStatus.ESCALATED for item in displayed) == 3
+    persisted = PlannerProposalStore(state_path=state_path).exception_requests_by_draft_id["draft"]
+    assert [item.approval_level for item in persisted] == [
+        ExceptionApprovalLevel.DIRECTOR,
+        ExceptionApprovalLevel.MANAGER,
+        ExceptionApprovalLevel.BOARD,
+        ExceptionApprovalLevel.DIRECTOR,
+        ExceptionApprovalLevel.MANAGER,
+        ExceptionApprovalLevel.MANAGER,
+    ]
+    assert persisted[-2].model_dump() == approved.model_dump()
+    assert persisted[-1].model_dump() == rejected.model_dump()
+    before = [item.model_dump() for item in persisted]
+    assert [item.model_dump() for item in store.list_exception_requests("draft")] == before
+
+
+def test_exception_escalation_persistence_failure_preserves_routing(monkeypatch) -> None:
+    store = PlannerProposalStore()
+    request = http_service.ExceptionRequest(
+        type=http_service.ExceptionType.ADVANCE_BOOKING,
+        amount="250",
+        justification="Time-sensitive business travel requires an exception. " * 2,
+        requestor="traveler",
+        requested_at=datetime.now(UTC) - timedelta(hours=49),
+    )
+    store.exception_requests_by_draft_id["draft"] = [request]
+    before = request.model_dump()
+
+    def fail_persistence():
+        raise OSError("state storage unavailable")
+
+    monkeypatch.setattr(store, "_persist_state", fail_persistence)
+    with pytest.raises(OSError, match="state storage unavailable"):
+        store.escalate_exception_requests("draft")
+    assert store.exception_requests_by_draft_id["draft"][0].model_dump() == before
