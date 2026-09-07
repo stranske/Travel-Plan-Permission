@@ -281,6 +281,7 @@ class TestPruneMainCLI:
         capfd: pytest.CaptureFixture[str],
         raw: str,
     ) -> None:
+        """Reject non-positive and malformed settings without changing stored events."""
         store_path = tmp_path / "audit.sqlite3"
         store = audit.SQLiteAuditEventStore(store_path)
         store.initialize()
