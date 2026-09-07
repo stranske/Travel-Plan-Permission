@@ -2,6 +2,10 @@
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import Any
+
+import pytest
+from reportlab.pdfgen.canvas import Canvas
 
 from travel_plan_permission.approval_packet import (
     ApprovalLinks,
@@ -126,3 +130,35 @@ def test_generate_packet_pdf_escapes_xml_in_user_fields() -> None:
 
     assert pdf_bytes.startswith(b"%PDF-")
     assert b"/Type /Page" in pdf_bytes
+
+
+@pytest.mark.parametrize("literal", ["AT&T <team>", "<b>literal</b>", "&amp;"])
+def test_pdf_table_cells_preserve_literal_text(
+    monkeypatch: pytest.MonkeyPatch, literal: str
+) -> None:
+    """Table text reaches the PDF canvas unchanged, including markup-like strings."""
+    rendered: list[str] = []
+    original_draw_string = Canvas.drawString
+
+    def capture_draw_string(
+        canvas: Canvas, x: float, y: float, text: str, *args: Any, **kwargs: Any
+    ) -> None:
+        rendered.append(text)
+        original_draw_string(canvas, x, y, text, *args, **kwargs)
+
+    monkeypatch.setattr(Canvas, "drawString", capture_draw_string)
+    event = _event(1).model_copy(
+        update={"approver_id": literal, "level": literal, "justification": literal}
+    )
+    pdf_bytes = generate_packet_pdf(
+        trip_plan=_sample_trip_plan(),
+        compliance_status="Compliant",
+        cost_breakdown={literal: Decimal("1250.50")},
+        approval_history=[event],
+    )
+
+    assert pdf_bytes.startswith(b"%PDF-")
+    # Category, approver, level and justification are four independent Table cells.
+    assert rendered.count(literal) == 4
+    assert "$1250.50" in rendered
+    assert "approved" in rendered
