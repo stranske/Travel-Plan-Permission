@@ -199,11 +199,25 @@ class TestRetentionPrune:
         monkeypatch.delenv(audit.RETENTION_ENV_VAR, raising=False)
         assert audit.configured_retention_days() == 365 * 7
 
-    def test_env_override_clamps_to_positive(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv(audit.RETENTION_ENV_VAR, "0")
-        assert audit.configured_retention_days() == 1
-        monkeypatch.setenv(audit.RETENTION_ENV_VAR, "garbage")
-        assert audit.configured_retention_days() == 365 * 7
+    @pytest.mark.parametrize("raw", ["0", "-1", "-3650"])
+    def test_zero_retention_is_rejected_not_clamped(
+        self, monkeypatch: pytest.MonkeyPatch, raw: str
+    ) -> None:
+        monkeypatch.setenv(audit.RETENTION_ENV_VAR, raw)
+        with pytest.raises(ValueError) as error:
+            audit.configured_retention_days()
+        assert audit.RETENTION_ENV_VAR in str(error.value)
+        assert repr(raw) in str(error.value)
+
+    @pytest.mark.parametrize("raw", ["garbage", "90d", "7.5", "", " "])
+    def test_unparseable_retention_is_rejected_not_silently_defaulted(
+        self, monkeypatch: pytest.MonkeyPatch, raw: str
+    ) -> None:
+        monkeypatch.setenv(audit.RETENTION_ENV_VAR, raw)
+        with pytest.raises(ValueError) as error:
+            audit.configured_retention_days()
+        assert audit.RETENTION_ENV_VAR in str(error.value)
+        assert repr(raw) in str(error.value)
 
     def test_prune_audit_events_uses_configured_window(
         self,
@@ -259,6 +273,113 @@ class TestCSVExport:
 
 
 class TestPruneMainCLI:
+    @pytest.mark.parametrize("raw", ["0", "-1", "-3650", "garbage", "90d", "7.5", "", " "])
+    def test_prune_main_refuses_a_non_positive_env_retention_window(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capfd: pytest.CaptureFixture[str],
+        raw: str,
+    ) -> None:
+        """Reject non-positive and malformed settings without changing stored events."""
+        store_path = tmp_path / "audit.sqlite3"
+        store = audit.SQLiteAuditEventStore(store_path)
+        store.initialize()
+        original = _event(occurred_at=datetime.now(UTC) - timedelta(days=2000))
+        store.write(original)
+        store.close()
+        before = store_path.read_bytes()
+        monkeypatch.setenv(audit.RETENTION_ENV_VAR, raw)
+
+        rc = audit.prune_main(["--store-path", str(store_path)])
+
+        assert rc != 0
+        assert store_path.read_bytes() == before
+        captured = capfd.readouterr()
+        assert audit.RETENTION_ENV_VAR in captured.err
+        assert repr(raw) in captured.err
+        assert "pruned" not in captured.err
+        reopened = audit.SQLiteAuditEventStore(store_path)
+        reopened.initialize()
+        try:
+            assert list(reopened.query()) == [original]
+        finally:
+            reopened.close()
+
+    @pytest.mark.parametrize("source, days", [("default", 2555), ("env", 30), ("cli", 365)])
+    def test_prune_main_reports_and_applies_exact_cutoff(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capfd: pytest.CaptureFixture[str],
+        source: str,
+        days: int,
+    ) -> None:
+        now = datetime(2026, 9, 7, 20, 0, tzinfo=UTC)
+        cutoff = now - timedelta(days=days)
+
+        class FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return now.astimezone(tz)
+
+        monkeypatch.setattr(audit, "datetime", FixedDatetime)
+        monkeypatch.delenv(audit.RETENTION_ENV_VAR, raising=False)
+        args = ["--store-path", str(tmp_path / "audit.sqlite3")]
+        if source == "env":
+            monkeypatch.setenv(audit.RETENTION_ENV_VAR, str(days))
+        elif source == "cli":
+            monkeypatch.setenv(audit.RETENTION_ENV_VAR, "invalid-but-overridden")
+            args += ["--retention-days", str(days)]
+        store = audit.SQLiteAuditEventStore(tmp_path / "audit.sqlite3")
+        store.initialize()
+        boundary = _event(occurred_at=cutoff)
+        recent = _event(occurred_at=now)
+        for event in [_event(occurred_at=cutoff - timedelta(microseconds=1)), boundary, recent]:
+            store.write(event)
+        store.close()
+        original_prune = audit.SQLiteAuditEventStore.prune
+
+        def inspect_prune(instance, actual_cutoff):
+            # The operator sees the exact destructive window before deletion.
+            captured = capfd.readouterr()
+            assert f"{days} days" in captured.err
+            assert cutoff.isoformat() in captured.err
+            assert actual_cutoff == cutoff
+            return original_prune(instance, actual_cutoff)
+
+        monkeypatch.setattr(audit.SQLiteAuditEventStore, "prune", inspect_prune)
+        assert audit.prune_main(args) == 0
+        assert "pruned 1 audit events" in capfd.readouterr().err
+        reopened = audit.SQLiteAuditEventStore(tmp_path / "audit.sqlite3")
+        reopened.initialize()
+        try:
+            assert list(reopened.query()) == [boundary, recent]
+        finally:
+            reopened.close()
+
+    @pytest.mark.parametrize("days", ["0", "-1"])
+    def test_invalid_cli_retention_does_not_create_store(
+        self,
+        tmp_path: Path,
+        capfd: pytest.CaptureFixture[str],
+        days: str,
+    ) -> None:
+        store_path = tmp_path / "absent.sqlite3"
+        assert (
+            audit.prune_main(
+                [
+                    "--store-path",
+                    str(store_path),
+                    "--retention-days",
+                    days,
+                ]
+            )
+            != 0
+        )
+        assert not store_path.exists()
+        assert "retention_days must be positive" in capfd.readouterr().err
+
     def test_prune_main_removes_events_outside_retention_window(
         self, tmp_path: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
