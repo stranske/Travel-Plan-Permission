@@ -28,6 +28,20 @@ class ReviewStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class InvalidReviewTransition(ValueError):
+    """A manager action attempted to change a finalized review."""
+
+
+def review_action_error_status_code(exc: ValueError) -> int:
+    """Map review action validation failures to HTTP status codes."""
+
+    from fastapi import status
+
+    if isinstance(exc, InvalidReviewTransition):
+        return status.HTTP_409_CONFLICT
+    return status.HTTP_400_BAD_REQUEST
+
+
 @dataclass(frozen=True)
 class ReviewHistoryEvent:
     """Immutable review workflow event."""
@@ -104,6 +118,11 @@ def apply_review_action(
     rationale_text = rationale.strip()
     if not rationale_text:
         raise ValueError("Manager review decisions require rationale text.")
+
+    if review.status in {ReviewStatus.APPROVED, ReviewStatus.REJECTED}:
+        raise InvalidReviewTransition(
+            f"Manager review is already {review.status.value}; finalized reviews cannot be changed."
+        )
 
     updated_plan = review.trip_plan.model_copy(deep=True)
     if action == ReviewAction.APPROVE:
