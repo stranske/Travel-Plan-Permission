@@ -486,13 +486,17 @@ def configured_retention_days() -> int:
     """Return the configured retention window, defaulting to 7 years."""
 
     raw = os.getenv(RETENTION_ENV_VAR)
-    if not raw:
+    if raw is None:
         return DEFAULT_RETENTION_DAYS
     try:
         value = int(raw)
-    except ValueError:
-        return DEFAULT_RETENTION_DAYS
-    return max(1, value)
+        if value < 1:
+            raise ValueError
+    except ValueError as exc:
+        raise ValueError(
+            f"{RETENTION_ENV_VAR} must be an integer of at least 1; got {raw!r}"
+        ) from exc
+    return value
 
 
 def prune_audit_events(
@@ -750,6 +754,20 @@ def prune_main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    try:
+        days = (
+            args.retention_days if args.retention_days is not None else configured_retention_days()
+        )
+        if days <= 0:
+            raise ValueError("retention_days must be positive")
+        reference = datetime.now(UTC)
+        cutoff = reference - timedelta(days=days)
+    except (ValueError, OverflowError) as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        return 2
+
+    sys.stderr.write(f"retention window: {days} days; cutoff: {cutoff.isoformat()}\n")
+    sys.stderr.flush()
     store_path = (
         Path(args.store_path).expanduser()
         if args.store_path is not None
@@ -759,7 +777,8 @@ def prune_main(argv: list[str] | None = None) -> int:
     store.initialize()
     try:
         removed = prune_audit_events(
-            retention_days=args.retention_days,
+            retention_days=days,
+            now=reference,
             store=store,
         )
     finally:

@@ -131,9 +131,16 @@ The CSV header matches `audit.CSV_FIELDS` and is stable across releases.
 
 ### Retention
 
-The default retention window is **7 years** (2555 days). Override via
-`TPP_AUDIT_RETENTION_DAYS`. Pruning is *only* performed by the
-documented runbook task:
+When `TPP_AUDIT_RETENTION_DAYS` is unset, the retention window is **7 years**
+(2555 days). Any set value must be an integer of at least 1. Empty, malformed,
+zero, and negative values are rejected; there is no "disable pruning" value.
+To retain all events, do not run the pruning task. The `--retention-days` flag
+can explicitly override the environment setting.
+
+`tpp-audit-prune` validates the effective window before opening the database.
+Invalid windows exit non-zero without deleting rows. Before pruning, it prints
+the effective window in days and the exact UTC cutoff timestamp to stderr.
+Pruning is *only* performed by the documented runbook task:
 
 ```bash
 TPP_AUDIT_STATE_PATH=/var/lib/tpp/audit-events.sqlite3 \
