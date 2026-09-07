@@ -3890,3 +3890,48 @@ def test_exception_escalation_persistence_failure_preserves_routing(monkeypatch)
     with pytest.raises(OSError, match="state storage unavailable"):
         store.escalate_exception_requests("draft")
     assert store.exception_requests_by_draft_id["draft"][0].model_dump() == before
+
+
+def test_exception_escalation_records_audit_event(monkeypatch, tmp_path) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    store = PlannerProposalStore(state_path=tmp_path / "audit.sqlite3")
+    request = http_service.ExceptionRequest(
+        type=http_service.ExceptionType.ADVANCE_BOOKING,
+        amount="250",
+        justification="Time-sensitive business travel requires an exception. " * 2,
+        requestor="traveler",
+        requested_at=datetime.now(UTC) - timedelta(hours=49),
+    )
+    store.exception_requests_by_draft_id["draft"] = [request]
+    store.escalate_exception_requests("draft")
+    escalations = [
+        event
+        for event in store.list_audit_events()
+        if event.event_type is AuditEventType.EXCEPTION and event.outcome == "escalated"
+    ]
+    assert len(escalations) == 1
+    assert escalations[0].metadata == {
+        "exception_index": 0,
+        "previous_level": "manager",
+        "approval_level": "director",
+    }
+
+
+def test_exception_listing_survives_persistence_failure(monkeypatch) -> None:
+    store = PlannerProposalStore()
+    request = http_service.ExceptionRequest(
+        type=http_service.ExceptionType.ADVANCE_BOOKING,
+        amount="250",
+        justification="Time-sensitive business travel requires an exception. " * 2,
+        requestor="traveler",
+        requested_at=datetime.now(UTC) - timedelta(hours=49),
+    )
+    store.exception_requests_by_draft_id["draft"] = [request]
+    before = request.model_dump()
+
+    def fail_persistence():
+        raise OSError("state storage unavailable")
+
+    monkeypatch.setattr(store, "_persist_state", fail_persistence)
+    listed = store.list_exception_requests("draft")
+    assert listed[0].model_dump() == before

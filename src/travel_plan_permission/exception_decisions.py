@@ -10,26 +10,70 @@ from fastapi import HTTPException, status
 from .exception_authority import authorize_exception_tier
 from .models import InvalidExceptionTransition
 from .planner_auth import PlannerAuthContext
+from .security import AuditEventType
 
 if TYPE_CHECKING:
     from .http_service import PlannerProposalStore
 
 
-def escalate_draft_exceptions(proposal_store: PlannerProposalStore, draft_id: str) -> None:
+def apply_overdue_escalations(
+    proposal_store: PlannerProposalStore,
+    draft_id: str,
+    stored: list,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """Mutate stored exception requests in place and record routing audit events."""
+
+    reference_time = now or datetime.now(UTC)
+    changed = False
+    for index, request in enumerate(stored):
+        previous_level = request.approval_level
+        if not request.escalate_if_overdue(reference_time=reference_time):
+            continue
+        changed = True
+        if request.approval_level == previous_level:
+            continue
+        proposal_store.security.audit_log.record(
+            event_type=AuditEventType.EXCEPTION,
+            actor="sla-escalation",
+            subject=draft_id,
+            outcome="escalated",
+            metadata={
+                "exception_index": index,
+                "previous_level": (
+                    previous_level.value if previous_level is not None else None
+                ),
+                "approval_level": (
+                    request.approval_level.value if request.approval_level is not None else None
+                ),
+            },
+        )
+    return changed
+
+
+def escalate_draft_exceptions(
+    proposal_store: PlannerProposalStore,
+    draft_id: str,
+    *,
+    persist: bool = True,
+) -> bool:
     """Apply the existing SLA to every draft request and persist changed routing."""
 
-    previous = proposal_store.exception_requests_by_draft_id.get(draft_id, [])
-    refreshed = [request.model_copy(deep=True) for request in previous]
-    now = datetime.now(UTC)
-    changed = [request.escalate_if_overdue(reference_time=now) for request in refreshed]
-    if not any(changed):
-        return
-    proposal_store.exception_requests_by_draft_id[draft_id] = refreshed
+    stored = proposal_store.exception_requests_by_draft_id.get(draft_id)
+    if not stored:
+        return False
+    snapshot = [request.model_copy(deep=True) for request in stored]
+    if not apply_overdue_escalations(proposal_store, draft_id, stored):
+        return False
+    if not persist:
+        return True
     try:
         proposal_store._persist_state()
     except Exception:
-        proposal_store.exception_requests_by_draft_id[draft_id] = previous
+        stored[:] = snapshot
         raise
+    return True
 
 
 def decide_portal_exception(
