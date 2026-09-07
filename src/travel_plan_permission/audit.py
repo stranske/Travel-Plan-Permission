@@ -556,6 +556,13 @@ def install_store_from_env() -> None:
 def pending_event_from_state(serialized: dict[str, Any]) -> AuditEvent:
     """Deserialize a pending outbox event from portal state snapshot JSON."""
 
+    try:
+        metadata = json.loads(serialized.get("metadata_json", "{}"))
+    except (json.JSONDecodeError, TypeError):
+        metadata = {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
     return AuditEvent(
         id=str(serialized["id"]),
         occurred_at=datetime.fromisoformat(str(serialized["occurred_at"])),
@@ -565,7 +572,7 @@ def pending_event_from_state(serialized: dict[str, Any]) -> AuditEvent:
         outcome=str(serialized["outcome"]),
         target_kind=cast(str | None, serialized.get("target_kind")),
         target_id=cast(str | None, serialized.get("target_id")),
-        metadata=cast(dict[str, object], json.loads(str(serialized["metadata_json"]))),
+        metadata=metadata,
     )
 
 
