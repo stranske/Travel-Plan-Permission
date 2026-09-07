@@ -115,9 +115,7 @@ def _coerce_context_value(field: str, value: Any) -> Any:
     return value
 
 
-def apply_patch(
-    base_request: dict[str, Any], patch: list[dict[str, Any]] | None
-) -> dict[str, Any]:
+def apply_patch(base_request: dict[str, Any], patch: list[dict[str, Any]] | None) -> dict[str, Any]:
     """Return a deep copy of ``base_request`` with ``patch`` operations applied."""
     request = copy.deepcopy(base_request)
     expenses: list[dict[str, Any]] = request.setdefault("expenses", [])
@@ -189,9 +187,7 @@ def _build_context(raw_context: dict[str, Any], expense_items: list[Any]) -> Any
 # ---------------------------------------------------------------------------
 
 
-def run_scenario(
-    scenario: dict[str, Any], base_request: dict[str, Any]
-) -> dict[str, float]:
+def run_scenario(scenario: dict[str, Any], base_request: dict[str, Any]) -> dict[str, float]:
     """Apply a scenario's patch, run both engines, flatten to scalar metrics.
 
     Deterministic: rule order is fixed by config; no wall-clock fields are read.
@@ -248,9 +244,7 @@ def run_scenario(
         "approval.any_flagged": int(n_flagged > 0),
         "approval.requested_amount": float(requested_amount),
         "approval.auto_approved_amount": float(auto_approved_amount),
-        "approval.report_flagged": int(
-            report.approval_status == ApprovalStatus.FLAGGED
-        ),
+        "approval.report_flagged": int(report.approval_status == ApprovalStatus.FLAGGED),
         "approval.report_auto_approved": int(
             report.approval_status == ApprovalStatus.AUTO_APPROVED
         ),
@@ -292,9 +286,7 @@ def metric_names() -> list[str]:
     ]
 
 
-def run_validation_scenario(
-    scenario: dict[str, Any], base: dict[str, Any]
-) -> dict[str, float]:
+def run_validation_scenario(scenario: dict[str, Any], base: dict[str, Any]) -> dict[str, float]:
     """Run the production validation config on a catalog plan at a fixed date.
 
     The validation catalog is independent of the expense/policy scenarios. Plan
@@ -314,12 +306,8 @@ def run_validation_scenario(
         "validation.n_violations": len(results),
         "validation.n_blocking": sum(result.is_blocking for result in results),
     }
-    for code in sorted(
-        {rule.code for rule in validator.rules} | {r.code for r in results}
-    ):
+    for code in sorted({rule.code for rule in validator.rules} | {r.code for r in results}):
         by_code = [result for result in results if result.code == code]
         flat[f"validation.{code}.violations"] = len(by_code)
-        flat[f"validation.{code}.blocking"] = sum(
-            result.is_blocking for result in by_code
-        )
+        flat[f"validation.{code}.blocking"] = sum(result.is_blocking for result in by_code)
     return flat
