@@ -3764,3 +3764,90 @@ def test_manager_review_bad_input_remains_bad_request(
 
     assert response.status_code == 400
     assert store.lookup_manager_review(review.review_id) == review
+
+
+def test_manager_review_resubmit_refreshes_trip_plan(monkeypatch, tmp_path) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    state_path = tmp_path / "resubmitted.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    client = TestClient(create_app(store))
+    traveler = _bootstrap_auth_header(subject="traveler", permissions=(Permission.CREATE,))
+    manager = _bootstrap_auth_header(
+        subject="manager", permissions=(Permission.VIEW, Permission.APPROVE)
+    )
+    draft_id, _ = _create_portal_draft(client)
+    submit_url = f"/portal/review/{draft_id}/submit"
+    assert client.post(submit_url, headers=traveler).status_code == 200
+    first = store.lookup_manager_review_for_draft(draft_id)
+    assert first is not None
+    decision = client.post(
+        f"/portal/manager/reviews/{first.review_id}/decision",
+        headers=manager,
+        data={"action": "request_changes", "rationale": "Correct the traveler name."},
+        follow_redirects=False,
+    )
+    assert decision.status_code == 303
+    requested = store.lookup_manager_review_for_draft(draft_id)
+    assert requested is not None
+    draft = store.portal_drafts_by_id[draft_id]
+    store.portal_drafts_by_id[draft_id] = replace(
+        draft, answers={**draft.answers, "traveler_name": "CHANGED-TRAVELER"}
+    )
+    current_states = []
+    original = http_service.portal_review_state
+
+    def capture_review(*args, **kwargs):
+        result = original(*args, **kwargs)
+        current_states.append(result)
+        return result
+
+    monkeypatch.setattr(http_service, "portal_review_state", capture_review)
+    assert client.post(submit_url, headers=traveler).status_code == 200
+    refreshed = store.lookup_manager_review_for_draft(draft_id)
+    assert refreshed is not None
+    assert refreshed.review_id == first.review_id
+    assert refreshed.trip_plan.traveler_name == "CHANGED-TRAVELER"
+    assert refreshed.policy_snapshot == current_states[0].policy_snapshot
+    assert refreshed.policy_snapshot != first.policy_snapshot
+    assert refreshed.policy_result == current_states[0].policy_result
+    assert refreshed.status is http_service.ReviewStatus.PENDING_MANAGER_REVIEW
+    assert refreshed.trip_plan.status.value == "submitted"
+    assert refreshed.submitted_at == first.submitted_at
+    assert refreshed.updated_at > requested.updated_at
+    assert refreshed.history[:-1] == requested.history
+    assert refreshed.history[-1].event_type == "resubmitted"
+    reloaded = PlannerProposalStore(state_path=state_path)
+    assert reloaded.lookup_manager_review_for_draft(draft_id) == refreshed
+    restarted = TestClient(create_app(reloaded))
+    for url in ["/portal/manager/reviews", f"/portal/manager/reviews/{first.review_id}"]:
+        response = restarted.get(url, headers=manager)
+        assert response.status_code == 200
+        assert "CHANGED-TRAVELER" in response.text
+    # Duplicate submission while pending must not add history or replace the snapshot.
+    assert client.post(submit_url, headers=traveler).status_code == 200
+    assert store.lookup_manager_review_for_draft(draft_id) == refreshed
+
+
+@pytest.mark.parametrize("status", list(http_service.ReviewStatus))
+def test_manager_review_refresh_only_after_changes_requested(status) -> None:
+    store = PlannerProposalStore()
+    before = _seed_manager_review(store, status=status)
+    plan = before.trip_plan.model_copy(deep=True)
+    plan.traveler_name = "UPDATED"
+    snapshot = before.policy_snapshot.model_copy(deep=True)
+    snapshot.versioning.policy_version = "resubmitted-v2"
+    result = before.policy_result.model_copy(update={"policy_version": "resubmitted-v2"})
+    refreshed = store.manager_reviews.create_or_get(
+        draft_id=before.draft_id, trip_plan=plan, policy_snapshot=snapshot, policy_result=result
+    )
+    if status is http_service.ReviewStatus.CHANGES_REQUESTED:
+        assert refreshed.trip_plan.traveler_name == "UPDATED"
+        assert refreshed.policy_snapshot == snapshot
+        assert refreshed.policy_result == result
+        assert refreshed.status is http_service.ReviewStatus.PENDING_MANAGER_REVIEW
+        plan.traveler_name = "CALLER MUTATION"
+        snapshot.versioning.policy_version = "caller mutation"
+        result.policy_version = "caller mutation"
+        assert store.lookup_manager_review(before.review_id) == refreshed
+    else:
+        assert refreshed == before

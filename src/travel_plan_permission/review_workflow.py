@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import uuid4
@@ -197,6 +197,21 @@ class ReviewWorkflowStore:
         if review_id is not None:
             review = self.reviews_by_id.get(review_id)
             if review is not None:
+                if review.status is ReviewStatus.CHANGES_REQUESTED:
+                    refreshed = create_review_request(
+                        draft_id=draft_id,
+                        trip_plan=trip_plan,
+                        policy_snapshot=policy_snapshot,
+                        policy_result=policy_result,
+                    )
+                    review = replace(
+                        refreshed,
+                        review_id=review.review_id,
+                        submitted_at=review.submitted_at,
+                        history=review.history
+                        + (replace(refreshed.history[0], event_type="resubmitted"),),
+                    )
+                    self.reviews_by_id[review_id] = review
                 return self._copy_review(review)
         review = create_review_request(
             draft_id=draft_id,
