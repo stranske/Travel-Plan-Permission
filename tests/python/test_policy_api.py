@@ -587,6 +587,49 @@ def test_reconcile_handles_empty_receipts(trip_plan: TripPlan) -> None:
     assert result.receipts_by_type == {}
 
 
+@pytest.mark.parametrize(
+    ("payments", "expected_total"),
+    [
+        ([], Decimal("0")),
+        ([False, False], Decimal("1200.30")),
+        ([True, True], Decimal("0")),
+        ([False, True], Decimal("500.10")),
+    ],
+    ids=["empty", "self-paid", "sponsor-paid", "mixed"],
+)
+def test_reconcile_reimbursable_category_totals(
+    trip_plan: TripPlan, payments: list[bool], expected_total: Decimal
+) -> None:
+    receipts = [
+        Receipt(
+            total=amount,
+            date=date(2024, 9, 16),
+            vendor="Travel vendor",
+            file_reference=f"receipt-{index}.pdf",
+            file_size_bytes=100,
+            paid_by_third_party=paid,
+        )
+        for index, (amount, paid) in enumerate(
+            zip([Decimal("500.10"), Decimal("700.20")], payments, strict=False)
+        )
+    ]
+    original = [receipt.model_dump() for receipt in receipts]
+
+    result = reconcile(trip_plan, receipts)
+
+    assert result.actual_total == expected_total
+    assert result.expenses_by_category == (
+        {ExpenseCategory.OTHER: expected_total} if receipts else {}
+    )
+    assert sum(result.expenses_by_category.values(), Decimal("0")) == result.actual_total
+    assert result.variance == expected_total - trip_plan.estimated_cost
+    assert result.status == ("over_budget" if expected_total > 1000 else "under_budget")
+    assert result.receipt_count == len(receipts)
+    assert result.receipts_by_type == ({".pdf": len(receipts)} if receipts else {})
+    assert [receipt.model_dump() for receipt in receipts] == original
+    assert ReconciliationResult.model_validate_json(result.model_dump_json()) == result
+
+
 def test_policy_api_documentation_examples_match_models() -> None:
     trip_plan_payload = {
         "trip_id": "TRIP-1001",

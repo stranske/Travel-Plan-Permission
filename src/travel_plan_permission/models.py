@@ -607,10 +607,12 @@ class ExpenseReport(BaseModel):
         return sum((e.reimbursable_amount() for e in self.expenses), Decimal("0"))
 
     def expenses_by_category(self) -> dict[ExpenseCategory, Decimal]:
-        """Group expenses by category and sum amounts."""
+        """Sum reimbursable amounts by category, retaining zero-total categories."""
         totals: dict[ExpenseCategory, Decimal] = {}
         for expense in self.expenses:
-            totals[expense.category] = totals.get(expense.category, Decimal("0")) + expense.amount
+            totals[expense.category] = (
+                totals.get(expense.category, Decimal("0")) + expense.reimbursable_amount()
+            )
         return totals
 
 
