@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -52,6 +53,58 @@ def _event(
         metadata=metadata or {"foo": "bar"},
         occurred_at=occurred_at or datetime(2026, 4, 15, 12, 0, tzinfo=UTC),
     )
+
+
+@pytest.mark.parametrize(
+    ("metadata_json", "expected"),
+    [
+        pytest.param("", {}, id="empty"),
+        pytest.param("   ", {}, id="whitespace"),
+        pytest.param("{broken", {}, id="malformed"),
+        pytest.param("null", {}, id="json-null"),
+        pytest.param(None, {}, id="python-null"),
+        pytest.param("[]", {}, id="empty-array"),
+        pytest.param('["value"]', {}, id="array"),
+        pytest.param('"value"', {}, id="string"),
+        pytest.param("42", {}, id="number"),
+        pytest.param("true", {}, id="boolean"),
+        pytest.param(42, {}, id="non-string-number"),
+        pytest.param({"key": "value"}, {}, id="non-string-object"),
+        pytest.param("{}", {}, id="empty-object"),
+        pytest.param(
+            '{"transition":"approved","count":2,"nested":{"value":null}}',
+            {"transition": "approved", "count": 2, "nested": {"value": None}},
+            id="valid-object",
+        ),
+    ],
+)
+def test_pending_event_metadata_recovery_and_delivery(
+    store: audit.SQLiteAuditEventStore,
+    metadata_json: object,
+    expected: dict[str, object],
+) -> None:
+    original = replace(_event(), actor_role="manager")
+    serialized = original.as_row()
+    serialized["metadata_json"] = metadata_json
+
+    recovered = audit.pending_event_from_state(serialized)
+
+    assert recovered == replace(original, metadata=expected)
+    assert recovered.metadata.get("transition") == expected.get("transition")
+    assert serialized["metadata_json"] == metadata_json
+    audit.set_default_store(store)
+    pending = [recovered]
+    audit.flush_pending_outbox(pending)
+    assert pending == []
+    assert list(store.query()) == [recovered]
+
+
+def test_pending_event_without_metadata_recovers() -> None:
+    original = _event()
+    serialized = original.as_row()
+    del serialized["metadata_json"]
+
+    assert audit.pending_event_from_state(serialized) == replace(original, metadata={})
 
 
 class TestSQLiteAuditEventStore:
@@ -816,9 +869,7 @@ def test_proposal_submission_rolls_back_when_state_persistence_fails(
     assert isinstance(execution_id, str)
     assert store.store is not None
 
-    def fail_save_snapshot(
-        _snapshot: dict[str, object], *, replace: bool = False
-    ) -> None:
+    def fail_save_snapshot(_snapshot: dict[str, object], *, replace: bool = False) -> None:
         del replace
         raise RuntimeError("forced proposal-state persistence failure")
 
