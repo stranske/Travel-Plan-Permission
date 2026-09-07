@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
+
+import pytest
 
 from travel_plan_permission.models import ExpenseCategory, TripPlan
 from travel_plan_permission.providers import ProviderRegistry, ProviderType
@@ -101,6 +104,62 @@ class TestAdvanceBookingRule:
         results = rule.evaluate(plan, reference_date=date(2025, 5, 20))
 
         assert results == []
+
+
+@pytest.mark.parametrize(
+    "destination",
+    [
+        "Toronto, Canada",
+        "London, United Kingdom",
+        "Tokyo, Japan",
+        "Paris, France",
+        "Berlin, Germany",
+        "  Toronto ,  cAnAdA  ",
+        "international",
+        "overseas",
+    ],
+)
+def test_shipped_advance_booking_rule_treats_foreign_destinations_as_international(
+    destination: str,
+) -> None:
+    validator = PolicyValidator.from_file()
+    plan = _build_plan(
+        departure=date(2026, 1, 11),
+        return_date=date(2026, 1, 15),
+        destination=destination,
+    )
+
+    results = validator.validate_plan(plan, reference_date=date(2026, 1, 1))
+
+    advance_results = [result for result in results if result.code == "ADV-001"]
+    assert len(advance_results) == 1
+    assert advance_results[0].is_blocking
+    assert "at least 14 days" in advance_results[0].message
+
+
+@pytest.mark.parametrize(
+    "destination", ["International Falls, MN", "Chicago, IL", "New Canada, ME"]
+)
+def test_shipped_advance_booking_rule_does_not_flag_international_falls_mn(
+    destination: str,
+) -> None:
+    validator = PolicyValidator.from_file()
+    plan = _build_plan(
+        departure=date(2026, 1, 11),
+        return_date=date(2026, 1, 15),
+        destination=destination,
+    )
+
+    results = validator.validate_plan(plan, reference_date=date(2026, 1, 1))
+
+    assert all(result.code != "ADV-001" for result in results)
+
+
+def test_shipped_validation_config_matches_packaged_copy() -> None:
+    root = Path(__file__).resolve().parents[2]
+    assert (root / "config/validation.yaml").read_bytes() == (
+        root / "src/travel_plan_permission/config/validation.yaml"
+    ).read_bytes()
 
 
 class TestBudgetLimitRule:

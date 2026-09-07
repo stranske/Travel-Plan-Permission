@@ -450,8 +450,14 @@ def test_check_trip_plan_enforces_validation_blocking_rules(
     [
         ("New York, NY", 6, ["ADV-001"]),
         ("New York, NY", 7, []),
-        ("International conference", 13, ["ADV-001"]),
-        ("International conference", 14, []),
+        ("Toronto, Canada", 13, ["ADV-001"]),
+        ("Toronto, Canada", 14, []),
+        ("Conference, international", 13, ["ADV-001"]),
+        ("Conference, international", 14, []),
+        ("Conference, overseas", 13, ["ADV-001"]),
+        ("Conference, overseas", 14, []),
+        ("International Falls, MN", 6, ["ADV-001"]),
+        ("International Falls, MN", 7, []),
     ],
 )
 def test_check_trip_plan_uses_validation_notice_thresholds(
