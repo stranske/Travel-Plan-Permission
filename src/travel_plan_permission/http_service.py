@@ -33,7 +33,8 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from . import audit, demo_seed
-from .exception_authority import authorize_exception_tier, routed_exception_level
+from .exception_authority import routed_exception_level
+from .exception_decisions import decide_portal_exception
 from .expense_review import build_expense_review_state
 from .export import ExportService
 from .http_contract_models import (
@@ -52,7 +53,6 @@ from .models import (
     ExceptionType,
     ExpenseCategory,
     ExpenseReport,
-    InvalidExceptionTransition,
     TripPlan,
 )
 from .persistence import PortalStateStore, resolve_portal_state_store
@@ -2185,43 +2185,14 @@ def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) ->
             (await request.body()).decode("utf-8"),
             keep_blank_values=True,
         )
-        actor_id = auth_context.subject
-        try:
-            pending = proposal_store.lookup_exception_request(
-                draft_id,
-                exception_index=exception_index,
-            )
-        except KeyError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Exception request not found.",
-            ) from exc
-        authorize_exception_tier(
-            auth_context,
-            pending,
-            security=proposal_store.security,
-            persist_audit=proposal_store.persist_audit_events,
-            draft_id=draft_id,
+        decide_portal_exception(
+            proposal_store,
+            draft_id,
             exception_index=exception_index,
+            auth_context=auth_context,
+            approved=parsed.get("decision", ["reject"])[-1].strip() == "approve",
+            notes=parsed.get("notes", [""])[-1].strip() or None,
         )
-        try:
-            proposal_store.decide_exception_request(
-                draft_id,
-                exception_index=exception_index,
-                actor_id=actor_id,
-                approved=parsed.get("decision", ["reject"])[-1].strip() == "approve",
-                notes=parsed.get("notes", [""])[-1].strip() or None,
-            )
-        except KeyError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Exception request not found.",
-            ) from exc
-        except InvalidExceptionTransition as exc:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=str(exc),
-            ) from exc
         review = proposal_store.lookup_manager_review_for_draft(draft_id)
         resolved_role = _resolve_role_view(actor_role).role.value
         if review is not None:
