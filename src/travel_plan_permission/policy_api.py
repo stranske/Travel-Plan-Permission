@@ -224,7 +224,9 @@ def _plan_field_values(
     depart_date = canonical_plan.depart_date if canonical_plan else plan.departure_date
     return_date = canonical_plan.return_date if canonical_plan else plan.return_date
     valid_trip_dates = isinstance(depart_date, date) and isinstance(return_date, date)
-    trip_nights = max((return_date - depart_date).days, 1) if valid_trip_dates else 1
+    # Validated dates cannot be inverted; retain one unit for same-day trips.
+    # The fallback preserves costing defaults for genuinely absent dates.
+    trip_nights = ((return_date - depart_date).days or 1) if valid_trip_dates else 1
     ground_transport_pref = (
         canonical_plan.ground_transport_pref if canonical_plan is not None else None
     )
@@ -1444,6 +1446,8 @@ def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
     contract so downstream planner consumers cannot silently ignore it.
     """
 
+    # Copies and in-place changes can bypass construction-time validation.
+    plan = TripPlan.model_validate(plan)
     engine = PolicyEngine.from_file()
     validator = PolicyValidator.from_runtime_config()
     context = _context_from_plan(plan)

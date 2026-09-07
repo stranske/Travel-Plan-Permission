@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 import travel_plan_permission.policy_api as policy_api_module
 import travel_plan_permission.validation as validation_module
@@ -1371,3 +1372,36 @@ def test_planner_verdict_path_works_without_source_tree_config(
 
     result = check_trip_plan(trip_plan)
     assert result.status in {"pass", "fail"}
+
+
+@pytest.mark.parametrize("input_kind", ["copied", "mutated"])
+def test_check_trip_plan_rejects_inverted_dates(
+    trip_plan: TripPlan, input_kind: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    early_return = trip_plan.departure_date - timedelta(days=1)
+    if input_kind == "copied":
+        plan = trip_plan.model_copy(update={"return_date": early_return})
+    else:
+        plan = trip_plan
+        plan.return_date = early_return
+
+    def unexpected_context(_plan: TripPlan) -> PolicyContext:
+        pytest.fail("Inverted dates must be rejected before policy costing")
+
+    monkeypatch.setattr(policy_api_module, "_context_from_plan", unexpected_context)
+    with pytest.raises(ValidationError) as error:
+        check_trip_plan(plan)
+    assert early_return.isoformat() in str(error.value)
+    assert plan.departure_date.isoformat() in str(error.value)
+
+
+@pytest.mark.parametrize("nights", [0, 1, 3])
+def test_plan_field_values_preserves_valid_trip_nights(trip_plan: TripPlan, nights: int) -> None:
+    plan = trip_plan.model_copy(
+        update={
+            "return_date": trip_plan.departure_date + timedelta(days=nights),
+            "expected_costs": {"parking_estimate": Decimal("30")},
+        }
+    )
+    fields = policy_api_module._plan_field_values(plan)
+    assert fields["parking_daily_rate"] == Decimal("30") / Decimal(nights or 1)

@@ -6,9 +6,9 @@ from collections import Counter
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .receipts import Receipt
 
@@ -459,6 +459,16 @@ class TripPlan(BaseModel):
         default_factory=list,
         description="Exception requests tied to advisory policy rules",
     )
+
+    @model_validator(mode="after")
+    def validate_date_order(self) -> Self:
+        """Reject inverted dates before duration or cost calculations."""
+        if self.return_date < self.departure_date:
+            raise ValueError(
+                f"return_date {self.return_date} must be on or after "
+                f"departure_date {self.departure_date}"
+            )
+        return self
 
     def duration_days(self) -> int:
         """Calculate the duration of the trip in days."""
