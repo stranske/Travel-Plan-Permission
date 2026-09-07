@@ -52,6 +52,7 @@ from .models import (
     ExceptionType,
     ExpenseCategory,
     ExpenseReport,
+    InvalidExceptionTransition,
     TripPlan,
 )
 from .persistence import PortalStateStore, resolve_portal_state_store
@@ -897,6 +898,7 @@ class PlannerProposalStore:
         if requests is None or exception_index < 0 or exception_index >= len(requests):
             raise KeyError(f"No exception request {exception_index} found for draft '{draft_id}'.")
         target = requests[exception_index]
+        target.ensure_decidable()
         if approved:
             target.approve(approver_id=actor_id, level=routed_exception_level(target), notes=notes)
             outcome = "approved"
@@ -2162,6 +2164,7 @@ def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) 
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+
 def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
     """Register admin exception decision and dashboard routes."""
 
@@ -2213,6 +2216,11 @@ def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) ->
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Exception request not found.",
+            ) from exc
+        except InvalidExceptionTransition as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
             ) from exc
         review = proposal_store.lookup_manager_review_for_draft(draft_id)
         resolved_role = _resolve_role_view(actor_role).role.value

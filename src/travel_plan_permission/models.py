@@ -211,6 +211,10 @@ def determine_exception_approval_level(
     return level
 
 
+class InvalidExceptionTransition(ValueError):
+    """A decision attempted to change a finalized exception request."""
+
+
 class ExceptionRequest(BaseModel):
     """Request to override an advisory policy-lite rule."""
 
@@ -259,6 +263,7 @@ class ExceptionRequest(BaseModel):
     ) -> ExceptionApprovalRecord:
         """Mark the request as approved and record the decision."""
 
+        self.ensure_decidable()
         decision_time = timestamp or datetime.now(UTC)
         approval_level = level or self.approval_level or ExceptionApprovalLevel.MANAGER
         self.approval = ExceptionApprovalRecord(
@@ -274,7 +279,17 @@ class ExceptionRequest(BaseModel):
     def reject(self) -> None:
         """Mark the request as rejected."""
 
+        self.ensure_decidable()
         self.status = ExceptionStatus.REJECTED
+
+    def ensure_decidable(self) -> None:
+        """Reject repeat decisions without changing the original decision."""
+
+        if self.status in (ExceptionStatus.APPROVED, ExceptionStatus.REJECTED):
+            raise InvalidExceptionTransition(
+                f"Exception request is already {self.status.value}; "
+                "finalized exceptions cannot be changed."
+            )
 
     def escalate_if_overdue(self, *, reference_time: datetime | None = None) -> bool:
         """Escalate pending requests that exceed the SLA window."""

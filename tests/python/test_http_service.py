@@ -2686,6 +2686,65 @@ def test_exception_decision_updates_review_detail_and_audit_log(monkeypatch) -> 
     assert "exception · approved by approver-7" in decision.text
 
 
+@pytest.mark.parametrize("first_decision", ["approve", "reject"])
+@pytest.mark.parametrize("second_decision", ["approve", "reject"])
+def test_exception_decision_is_terminal(
+    monkeypatch, tmp_path: Path, first_decision: str, second_decision: str
+) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    state_path = tmp_path / "terminal-exception.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    client = TestClient(create_app(store), raise_server_exceptions=False)
+    draft_id, _location = _create_portal_draft(client)
+    creator = _bootstrap_auth_header(subject="traveler", permissions=(Permission.CREATE,))
+    _seed_tiered_exception(
+        client, draft_id, creator, exception_type="advance_booking", amount="250"
+    )
+    first_approver = _bootstrap_auth_header(
+        subject="first-approver", permissions=(Permission.APPROVE,)
+    )
+    assert (
+        _decide_exception(client, draft_id, 0, first_approver, decision=first_decision).status_code
+        == 303
+    )
+    before = store.lookup_exception_request(draft_id, exception_index=0).model_dump(mode="json")
+    assert before["status"] == ("approved" if first_decision == "approve" else "rejected")
+    if first_decision == "approve":
+        assert before["approval"]["approver_id"] == "first-approver"
+    else:
+        assert before["approval"] is None
+    audit_before = store.list_audit_events()
+    reopened = PlannerProposalStore(state_path=state_path)
+    assert (
+        reopened.lookup_exception_request(draft_id, exception_index=0).model_dump(mode="json")
+        == before
+    )
+    persisted_audit_before = reopened.list_audit_events()
+
+    def forbidden_model_decision(*_args, **_kwargs):
+        raise AssertionError("Store must reject finalized requests before calling approve/reject")
+
+    monkeypatch.setattr(http_service.ExceptionRequest, "approve", forbidden_model_decision)
+    monkeypatch.setattr(http_service.ExceptionRequest, "reject", forbidden_model_decision)
+    second_approver = _bootstrap_auth_header(
+        subject="second-approver", permissions=(Permission.APPROVE,)
+    )
+    response = _decide_exception(client, draft_id, 0, second_approver, decision=second_decision)
+    assert response.status_code == 409
+    assert "finalized exceptions cannot be changed" in response.json()["detail"]
+    assert (
+        store.lookup_exception_request(draft_id, exception_index=0).model_dump(mode="json")
+        == before
+    )
+    assert store.list_audit_events() == audit_before
+    reopened = PlannerProposalStore(state_path=state_path)
+    assert (
+        reopened.lookup_exception_request(draft_id, exception_index=0).model_dump(mode="json")
+        == before
+    )
+    assert reopened.list_audit_events() == persisted_audit_before
+
+
 def test_exception_rejection_keeps_notes_in_audit_log(monkeypatch) -> None:
     _set_bootstrap_runtime_env(monkeypatch)
     # Amount 6,000 routes to director; entitle the decision maker explicitly.
