@@ -511,16 +511,14 @@ def test_list_allowed_vendors_returns_registry_matches(
 def test_list_allowed_vendors_filters_by_destination_and_date(
     trip_plan: TripPlan,
 ) -> None:
+    # Only the airline contract has started; ground transport and lodging start later.
     plan = trip_plan.model_copy(
-        update={"destination": "New York, NY", "departure_date": date(2024, 11, 2)}
+        update={"destination": "New York, NY", "departure_date": date(2024, 1, 10)}
     )
 
     vendors = list_allowed_vendors(plan)
 
-    assert vendors == [
-        "Blue Skies Airlines",
-        "Downtown Suites",
-    ]
+    assert vendors == ["Blue Skies Airlines"]
 
 
 def test_list_allowed_vendors_matches_other_destinations(
@@ -550,7 +548,7 @@ def test_list_allowed_vendors_handles_no_active_providers(
     trip_plan: TripPlan,
 ) -> None:
     plan = trip_plan.model_copy(
-        update={"departure_date": date(2025, 1, 10), "return_date": date(2025, 1, 12)}
+        update={"departure_date": date(2028, 1, 10), "return_date": date(2028, 1, 12)}
     )
 
     vendors = list_allowed_vendors(plan)

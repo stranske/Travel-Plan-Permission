@@ -1,7 +1,11 @@
-version: "2024.09"
-updated_at: 2024-09-01
+version: "2026.09"
+updated_at: 2026-09-07
 approver: "Travel Operations Manager"
 change_log:
+  - version: "2026.09"
+    date: 2026-09-07
+    description: "Renew shipped sample contracts through 2027; Harbor renewal starts 2026-09-07 after its expired sample term."
+    approver: "Travel Operations Manager"
   - version: "2024.09"
     date: 2024-09-01
     description: "Initial approved provider list"
@@ -12,7 +16,7 @@ providers:
     type: airline
     contract_id: "AIR-2024-001"
     valid_from: 2024-01-01
-    valid_to: 2024-12-31
+    valid_to: 2027-12-31
     destinations:
       - "new york"
       - "san francisco"
@@ -23,7 +27,7 @@ providers:
     type: hotel
     contract_id: "HOT-2024-010"
     valid_from: 2024-02-01
-    valid_to: 2024-12-31
+    valid_to: 2027-12-31
     destinations:
       - "new york"
     rate_notes: "Breakfast and wifi included."
@@ -32,15 +36,15 @@ providers:
     type: ground_transport
     contract_id: "GRT-2024-003"
     valid_from: 2024-01-15
-    valid_to: 2024-10-31
+    valid_to: 2027-12-31
     destinations: []
     rate_notes: "Nationwide coverage with fixed airport transfer rates."
 
   - name: "Harbor Hotels"
     type: hotel
     contract_id: "HOT-2023-007"
-    valid_from: 2023-01-01
-    valid_to: 2023-12-31
+    valid_from: 2026-09-07
+    valid_to: 2027-12-31
     destinations:
       - "seattle"
-    rate_notes: "Expired sample to test validity filtering."
+    rate_notes: "Renewed sample contract; prior term expired in 2023."

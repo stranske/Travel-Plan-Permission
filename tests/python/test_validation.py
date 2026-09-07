@@ -357,3 +357,48 @@ class TestPolicyValidator:
         assert len(provider_results) == 1
         assert provider_results[0].severity == ValidationSeverity.WARNING
         assert provider_results[0].blocking is False
+
+
+@pytest.mark.parametrize("selected_count", [0, 1, 3])
+def test_provider_rule_reports_a_stale_registry_once_not_per_provider(
+    tmp_path: Path, selected_count: int
+) -> None:
+    providers_path = tmp_path / "providers.yaml"
+    providers_path.write_text(
+        """version: expired-sample
+updated_at: 2020-01-01
+approver: Test
+providers:
+  - name: Expired Airline
+    type: airline
+    contract_id: expired-1
+    valid_from: 2020-01-01
+    valid_to: 2020-12-31
+""",
+        encoding="utf-8",
+    )
+    rule = ProviderApprovalRule(
+        name="provider_warning", code="PROV-001", providers_path=str(providers_path)
+    )
+    plan = _build_plan(departure=date(2026, 9, 10), return_date=date(2026, 9, 12))
+    selections = [
+        (ExpenseCategory.AIRFARE, "Airline"),
+        (ExpenseCategory.LODGING, "Hotel"),
+        (ExpenseCategory.GROUND_TRANSPORT, "Taxi"),
+    ]
+    plan.selected_providers = dict(selections[:selected_count])
+
+    results = rule.evaluate(plan, reference_date=date(2026, 9, 7))
+
+    assert results == [
+        ValidationResult(
+            code="PROV-001",
+            message=(
+                "Provider registry is stale: version expired-sample, updated_at 2020-01-01; "
+                "1 providers checked, 0 active."
+            ),
+            severity=ValidationSeverity.WARNING,
+            rule_name="provider_warning",
+            blocking=False,
+        )
+    ]

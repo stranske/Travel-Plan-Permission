@@ -236,9 +236,13 @@ class ProviderApprovalRule(ValidationRule):
         self,
         plan: TripPlan,
         *,
-        reference_date: date | None = None,  # noqa: ARG002
+        reference_date: date | None = None,
     ) -> list[ValidationResult]:
         registry = ProviderRegistry.from_file(self.providers_path)
+        try:
+            registry.assert_has_active_providers(reference_date=reference_date)
+        except ValueError as exc:
+            return [self._result(message=str(exc))]
         destination = plan.destination
         results: list[ValidationResult] = []
 

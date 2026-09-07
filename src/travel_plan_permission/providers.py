@@ -205,3 +205,14 @@ class ProviderRegistry(YamlConfigLoaderMixin, BaseModel):
             for provider in self.providers
             if provider.is_active(reference_date=reference_date)
         ]
+
+    def assert_has_active_providers(self, *, reference_date: date | None = None) -> None:
+        """Raise with registry metadata when no provider contract is active."""
+
+        active = self.active_providers(reference_date=reference_date)
+        if not active:
+            raise ValueError(
+                f"Provider registry is stale: version {self.version}, "
+                f"updated_at {self.updated_at}; "
+                f"{len(self.providers)} providers checked, {len(active)} active."
+            )
