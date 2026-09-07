@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -3871,7 +3872,8 @@ def test_exception_listing_escalates_and_persists(monkeypatch, tmp_path, surface
     assert [item.model_dump() for item in store.list_exception_requests("draft")] == before
 
 
-def test_exception_escalation_persistence_failure_preserves_routing(monkeypatch) -> None:
+@pytest.mark.parametrize("batch", [False, True])
+def test_exception_escalation_persistence_failure_preserves_routing(monkeypatch, batch) -> None:
     store = PlannerProposalStore()
     request = http_service.ExceptionRequest(
         type=http_service.ExceptionType.ADVANCE_BOOKING,
@@ -3882,14 +3884,19 @@ def test_exception_escalation_persistence_failure_preserves_routing(monkeypatch)
     )
     store.exception_requests_by_draft_id["draft"] = [request]
     before = request.model_dump()
+    audit_before = list(store.security.audit_log.events)
 
     def fail_persistence():
         raise OSError("state storage unavailable")
 
     monkeypatch.setattr(store, "_persist_state", fail_persistence)
     with pytest.raises(OSError, match="state storage unavailable"):
-        store.escalate_exception_requests("draft")
+        if batch:
+            store.escalate_all_exception_requests()
+        else:
+            store.escalate_exception_requests("draft")
     assert store.exception_requests_by_draft_id["draft"][0].model_dump() == before
+    assert store.security.audit_log.events == audit_before
 
 
 def test_exception_escalation_records_audit_event(monkeypatch, tmp_path) -> None:
@@ -3917,8 +3924,12 @@ def test_exception_escalation_records_audit_event(monkeypatch, tmp_path) -> None
     }
 
 
-def test_exception_listing_survives_persistence_failure(monkeypatch) -> None:
-    store = PlannerProposalStore()
+@pytest.mark.parametrize("surface", ["draft", "admin"])
+@pytest.mark.parametrize("failure", [OSError, sqlite3.OperationalError, RuntimeError])
+def test_exception_listing_survives_persistence_failure(
+    monkeypatch, tmp_path, surface, failure
+) -> None:
+    store = PlannerProposalStore(state_path=tmp_path / "rollback.sqlite3")
     request = http_service.ExceptionRequest(
         type=http_service.ExceptionType.ADVANCE_BOOKING,
         amount="250",
@@ -3927,11 +3938,52 @@ def test_exception_listing_survives_persistence_failure(monkeypatch) -> None:
         requested_at=datetime.now(UTC) - timedelta(hours=49),
     )
     store.exception_requests_by_draft_id["draft"] = [request]
-    before = request.model_dump()
+    store.exception_requests_by_draft_id["second"] = [request.model_copy(deep=True)]
+    store.security.audit_log.record(
+        event_type=AuditEventType.EXCEPTION,
+        actor="traveler",
+        subject="draft",
+        outcome="created",
+    )
+    store._persist_state()
+    before = store._serialize_state()
+    request_before = request.model_dump()
+    lists_before = dict(store.exception_requests_by_draft_id)
 
     def fail_persistence():
-        raise OSError("state storage unavailable")
+        raise failure("state storage unavailable")
 
-    monkeypatch.setattr(store, "_persist_state", fail_persistence)
-    listed = store.list_exception_requests("draft")
-    assert listed[0].model_dump() == before
+    with monkeypatch.context() as patch:
+        patch.setattr(store, "_persist_state", fail_persistence)
+        if surface == "draft":
+            listed = store.list_exception_requests("draft")
+        else:
+            listed = [entry.request for entry in store.list_exception_entries()]
+        assert all(item.model_dump() == request_before for item in listed)
+        assert len(listed) == (1 if surface == "draft" else 2)
+    assert store._serialize_state() == before
+    assert all(
+        store.exception_requests_by_draft_id[key] is value for key, value in lists_before.items()
+    )
+    # A later unrelated save must not persist audit events for reverted escalation.
+    store._persist_state()
+    reloaded = PlannerProposalStore(state_path=store.state_path)
+    assert reloaded._serialize_state() == before
+
+
+@pytest.mark.parametrize("surface", ["draft", "admin"])
+def test_exception_listing_does_not_hide_escalation_errors(monkeypatch, surface) -> None:
+    store = PlannerProposalStore()
+
+    def fail_escalation(*_args):
+        raise ValueError("invalid escalation state")
+
+    method = (
+        "escalate_exception_requests" if surface == "draft" else "escalate_all_exception_requests"
+    )
+    monkeypatch.setattr(store, method, fail_escalation)
+    with pytest.raises(ValueError, match="invalid escalation state"):
+        if surface == "draft":
+            store.list_exception_requests("draft")
+        else:
+            store.list_exception_entries()

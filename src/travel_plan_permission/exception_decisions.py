@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from fastapi import HTTPException, status
 
 from .exception_authority import authorize_exception_tier
-from .models import InvalidExceptionTransition
+from .models import ExceptionRequest, InvalidExceptionTransition
 from .planner_auth import PlannerAuthContext
 from .security import AuditEventType
 
@@ -16,10 +16,14 @@ if TYPE_CHECKING:
     from .http_service import PlannerProposalStore
 
 
+class EscalationPersistenceError(OSError):
+    """Escalation could not be saved; requests and audit events were restored."""
+
+
 def apply_overdue_escalations(
     proposal_store: PlannerProposalStore,
     draft_id: str,
-    stored: list,
+    stored: list[ExceptionRequest],
     *,
     now: datetime | None = None,
 ) -> bool:
@@ -62,16 +66,43 @@ def escalate_draft_exceptions(
     if not stored:
         return False
     snapshot = [request.model_copy(deep=True) for request in stored]
+    audit_count = len(proposal_store.security.audit_log.events)
     if not apply_overdue_escalations(proposal_store, draft_id, stored):
         return False
     if not persist:
         return True
     try:
         proposal_store._persist_state()
-    except Exception:
+    except Exception as exc:
         stored[:] = snapshot
-        raise
+        del proposal_store.security.audit_log.events[audit_count:]
+        raise EscalationPersistenceError(str(exc)) from exc
     return True
+
+
+def escalate_all_draft_exceptions(proposal_store: PlannerProposalStore) -> None:
+    """Apply all overdue routing changes atomically with one snapshot write."""
+
+    snapshots: dict[str, list[ExceptionRequest]] = {}
+    audit_count = len(proposal_store.security.audit_log.events)
+    now = datetime.now(UTC)
+    any_changed = False
+    for draft_id, stored in proposal_store.exception_requests_by_draft_id.items():
+        if not stored:
+            continue
+        snapshot = [request.model_copy(deep=True) for request in stored]
+        if apply_overdue_escalations(proposal_store, draft_id, stored, now=now):
+            snapshots[draft_id] = snapshot
+            any_changed = True
+    if not any_changed:
+        return
+    try:
+        proposal_store._persist_state()
+    except Exception as exc:
+        for draft_id, snapshot in snapshots.items():
+            proposal_store.exception_requests_by_draft_id[draft_id][:] = snapshot
+        del proposal_store.security.audit_log.events[audit_count:]
+        raise EscalationPersistenceError(str(exc)) from exc
 
 
 def decide_portal_exception(

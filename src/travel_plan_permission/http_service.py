@@ -35,8 +35,9 @@ from pydantic import ValidationError
 from . import audit, demo_seed
 from .exception_authority import routed_exception_level
 from .exception_decisions import (
-    apply_overdue_escalations,
+    EscalationPersistenceError,
     decide_portal_exception,
+    escalate_all_draft_exceptions,
     escalate_draft_exceptions,
 )
 from .expense_review import build_expense_review_state
@@ -839,11 +840,9 @@ class PlannerProposalStore:
     def list_exception_requests(self, draft_id: str) -> list[ExceptionRequest]:
         """Return exception requests attached to a draft."""
 
-        try:
+        # Persistence failures restore requests and audit events before returning here.
+        with suppress(EscalationPersistenceError):
             self.escalate_exception_requests(draft_id)
-        except OSError:
-            # Read accessors serve the last persisted snapshot when storage is unavailable.
-            pass
         return [
             _copy_exception_request(item)
             for item in self.exception_requests_by_draft_id.get(draft_id, [])
@@ -899,24 +898,7 @@ class PlannerProposalStore:
     def escalate_all_exception_requests(self) -> None:
         """Apply overdue routing for every draft and persist one snapshot write."""
 
-        snapshots: dict[str, list[ExceptionRequest]] = {}
-        now = datetime.now(UTC)
-        any_changed = False
-        for draft_id, stored in self.exception_requests_by_draft_id.items():
-            if not stored:
-                continue
-            snapshot = [request.model_copy(deep=True) for request in stored]
-            if apply_overdue_escalations(self, draft_id, stored, now=now):
-                snapshots[draft_id] = snapshot
-                any_changed = True
-        if not any_changed:
-            return
-        try:
-            self._persist_state()
-        except Exception:
-            for draft_id, snapshot in snapshots.items():
-                self.exception_requests_by_draft_id[draft_id][:] = snapshot
-            raise
+        escalate_all_draft_exceptions(self)
 
     def decide_exception_request(
         self,
@@ -960,11 +942,8 @@ class PlannerProposalStore:
     def list_exception_entries(self) -> list[DraftExceptionEntry]:
         """Return flattened exception entries ordered by newest draft activity."""
 
-        try:
+        with suppress(EscalationPersistenceError):
             self.escalate_all_exception_requests()
-        except OSError:
-            # Admin listings keep serving the last persisted snapshot on storage failure.
-            pass
         entries: list[DraftExceptionEntry] = []
         for draft_id in self.exception_requests_by_draft_id:
             requests = self.exception_requests_by_draft_id[draft_id]
