@@ -150,7 +150,16 @@ class ReceiptProcessor:
         if not match:
             return None
         raw_date = match.group(1)
-        for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%d-%m-%Y", "%d-%m-%y"):
+        # Preserve month-first interpretation of ambiguous slash dates.
+        for fmt in (
+            "%Y-%m-%d",
+            "%m/%d/%Y",
+            "%m/%d/%y",
+            "%d/%m/%Y",
+            "%d/%m/%y",
+            "%d-%m-%Y",
+            "%d-%m-%y",
+        ):
             try:
                 if fmt == "%Y-%m-%d":
                     return dt_date.fromisoformat(raw_date)
