@@ -3613,8 +3613,22 @@ def test_portal_receipt_delivery_configuration(
 
 @pytest.mark.parametrize("final_action", ["approve", "reject"])
 @pytest.mark.parametrize("action", ["approve", "reject", "request_changes"])
+@pytest.mark.parametrize(
+    ("rationale", "expected_status", "expected_error"),
+    [
+        ("Repeated decision.", 409, "finalized reviews cannot be changed"),
+        ("", 400, "require rationale text"),
+        (" \t\n", 400, "require rationale text"),
+    ],
+)
 def test_finalized_manager_review_conflict_preserves_persisted_state(
-    monkeypatch, tmp_path: Path, final_action: str, action: str
+    monkeypatch,
+    tmp_path: Path,
+    final_action: str,
+    action: str,
+    rationale: str,
+    expected_status: int,
+    expected_error: str,
 ) -> None:
     _set_bootstrap_runtime_env(monkeypatch)
     audit_path = tmp_path / "finalized-audit.sqlite3"
@@ -3644,12 +3658,12 @@ def test_finalized_manager_review_conflict_preserves_persisted_state(
     response = client.post(
         url,
         headers=headers,
-        data={"action": action, "rationale": "Repeated decision."},
+        data={"action": action, "rationale": rationale},
         follow_redirects=False,
     )
 
-    assert response.status_code == 409
-    assert "finalized reviews cannot be changed" in response.text
+    assert response.status_code == expected_status
+    assert expected_error in response.text
     assert reopened.lookup_manager_review(review.review_id) == before
     assert reopened.list_audit_events() == before_events
     assert reopened.pending_audit_events == before_pending

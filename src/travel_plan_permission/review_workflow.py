@@ -105,14 +105,14 @@ def apply_review_action(
 ) -> ReviewRequest:
     """Apply a manager decision and return the updated review request."""
 
+    rationale_text = rationale.strip()
+    if not rationale_text:
+        raise ValueError("Manager review decisions require rationale text.")
+
     if review.status in {ReviewStatus.APPROVED, ReviewStatus.REJECTED}:
         raise InvalidReviewTransition(
             f"Manager review is already {review.status.value}; finalized reviews cannot be changed."
         )
-
-    rationale_text = rationale.strip()
-    if not rationale_text:
-        raise ValueError("Manager review decisions require rationale text.")
 
     updated_plan = review.trip_plan.model_copy(deep=True)
     if action == ReviewAction.APPROVE:
