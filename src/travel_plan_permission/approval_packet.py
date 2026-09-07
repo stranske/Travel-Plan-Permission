@@ -114,7 +114,7 @@ def _render_email(template: str, context: Mapping[str, object]) -> EmailContent:
 
 
 def _pdf_text(value: object) -> str:
-    """Escape dynamic text before ReportLab Paragraph/table rendering."""
+    """Escape dynamic text for Paragraph markup, not literal Table string cells."""
 
     return escape(str(value))
 
@@ -123,9 +123,7 @@ def _format_cost_breakdown(costs: Mapping[str, Decimal]) -> list[list[str]]:
     rows = [["Category", "Amount (USD)"]]
     for category, amount in costs.items():
         category_label = getattr(category, "value", category)
-        rows.append(
-            [_pdf_text(category_label), f"${amount.quantize(Decimal('0.01'))}"]
-        )
+        rows.append([str(category_label), f"${amount.quantize(Decimal('0.01'))}"])
     return rows
 
 
@@ -193,11 +191,11 @@ def generate_packet_pdf(
     for event in approval_history:
         history_rows.append(
             [
-                _pdf_text(event.approver_id),
-                _pdf_text(event.level),
-                _pdf_text(event.outcome.value),
+                event.approver_id,
+                event.level,
+                event.outcome.value,
                 event.timestamp.isoformat(),
-                _pdf_text(event.justification or ""),
+                event.justification or "",
             ]
         )
 
