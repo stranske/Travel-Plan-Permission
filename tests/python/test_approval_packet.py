@@ -138,15 +138,45 @@ def test_pdf_table_cells_preserve_literal_text(
 ) -> None:
     """Table text reaches the PDF canvas unchanged, including markup-like strings."""
     rendered: list[str] = []
-    original_draw_string = Canvas.drawString
+    originals = {
+        "drawString": Canvas.drawString,
+        "drawRightString": Canvas.drawRightString,
+        "drawCentredString": Canvas.drawCentredString,
+    }
 
-    def capture_draw_string(
-        canvas: Canvas, x: float, y: float, text: str, *args: Any, **kwargs: Any
+    def capture_text_draw(
+        name: str,
+        canvas: Canvas,
+        x: float,
+        y: float,
+        text: str,
+        *args: Any,
+        **kwargs: Any,
     ) -> None:
         rendered.append(text)
-        original_draw_string(canvas, x, y, text, *args, **kwargs)
+        originals[name](canvas, x, y, text, *args, **kwargs)
 
-    monkeypatch.setattr(Canvas, "drawString", capture_draw_string)
+    monkeypatch.setattr(
+        Canvas,
+        "drawString",
+        lambda canvas, x, y, text, *args, **kwargs: capture_text_draw(
+            "drawString", canvas, x, y, text, *args, **kwargs
+        ),
+    )
+    monkeypatch.setattr(
+        Canvas,
+        "drawRightString",
+        lambda canvas, x, y, text, *args, **kwargs: capture_text_draw(
+            "drawRightString", canvas, x, y, text, *args, **kwargs
+        ),
+    )
+    monkeypatch.setattr(
+        Canvas,
+        "drawCentredString",
+        lambda canvas, x, y, text, *args, **kwargs: capture_text_draw(
+            "drawCentredString", canvas, x, y, text, *args, **kwargs
+        ),
+    )
     event = _event(1).model_copy(
         update={"approver_id": literal, "level": literal, "justification": literal}
     )
