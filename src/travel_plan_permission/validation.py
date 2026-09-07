@@ -236,7 +236,7 @@ class ProviderApprovalRule(ValidationRule):
         self,
         plan: TripPlan,
         *,
-        reference_date: date | None = None,  # noqa: ARG002
+        reference_date: date | None = None,
     ) -> list[ValidationResult]:
         registry = ProviderRegistry.from_file(self.providers_path)
         try:

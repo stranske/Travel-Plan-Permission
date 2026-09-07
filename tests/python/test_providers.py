@@ -55,7 +55,7 @@ def test_registry_health_reports_inactive_contracts(reference_date: date) -> Non
     registry = ProviderRegistry.from_file()
 
     with pytest.raises(ValueError) as error:
-        registry.assert_has_active_providers(reference_date)
+        registry.assert_has_active_providers(reference_date=reference_date)
 
     assert registry.version in str(error.value)
     assert str(registry.updated_at) in str(error.value)
@@ -63,4 +63,4 @@ def test_registry_health_reports_inactive_contracts(reference_date: date) -> Non
 
 
 def test_registry_health_accepts_historical_active_contracts() -> None:
-    ProviderRegistry.from_file().assert_has_active_providers(date(2024, 6, 1))
+    ProviderRegistry.from_file().assert_has_active_providers(reference_date=date(2024, 6, 1))

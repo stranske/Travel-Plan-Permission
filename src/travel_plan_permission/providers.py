@@ -206,7 +206,7 @@ class ProviderRegistry(YamlConfigLoaderMixin, BaseModel):
             if provider.is_active(reference_date=reference_date)
         ]
 
-    def assert_has_active_providers(self, reference_date: date | None = None) -> None:
+    def assert_has_active_providers(self, *, reference_date: date | None = None) -> None:
         """Raise with registry metadata when no provider contract is active."""
 
         active = self.active_providers(reference_date=reference_date)
