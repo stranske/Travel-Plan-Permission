@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import date
+import json
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 
 from travel_plan_permission.models import ApprovalOutcome, TripPlan
 from travel_plan_permission.snapshots import (
+    ValidationSnapshot,
     ValidationSnapshotStore,
     compare_results,
     policy_version_hash,
@@ -245,3 +247,126 @@ def test_relative_snapshot_read_uses_store_root_after_cwd_change(tmp_path, monke
     assert store.load_snapshot(str(relative) if as_string else relative) == snapshot
     with pytest.raises(ValueError, match="within snapshot store"):
         store.load_snapshot("../outside.json")
+
+
+def test_load_snapshot_rejects_a_tampered_payload(tmp_path) -> None:
+    store = ValidationSnapshotStore(tmp_path)
+    snapshot = snapshot_from_plan(_plan(), results=[], policy_version="test")
+    path = store.append(snapshot)
+    data = json.loads(path.read_text())
+    data["input_data"]["purpose"] = "Vacation in Maui"
+    path.write_text(json.dumps(data))
+    tampered_bytes = path.read_bytes()
+
+    with pytest.raises(ValueError) as error:
+        store.load_snapshot(path)
+
+    assert str(path) in str(error.value)
+    assert "snapshot_hash" in str(error.value)
+    assert snapshot.snapshot_hash in str(error.value)
+    assert path.read_bytes() == tampered_bytes
+
+
+@pytest.mark.parametrize("field", ["snapshot_hash", "chain_hash"])
+def test_load_snapshot_rejects_a_tampered_hash(tmp_path, field) -> None:
+    store = ValidationSnapshotStore(tmp_path)
+    snapshot = snapshot_from_plan(_plan(), results=[], policy_version="test")
+    path = store.append(snapshot)
+    data = json.loads(path.read_text())
+    data[field] = "0" * 64
+    path.write_text(json.dumps(data))
+
+    with pytest.raises(ValueError) as error:
+        store.load_snapshot(path)
+
+    assert str(path) in str(error.value)
+    assert field in str(error.value)
+    assert data[field] in str(error.value)
+    assert getattr(snapshot, field) in str(error.value)
+
+
+@pytest.mark.parametrize("field", ["snapshot_hash", "chain_hash"])
+@pytest.mark.parametrize("change", ["remove", "null", "empty"])
+def test_load_snapshot_requires_persisted_hashes(tmp_path, field, change) -> None:
+    store = ValidationSnapshotStore(tmp_path)
+    path = store.append(snapshot_from_plan(_plan(), results=[], policy_version="test"))
+    data = json.loads(path.read_text())
+    if change == "remove":
+        del data[field]
+    else:
+        data[field] = None if change == "null" else ""
+    path.write_text(json.dumps(data))
+
+    with pytest.raises(ValueError) as error:
+        store.load_snapshot(path)
+
+    assert str(path) in str(error.value)
+    assert field in str(error.value)
+
+
+@pytest.mark.parametrize("recompute_hashes", [False, True])
+def test_load_trip_snapshots_rejects_a_broken_chain_link(tmp_path, recompute_hashes) -> None:
+    store = ValidationSnapshotStore(tmp_path)
+    first = snapshot_from_plan(_plan(), results=[], policy_version="test")
+    first_path = store.append(first)
+    second = ValidationSnapshot(
+        trip_id=first.trip_id,
+        timestamp=first.timestamp + timedelta(seconds=1),
+        policy_version="test",
+        input_data=first.input_data,
+        results=[],
+        previous_hash=first.chain_hash,
+    )
+    second_path = store.append(second)
+    data = json.loads(second_path.read_text())
+    data["previous_hash"] = "0" * 64
+    if recompute_hashes:
+        # A self-consistent file must still be rejected when it links to the wrong predecessor.
+        del data["snapshot_hash"]
+        del data["chain_hash"]
+        data = ValidationSnapshot.model_validate(data).model_dump(mode="json")
+    second_path.write_text(json.dumps(data))
+
+    with pytest.raises(ValueError) as error:
+        store.load_trip_snapshots(first.trip_id)
+
+    assert str(first_path) in str(error.value)
+    assert str(second_path) in str(error.value)
+
+
+def test_load_trip_snapshots_rejects_a_nonempty_first_link(tmp_path) -> None:
+    store = ValidationSnapshotStore(tmp_path)
+    snapshot = snapshot_from_plan(
+        _plan(), results=[], policy_version="test", previous_hash="orphan"
+    )
+    path = store.append(snapshot)
+
+    with pytest.raises(ValueError) as error:
+        store.load_trip_snapshots(snapshot.trip_id)
+
+    assert str(path) in str(error.value)
+    assert "previous_hash" in str(error.value)
+    assert "None" in str(error.value)
+
+
+def test_snapshot_hashes_round_trip_and_chain_reload(tmp_path) -> None:
+    store = ValidationSnapshotStore(tmp_path)
+    first = snapshot_from_plan(_plan(), results=[], policy_version="test")
+    assert len(first.snapshot_hash) == len(first.chain_hash) == 64
+    first_path = store.append(first)
+    original_bytes = first_path.read_bytes()
+    second = ValidationSnapshot(
+        trip_id=first.trip_id,
+        timestamp=first.timestamp + timedelta(seconds=1),
+        policy_version="test",
+        input_data=first.input_data,
+        results=[],
+        previous_hash=first.chain_hash,
+    )
+    store.append(second)
+
+    reopened = ValidationSnapshotStore(tmp_path)
+    assert reopened.load_snapshot(first_path) == first
+    assert reopened.load_trip_snapshots(first.trip_id) == [first, second]
+    assert reopened.last_chain_hash(first.trip_id) == second.chain_hash
+    assert first_path.read_bytes() == original_bytes

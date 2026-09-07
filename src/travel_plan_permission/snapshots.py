@@ -90,8 +90,12 @@ class ValidationSnapshot(BaseModel):
         chain_input = f"{self.previous_hash or ''}{content_hash}"
         chain_hash = sha256(chain_input.encode("utf-8")).hexdigest()
 
-        object.__setattr__(self, "snapshot_hash", content_hash)
-        object.__setattr__(self, "chain_hash", chain_hash)
+        for field, expected in (("snapshot_hash", content_hash), ("chain_hash", chain_hash)):
+            stored = getattr(self, field)
+            if stored is None:
+                object.__setattr__(self, field, expected)
+            elif stored != expected:
+                raise ValueError(f"{field} mismatch: stored {stored!r}, expected {expected!r}")
         return self
 
 
@@ -163,13 +167,36 @@ class ValidationSnapshotStore:
         if not trip_path.exists():
             return []
         snapshots: list[ValidationSnapshot] = []
+        previous_path: Path | None = None
         for path in sorted(trip_path.glob("*.json")):
-            snapshots.append(self.load_snapshot(path))
+            try:
+                snapshot = self.load_snapshot(path)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Snapshot chain integrity error between {previous_path!s} and {path}: {exc}"
+                ) from exc
+            expected = snapshots[-1].chain_hash if snapshots else None
+            if snapshot.previous_hash != expected:
+                raise ValueError(
+                    f"Snapshot chain integrity error between {previous_path!s} and {path}: "
+                    f"previous_hash is {snapshot.previous_hash!r}, expected {expected!r}"
+                )
+            snapshots.append(snapshot)
+            previous_path = path
         return snapshots
 
     def load_snapshot(self, path: str | Path) -> ValidationSnapshot:
-        data = json.loads(self._confined_path(path).read_text(encoding="utf-8"))
-        return ValidationSnapshot.model_validate(data)
+        resolved = self._confined_path(path)
+        try:
+            data = json.loads(resolved.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("Expected a snapshot JSON object")
+            for field in ("snapshot_hash", "chain_hash"):
+                if data.get(field) is None:
+                    raise ValueError(f"Missing persisted {field}")
+            return ValidationSnapshot.model_validate(data)
+        except ValueError as exc:
+            raise ValueError(f"Snapshot integrity error for {resolved}: {exc}") from exc
 
     def append(self, snapshot: ValidationSnapshot) -> Path:
         trip_path = self._trip_path(snapshot.trip_id)

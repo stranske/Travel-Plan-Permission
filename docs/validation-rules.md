@@ -112,6 +112,31 @@ rules:
 
 ---
 
+## Validation snapshot integrity
+
+Validation snapshots record SHA-256 content and chain hashes. Fresh snapshots
+compute these hashes in memory; `ValidationSnapshotStore.load_snapshot` verifies
+both persisted hashes before returning saved data. Missing hashes, altered
+payloads, and mismatched digests raise `ValueError` with `Snapshot integrity error`
+and the offending file path. Digest mismatches identify the field, stored digest,
+and expected digest. Loading never repairs or rewrites the saved file.
+
+`load_trip_snapshots` also verifies the links in filename order: the first
+snapshot must have `previous_hash=None`, and each later snapshot must reference
+the preceding file's `chain_hash`. A broken link raises a chain integrity error
+naming the current and preceding paths (`None` denotes the start of the chain).
+`last_chain_hash` uses the same verification before extending a chain.
+
+These checks detect inconsistent saved data; they do not authenticate a chain
+against an actor who can rewrite every file and recompute all its hashes.
+Signatures and external anchors are outside this snapshot format.
+
+Run `python -m pytest tests/python/test_snapshots.py` from the repository root.
+The tests cover altered payloads and hashes, missing digests, broken links, and
+unchanged snapshot round trips; the Python CI test log captures the results.
+
+---
+
 ## Policy-Lite Rules (PolicyEngine)
 
 The `PolicyEngine` evaluates expense and travel policy compliance rules. These rules are configured via `config/policy.yaml` and loaded by `PolicyEngine.from_file()` or `PolicyEngine.from_yaml()`. Each rule produces a structured result with `rule_id`, `severity` (`blocking` or `advisory`), `passed`, and `message`.
