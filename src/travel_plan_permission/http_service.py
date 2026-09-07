@@ -91,6 +91,7 @@ from .portal_review import (
 )
 from .receipt_delivery import ReceiptDelivery
 from .review_workflow import (
+    InvalidReviewTransition,
     ReviewAction,
     ReviewHistoryEvent,
     ReviewRequest,
@@ -2154,7 +2155,11 @@ def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) 
                     ],
                     error_message=str(exc),
                 ),
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=(
+                    status.HTTP_409_CONFLICT
+                    if isinstance(exc, InvalidReviewTransition)
+                    else status.HTTP_400_BAD_REQUEST
+                ),
             )
         return RedirectResponse(
             url=request.url_for("portal_manager_review_detail", review_id=review_id),

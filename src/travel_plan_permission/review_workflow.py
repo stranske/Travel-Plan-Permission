@@ -28,6 +28,10 @@ class ReviewStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class InvalidReviewTransition(ValueError):
+    """A manager action attempted to change a finalized review."""
+
+
 @dataclass(frozen=True)
 class ReviewHistoryEvent:
     """Immutable review workflow event."""
@@ -100,6 +104,11 @@ def apply_review_action(
     rationale: str,
 ) -> ReviewRequest:
     """Apply a manager decision and return the updated review request."""
+
+    if review.status in {ReviewStatus.APPROVED, ReviewStatus.REJECTED}:
+        raise InvalidReviewTransition(
+            f"Manager review is already {review.status.value}; finalized reviews cannot be changed."
+        )
 
     rationale_text = rationale.strip()
     if not rationale_text:
