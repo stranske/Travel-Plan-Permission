@@ -932,7 +932,8 @@ class PlannerProposalStore:
 
         entries: list[DraftExceptionEntry] = []
         for draft_id in self.exception_requests_by_draft_id:
-            requests = self.list_exception_requests(draft_id)
+            self.escalate_exception_requests(draft_id)
+            requests = self.exception_requests_by_draft_id[draft_id]
             draft = self.portal_drafts_by_id.get(draft_id)
             review = self.lookup_manager_review_for_draft(draft_id)
             traveler_name = None
