@@ -13,6 +13,7 @@ from travel_plan_permission.models import (
     TripPlan,
     TripStatus,
 )
+from travel_plan_permission.receipts import Receipt
 
 
 class TestTripPlan:
@@ -233,6 +234,74 @@ class TestExpenseReport:
         assert by_category[ExpenseCategory.MEALS] == Decimal("60.00")
         assert by_category[ExpenseCategory.GROUND_TRANSPORT] == Decimal("50.00")
         assert ExpenseCategory.AIRFARE not in by_category
+
+    @pytest.mark.parametrize(
+        ("payments", "expected"),
+        [
+            ([], {}),
+            (
+                [False, False, False],
+                {
+                    ExpenseCategory.MEALS: Decimal("60.30"),
+                    ExpenseCategory.LODGING: Decimal("100"),
+                },
+            ),
+            (
+                [True, True, True],
+                {
+                    ExpenseCategory.MEALS: Decimal("0"),
+                    ExpenseCategory.LODGING: Decimal("0"),
+                },
+            ),
+            (
+                [False, True, True],
+                {
+                    ExpenseCategory.MEALS: Decimal("25.10"),
+                    ExpenseCategory.LODGING: Decimal("0"),
+                },
+            ),
+        ],
+        ids=["empty", "self-paid", "sponsor-paid", "mixed"],
+    )
+    def test_reimbursable_category_totals(
+        self, payments: list[bool], expected: dict[ExpenseCategory, Decimal]
+    ) -> None:
+        entries = [
+            (ExpenseCategory.MEALS, Decimal("25.10")),
+            (ExpenseCategory.MEALS, Decimal("35.20")),
+            (ExpenseCategory.LODGING, Decimal("100")),
+        ]
+        expenses = [
+            ExpenseItem(
+                category=category,
+                description="Travel expense",
+                amount=amount,
+                expense_date=date(2025, 2, 1),
+                receipt_references=[
+                    Receipt(
+                        total=amount,
+                        date=date(2025, 2, 1),
+                        vendor="Travel vendor",
+                        file_reference=f"receipt-{index}.pdf",
+                        file_size_bytes=100,
+                        paid_by_third_party=paid,
+                    )
+                ],
+                third_party_paid_explanation="Paid by sponsor" if paid else None,
+            )
+            for index, ((category, amount), paid) in enumerate(zip(entries, payments, strict=False))
+        ]
+        report = ExpenseReport(
+            report_id="EXP-SPONSOR",
+            trip_id="TRIP-SPONSOR",
+            traveler_name="Jane Smith",
+            expenses=expenses,
+        )
+        original = report.model_dump()
+
+        assert report.expenses_by_category() == expected
+        assert sum(expected.values(), Decimal("0")) == report.total_amount()
+        assert report.model_dump() == original
 
 
 class TestExpenseItem:
