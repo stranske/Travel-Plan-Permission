@@ -1,5 +1,13 @@
 # Policy API
 
+Trip dates must be chronological: `TripPlan.return_date` must be on or after
+`departure_date`, and `CanonicalTripPlan.return_date` must be on or after
+`depart_date`. Both model boundaries reject inverted dates with a validation
+error naming the dates. `check_trip_plan` also revalidates existing instances,
+including copies or mutations, before policy costing. Same-day trips remain
+valid with an inclusive duration of one day and the existing one-unit costing
+default.
+
 This document describes the stable policy API surface in
 `src/travel_plan_permission/policy_api.py` for use by the LangGraph
 orchestration layer and planner-facing integrations.

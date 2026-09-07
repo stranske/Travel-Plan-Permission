@@ -265,3 +265,20 @@ def test_ground_transport_rejects_non_finite_values(field, value) -> None:
     payload["ground_transport"] = {field: value}
     with pytest.raises(ValidationError, match="finite number"):
         load_trip_plan_input(payload)
+
+
+@pytest.mark.parametrize("return_date", ["2026-02-01", "2026-02-02"])
+def test_canonical_trip_plan_rejects_return_before_departure(return_date: str) -> None:
+    payload = _load_fixture()
+    payload.update(depart_date="2026-02-03", return_date=return_date)
+    with pytest.raises(ValidationError) as error:
+        CanonicalTripPlan.model_validate(payload)
+    assert "2026-02-03" in str(error.value)
+    assert return_date in str(error.value)
+
+
+def test_canonical_trip_plan_accepts_same_day_return() -> None:
+    payload = _load_fixture()
+    payload.update(depart_date="2026-02-03", return_date="2026-02-03")
+    plan = load_trip_plan_input(payload).plan
+    assert plan.duration_days() == 1

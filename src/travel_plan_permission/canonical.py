@@ -7,9 +7,9 @@ import warnings
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .models import ExpenseCategory, GroundTransport, TripPlan
 
@@ -108,6 +108,16 @@ class CanonicalTripPlan(BaseModel):
     attestations: CanonicalAttestations | None = None
 
     model_config = {"extra": "forbid"}
+
+    @model_validator(mode="after")
+    def validate_date_order(self) -> Self:
+        """Reject inverted dates at the canonical input boundary."""
+        if self.return_date < self.depart_date:
+            raise ValueError(
+                f"return_date {self.return_date} must be on or after "
+                f"depart_date {self.depart_date}"
+            )
+        return self
 
 
 @dataclass(frozen=True)

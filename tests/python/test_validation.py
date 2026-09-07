@@ -7,6 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from travel_plan_permission.models import ExpenseCategory, TripPlan
 from travel_plan_permission.providers import ProviderRegistry, ProviderType
@@ -402,3 +403,9 @@ providers:
             blocking=False,
         )
     ]
+
+
+def test_duration_rule_is_not_reached_for_inverted_dates() -> None:
+    # DUR-001 only checks the upper bound; construction enforces a duration >= 1.
+    with pytest.raises(ValidationError, match="2026-02-01.*2026-02-03"):
+        _build_plan(departure=date(2026, 2, 3), return_date=date(2026, 2, 1))

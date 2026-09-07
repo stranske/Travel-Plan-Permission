@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 
 from travel_plan_permission.models import (
     ApprovalOutcome,
@@ -339,3 +340,32 @@ class TestExpenseItem:
                 amount=Decimal("-10.00"),
                 expense_date=date(2025, 1, 15),
             )
+
+
+@pytest.mark.parametrize("return_date", [date(2026, 2, 1), date(2026, 2, 2)])
+def test_trip_plan_rejects_return_before_departure(return_date: date) -> None:
+    with pytest.raises(ValidationError) as error:
+        TripPlan(
+            trip_id="DATE-ORDER",
+            traveler_name="Alex",
+            destination="Boston, MA",
+            departure_date=date(2026, 2, 3),
+            return_date=return_date,
+            purpose="Meeting",
+            estimated_cost=Decimal("100"),
+        )
+    assert "2026-02-03" in str(error.value)
+    assert return_date.isoformat() in str(error.value)
+
+
+def test_trip_plan_accepts_same_day_return() -> None:
+    plan = TripPlan(
+        trip_id="SAME-DAY",
+        traveler_name="Alex",
+        destination="Boston, MA",
+        departure_date=date(2026, 2, 3),
+        return_date=date(2026, 2, 3),
+        purpose="Meeting",
+        estimated_cost=Decimal("100"),
+    )
+    assert plan.duration_days() == 1
