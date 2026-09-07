@@ -101,6 +101,10 @@ def _write_cell_value(cell: ET.Element, value: object, *, date_1904: bool) -> No
     if isinstance(value, Decimal | int | float):
         cell.attrib.pop("t", None)
         numeric = value if isinstance(value, Decimal) else Decimal(str(value))
+        # Excel numeric cells cannot represent NaN or infinity. Leave the
+        # existing styled cell blank, including for non-finite Decimal inputs.
+        if not numeric.is_finite():
+            return
         ET.SubElement(cell, _tag("v")).text = format(numeric, "f")
         return
 
