@@ -11,6 +11,7 @@ from travel_plan_permission.models import (
     ExceptionRequest,
     ExceptionStatus,
     ExceptionType,
+    InvalidExceptionTransition,
     build_exception_dashboard,
     determine_exception_approval_level,
 )
@@ -122,3 +123,35 @@ def test_exception_dashboard_patterns() -> None:
     assert dashboard["by_requestor"]["bob"] == 1
     assert dashboard["by_approver"]["mgr-1"] == 1
     assert dashboard["by_approver"]["director-9"] == 1
+
+
+@pytest.mark.parametrize("initial_status", [ExceptionStatus.PENDING, ExceptionStatus.ESCALATED])
+@pytest.mark.parametrize("first_decision", ["approve", "reject"])
+@pytest.mark.parametrize("second_decision", ["approve", "reject"])
+def test_exception_model_decision_is_terminal(
+    initial_status: ExceptionStatus, first_decision: str, second_decision: str
+) -> None:
+    request = ExceptionRequest(
+        type=ExceptionType.ADVANCE_BOOKING,
+        justification=_justification(),
+        requestor="traveler",
+        status=initial_status,
+    )
+    if first_decision == "approve":
+        request.approve(approver_id="first-approver", notes="Original decision")
+    else:
+        request.reject()
+    expected_status = (
+        ExceptionStatus.APPROVED if first_decision == "approve" else ExceptionStatus.REJECTED
+    )
+    assert request.status == expected_status
+    before = request.model_dump(mode="json")
+
+    with pytest.raises(InvalidExceptionTransition, match="finalized exceptions cannot be changed"):
+        if second_decision == "approve":
+            request.approve(
+                approver_id="second-approver", level=ExceptionApprovalLevel.BOARD, notes="Overwrite"
+            )
+        else:
+            request.reject()
+    assert request.model_dump(mode="json") == before
