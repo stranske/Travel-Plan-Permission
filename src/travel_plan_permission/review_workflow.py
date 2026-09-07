@@ -32,6 +32,16 @@ class InvalidReviewTransition(ValueError):
     """A manager action attempted to change a finalized review."""
 
 
+def review_action_error_status_code(exc: ValueError) -> int:
+    """Map review action validation failures to HTTP status codes."""
+
+    from fastapi import status
+
+    if isinstance(exc, InvalidReviewTransition):
+        return status.HTTP_409_CONFLICT
+    return status.HTTP_400_BAD_REQUEST
+
+
 @dataclass(frozen=True)
 class ReviewHistoryEvent:
     """Immutable review workflow event."""

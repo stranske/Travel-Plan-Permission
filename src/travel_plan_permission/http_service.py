@@ -91,12 +91,12 @@ from .portal_review import (
 )
 from .receipt_delivery import ReceiptDelivery
 from .review_workflow import (
-    InvalidReviewTransition,
     ReviewAction,
     ReviewHistoryEvent,
     ReviewRequest,
     ReviewStatus,
     ReviewWorkflowStore,
+    review_action_error_status_code,
 )
 from .security import (
     DEFAULT_ROLES,
@@ -2155,17 +2155,12 @@ def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) 
                     ],
                     error_message=str(exc),
                 ),
-                status_code=(
-                    status.HTTP_409_CONFLICT
-                    if isinstance(exc, InvalidReviewTransition)
-                    else status.HTTP_400_BAD_REQUEST
-                ),
+                status_code=review_action_error_status_code(exc),
             )
         return RedirectResponse(
             url=request.url_for("portal_manager_review_detail", review_id=review_id),
             status_code=status.HTTP_303_SEE_OTHER,
         )
-
 
 def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
     """Register admin exception decision and dashboard routes."""
