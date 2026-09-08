@@ -41,15 +41,21 @@ The following workflows have been archived to `.github/workflows-archive/`:
 
 ## Configuration
 
-Tool versions are pinned in `autofix-versions.env` for consistency between
-local development and CI:
+Tool versions are pinned in [autofix-versions.env](autofix-versions.env) for
+consistency between local development and CI. From the repository root, load
+and display the current pins directly from that file:
 
 ```bash
-RUFF_VERSION=0.8.4
-MYPY_VERSION=1.13.0
-PYTEST_VERSION=8.3.4
-# ... see file for full list
+source .github/workflows/autofix-versions.env
+printf '%s\n' \
+  "RUFF_VERSION=$RUFF_VERSION" \
+  "MYPY_VERSION=$MYPY_VERSION" \
+  "PYTEST_VERSION=$PYTEST_VERSION" \
+  "COVERAGE_VERSION=$COVERAGE_VERSION"
 ```
+
+The values follow the checked-out branch, including dependency-sync updates.
+See the canonical file for the full list of tool pins.
 
 ## Secrets
 
