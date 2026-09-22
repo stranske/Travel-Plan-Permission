@@ -58,6 +58,8 @@ def verdict_for(results: Sequence[PolicyResult]) -> str:
 
 
 def _row(result: PolicyResult) -> str:
+    """Render one escaped policy-result table row."""
+
     return (
         "<tr>"
         f'<td class="rule">{html.escape(result.rule_id)}</td>'
@@ -119,6 +121,8 @@ scripts/render_policy_report.py — evaluated locally, no hosted service.</p>
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Read a trip plan and write its policy report to the requested path."""
+
     parser = argparse.ArgumentParser(description=__doc__ and __doc__.splitlines()[0])
     parser.add_argument(
         "plan", type=Path, help="TripPlan JSON file (canonical or internal)"
@@ -127,6 +131,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     payload = json.loads(args.plan.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        parser.error("TripPlan JSON must be an object")
     plan, results = evaluate_plan(payload)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(

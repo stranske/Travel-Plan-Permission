@@ -7,9 +7,9 @@ work-environment response
 ([`INFORMATION-REQUEST-RESPONSE.md` §F item 17, travel policy engine](https://github.com/stranske/Ready/blob/main/research-program/artifacts/work-bundle/INFORMATION-REQUEST-RESPONSE.md)),
 the travel policy engine is ranked as **blocked by a hosting gap**:
 
-> it is described as running as an internal web service, but nothing built in that environment runs
-> that way — every working tool is a local script, a COM-driven Office file, or a static HTML page
-> opened locally; there is no server-hosted, database-backed application
+> Nothing built in this environment today runs that way — every tool here is a local script,
+> a COM-driven Office file, or a static HTML page opened locally; there is no server-hosted,
+> database-backed application running anywhere I've seen.
 
 Travel-Plan-Permission's primary surface today is `tpp-planner-service` (FastAPI + Uvicorn) at
 `src/travel_plan_permission/http_service.py`, deployed via the Render blueprint in `render.yaml`.
