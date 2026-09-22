@@ -46,6 +46,22 @@ To see usage information, run:
 fill-spreadsheet --help
 ```
 
+## Local-first delivery (no hosted service)
+
+For environments that cannot host `tpp-planner-service`, two local-first shapes deliver policy
+value as plain local scripts that write a file to disk:
+
+```bash
+# Trip plan -> completed Excel travel request
+fill-spreadsheet path/to/plan.json path/to/output.xlsx
+
+# Trip plan -> self-contained static HTML policy report
+python scripts/render_policy_report.py path/to/plan.json path/to/report.html
+```
+
+See [`docs/local-first-delivery.md`](docs/local-first-delivery.md) for the surface map, verdict
+semantics, and verification.
+
 ## Planner HTTP Service
 
 For the full local or preview live-test path, use the
