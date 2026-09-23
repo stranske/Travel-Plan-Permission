@@ -1920,13 +1920,17 @@ def test_portal_submit_rejects_blocking_policy_verdict(monkeypatch) -> None:
     _set_runtime_env(monkeypatch)
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
-    original_portal_review_state = http_service.portal_review_state
+    original_portal_review_state = http_service.portal_review_state_for_persisted_draft
 
     def blocked_portal_review_state(*args, **kwargs):
         review = original_portal_review_state(*args, **kwargs)
         return replace(review, policy_blocking_codes=["fare_evidence"])
 
-    monkeypatch.setattr(http_service, "portal_review_state", blocked_portal_review_state)
+    monkeypatch.setattr(
+        http_service,
+        "portal_review_state_for_persisted_draft",
+        blocked_portal_review_state,
+    )
     draft_id, _location = _create_portal_draft(client)
 
     submit = client.post(

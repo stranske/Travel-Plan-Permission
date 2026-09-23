@@ -272,3 +272,34 @@ def portal_review_state(
         submission_response=submission_response,
         manager_review=manager_review,
     )
+
+
+def portal_review_state_for_persisted_draft(
+    draft: Any,
+    proposal_store: Any,
+    *,
+    required_fields: tuple[str, ...],
+    canonical_payload_builder: Callable[[dict[str, object]], dict[str, object]],
+    generate_artifacts: bool = True,
+    submission_response: PlannerProposalOperationResponse | None = None,
+    manager_review: ReviewRequest | None = None,
+) -> PortalReviewState:
+    """Portal review for a stored draft, preserving linked trip identity."""
+
+    return portal_review_state(
+        draft.draft_id,
+        draft.answers,
+        required_fields=required_fields,
+        canonical_payload_builder=canonical_payload_builder,
+        generate_artifacts=generate_artifacts,
+        submission_response=(
+            submission_response
+            if submission_response is not None
+            else draft.submission_response
+        ),
+        manager_review=(
+            manager_review
+            if manager_review is not None
+            else proposal_store.lookup_manager_review_for_draft(draft.draft_id)
+        ),
+    )

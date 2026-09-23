@@ -92,7 +92,7 @@ from .portal_handoff import (
 from .portal_review import (
     PortalArtifact,
     PortalReviewState,
-    portal_review_state,
+    portal_review_state_for_persisted_draft,
     portal_validation_state,
 )
 from .receipt_delivery import ReceiptDelivery
@@ -1855,13 +1855,11 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No portal draft found for '{draft_id}'.",
             )
-        review = portal_review_state(
-            draft.draft_id,
-            draft.answers,
+        review = portal_review_state_for_persisted_draft(
+            draft,
+            proposal_store,
             required_fields=_PORTAL_REQUIRED_FIELDS,
             canonical_payload_builder=_canonical_payload_from_answers,
-            submission_response=draft.submission_response,
-            manager_review=proposal_store.lookup_manager_review_for_draft(draft.draft_id),
         )
         if review.artifacts and not draft.cached_artifacts:
             proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
@@ -1941,13 +1939,11 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
 
         supporting_doc = parsed.get("supporting_doc", [""])[-1].strip()
         amount_text = parsed.get("amount", [""])[-1].strip()
-        review = portal_review_state(
-            draft.draft_id,
-            draft.answers,
+        review = portal_review_state_for_persisted_draft(
+            draft,
+            proposal_store,
             required_fields=_PORTAL_REQUIRED_FIELDS,
             canonical_payload_builder=_canonical_payload_from_answers,
-            submission_response=draft.submission_response,
-            manager_review=proposal_store.lookup_manager_review_for_draft(draft.draft_id),
         )
         if review.artifacts and not draft.cached_artifacts:
             proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
@@ -2009,13 +2005,11 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No portal draft found for '{draft_id}'.",
             )
-        review = portal_review_state(
-            draft.draft_id,
-            draft.answers,
+        review = portal_review_state_for_persisted_draft(
+            draft,
+            proposal_store,
             required_fields=_PORTAL_REQUIRED_FIELDS,
             canonical_payload_builder=_canonical_payload_from_answers,
-            submission_response=draft.submission_response,
-            manager_review=proposal_store.lookup_manager_review_for_draft(draft.draft_id),
         )
         if review.trip_plan is None or review.missing_fields or review.validation_errors:
             raise HTTPException(
@@ -2049,9 +2043,9 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
         )
         proposal_store.record_portal_submission(draft.draft_id, submission_response)
         manager_review = proposal_store.create_manager_review(review)
-        review = portal_review_state(
-            draft.draft_id,
-            draft.answers,
+        review = portal_review_state_for_persisted_draft(
+            draft,
+            proposal_store,
             required_fields=_PORTAL_REQUIRED_FIELDS,
             canonical_payload_builder=_canonical_payload_from_answers,
             submission_response=submission_response,
@@ -2282,14 +2276,12 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No portal draft found for '{draft_id}'.",
             )
-        review = portal_review_state(
-            draft.draft_id,
-            draft.answers,
+        review = portal_review_state_for_persisted_draft(
+            draft,
+            proposal_store,
             required_fields=_PORTAL_REQUIRED_FIELDS,
             canonical_payload_builder=_canonical_payload_from_answers,
             generate_artifacts=not bool(draft.cached_artifacts),
-            submission_response=draft.submission_response,
-            manager_review=proposal_store.lookup_manager_review_for_draft(draft.draft_id),
         )
         if review.policy_blocking_codes:
             raise HTTPException(
