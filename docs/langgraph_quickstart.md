@@ -45,6 +45,9 @@ This loader:
 - Builds `destination` from `city_state` + `destination_zip`.
 - Maps `business_purpose` to `TripPlan.purpose`.
 - Aggregates estimated costs into `expense_breakdown` and `expected_costs`.
+- Derives a deterministic `trip_id` from trip identity fields. Cost-only revisions
+  keep the ID, but callers that need an ID to survive destination, date, purpose,
+  airport, or event-date changes must provide an explicit internal `TripPlan.trip_id`.
 
 Example:
 
