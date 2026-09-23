@@ -330,6 +330,28 @@ class PolicyValidator(YamlConfigLoaderMixin):
     def from_environment(cls, env_var: str = "POLICY_CONFIG") -> PolicyValidator:
         return super().from_environment(env_var)
 
+    def published_budget_rules(self) -> dict[str, object]:
+        """The spend limits this validator enforces, in the shape planners read.
+
+        Only what the configuration defines is published. A policy with no budget limit
+        publishes nothing, and a planner must then say the cap cannot be checked rather
+        than assume one. Policy amounts carry no currency; the planner integration submits
+        USD, so the limits are published under USD keys.
+        """
+
+        for rule in self.rules:
+            if not isinstance(rule, BudgetLimitRule):
+                continue
+            published: dict[str, object] = {"rule_id": rule.code, "blocking": rule.blocking}
+            if rule.trip_limit is not None:
+                published["max_trip_total_usd"] = float(rule.trip_limit)
+            if rule.category_limits:
+                published["category_limits_usd"] = {
+                    category.value: float(limit) for category, limit in rule.category_limits.items()
+                }
+            return published
+        return {}
+
     @classmethod
     def from_runtime_config(cls) -> PolicyValidator:
         """Load inline POLICY_CONFIG YAML, or the default validation configuration.

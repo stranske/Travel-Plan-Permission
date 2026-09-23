@@ -163,6 +163,15 @@ class PlannerPolicySnapshot(BaseModel):
         default_factory=list,
         description="Current triggers that require approval or a waiver workflow",
     )
+    budget_rules: dict[str, object] = Field(
+        default_factory=dict,
+        description=(
+            "Spend limits this policy enforces, so a planner can show them before submission. "
+            "Keys: rule_id, max_trip_total_usd, category_limits_usd, blocking. Empty when the "
+            "policy sets no budget limit. Policy amounts carry no currency; the planner "
+            "integration submits USD, so the limits are published as USD."
+        ),
+    )
     auth: PlannerAuthContract = Field(
         ..., description="Authentication guidance for this transport seam"
     )
