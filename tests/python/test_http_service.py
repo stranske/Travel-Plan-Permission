@@ -10,6 +10,7 @@ import tempfile
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -1906,6 +1907,9 @@ def test_portal_conflicting_linked_trip_ids_return_conflict(monkeypatch) -> None
         draft,
         submission_response=conflicting_response,
     )
+    plans_before = deepcopy(store.plans_by_trip_id)
+    proposals_before = deepcopy(store.proposals_by_execution_id)
+    manager_review_before = deepcopy(store.lookup_manager_review_for_draft(draft_id))
 
     response = client.post(
         f"/portal/review/{draft_id}/submit",
@@ -1914,6 +1918,15 @@ def test_portal_conflicting_linked_trip_ids_return_conflict(monkeypatch) -> None
 
     assert response.status_code == 409
     assert "conflicting linked trip IDs" in response.json()["detail"]
+    assert store.plans_by_trip_id == plans_before
+    assert store.proposals_by_execution_id == proposals_before
+    assert store.lookup_manager_review_for_draft(draft_id) == manager_review_before
+    artifact = client.get(
+        f"/portal/review/{draft_id}/artifacts/itinerary",
+        headers=AUTH_HEADER,
+    )
+    assert artifact.status_code == 409
+    assert "conflicting linked trip IDs" in artifact.json()["detail"][0]
 
 
 def test_portal_submit_rejects_blocking_policy_verdict(monkeypatch) -> None:
@@ -3880,14 +3893,18 @@ def test_manager_review_resubmit_refreshes_trip_plan(monkeypatch, tmp_path) -> N
         draft, answers={**draft.answers, "traveler_name": "CHANGED-TRAVELER"}
     )
     current_states = []
-    original = http_service.portal_review_state
+    original = http_service.portal_review_state_for_persisted_draft
 
     def capture_review(*args, **kwargs):
         result = original(*args, **kwargs)
         current_states.append(result)
         return result
 
-    monkeypatch.setattr(http_service, "portal_review_state", capture_review)
+    monkeypatch.setattr(
+        http_service,
+        "portal_review_state_for_persisted_draft",
+        capture_review,
+    )
     assert client.post(submit_url, headers=traveler).status_code == 200
     refreshed = store.lookup_manager_review_for_draft(draft_id)
     assert refreshed is not None

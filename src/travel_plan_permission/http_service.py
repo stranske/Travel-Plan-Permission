@@ -2283,6 +2283,8 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
             canonical_payload_builder=_canonical_payload_from_answers,
             generate_artifacts=not bool(draft.cached_artifacts),
         )
+        if review.validation_errors:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=review.validation_errors)
         if review.policy_blocking_codes:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
