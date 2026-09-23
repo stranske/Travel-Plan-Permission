@@ -227,15 +227,22 @@ def build_approval_packet(
 ) -> ApprovalPacket:
     """Render emails and PDF for a multi-level approval packet."""
 
-    raw_costs = cost_breakdown or trip_plan.expense_breakdown
+    raw_costs = trip_plan.expense_breakdown if cost_breakdown is None else cost_breakdown
     costs = {
         str(getattr(category, "value", category)): amount for category, amount in raw_costs.items()
     }
-    if not costs and trip_plan.estimated_cost:
+    if cost_breakdown is None and not costs and trip_plan.estimated_cost:
         costs["estimated_total"] = trip_plan.estimated_cost
 
     history = tuple(approval_history or trip_plan.approval_history)
     total_cost = sum(costs.values(), Decimal("0"))
+    if cost_breakdown is not None and total_cost.quantize(
+        Decimal("0.01")
+    ) != trip_plan.estimated_cost.quantize(Decimal("0.01")):
+        raise ValueError(
+            f"cost_breakdown total {total_cost} does not match "
+            f"trip_plan.estimated_cost {trip_plan.estimated_cost} at currency precision"
+        )
 
     base_context = {
         "trip": trip_plan,
