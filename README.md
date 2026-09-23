@@ -32,6 +32,14 @@ The canonical TripPlan contract is the JSON schema in
 derived from this schema via `canonical_trip_plan_to_model` in
 `src/travel_plan_permission/canonical.py`.
 
+Canonical payloads do not carry a `trip_id`. Conversion derives a deterministic
+identifier with a readable departure-date/traveler prefix plus a hash of the
+trip's identity fields (destination, return date, purpose, airports, and event
+dates). Replaying the same trip identity produces the same ID, and cost-only
+revisions keep it. A caller that needs one identifier to survive an identity-field
+change must supply an explicit `trip_id` through the internal `TripPlan` contract
+or the legacy conversion override.
+
 ## CLI: Fill Travel Spreadsheet
 
 Generate a completed travel request spreadsheet from a TripPlan JSON file:

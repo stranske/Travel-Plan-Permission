@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import warnings
 from dataclasses import dataclass
@@ -134,7 +136,22 @@ def _slugify(text: str) -> str:
 
 
 def _default_trip_id(plan: CanonicalTripPlan) -> str:
-    return f"TRIP-{plan.depart_date:%Y%m%d}-{_slugify(plan.traveler_name)}"
+    identity = {
+        "business_purpose": plan.business_purpose,
+        "city_state": plan.city_state,
+        "depart_date": plan.depart_date.isoformat(),
+        "departure_city_airport": plan.departure_city_airport,
+        "destination_zip": plan.destination_zip,
+        "event_dates": plan.event_dates,
+        "return_city_airport": plan.return_city_airport,
+        "return_date": plan.return_date.isoformat(),
+        "traveler_name": plan.traveler_name,
+    }
+    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
+    suffix = hashlib.sha256(encoded).hexdigest()[:12].upper()
+    return f"TRIP-{plan.depart_date:%Y%m%d}-{_slugify(plan.traveler_name)}-{suffix}"
 
 
 def _format_destination(plan: CanonicalTripPlan) -> str:

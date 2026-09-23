@@ -56,6 +56,31 @@ def test_canonical_conversion_builds_trip_plan() -> None:
     assert trip_plan.comparable_hotels == [Decimal("185"), Decimal("199")]
 
 
+def test_canonical_conversion_generates_distinct_ids_for_distinct_same_day_trips() -> None:
+    chicago_payload = _load_fixture()
+    chicago_payload["city_state"] = "Chicago, IL"
+    denver_payload = _load_fixture()
+    denver_payload["city_state"] = "Denver, CO"
+
+    chicago_id = load_trip_plan_input(chicago_payload).plan.trip_id
+    denver_id = load_trip_plan_input(denver_payload).plan.trip_id
+
+    assert chicago_id != denver_id
+    assert chicago_id.startswith("TRIP-20251001-JANE-DOE-")
+    assert denver_id.startswith("TRIP-20251001-JANE-DOE-")
+
+
+def test_canonical_conversion_keeps_derived_id_stable_for_cost_only_revisions() -> None:
+    original_payload = _load_fixture()
+    revised_payload = _load_fixture()
+    revised_payload["event_registration_cost"] = "425"
+
+    original_id = load_trip_plan_input(original_payload).plan.trip_id
+    revised_id = load_trip_plan_input(revised_payload).plan.trip_id
+
+    assert original_id == revised_id
+
+
 def test_load_trip_plan_payload_handles_canonical() -> None:
     payload = _load_fixture()
 
