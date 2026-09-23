@@ -68,6 +68,41 @@ def test_manager_email_contains_required_fields() -> None:
     assert links.override_url in body
 
 
+def test_build_packet_rejects_cost_breakdown_that_disagrees_with_trip_total() -> None:
+    trip = _sample_trip_plan()
+    links = ApprovalLinks(
+        approve_url="https://example.com/approve",
+        reject_url="https://example.com/reject",
+        override_url="https://example.com/override",
+    )
+
+    with pytest.raises(ValueError, match="does not match trip_plan.estimated_cost"):
+        build_approval_packet(
+            trip_plan=trip,
+            compliance_status="Compliant",
+            approval_links=links,
+            cost_breakdown={"airfare": Decimal("1")},
+        )
+
+
+def test_build_packet_reconciles_override_at_currency_precision() -> None:
+    trip = _sample_trip_plan()
+    links = ApprovalLinks(
+        approve_url="https://example.com/approve",
+        reject_url="https://example.com/reject",
+        override_url="https://example.com/override",
+    )
+
+    packet = build_approval_packet(
+        trip_plan=trip,
+        compliance_status="Compliant",
+        approval_links=links,
+        cost_breakdown={"airfare": Decimal("1250.504")},
+    )
+
+    assert packet.total_cost == Decimal("1250.504")
+
+
 def test_pdf_page_counts_scale_with_complexity() -> None:
     """PDF stays single-page for routine trips and grows for complex itineraries."""
     trip = _sample_trip_plan()
