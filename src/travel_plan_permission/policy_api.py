@@ -1193,6 +1193,7 @@ def get_policy_snapshot(
         booking_requirements=booking_requirements,
         documentation_rules=documentation_rules,
         approval_triggers=approval_triggers,
+        budget_rules=validator.published_budget_rules(),
         auth=PlannerAuthContract(
             endpoint=PLANNER_POLICY_SNAPSHOT_ENDPOINT,
             required_permission="view",
