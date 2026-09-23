@@ -238,9 +238,12 @@ class ProviderApprovalRule(ValidationRule):
         *,
         reference_date: date | None = None,
     ) -> list[ValidationResult]:
+        # Provider contracts govern the travel date by default. Explicit dates remain
+        # available to callers that need to evaluate a historical or proposed policy state.
+        provider_reference_date = reference_date or plan.departure_date
         registry = ProviderRegistry.from_file(self.providers_path)
         try:
-            registry.assert_has_active_providers(reference_date=reference_date)
+            registry.assert_has_active_providers(reference_date=provider_reference_date)
         except ValueError as exc:
             return [self._result(message=str(exc))]
         destination = plan.destination
@@ -256,7 +259,7 @@ class ProviderApprovalRule(ValidationRule):
                 provider_name,
                 provider_type,
                 destination,
-                reference_date=reference_date,
+                reference_date=provider_reference_date,
             ):
                 continue
             readable_type = provider_type.value.replace("_", " ")

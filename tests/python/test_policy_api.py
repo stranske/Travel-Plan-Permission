@@ -121,6 +121,59 @@ def test_check_trip_plan_reports_policy_issues(trip_plan: TripPlan) -> None:
         assert issue.context["rule_id"] == issue.code
 
 
+def test_check_trip_plan_uses_departure_date_for_provider_contract(
+    trip_plan: TripPlan,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    today = date.today()
+    departure = today + timedelta(days=30)
+    providers_path = tmp_path / "providers.yaml"
+    providers_path.write_text(
+        (
+            "version: future-contract\n"
+            f"updated_at: {today.isoformat()}\n"
+            "approver: Test\n"
+            "providers:\n"
+            "  - name: Future Air\n"
+            "    type: airline\n"
+            "    contract_id: future-air-1\n"
+            f"    valid_from: {(today + timedelta(days=1)).isoformat()}\n"
+            f"    valid_to: {(departure + timedelta(days=30)).isoformat()}\n"
+            "    destinations:\n"
+            "      - new york\n"
+        ),
+        encoding="utf-8",
+    )
+    validator = PolicyValidator(
+        [
+            validation_module.ProviderApprovalRule(
+                name="provider_departure_date",
+                code="PROV-DEPARTURE",
+                providers_path=str(providers_path),
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        PolicyValidator,
+        "from_runtime_config",
+        classmethod(lambda _cls: validator),
+    )
+    plan = trip_plan.model_copy(
+        update={
+            "departure_date": departure,
+            "return_date": departure + timedelta(days=4),
+            "selected_providers": {ExpenseCategory.AIRFARE: "Future Air"},
+        }
+    )
+
+    verdict = check_trip_plan(plan)
+    snapshot = get_policy_snapshot(plan)
+
+    assert "PROV-DEPARTURE" not in {issue.code for issue in verdict.issues}
+    assert "PROV-DEPARTURE" not in {trigger.code for trigger in snapshot.approval_triggers}
+
+
 def test_check_trip_plan_honors_configured_validation_source(
     trip_plan: TripPlan,
     monkeypatch: pytest.MonkeyPatch,
