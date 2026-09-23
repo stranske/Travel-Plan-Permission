@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -250,6 +250,41 @@ class TestDurationLimitRule:
 
 class TestProviderApprovalRule:
     """Provider approval rule behavior."""
+
+    def test_defaults_contract_activity_to_trip_departure(self, tmp_path: Path) -> None:
+        today = date.today()
+        departure = today + timedelta(days=30)
+        providers_path = tmp_path / "providers.yaml"
+        providers_path.write_text(
+            (
+                "version: future-contract\n"
+                f"updated_at: {today.isoformat()}\n"
+                "approver: Test\n"
+                "providers:\n"
+                "  - name: Future Air\n"
+                "    type: airline\n"
+                "    contract_id: future-air-1\n"
+                f"    valid_from: {(today + timedelta(days=1)).isoformat()}\n"
+                f"    valid_to: {(departure + timedelta(days=30)).isoformat()}\n"
+                "    destinations:\n"
+                "      - new york\n"
+            ),
+            encoding="utf-8",
+        )
+        rule = ProviderApprovalRule(
+            name="provider_warning",
+            code="PROV-TEST",
+            providers_path=str(providers_path),
+        )
+        plan = _build_plan(
+            departure=departure,
+            return_date=departure + timedelta(days=4),
+            destination="New York, NY",
+        )
+        plan.selected_providers = {ExpenseCategory.AIRFARE: "Future Air"}
+
+        assert rule.evaluate(plan) == []
+        assert rule.evaluate(plan, reference_date=today)
 
     def test_warns_when_provider_not_approved(self) -> None:
         rule = ProviderApprovalRule(
