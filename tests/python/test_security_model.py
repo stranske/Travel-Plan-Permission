@@ -57,7 +57,13 @@ def test_endpoint_authorization_and_delegation() -> None:
 
 def test_role_change_requires_admin_approval_and_is_logged() -> None:
     audit_log = AuditLog()
-    security = SecurityModel(audit_log=audit_log)
+    security = SecurityModel(
+        audit_log=audit_log,
+        user_roles={
+            "not-admin": RoleName.APPROVER,
+            "susan": RoleName.SYSTEM_ADMIN,
+        },
+    )
     request = security.request_role_change(
         requester="alice", target_user="bob", new_role=RoleName.FINANCE_ADMIN
     )
@@ -82,6 +88,49 @@ def test_role_change_requires_admin_approval_and_is_logged() -> None:
         RoleChangeState.PENDING_APPROVAL.value,
         RoleChangeState.APPROVED.value,
     }
+
+
+def test_role_change_approval_derives_admin_role_from_actor() -> None:
+    security = SecurityModel(user_roles={"eve": RoleName.APPROVER})
+    request = security.request_role_change(
+        requester="alice", target_user="bob", new_role=RoleName.FINANCE_ADMIN
+    )
+
+    with pytest.raises(PermissionError, match="matching assigned admin role"):
+        security.approve_role_change(
+            admin_actor="eve",
+            admin_role=RoleName.SYSTEM_ADMIN,
+            request_id=request.request_id,
+        )
+
+    assert request.state == RoleChangeState.PENDING_APPROVAL
+
+
+def test_role_change_rejection_requires_matching_actor_assignment() -> None:
+    security = SecurityModel(
+        user_roles={
+            "eve": RoleName.APPROVER,
+            "pat": RoleName.POLICY_ADMIN,
+        }
+    )
+    request = security.request_role_change(
+        requester="alice", target_user="bob", new_role=RoleName.FINANCE_ADMIN
+    )
+
+    with pytest.raises(PermissionError, match="matching assigned admin role"):
+        security.reject_role_change(
+            admin_actor="eve",
+            admin_role=RoleName.POLICY_ADMIN,
+            request_id=request.request_id,
+        )
+
+    assert request.state == RoleChangeState.PENDING_APPROVAL
+    rejected_request = security.reject_role_change(
+        admin_actor="pat",
+        admin_role=RoleName.POLICY_ADMIN,
+        request_id=request.request_id,
+    )
+    assert rejected_request.state == RoleChangeState.REJECTED
 
 
 def test_audit_log_captures_authentication_and_authorization_events() -> None:
