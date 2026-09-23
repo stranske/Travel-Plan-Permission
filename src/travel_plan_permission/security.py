@@ -338,12 +338,14 @@ class SecurityModel:
         endpoint_permissions: dict[str, Permission] | None = None,
         audit_log: AuditLog | None = None,
         sso_plans: dict[str, SSOProviderPlan] | None = None,
+        user_roles: Mapping[str, RoleName] | None = None,
     ) -> None:
         self.roles = roles or DEFAULT_ROLES
         self.endpoint_permissions = endpoint_permissions or API_ENDPOINT_PERMISSIONS
         self.audit_log = audit_log or AuditLog()
         self.delegations: dict[str, Delegation] = {}
         self.sso_plans = sso_plans or DEFAULT_SSO_PLANS
+        self.user_roles = dict(user_roles or {})
         self.pending_role_changes: dict[str, RoleChangeRequest] = {}
 
     def required_permission(self, endpoint: str) -> Permission:
@@ -440,31 +442,67 @@ class SecurityModel:
         )
         return request
 
+    def _require_assigned_admin_role(
+        self,
+        *,
+        admin_actor: str,
+        claimed_role: RoleName,
+        request_id: str,
+        transition: str,
+    ) -> RoleName:
+        """Resolve admin authority from the actor's assignment, not its claim."""
+
+        assigned_role = self.user_roles.get(admin_actor)
+        reason_code: str | None = None
+        if assigned_role is None:
+            reason_code = "rbac.role_assignment_missing"
+        elif assigned_role != claimed_role:
+            reason_code = "rbac.role_claim_mismatch"
+        elif assigned_role not in {RoleName.SYSTEM_ADMIN, RoleName.POLICY_ADMIN}:
+            reason_code = "rbac.role_admin_required"
+
+        if reason_code is not None:
+            _audit.write_audit_event(
+                _audit.EVENT_RBAC_ROLE_CHANGE,
+                actor_subject=admin_actor,
+                outcome=_audit.OUTCOME_FAILURE,
+                actor_role=assigned_role.value if assigned_role is not None else None,
+                target_kind="role_change_request",
+                target_id=request_id,
+                metadata={
+                    "transition": transition,
+                    "reason_code": reason_code,
+                    "claimed_role": claimed_role.value,
+                    "assigned_role": (
+                        assigned_role.value if assigned_role is not None else None
+                    ),
+                },
+            )
+            raise PermissionError(
+                "Role-change decisions require a matching assigned admin role"
+            )
+
+        assert assigned_role is not None
+        return assigned_role
+
     def approve_role_change(
         self, admin_actor: str, admin_role: RoleName, request_id: str
     ) -> RoleChangeRequest:
         """Approve a pending role change; only admins may approve."""
 
-        if admin_role not in {RoleName.SYSTEM_ADMIN, RoleName.POLICY_ADMIN}:
-            _audit.write_audit_event(
-                _audit.EVENT_RBAC_ROLE_CHANGE,
-                actor_subject=admin_actor,
-                outcome=_audit.OUTCOME_FAILURE,
-                actor_role=admin_role.value,
-                target_kind="role_change_request",
-                target_id=request_id,
-                metadata={
-                    "transition": "approve",
-                    "reason_code": "rbac.role_admin_required",
-                },
-            )
-            raise PermissionError("Only admin roles may approve role changes")
+        assigned_role = self._require_assigned_admin_role(
+            admin_actor=admin_actor,
+            claimed_role=admin_role,
+            request_id=request_id,
+            transition="approve",
+        )
 
         request = self.pending_role_changes.get(request_id)
         if request is None:
             raise KeyError(f"No pending role change for id '{request_id}'")
 
         request.state = RoleChangeState.APPROVED
+        self.user_roles[request.target_user] = request.new_role
         self.audit_log.record(
             event_type=AuditEventType.ROLE_CHANGE,
             actor=admin_actor,
@@ -476,7 +514,7 @@ class SecurityModel:
             _audit.EVENT_RBAC_ROLE_CHANGE,
             actor_subject=admin_actor,
             outcome=request.state.value,
-            actor_role=admin_role.value,
+            actor_role=assigned_role.value,
             target_kind="user",
             target_id=request.target_user,
             metadata={
@@ -492,20 +530,12 @@ class SecurityModel:
     ) -> RoleChangeRequest:
         """Reject a pending role change; only admins may reject."""
 
-        if admin_role not in {RoleName.SYSTEM_ADMIN, RoleName.POLICY_ADMIN}:
-            _audit.write_audit_event(
-                _audit.EVENT_RBAC_ROLE_CHANGE,
-                actor_subject=admin_actor,
-                outcome=_audit.OUTCOME_FAILURE,
-                actor_role=admin_role.value,
-                target_kind="role_change_request",
-                target_id=request_id,
-                metadata={
-                    "transition": "reject",
-                    "reason_code": "rbac.role_admin_required",
-                },
-            )
-            raise PermissionError("Only admin roles may reject role changes")
+        assigned_role = self._require_assigned_admin_role(
+            admin_actor=admin_actor,
+            claimed_role=admin_role,
+            request_id=request_id,
+            transition="reject",
+        )
 
         request = self.pending_role_changes.get(request_id)
         if request is None:
@@ -523,7 +553,7 @@ class SecurityModel:
             _audit.EVENT_RBAC_ROLE_CHANGE,
             actor_subject=admin_actor,
             outcome=request.state.value,
-            actor_role=admin_role.value,
+            actor_role=assigned_role.value,
             target_kind="user",
             target_id=request.target_user,
             metadata={

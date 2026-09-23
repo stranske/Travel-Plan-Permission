@@ -767,7 +767,7 @@ class TestEmitPoints:
         from travel_plan_permission.security import RoleName, SecurityModel
 
         audit.set_default_store(store)
-        model = SecurityModel()
+        model = SecurityModel(user_roles={"admin": RoleName.SYSTEM_ADMIN})
         request = model.request_role_change("alice", "bob", RoleName.APPROVER)
         model.approve_role_change("admin", RoleName.SYSTEM_ADMIN, request.request_id)
 
@@ -778,6 +778,35 @@ class TestEmitPoints:
         ]
         assert len(approvals) == 1
         assert approvals[0].actor_role == RoleName.SYSTEM_ADMIN.value
+
+    def test_spoofed_role_change_admin_role_emits_failure(
+        self, store: audit.SQLiteAuditEventStore
+    ) -> None:
+        from travel_plan_permission.security import (
+            RoleChangeState,
+            RoleName,
+            SecurityModel,
+        )
+
+        audit.set_default_store(store)
+        model = SecurityModel(user_roles={"eve": RoleName.APPROVER})
+        request = model.request_role_change("alice", "bob", RoleName.FINANCE_ADMIN)
+
+        with pytest.raises(PermissionError, match="matching assigned admin role"):
+            model.approve_role_change("eve", RoleName.SYSTEM_ADMIN, request.request_id)
+
+        failures = [
+            row
+            for row in store.query(event_type=audit.EVENT_RBAC_ROLE_CHANGE)
+            if row.metadata.get("transition") == "approve"
+        ]
+        assert len(failures) == 1
+        assert failures[0].outcome == audit.OUTCOME_FAILURE
+        assert failures[0].actor_role == RoleName.APPROVER.value
+        assert failures[0].metadata["reason_code"] == "rbac.role_claim_mismatch"
+        assert failures[0].metadata["claimed_role"] == RoleName.SYSTEM_ADMIN.value
+        assert failures[0].metadata["assigned_role"] == RoleName.APPROVER.value
+        assert request.state == RoleChangeState.PENDING_APPROVAL
 
     def test_proposal_status_change_emits_from_to_status(
         self, store: audit.SQLiteAuditEventStore
