@@ -36,9 +36,10 @@ Canonical payloads do not carry a `trip_id`. Conversion derives a deterministic
 identifier with a readable departure-date/traveler prefix plus a hash of the
 trip's identity fields (destination, return date, purpose, airports, and event
 dates). Replaying the same trip identity produces the same ID, and cost-only
-revisions keep it. A caller that needs one identifier to survive an identity-field
-change must supply an explicit `trip_id` through the internal `TripPlan` contract
-or the legacy conversion override.
+revisions keep it. A persisted portal draft retains its established ID when it is
+replayed across an ID-generation upgrade. A caller that needs one identifier to
+survive an identity-field change must supply an explicit `trip_id` through the
+internal `TripPlan` contract or the legacy conversion override.
 
 ## CLI: Fill Travel Spreadsheet
 

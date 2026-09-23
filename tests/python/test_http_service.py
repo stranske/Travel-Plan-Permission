@@ -20,7 +20,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
-from travel_plan_permission import audit, http_service, planner_auth, portal_review
+from travel_plan_permission import audit, canonical, http_service, planner_auth, portal_review
 from travel_plan_permission.http_service import (
     PlannerProposalStore,
     PortalArtifact,
@@ -1834,6 +1834,89 @@ def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
     assert summary.headers["content-type"].startswith(("application/pdf", "text/plain"))
     assert submit.status_code == 200
     assert "Submission result" in submit.text
+
+
+def test_portal_replay_preserves_established_trip_id_after_upgrade(
+    monkeypatch, tmp_path
+) -> None:
+    _set_runtime_env(monkeypatch)
+    state_path = tmp_path / "legacy-trip-id.sqlite3"
+    monkeypatch.setattr(
+        canonical,
+        "_default_trip_id",
+        lambda plan: (
+            f"TRIP-{plan.depart_date:%Y%m%d}-"
+            f"{canonical._slugify(plan.traveler_name)}"
+        ),
+    )
+    first_store = PlannerProposalStore(state_path=state_path)
+    first_client = TestClient(create_app(first_store))
+    draft_id, _location = _create_portal_draft(first_client)
+
+    first_submit = first_client.post(
+        f"/portal/review/{draft_id}/submit",
+        headers=AUTH_HEADER,
+        follow_redirects=True,
+    )
+
+    assert first_submit.status_code == 200
+    legacy_id = next(iter(first_store.plans_by_trip_id))
+    assert legacy_id == f"TRIP-{date.today() + timedelta(days=45):%Y%m%d}-ALEX-RIVERA"
+
+    monkeypatch.setattr(
+        canonical,
+        "_default_trip_id",
+        lambda plan: (
+            f"TRIP-{plan.depart_date:%Y%m%d}-"
+            f"{canonical._slugify(plan.traveler_name)}-NEW-HASH-ID"
+        ),
+    )
+    replay_store = PlannerProposalStore(state_path=state_path)
+    replay_client = TestClient(create_app(replay_store))
+    replay = replay_client.post(
+        f"/portal/review/{draft_id}/submit",
+        headers=AUTH_HEADER,
+        follow_redirects=True,
+    )
+
+    assert replay.status_code == 200
+    assert set(replay_store.plans_by_trip_id) == {legacy_id}
+    linked_ids = {
+        stored.request.trip_id
+        for stored in replay_store.proposals_by_execution_id.values()
+        if stored.request.payload.get("draft_id") == draft_id
+    }
+    assert linked_ids == {legacy_id}
+    manager_review = replay_store.lookup_manager_review_for_draft(draft_id)
+    assert manager_review is not None
+    assert manager_review.trip_plan.trip_id == legacy_id
+
+
+def test_portal_conflicting_linked_trip_ids_return_conflict(monkeypatch) -> None:
+    _set_runtime_env(monkeypatch)
+    store = PlannerProposalStore()
+    client = TestClient(create_app(store))
+    draft_id, _location = _create_portal_draft(client)
+    assert client.post(
+        f"/portal/review/{draft_id}/submit",
+        headers=AUTH_HEADER,
+    ).status_code == 200
+    draft = store.portal_drafts_by_id[draft_id]
+    assert draft.submission_response is not None
+    conflicting_response = draft.submission_response.model_copy(deep=True)
+    conflicting_response.result_payload["trip_id"] = "TRIP-CONFLICTING-ID"
+    store.portal_drafts_by_id[draft_id] = replace(
+        draft,
+        submission_response=conflicting_response,
+    )
+
+    response = client.post(
+        f"/portal/review/{draft_id}/submit",
+        headers=AUTH_HEADER,
+    )
+
+    assert response.status_code == 409
+    assert "conflicting linked trip IDs" in response.json()["detail"]
 
 
 def test_portal_submit_rejects_blocking_policy_verdict(monkeypatch) -> None:

@@ -78,6 +78,7 @@ def test_canonical_conversion_keeps_derived_id_stable_for_cost_only_revisions() 
     original_id = load_trip_plan_input(original_payload).plan.trip_id
     revised_id = load_trip_plan_input(revised_payload).plan.trip_id
 
+    assert original_id == "TRIP-20251001-JANE-DOE-09DEA1730763"
     assert original_id == revised_id
 
 

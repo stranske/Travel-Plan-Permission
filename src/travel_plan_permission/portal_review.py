@@ -220,11 +220,27 @@ def portal_review_state(
     policy_blocking_codes: list[str] = []
     artifacts: dict[str, PortalArtifact] = {}
 
+    linked_trip_ids: set[str] = set()
+    if manager_review is not None:
+        linked_trip_ids.add(manager_review.trip_plan.trip_id)
+    if submission_response is not None:
+        response_trip_id = submission_response.result_payload.get("trip_id")
+        if isinstance(response_trip_id, str):
+            linked_trip_ids.add(response_trip_id)
+    if len(linked_trip_ids) > 1:
+        rendered = ", ".join(sorted(linked_trip_ids))
+        validation_errors.append(
+            f"Portal draft '{draft_id}' has conflicting linked trip IDs: {rendered}"
+        )
+    established_trip_id = next(iter(linked_trip_ids), None)
+
     if not missing_fields and canonical_plan is not None and not validation_errors:
         trip_plan = _apply_policy_answers(
             canonical_trip_plan_to_model(canonical_plan),
             answers,
         )
+        if established_trip_id is not None:
+            trip_plan = trip_plan.model_copy(update={"trip_id": established_trip_id})
         if trip_plan.expenses is None:
             trip_plan = trip_plan.model_copy(update={"expenses": []})
         policy_snapshot = get_policy_snapshot(
