@@ -1836,18 +1836,13 @@ def test_portal_generates_review_artifacts_and_submission(monkeypatch) -> None:
     assert "Submission result" in submit.text
 
 
-def test_portal_replay_preserves_established_trip_id_after_upgrade(
-    monkeypatch, tmp_path
-) -> None:
+def test_portal_replay_preserves_established_trip_id_after_upgrade(monkeypatch, tmp_path) -> None:
     _set_runtime_env(monkeypatch)
     state_path = tmp_path / "legacy-trip-id.sqlite3"
     monkeypatch.setattr(
         canonical,
         "_default_trip_id",
-        lambda plan: (
-            f"TRIP-{plan.depart_date:%Y%m%d}-"
-            f"{canonical._slugify(plan.traveler_name)}"
-        ),
+        lambda plan: f"TRIP-{plan.depart_date:%Y%m%d}-{canonical._slugify(plan.traveler_name)}",
     )
     first_store = PlannerProposalStore(state_path=state_path)
     first_client = TestClient(create_app(first_store))
@@ -1867,8 +1862,7 @@ def test_portal_replay_preserves_established_trip_id_after_upgrade(
         canonical,
         "_default_trip_id",
         lambda plan: (
-            f"TRIP-{plan.depart_date:%Y%m%d}-"
-            f"{canonical._slugify(plan.traveler_name)}-NEW-HASH-ID"
+            f"TRIP-{plan.depart_date:%Y%m%d}-{canonical._slugify(plan.traveler_name)}-NEW-HASH-ID"
         ),
     )
     replay_store = PlannerProposalStore(state_path=state_path)
@@ -1897,10 +1891,13 @@ def test_portal_conflicting_linked_trip_ids_return_conflict(monkeypatch) -> None
     store = PlannerProposalStore()
     client = TestClient(create_app(store))
     draft_id, _location = _create_portal_draft(client)
-    assert client.post(
-        f"/portal/review/{draft_id}/submit",
-        headers=AUTH_HEADER,
-    ).status_code == 200
+    assert (
+        client.post(
+            f"/portal/review/{draft_id}/submit",
+            headers=AUTH_HEADER,
+        ).status_code
+        == 200
+    )
     draft = store.portal_drafts_by_id[draft_id]
     assert draft.submission_response is not None
     conflicting_response = draft.submission_response.model_copy(deep=True)

@@ -1860,7 +1860,8 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
             draft.answers,
             required_fields=_PORTAL_REQUIRED_FIELDS,
             canonical_payload_builder=_canonical_payload_from_answers,
-            submission_response=draft.submission_response, manager_review=proposal_store.lookup_manager_review_for_draft(draft.draft_id),
+            submission_response=draft.submission_response,
+            manager_review=proposal_store.lookup_manager_review_for_draft(draft.draft_id),
         )
         if review.artifacts and not draft.cached_artifacts:
             proposal_store.cache_portal_artifacts(draft.draft_id, review.artifacts)
@@ -1945,6 +1946,7 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
             draft.answers,
             required_fields=_PORTAL_REQUIRED_FIELDS,
             canonical_payload_builder=_canonical_payload_from_answers,
+            submission_response=draft.submission_response,
             manager_review=proposal_store.lookup_manager_review_for_draft(draft.draft_id),
         )
         if review.artifacts and not draft.cached_artifacts:
@@ -2018,7 +2020,8 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
         if review.trip_plan is None or review.missing_fields or review.validation_errors:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="; ".join(review.validation_errors) or "Complete the request review before submitting the portal draft.",
+                detail="; ".join(review.validation_errors)
+                or "Complete the request review before submitting the portal draft.",
             )
         if review.policy_blocking_codes:
             raise HTTPException(
@@ -2284,7 +2287,9 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
             draft.answers,
             required_fields=_PORTAL_REQUIRED_FIELDS,
             canonical_payload_builder=_canonical_payload_from_answers,
-            generate_artifacts=not bool(draft.cached_artifacts), submission_response=draft.submission_response,
+            generate_artifacts=not bool(draft.cached_artifacts),
+            submission_response=draft.submission_response,
+            manager_review=proposal_store.lookup_manager_review_for_draft(draft.draft_id),
         )
         if review.policy_blocking_codes:
             raise HTTPException(
