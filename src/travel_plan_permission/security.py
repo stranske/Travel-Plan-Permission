@@ -502,6 +502,7 @@ class SecurityModel:
             raise KeyError(f"No pending role change for id '{request_id}'")
 
         request.state = RoleChangeState.APPROVED
+        self.user_roles[request.target_user] = request.new_role
         self.audit_log.record(
             event_type=AuditEventType.ROLE_CHANGE,
             actor=admin_actor,

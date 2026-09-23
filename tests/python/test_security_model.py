@@ -82,6 +82,7 @@ def test_role_change_requires_admin_approval_and_is_logged() -> None:
         request_id=request.request_id,
     )
     assert approved_request.state == RoleChangeState.APPROVED
+    assert security.user_roles["bob"] == RoleName.FINANCE_ADMIN
 
     role_change_events = audit_log.filter_by_type(AuditEventType.ROLE_CHANGE)
     assert {event.outcome for event in role_change_events} == {
@@ -131,6 +132,24 @@ def test_role_change_rejection_requires_matching_actor_assignment() -> None:
         request_id=request.request_id,
     )
     assert rejected_request.state == RoleChangeState.REJECTED
+
+
+@pytest.mark.parametrize("decision", ["approve_role_change", "reject_role_change"])
+def test_role_change_decision_requires_actor_assignment(decision: str) -> None:
+    security = SecurityModel()
+    request = security.request_role_change(
+        requester="alice", target_user="bob", new_role=RoleName.FINANCE_ADMIN
+    )
+
+    decide = getattr(security, decision)
+    with pytest.raises(PermissionError, match="matching assigned admin role"):
+        decide(
+            admin_actor="mallory",
+            admin_role=RoleName.SYSTEM_ADMIN,
+            request_id=request.request_id,
+        )
+
+    assert request.state == RoleChangeState.PENDING_APPROVAL
 
 
 def test_audit_log_captures_authentication_and_authorization_events() -> None:
