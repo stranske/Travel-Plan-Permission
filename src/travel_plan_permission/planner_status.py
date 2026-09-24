@@ -15,7 +15,12 @@ from .policy_contract_models import (
 def blocking_codes(result: PolicyCheckResult) -> list[str]:
     """Return codes for policy issues that block proposal submission."""
 
-    return [issue.code for issue in result.issues if issue.severity == "error"]
+    return [
+        issue.code
+        for issue in result.issues
+        if issue.severity == "error"
+        and (issue.context or {}).get("blocking") is not False
+    ]
 
 
 def blocked_policy_response(

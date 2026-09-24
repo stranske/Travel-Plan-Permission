@@ -1090,6 +1090,49 @@ def test_poll_execution_status_preserves_blocking_policy_verdict(
     assert response.error.code == "proposal_blocked_by_policy"
 
 
+def test_non_blocking_error_remains_accepted_during_status_poll(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    advisory = PolicyCheckResult(
+        status="pass",
+        issues=[
+            PolicyIssue(
+                code="advisory_error",
+                message="An error-level advisory requires attention.",
+                severity="error",
+                context={"blocking": False},
+            )
+        ],
+        policy_version="v1",
+    )
+    monkeypatch.setattr(policy_api_module, "check_trip_plan", lambda _plan: advisory)
+    submitted = submit_proposal(
+        trip_plan,
+        PlannerProposalSubmissionRequest(
+            trip_id=trip_plan.trip_id,
+            proposal_id="proposal-advisory",
+            proposal_version="v1",
+            transport_pattern="async",
+        ),
+    )
+
+    response = poll_execution_status(
+        trip_plan,
+        PlannerProposalStatusRequest(
+            trip_id=trip_plan.trip_id,
+            proposal_id="proposal-advisory",
+            proposal_version="v1",
+            execution_id=str(submitted.result_payload["execution_id"]),
+            transport_pattern="async",
+        ),
+    )
+
+    assert submitted.submission_status == "pending"
+    assert response.submission_status == "pending"
+    assert response.result_payload["queue_state"] == "awaiting_approval"
+    assert response.error is None
+
+
 @pytest.mark.parametrize("transport_pattern", ["sync", "async"])
 def test_status_names_approval_as_pending_once_the_evaluation_exists(
     trip_plan: TripPlan, transport_pattern: str, monkeypatch: pytest.MonkeyPatch

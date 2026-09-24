@@ -4209,7 +4209,6 @@ def test_portal_landing_speaks_to_travellers_and_approvers(
         monkeypatch.setenv("TPP_HANDOFF_SIGNING_SECRET", "test-handoff-signing-secret")
     else:
         monkeypatch.delenv("TPP_HANDOFF_SIGNING_SECRET", raising=False)
-        monkeypatch.delenv("TPP_ACCESS_TOKEN", raising=False)
 
     home = TestClient(create_app()).get("/portal").text
     hero = home[home.index('data-testid="portal-hero"') :]
