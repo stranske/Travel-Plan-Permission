@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from threading import Event, Lock, Thread
 
 import pytest
 
@@ -13,6 +14,7 @@ from travel_plan_permission.security import (
     AuditEventType,
     AuditLog,
     Permission,
+    RoleChangeRequest,
     RoleChangeState,
     RoleName,
     SecurityModel,
@@ -205,6 +207,84 @@ def test_role_change_rejection_is_terminal() -> None:
         )
 
     assert request.state == RoleChangeState.REJECTED
+    assert request.request_id not in security.pending_role_changes
+    assert security.decided_role_changes[request.request_id] is request
+
+
+def test_concurrent_role_change_decisions_are_serialized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    security = SecurityModel(user_roles={"susan": RoleName.SYSTEM_ADMIN})
+    request = security.request_role_change(
+        requester="alice", target_user="bob", new_role=RoleName.FINANCE_ADMIN
+    )
+    first_helper_entered = Event()
+    second_helper_entered = Event()
+    release_first = Event()
+    counter_lock = Lock()
+    helper_calls = 0
+    original_require_pending = security._require_pending_role_change
+
+    def controlled_require_pending(
+        *,
+        admin_actor: str,
+        actor_role: RoleName,
+        request_id: str,
+        transition: str,
+    ) -> RoleChangeRequest:
+        nonlocal helper_calls
+        with counter_lock:
+            helper_calls += 1
+            call_number = helper_calls
+        if call_number == 1:
+            first_helper_entered.set()
+            assert release_first.wait(timeout=2)
+        else:
+            second_helper_entered.set()
+        return original_require_pending(
+            admin_actor=admin_actor,
+            actor_role=actor_role,
+            request_id=request_id,
+            transition=transition,
+        )
+
+    monkeypatch.setattr(
+        security, "_require_pending_role_change", controlled_require_pending
+    )
+    results: list[RoleChangeRequest] = []
+    errors: list[BaseException] = []
+
+    def decide(transition: str) -> None:
+        try:
+            method = getattr(security, transition)
+            results.append(
+                method(
+                    admin_actor="susan",
+                    admin_role=RoleName.SYSTEM_ADMIN,
+                    request_id=request.request_id,
+                )
+            )
+        except BaseException as exc:  # noqa: BLE001 - thread outcome is asserted below
+            errors.append(exc)
+
+    approve_thread = Thread(target=decide, args=("approve_role_change",))
+    reject_thread = Thread(target=decide, args=("reject_role_change",))
+    approve_thread.start()
+    assert first_helper_entered.wait(timeout=2)
+    reject_thread.start()
+
+    assert not second_helper_entered.wait(timeout=0.1)
+    release_first.set()
+    approve_thread.join(timeout=2)
+    reject_thread.join(timeout=2)
+
+    assert not approve_thread.is_alive()
+    assert not reject_thread.is_alive()
+    assert results == [request]
+    assert len(errors) == 1
+    assert isinstance(errors[0], ValueError)
+    assert request.state == RoleChangeState.APPROVED
+    assert security.user_roles[request.target_user] == request.new_role
     assert request.request_id not in security.pending_role_changes
     assert security.decided_role_changes[request.request_id] is request
 

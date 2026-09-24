@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from threading import RLock
 from types import MappingProxyType
 from typing import Any
 from uuid import uuid4
@@ -352,6 +353,7 @@ class SecurityModel:
         self.user_roles = dict(user_roles or {})
         self.pending_role_changes: dict[str, RoleChangeRequest] = {}
         self.decided_role_changes: dict[str, RoleChangeRequest] = {}
+        self._role_change_lock = RLock()
 
     def required_permission(self, endpoint: str) -> Permission:
         """Return the permission required for an API endpoint."""
@@ -542,37 +544,38 @@ class SecurityModel:
             transition="approve",
         )
 
-        request = self._require_pending_role_change(
-            admin_actor=admin_actor,
-            actor_role=assigned_role,
-            request_id=request_id,
-            transition="approve",
-        )
+        with self._role_change_lock:
+            request = self._require_pending_role_change(
+                admin_actor=admin_actor,
+                actor_role=assigned_role,
+                request_id=request_id,
+                transition="approve",
+            )
 
-        request.state = RoleChangeState.APPROVED
-        self.user_roles[request.target_user] = request.new_role
-        self._mark_role_change_decided(request)
-        self.audit_log.record(
-            event_type=AuditEventType.ROLE_CHANGE,
-            actor=admin_actor,
-            subject=request.target_user,
-            outcome=request.state.value,
-            metadata={"new_role": request.new_role.value},
-        )
-        _audit.write_audit_event(
-            _audit.EVENT_RBAC_ROLE_CHANGE,
-            actor_subject=admin_actor,
-            outcome=request.state.value,
-            actor_role=assigned_role.value,
-            target_kind="user",
-            target_id=request.target_user,
-            metadata={
-                "request_id": request.request_id,
-                "new_role": request.new_role.value,
-                "transition": "approved",
-            },
-        )
-        return request
+            request.state = RoleChangeState.APPROVED
+            self.user_roles[request.target_user] = request.new_role
+            self._mark_role_change_decided(request)
+            self.audit_log.record(
+                event_type=AuditEventType.ROLE_CHANGE,
+                actor=admin_actor,
+                subject=request.target_user,
+                outcome=request.state.value,
+                metadata={"new_role": request.new_role.value},
+            )
+            _audit.write_audit_event(
+                _audit.EVENT_RBAC_ROLE_CHANGE,
+                actor_subject=admin_actor,
+                outcome=request.state.value,
+                actor_role=assigned_role.value,
+                target_kind="user",
+                target_id=request.target_user,
+                metadata={
+                    "request_id": request.request_id,
+                    "new_role": request.new_role.value,
+                    "transition": "approved",
+                },
+            )
+            return request
 
     def reject_role_change(
         self, admin_actor: str, admin_role: RoleName, request_id: str
@@ -586,33 +589,34 @@ class SecurityModel:
             transition="reject",
         )
 
-        request = self._require_pending_role_change(
-            admin_actor=admin_actor,
-            actor_role=assigned_role,
-            request_id=request_id,
-            transition="reject",
-        )
+        with self._role_change_lock:
+            request = self._require_pending_role_change(
+                admin_actor=admin_actor,
+                actor_role=assigned_role,
+                request_id=request_id,
+                transition="reject",
+            )
 
-        request.state = RoleChangeState.REJECTED
-        self._mark_role_change_decided(request)
-        self.audit_log.record(
-            event_type=AuditEventType.ROLE_CHANGE,
-            actor=admin_actor,
-            subject=request.target_user,
-            outcome=request.state.value,
-            metadata={"new_role": request.new_role.value},
-        )
-        _audit.write_audit_event(
-            _audit.EVENT_RBAC_ROLE_CHANGE,
-            actor_subject=admin_actor,
-            outcome=request.state.value,
-            actor_role=assigned_role.value,
-            target_kind="user",
-            target_id=request.target_user,
-            metadata={
-                "request_id": request.request_id,
-                "new_role": request.new_role.value,
-                "transition": "rejected",
-            },
-        )
-        return request
+            request.state = RoleChangeState.REJECTED
+            self._mark_role_change_decided(request)
+            self.audit_log.record(
+                event_type=AuditEventType.ROLE_CHANGE,
+                actor=admin_actor,
+                subject=request.target_user,
+                outcome=request.state.value,
+                metadata={"new_role": request.new_role.value},
+            )
+            _audit.write_audit_event(
+                _audit.EVENT_RBAC_ROLE_CHANGE,
+                actor_subject=admin_actor,
+                outcome=request.state.value,
+                actor_role=assigned_role.value,
+                target_kind="user",
+                target_id=request.target_user,
+                metadata={
+                    "request_id": request.request_id,
+                    "new_role": request.new_role.value,
+                    "transition": "rejected",
+                },
+            )
+            return request
