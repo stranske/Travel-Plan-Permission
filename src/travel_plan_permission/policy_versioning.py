@@ -34,7 +34,8 @@ def _parse_version(version: str | None) -> tuple[int, int, int]:
     if not version:
         return (0, 1, 0)
 
-    parts = str(version).split(".")
+    core_version = str(version).split("-", 1)[0].split("+", 1)[0]
+    parts = core_version.split(".")
     try:
         major = int(parts[0])
         minor = int(parts[1]) if len(parts) > 1 else 0
@@ -71,10 +72,12 @@ class PolicyVersion:
     def is_backward_compatible_with(self, previous: PolicyVersion) -> bool:
         if self.major != previous.major:
             return False
+        if self.label == previous.label and self.config_hash != previous.config_hash:
+            return False
         return self.minor >= previous.minor
 
     def change_type(self, previous: PolicyVersion) -> str:
-        if self.config_hash == previous.config_hash:
+        if self.label == previous.label and self.config_hash == previous.config_hash:
             return "no-op"
         if self.major != previous.major:
             return "breaking"
@@ -90,7 +93,6 @@ class PolicyMigrationPlan:
     source: PolicyVersion
     target: PolicyVersion
     breaking_change: bool
-    requires_downtime: bool
     steps: list[str]
 
 
@@ -107,7 +109,6 @@ class PolicyMigrationPlanner:
             "Archive previous policy version for rollback within retention window",
         ]
 
-        requires_downtime = False
         if breaking_change:
             steps.append(
                 "Schedule staged rollout with opt-in cohorts to guard against breaking behavior"
@@ -117,7 +118,6 @@ class PolicyMigrationPlanner:
             source=source,
             target=target,
             breaking_change=breaking_change,
-            requires_downtime=requires_downtime,
             steps=steps,
         )
 
