@@ -154,6 +154,39 @@ def test_export_produces_parseable_csv_with_a_header(store):
     assert any("ada@example.com" in cell for row in rows[1:] for cell in row)
 
 
+def test_export_treats_formula_like_audit_text_as_literal_without_mutating_store(store):
+    event = audit.write_audit_event(
+        "auth.login",
+        actor_subject="+cmd|' /C calc'!A0",
+        outcome="success",
+        target_kind="trip",
+        target_id='=HYPERLINK("https://example.test")',
+        metadata={"source": "persisted unchanged"},
+        store=store,
+    )
+
+    row = next(csv.DictReader(StringIO(audit.export_to_string(store=store))))
+
+    assert row["actor_subject"] == "'+cmd|' /C calc'!A0"
+    assert row["target_id"] == '\'=HYPERLINK("https://example.test")'
+    persisted = list(store.query())
+    assert persisted == [event]
+    assert persisted[0].actor_subject == "+cmd|' /C calc'!A0"
+    assert persisted[0].target_id == '=HYPERLINK("https://example.test")'
+
+
+def test_export_sanitizes_every_string_column_including_metadata(monkeypatch):
+    event = audit.AuditEvent("=event", "+actor", "-outcome")
+    row = {field: f"+{field}" for field in audit.CSV_FIELDS}
+    monkeypatch.setattr(audit.AuditEvent, "as_row", lambda _self: row)
+
+    output = StringIO()
+    audit._write_csv(output, [event])
+    exported = next(csv.DictReader(StringIO(output.getvalue())))
+
+    assert exported == {field: f"'+{field}" for field in audit.CSV_FIELDS}
+
+
 def test_export_filters_by_event_type(store):
     audit.write_audit_event("auth.login", actor_subject="a@x.com", outcome="success", store=store)
     audit.write_audit_event("auth.logout", actor_subject="a@x.com", outcome="success", store=store)
@@ -165,7 +198,11 @@ def test_export_filters_by_event_type(store):
 def test_export_filters_by_time_window(store):
     old = datetime.now(UTC) - timedelta(days=30)
     audit.write_audit_event(
-        "auth.login", actor_subject="old@x.com", outcome="success", occurred_at=old, store=store
+        "auth.login",
+        actor_subject="old@x.com",
+        outcome="success",
+        occurred_at=old,
+        store=store,
     )
     audit.write_audit_event("auth.login", actor_subject="new@x.com", outcome="success", store=store)
     text = audit.export_to_string(since=datetime.now(UTC) - timedelta(days=1), store=store)

@@ -22,6 +22,8 @@ import pytest
 from openpyxl import load_workbook
 
 from travel_plan_permission import ExportService
+from travel_plan_permission import audit as audit_module
+from travel_plan_permission import export as export_module
 from travel_plan_permission.models import (
     ApprovalStatus,
     ExpenseCategory,
@@ -106,7 +108,10 @@ def _typical_batch_reports() -> list[ExpenseReport]:
         ("https://:443/receipt", "https://:443/receipt"),
         ("https://user@/receipt", "https://user@/receipt"),
         ("http://receipts.example.test/one", "http://receipts.example.test/one"),
-        ("https://receipts.example.test/one?x=1&y=2", "https://receipts.example.test/one?x=1&y=2"),
+        (
+            "https://receipts.example.test/one?x=1&y=2",
+            "https://receipts.example.test/one?x=1&y=2",
+        ),
     ],
 )
 def test_export_preserves_literal_user_text(text: str, csv_text: str) -> None:
@@ -164,6 +169,10 @@ def test_export_literal_text_without_lxml() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_csv_exports_share_one_literal_text_guard() -> None:
+    assert audit_module.csv_literal_text is export_module.csv_literal_text
 
 
 class TestExportService:
