@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Literal, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .receipts import Receipt
+
+MAX_EXPENSE_AMOUNT = Decimal("99999999999999999999999999.99")
 
 
 class TripStatus(StrEnum):
@@ -572,7 +574,13 @@ class ExpenseItem(BaseModel):
     vendor: str | None = Field(
         default=None, description="Vendor or merchant associated with the expense"
     )
-    amount: Annotated[Decimal, Field(ge=0)] = Field(..., description="Amount spent")
+    amount: Annotated[
+        Decimal,
+        Field(ge=0, le=MAX_EXPENSE_AMOUNT, max_digits=28),
+    ] = Field(
+        ...,
+        description=f"Amount spent (maximum {MAX_EXPENSE_AMOUNT})",
+    )
     expense_date: date = Field(..., description="Date of the expense")
     receipt_attached: bool = Field(default=False, description="Whether a receipt is attached")
     receipt_url: str | None = Field(
@@ -587,6 +595,20 @@ class ExpenseItem(BaseModel):
         default=None,
         description="Required when a third party covered any part of this expense",
     )
+
+    @field_validator("amount", mode="before")
+    @classmethod
+    def validate_exportable_amount(cls, value: object) -> object:
+        """Name the concrete export ceiling before generic digit validation runs."""
+
+        try:
+            amount = value if isinstance(value, Decimal) else Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            # Pydantic supplies the canonical invalid-decimal error.
+            return value
+        if amount.is_finite() and amount > MAX_EXPENSE_AMOUNT:
+            raise ValueError(f"Expense amount must not exceed {MAX_EXPENSE_AMOUNT}")
+        return value
 
     def reimbursable_amount(self) -> Decimal:
         """Return the reimbursable amount excluding third-party paid receipts."""

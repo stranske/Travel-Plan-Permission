@@ -1164,6 +1164,22 @@ def test_expense_portal_invalid_amount_returns_validation_error(expense_auth_hea
     assert "One or more currency amounts are not valid decimal values." in response.text
 
 
+def test_expense_portal_reports_export_limit_without_calling_valid_decimal_invalid(
+    expense_auth_header,
+) -> None:
+    store = PlannerProposalStore()
+    _seed_manager_review(store)
+    client = TestClient(create_app(store), headers=expense_auth_header)
+    payload = _expense_form_payload()
+    payload["expense_amount"] = "1E+40"
+
+    response = client.post("/portal/expenses/review", data=payload)
+
+    assert response.status_code == 400
+    assert "99999999999999999999999999.99" in response.text
+    assert "not valid decimal" not in response.text
+
+
 def test_expense_portal_missing_approval_rules_returns_validation_error(
     monkeypatch,
     expense_auth_header,

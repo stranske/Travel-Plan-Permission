@@ -341,6 +341,27 @@ class TestExpenseItem:
                 expense_date=date(2025, 1, 15),
             )
 
+    def test_expense_amount_beyond_the_export_limit_is_rejected(self) -> None:
+        """Expense amounts must fit the two-decimal export representation."""
+        maximum = Decimal("99999999999999999999999999.99")
+
+        with pytest.raises(ValidationError) as error:
+            ExpenseItem(
+                category=ExpenseCategory.OTHER,
+                description="Beyond export precision",
+                amount=Decimal("1E+40"),
+                expense_date=date(2025, 1, 15),
+            )
+
+        assert str(maximum) in str(error.value)
+        accepted = ExpenseItem(
+            category=ExpenseCategory.OTHER,
+            description="At export limit",
+            amount=maximum,
+            expense_date=date(2025, 1, 15),
+        )
+        assert accepted.amount == maximum
+
 
 @pytest.mark.parametrize("return_date", [date(2026, 2, 1), date(2026, 2, 2)])
 def test_trip_plan_rejects_return_before_departure(return_date: date) -> None:

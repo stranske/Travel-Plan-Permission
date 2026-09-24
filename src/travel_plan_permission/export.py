@@ -6,7 +6,7 @@ import csv
 import io
 from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
 from zipfile import ZipFile
 
@@ -81,7 +81,14 @@ class ExportService:
         for report in reports:
             for expense in report.expenses:
                 reimbursable_amount = expense.reimbursable_amount()
-                amount = reimbursable_amount.quantize(Decimal("0.01"))
+                try:
+                    amount = reimbursable_amount.quantize(Decimal("0.01"))
+                except InvalidOperation as exc:
+                    raise ValueError(
+                        f"Expense report {report.report_id} cannot export "
+                        f"{expense.category.value} amount {reimbursable_amount}: "
+                        "the amount exceeds the supported two-decimal representation"
+                    ) from exc
                 receipt_link = (
                     self._receipt_reference(expense.receipt_url, now) if expense.receipt_url else ""
                 )

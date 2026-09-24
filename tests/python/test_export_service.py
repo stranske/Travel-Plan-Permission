@@ -242,6 +242,21 @@ class TestExportService:
             "receipt_link",
         ]
 
+    def test_an_amount_beyond_decimal_context_precision_is_reported_not_raised_as_invalidoperation(
+        self,
+    ) -> None:
+        """Both export formats identify an unrenderable expense precisely."""
+        report = _sample_report()
+        report.expenses[0].amount = Decimal("1E+40")
+        service = ExportService()
+
+        for exporter in (service.to_csv, service.to_excel):
+            with pytest.raises(
+                ValueError,
+                match=r"EXP-100.*meals.*1E\+40",
+            ):
+                exporter([report], batch_id="precision")
+
     def test_typical_batch_exports_have_expected_outputs(self, receipt_hosted_delivery) -> None:
         """Typical batch coverage should stay in the default unit lane."""
         service = ExportService(receipt_delivery=receipt_hosted_delivery)
