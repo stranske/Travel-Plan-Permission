@@ -14,6 +14,15 @@ from .models import ApprovalStatus, ExpenseCategory, ExpenseItem, ExpenseReport
 from .receipts import Receipt, ReceiptExtractionResult, ReceiptProcessor
 
 
+def _parse_decimal_input(value: object) -> Decimal:
+    """Parse one user-entered decimal without masking later arithmetic failures."""
+
+    try:
+        return Decimal(str(value))
+    except InvalidOperation as exc:
+        raise ValueError("One or more currency amounts are not valid decimal values.") from exc
+
+
 def build_expense_review_state[StoreT](
     draft_id: str,
     answers: dict[str, object],
@@ -44,7 +53,7 @@ def build_expense_review_state[StoreT](
         validation_errors.extend(linkage_validation.errors)
         try:
             category = ExpenseCategory(str(answers["expense_category"]))
-            expense_amount = Decimal(str(answers["expense_amount"]))
+            expense_amount = _parse_decimal_input(answers["expense_amount"])
             expense_date = date.fromisoformat(str(answers["expense_date"]))
             receipt_reference = answers.get("receipt_file_reference")
             receipt: Receipt | None = None
@@ -64,7 +73,7 @@ def build_expense_review_state[StoreT](
                     receipt_state = "incomplete"
                 else:
                     receipt = Receipt.from_manual_entry(
-                        total=Decimal(str(answers["receipt_total"])),
+                        total=_parse_decimal_input(answers["receipt_total"]),
                         date=date.fromisoformat(str(answers["receipt_date"])),
                         vendor=str(answers["receipt_vendor"]),
                         file_reference=str(receipt_reference),
@@ -132,8 +141,6 @@ def build_expense_review_state[StoreT](
             validation_errors.append(
                 "Approval rules configuration is unavailable; expense policy review cannot be completed."
             )
-        except InvalidOperation:
-            validation_errors.append("One or more currency amounts are not valid decimal values.")
         except ValueError as exc:
             validation_errors.append(str(exc))
 
