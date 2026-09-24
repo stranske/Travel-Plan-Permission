@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from travel_plan_permission import audit
 from travel_plan_permission.security import (
     API_ENDPOINT_PERMISSIONS,
     DEFAULT_ROLES,
@@ -150,6 +153,98 @@ def test_role_change_decision_requires_actor_assignment(decision: str) -> None:
         )
 
     assert request.state == RoleChangeState.PENDING_APPROVAL
+
+
+def test_role_change_approval_is_terminal() -> None:
+    security = SecurityModel(user_roles={"susan": RoleName.SYSTEM_ADMIN})
+    request = security.request_role_change(
+        requester="alice", target_user="bob", new_role=RoleName.FINANCE_ADMIN
+    )
+
+    security.approve_role_change(
+        admin_actor="susan",
+        admin_role=RoleName.SYSTEM_ADMIN,
+        request_id=request.request_id,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=rf"{request.request_id}.*{RoleChangeState.APPROVED.value}",
+    ):
+        security.reject_role_change(
+            admin_actor="susan",
+            admin_role=RoleName.SYSTEM_ADMIN,
+            request_id=request.request_id,
+        )
+
+    assert request.state == RoleChangeState.APPROVED
+    assert request.request_id not in security.pending_role_changes
+    assert security.decided_role_changes[request.request_id] is request
+
+
+def test_role_change_rejection_is_terminal() -> None:
+    security = SecurityModel(user_roles={"pat": RoleName.POLICY_ADMIN})
+    request = security.request_role_change(
+        requester="alice", target_user="bob", new_role=RoleName.FINANCE_ADMIN
+    )
+
+    security.reject_role_change(
+        admin_actor="pat",
+        admin_role=RoleName.POLICY_ADMIN,
+        request_id=request.request_id,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=rf"{request.request_id}.*{RoleChangeState.REJECTED.value}",
+    ):
+        security.approve_role_change(
+            admin_actor="pat",
+            admin_role=RoleName.POLICY_ADMIN,
+            request_id=request.request_id,
+        )
+
+    assert request.state == RoleChangeState.REJECTED
+    assert request.request_id not in security.pending_role_changes
+    assert security.decided_role_changes[request.request_id] is request
+
+
+def test_a_refused_second_decision_writes_one_failure_event_and_no_decision_event(
+    tmp_path: Path,
+) -> None:
+    store = audit.SQLiteAuditEventStore(tmp_path / "audit-events.sqlite3")
+    store.initialize()
+    audit.set_default_store(store)
+    try:
+        security = SecurityModel(user_roles={"susan": RoleName.SYSTEM_ADMIN})
+        request = security.request_role_change(
+            requester="alice", target_user="bob", new_role=RoleName.FINANCE_ADMIN
+        )
+        security.approve_role_change(
+            admin_actor="susan",
+            admin_role=RoleName.SYSTEM_ADMIN,
+            request_id=request.request_id,
+        )
+        before = list(store.query(event_type=audit.EVENT_RBAC_ROLE_CHANGE))
+
+        with pytest.raises(ValueError):
+            security.reject_role_change(
+                admin_actor="susan",
+                admin_role=RoleName.SYSTEM_ADMIN,
+                request_id=request.request_id,
+            )
+
+        after = list(store.query(event_type=audit.EVENT_RBAC_ROLE_CHANGE))
+        refused = after[len(before) :]
+        assert len(refused) == 1
+        assert refused[0].outcome == audit.OUTCOME_FAILURE
+        assert refused[0].metadata["reason_code"] == "rbac.role_change_already_decided"
+        assert refused[0].metadata["transition"] == "reject"
+        assert refused[0].metadata["current_state"] == RoleChangeState.APPROVED.value
+        assert refused[0].metadata["transition"] not in {"approved", "rejected"}
+    finally:
+        audit.reset_default_store()
+        store.close()
 
 
 def test_audit_log_captures_authentication_and_authorization_events() -> None:
