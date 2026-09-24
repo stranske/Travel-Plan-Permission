@@ -6,8 +6,8 @@
   "destination": "Chicago, IL 60601",
   "origin_city": "Austin, TX",
   "destination_city": "Chicago, IL",
-  "departure_date": "2026-05-20",
-  "return_date": "2026-05-22",
+  "departure_date": "2027-06-15",
+  "return_date": "2027-06-18",
   "purpose": "Planner integration rehearsal",
   "transportation_mode": "air",
   "expected_costs": {
@@ -41,6 +41,15 @@
     "airfare": "Blue Skies Airlines",
     "lodging": "Loop Business Hotel"
   },
+  "expenses": [
+    {
+      "category": "airfare",
+      "description": "Round-trip economy airfare",
+      "amount": "420.50",
+      "expense_date": "2027-06-15",
+      "receipt_attached": true
+    }
+  ],
   "validation_results": [],
   "approval_history": [],
   "exception_requests": []
