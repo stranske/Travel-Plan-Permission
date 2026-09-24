@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from threading import RLock
 from types import MappingProxyType
 from typing import Any
 from uuid import uuid4
@@ -83,7 +84,9 @@ PLANNER_PROPOSAL_SUBMISSION_ENDPOINT = "POST /api/planner/proposals"
 PLANNER_EXECUTION_STATUS_ENDPOINT = (
     "GET /api/planner/proposals/:proposal_id/executions/:execution_id"
 )
-PLANNER_EVALUATION_RESULT_ENDPOINT = "GET /api/planner/executions/:execution_id/evaluation-result"
+PLANNER_EVALUATION_RESULT_ENDPOINT = (
+    "GET /api/planner/executions/:execution_id/evaluation-result"
+)
 
 
 API_ENDPOINT_PERMISSIONS: dict[str, Permission] = {
@@ -218,7 +221,9 @@ class ExceptionTierEntitlements:
         return cls(subjects=MappingProxyType(resolved))
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str] | None = None) -> ExceptionTierEntitlements:
+    def from_env(
+        cls, env: Mapping[str, str] | None = None
+    ) -> ExceptionTierEntitlements:
         """Load entitlements from ``TPP_EXCEPTION_TIER_ENTITLEMENTS`` (JSON object).
 
         An unset or blank variable yields an empty, fail-closed contract.
@@ -347,6 +352,8 @@ class SecurityModel:
         self.sso_plans = sso_plans or DEFAULT_SSO_PLANS
         self.user_roles = dict(user_roles or {})
         self.pending_role_changes: dict[str, RoleChangeRequest] = {}
+        self.decided_role_changes: dict[str, RoleChangeRequest] = {}
+        self._role_change_lock = RLock()
 
     def required_permission(self, endpoint: str) -> Permission:
         """Return the permission required for an API endpoint."""
@@ -485,6 +492,46 @@ class SecurityModel:
         assert assigned_role is not None
         return assigned_role
 
+    def _require_pending_role_change(
+        self,
+        *,
+        admin_actor: str,
+        actor_role: RoleName,
+        request_id: str,
+        transition: str,
+    ) -> RoleChangeRequest:
+        """Return a pending request or reject a repeated terminal decision."""
+
+        request = self.pending_role_changes.get(request_id)
+        if request is None:
+            request = self.decided_role_changes.get(request_id)
+        if request is None:
+            raise KeyError(f"No pending role change for id '{request_id}'")
+        if request.state != RoleChangeState.PENDING_APPROVAL:
+            _audit.write_audit_event(
+                _audit.EVENT_RBAC_ROLE_CHANGE,
+                actor_subject=admin_actor,
+                outcome=_audit.OUTCOME_FAILURE,
+                actor_role=actor_role.value,
+                target_kind="role_change_request",
+                target_id=request_id,
+                metadata={
+                    "transition": transition,
+                    "reason_code": "rbac.role_change_already_decided",
+                    "current_state": request.state.value,
+                },
+            )
+            raise ValueError(
+                f"Role change request '{request_id}' is already {request.state.value}"
+            )
+        return request
+
+    def _mark_role_change_decided(self, request: RoleChangeRequest) -> None:
+        """Move a terminal request out of the pending request collection."""
+
+        self.pending_role_changes.pop(request.request_id)
+        self.decided_role_changes[request.request_id] = request
+
     def approve_role_change(
         self, admin_actor: str, admin_role: RoleName, request_id: str
     ) -> RoleChangeRequest:
@@ -497,33 +544,38 @@ class SecurityModel:
             transition="approve",
         )
 
-        request = self.pending_role_changes.get(request_id)
-        if request is None:
-            raise KeyError(f"No pending role change for id '{request_id}'")
+        with self._role_change_lock:
+            request = self._require_pending_role_change(
+                admin_actor=admin_actor,
+                actor_role=assigned_role,
+                request_id=request_id,
+                transition="approve",
+            )
 
-        request.state = RoleChangeState.APPROVED
-        self.user_roles[request.target_user] = request.new_role
-        self.audit_log.record(
-            event_type=AuditEventType.ROLE_CHANGE,
-            actor=admin_actor,
-            subject=request.target_user,
-            outcome=request.state.value,
-            metadata={"new_role": request.new_role.value},
-        )
-        _audit.write_audit_event(
-            _audit.EVENT_RBAC_ROLE_CHANGE,
-            actor_subject=admin_actor,
-            outcome=request.state.value,
-            actor_role=assigned_role.value,
-            target_kind="user",
-            target_id=request.target_user,
-            metadata={
-                "request_id": request.request_id,
-                "new_role": request.new_role.value,
-                "transition": "approved",
-            },
-        )
-        return request
+            request.state = RoleChangeState.APPROVED
+            self.user_roles[request.target_user] = request.new_role
+            self._mark_role_change_decided(request)
+            self.audit_log.record(
+                event_type=AuditEventType.ROLE_CHANGE,
+                actor=admin_actor,
+                subject=request.target_user,
+                outcome=request.state.value,
+                metadata={"new_role": request.new_role.value},
+            )
+            _audit.write_audit_event(
+                _audit.EVENT_RBAC_ROLE_CHANGE,
+                actor_subject=admin_actor,
+                outcome=request.state.value,
+                actor_role=assigned_role.value,
+                target_kind="user",
+                target_id=request.target_user,
+                metadata={
+                    "request_id": request.request_id,
+                    "new_role": request.new_role.value,
+                    "transition": "approved",
+                },
+            )
+            return request
 
     def reject_role_change(
         self, admin_actor: str, admin_role: RoleName, request_id: str
@@ -537,29 +589,34 @@ class SecurityModel:
             transition="reject",
         )
 
-        request = self.pending_role_changes.get(request_id)
-        if request is None:
-            raise KeyError(f"No pending role change for id '{request_id}'")
+        with self._role_change_lock:
+            request = self._require_pending_role_change(
+                admin_actor=admin_actor,
+                actor_role=assigned_role,
+                request_id=request_id,
+                transition="reject",
+            )
 
-        request.state = RoleChangeState.REJECTED
-        self.audit_log.record(
-            event_type=AuditEventType.ROLE_CHANGE,
-            actor=admin_actor,
-            subject=request.target_user,
-            outcome=request.state.value,
-            metadata={"new_role": request.new_role.value},
-        )
-        _audit.write_audit_event(
-            _audit.EVENT_RBAC_ROLE_CHANGE,
-            actor_subject=admin_actor,
-            outcome=request.state.value,
-            actor_role=assigned_role.value,
-            target_kind="user",
-            target_id=request.target_user,
-            metadata={
-                "request_id": request.request_id,
-                "new_role": request.new_role.value,
-                "transition": "rejected",
-            },
-        )
-        return request
+            request.state = RoleChangeState.REJECTED
+            self._mark_role_change_decided(request)
+            self.audit_log.record(
+                event_type=AuditEventType.ROLE_CHANGE,
+                actor=admin_actor,
+                subject=request.target_user,
+                outcome=request.state.value,
+                metadata={"new_role": request.new_role.value},
+            )
+            _audit.write_audit_event(
+                _audit.EVENT_RBAC_ROLE_CHANGE,
+                actor_subject=admin_actor,
+                outcome=request.state.value,
+                actor_role=assigned_role.value,
+                target_kind="user",
+                target_id=request.target_user,
+                metadata={
+                    "request_id": request.request_id,
+                    "new_role": request.new_role.value,
+                    "transition": "rejected",
+                },
+            )
+            return request
