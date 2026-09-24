@@ -35,7 +35,38 @@ def test_backward_compatibility_and_change_type() -> None:
     assert patch.change_type(base) in {"patch", "config-drift"}
 
 
-def test_migration_plan_steps_and_flags() -> None:
+def test_same_version_with_a_changed_config_hash_is_not_backward_compatible() -> None:
+    previous = PolicyVersion.from_config("1.0.0", {"rules": {"budget_cap": 5000}})
+    changed = PolicyVersion.from_config("1.0.0", {"rules": {"budget_cap": 999999}})
+
+    assert changed.change_type(previous) == "config-drift"
+    assert changed.is_backward_compatible_with(previous) is False
+
+
+def test_compatibility_matches_no_op_and_breaking_change_types() -> None:
+    previous = PolicyVersion.from_config("1.0.0", {"rules": {"budget_cap": 5000}})
+    no_op = PolicyVersion.from_config("1.0.0", {"rules": {"budget_cap": 5000}})
+    breaking = PolicyVersion.from_config("2.0.0", {"rules": {"budget_cap": 5000}})
+
+    assert no_op.change_type(previous) == "no-op"
+    assert no_op.is_backward_compatible_with(previous) is True
+    assert breaking.change_type(previous) == "breaking"
+    assert breaking.is_backward_compatible_with(previous) is False
+
+
+def test_a_prerelease_version_keeps_its_major_and_minor() -> None:
+    prerelease = PolicyVersion.from_config("2.0.0-rc1", {})
+    baseline = PolicyVersion.from_config("1.0.0", {})
+
+    assert prerelease.label == "2.0.0"
+    assert prerelease.is_backward_compatible_with(baseline) is False
+
+
+def test_build_metadata_does_not_change_the_parsed_version() -> None:
+    assert PolicyVersion.from_config("2.1.3+build.7", {}).label == "2.1.3"
+
+
+def test_migration_plan_steps_and_breaking_change() -> None:
     planner = PolicyMigrationPlanner()
     source = PolicyVersion.from_config("1.0.0", {"rules": {"foo": 1}})
     target = PolicyVersion.from_config("2.0.0", {"rules": {"foo": 2}})
@@ -44,8 +75,20 @@ def test_migration_plan_steps_and_flags() -> None:
 
     assert isinstance(plan, PolicyMigrationPlan)
     assert plan.breaking_change is True
-    assert plan.requires_downtime is False
+    assert not hasattr(plan, "requires_downtime")
     assert any("shadow mode" in step for step in plan.steps)
+    assert any("staged rollout" in step for step in plan.steps)
+
+
+def test_non_breaking_migration_does_not_add_a_staged_rollout() -> None:
+    planner = PolicyMigrationPlanner()
+    source = PolicyVersion.from_config("1.0.0", {"rules": {"foo": 1}})
+    target = PolicyVersion.from_config("1.1.0", {"rules": {"foo": 2}})
+
+    plan = planner.build_plan(source, target)
+
+    assert plan.breaking_change is False
+    assert all("staged rollout" not in step for step in plan.steps)
 
 
 class _StaticEngine(PolicyEngine):
