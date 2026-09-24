@@ -34,6 +34,16 @@ def resolve_handoff_signing_secret() -> str:
     return secret
 
 
+def portal_submission_ready(config_ready: bool) -> bool:
+    """Return whether the portal can save and hand off a draft."""
+
+    try:
+        resolve_handoff_signing_secret()
+    except ValueError:
+        return False
+    return config_ready
+
+
 def issue_handoff_token(
     subject: str,
     *,

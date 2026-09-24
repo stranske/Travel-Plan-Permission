@@ -86,6 +86,7 @@ from .portal_handoff import (
     HANDOFF_COOKIE_NAME,
     issue_handoff_token,
     issue_pending_handoff_token,
+    portal_submission_ready,
     resolve_handoff_signing_secret,
     verify_handoff_token,
 )
@@ -1659,7 +1660,7 @@ def register_portal_routes(
             request=request,
             name="portal_home.html",
             context={
-                "service_ready": _readiness_response().status == "ready",
+                "service_ready": portal_submission_ready(_readiness_response().status == "ready"),
                 "runtime_config": PlannerRuntimeConfig.from_env(),
                 "state_ephemeral": _portal_state_is_ephemeral(),
             },

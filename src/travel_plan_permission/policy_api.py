@@ -26,6 +26,7 @@ from .models import (
     TripPlan,
     TripStatus,
 )
+from .planner_status import blocked_policy_response, blocking_codes
 from .policy import PolicyContext, PolicyEngine, PolicyResult, Severity
 from .policy_contract_models import (
     _DOCUMENTATION_RULE_IDS,
@@ -832,13 +833,12 @@ def _proposal_response_for_plan(
             proposal_status=status_payload,
         )
 
-    # The evaluation is computed from the plan on request (`get_evaluation_result`), so it
-    # is finished once a proposal exists; what stays open is a person's approval. This said
-    # "Proposal queued for evaluation." until someone approved (issue 1591).
+    codes = blocking_codes(check_trip_plan(plan)) if operation == "poll_execution_status" else []
+    # A non-blocking evaluation is complete once the proposal exists (issue 1591).
     pending_state: PlannerExecutionState = "deferred"
     poll_after_seconds = 15.0 if transport_pattern == "async" else 30.0
 
-    return PlannerProposalOperationResponse(
+    response = PlannerProposalOperationResponse(
         operation=operation,
         submission_status="pending",
         request_id=request_id,
@@ -873,6 +873,7 @@ def _proposal_response_for_plan(
         status_endpoint=status_endpoint,
         proposal_status=status_payload,
     )
+    return blocked_policy_response(response, codes, event_time) if codes else response
 
 
 def _blocking_issues(policy_result: PolicyCheckResult) -> list[PlannerBlockingIssue]:

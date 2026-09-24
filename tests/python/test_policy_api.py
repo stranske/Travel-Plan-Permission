@@ -961,6 +961,7 @@ def test_submit_proposal_returns_succeeded_contract_for_approved_trip(
     assert response.execution_status.terminal is True
     assert response.retry is None
     assert response.result_payload["queue_state"] == "completed"
+    assert response.result_payload["approval_state"] == "approved"
 
 
 def test_submit_proposal_returns_failed_contract_for_rejected_trip(
@@ -982,6 +983,7 @@ def test_submit_proposal_returns_failed_contract_for_rejected_trip(
     assert response.error is not None
     assert response.error.code == "proposal_rejected"
     assert response.retry is None
+    assert response.result_payload["approval_state"] == "rejected"
 
 
 def test_submit_proposal_returns_unavailable_contract_when_service_down(
@@ -1011,8 +1013,13 @@ def test_submit_proposal_returns_unavailable_contract_when_service_down(
 
 
 def test_poll_execution_status_returns_pending_contract_for_async_trip(
-    trip_plan: TripPlan,
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(
+        policy_api_module,
+        "check_trip_plan",
+        lambda _plan: PolicyCheckResult(status="pass", issues=[], policy_version="v1"),
+    )
     submit_request = PlannerProposalSubmissionRequest(
         trip_id=trip_plan.trip_id,
         proposal_id="proposal-123",
@@ -1043,14 +1050,59 @@ def test_poll_execution_status_returns_pending_contract_for_async_trip(
     )
 
 
+def test_poll_execution_status_preserves_blocking_policy_verdict(
+    trip_plan: TripPlan, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    blocking = PolicyCheckResult(
+        status="fail",
+        issues=[
+            PolicyIssue(
+                code="fare_evidence",
+                message="Fare evidence is required.",
+                severity="error",
+                context={"blocking": True},
+            )
+        ],
+        policy_version="v1",
+    )
+    monkeypatch.setattr(policy_api_module, "check_trip_plan", lambda _plan: blocking)
+    request = PlannerProposalStatusRequest(
+        trip_id=trip_plan.trip_id,
+        proposal_id="proposal-blocked",
+        proposal_version="v1",
+        execution_id=policy_api_module._proposal_execution_id(
+            trip_id=trip_plan.trip_id,
+            proposal_id="proposal-blocked",
+            proposal_version="v1",
+        ),
+    )
+
+    response = poll_execution_status(trip_plan, request)
+
+    assert response.submission_status == "failed"
+    assert response.execution_status is not None
+    assert response.execution_status.terminal is True
+    assert response.result_payload["queue_state"] == "blocked_by_policy"
+    assert response.result_payload["evaluation_state"] == "completed"
+    assert response.result_payload["blocking_codes"] == ["fare_evidence"]
+    assert response.result_payload.get("approval_state") is None
+    assert response.error is not None
+    assert response.error.code == "proposal_blocked_by_policy"
+
+
 @pytest.mark.parametrize("transport_pattern", ["sync", "async"])
 def test_status_names_approval_as_pending_once_the_evaluation_exists(
-    trip_plan: TripPlan, transport_pattern: str
+    trip_plan: TripPlan, transport_pattern: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Issue 1591: the status said "Proposal queued for evaluation." while the evaluation
     result endpoint already returned the verdict, and kept saying it until a person
     approved the trip."""
 
+    monkeypatch.setattr(
+        policy_api_module,
+        "check_trip_plan",
+        lambda _plan: PolicyCheckResult(status="pass", issues=[], policy_version="v1"),
+    )
     submitted = submit_proposal(
         trip_plan,
         PlannerProposalSubmissionRequest(
