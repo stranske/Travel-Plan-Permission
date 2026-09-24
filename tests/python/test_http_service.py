@@ -4180,3 +4180,48 @@ def test_exception_listing_does_not_hide_escalation_errors(monkeypatch, surface)
             store.list_exception_requests("draft")
         else:
             store.list_exception_entries()
+
+
+@pytest.mark.parametrize(
+    ("planner_ready", "handoff_ready", "expected_status"),
+    [
+        (True, True, "Ready to accept requests"),
+        (False, True, "Sign-in is not fully set up"),
+        (True, False, "Sign-in is not fully set up"),
+    ],
+)
+def test_portal_landing_speaks_to_travellers_and_approvers(
+    monkeypatch, planner_ready: bool, handoff_ready: bool, expected_status: str
+) -> None:
+    """Issue 1589: the landing page addressed the repo's developers ("without fixture
+    gymnastics", "canonical readiness", "real travel-plan seams"), and its headline was
+    capped at 10ch, one word per line at 1024px."""
+
+    import re
+
+    if planner_ready:
+        _set_runtime_env(monkeypatch)
+    else:
+        monkeypatch.delenv("TPP_BASE_URL", raising=False)
+        monkeypatch.delenv("TPP_AUTH_MODE", raising=False)
+        monkeypatch.delenv("TPP_OIDC_PROVIDER", raising=False)
+    if handoff_ready:
+        monkeypatch.setenv("TPP_HANDOFF_SIGNING_SECRET", "test-handoff-signing-secret")
+    else:
+        monkeypatch.delenv("TPP_HANDOFF_SIGNING_SECRET", raising=False)
+
+    home = TestClient(create_app()).get("/portal").text
+    hero = home[home.index('data-testid="portal-hero"') :]
+    hero = hero[: hero.index("</section>")]
+
+    for developer_word in ("fixture", "seams", "canonical", "repo"):
+        assert developer_word not in hero.lower(), developer_word
+    assert "Submit a travel request" in hero
+    assert "Review requests waiting for you" in hero
+    assert 'href="/portal/manager/reviews"' not in hero
+    assert "sign-in required" in hero
+    assert expected_status in home
+    heading_rule = re.search(r"h1 \{[^}]*\}", home, re.S)
+    assert heading_rule is not None
+    width = re.search(r"max-width:\s*(\d+)ch", heading_rule.group(0))
+    assert width is None or int(width.group(1)) >= 20, heading_rule.group(0)

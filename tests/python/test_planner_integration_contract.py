@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal
+from importlib import resources
 from pathlib import Path
 
 from travel_plan_permission.models import TripPlan
@@ -64,6 +66,22 @@ def test_proposal_submission_fixture_matches_trip_plan_model() -> None:
 
     assert submission.status.value == "submitted"
     assert submission.selected_providers["airfare"] == "Blue Skies Airlines"
+
+
+def test_packaged_proposal_submission_fixture_preserves_expense_fields() -> None:
+    fixture = resources.files("travel_plan_permission").joinpath(
+        "fixtures", "planner_integration", "proposal_submission.json"
+    )
+    submission = TripPlan.model_validate_json(fixture.read_text(encoding="utf-8"))
+
+    assert submission.expenses is not None
+    assert len(submission.expenses) == 1
+    expense = submission.expenses[0]
+    assert expense.category.value == "airfare"
+    assert expense.description == "Round-trip economy airfare"
+    assert expense.amount == Decimal("420.50")
+    assert expense.expense_date.isoformat() == "2027-06-15"
+    assert expense.receipt_attached is True
 
 
 def test_proposal_status_fixture_matches_operation_response_model() -> None:
