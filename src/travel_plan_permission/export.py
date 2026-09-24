@@ -10,6 +10,7 @@ from decimal import Decimal
 from urllib.parse import urlsplit
 from zipfile import ZipFile
 
+from .csv_export import csv_literal_text
 from .models import ExpenseReport
 from .receipt_delivery import ReceiptDelivery
 
@@ -36,25 +37,10 @@ def _preserve_xlsx_carriage_returns(content: bytes) -> bytes:
             for entry in source.infolist():
                 replacement = replacements.get(entry.filename)
                 target.writestr(
-                    entry, replacement if replacement is not None else source.read(entry)
+                    entry,
+                    replacement if replacement is not None else source.read(entry),
                 )
     return output.getvalue()
-
-
-def _csv_literal_text(value: str) -> str:
-    """Prefix ambiguous text with an apostrophe; CSV consumers must import it as text.
-
-    Preserve the original bytes after the prefix, including leading whitespace.
-    This is an export/import convention, not a universal spreadsheet-engine escape.
-    """
-    if value and (
-        value[0] in "=+-@＝＋－＠"
-        or value[0].isspace()
-        or ord(value[0]) < 32
-        or ord(value[0]) == 127
-    ):
-        return "'" + value
-    return value
 
 
 def _is_receipt_hyperlink(value: str) -> bool:
@@ -126,7 +112,7 @@ class ExportService:
         writer.writeheader()
         for row in rows:
             for field in ("vendor", "cost_center", "receipt_link"):
-                row[field] = _csv_literal_text(row[field])
+                row[field] = csv_literal_text(row[field])
             writer.writerow(row)
 
         filename = self._build_filename("csv", batch_id, current_time)

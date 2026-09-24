@@ -53,6 +53,8 @@ from pathlib import Path
 from typing import IO, Any, Protocol, cast, runtime_checkable
 from uuid import uuid4
 
+from .csv_export import csv_literal_text
+
 EVENT_AUTH_REQUEST = "auth.request"
 EVENT_AUTH_BOOTSTRAP_MINT = "auth.bootstrap_mint"
 EVENT_RBAC_ROLE_CHANGE = "rbac.role_change"
@@ -457,7 +459,13 @@ def _write_csv(stream: IO[str], events: Iterable[AuditEvent]) -> int:
     writer.writeheader()
     count = 0
     for event in events:
-        writer.writerow(event.as_row())
+        row = event.as_row()
+        writer.writerow(
+            {
+                field: csv_literal_text(value) if isinstance(value, str) else value
+                for field, value in row.items()
+            }
+        )
         count += 1
     return count
 
