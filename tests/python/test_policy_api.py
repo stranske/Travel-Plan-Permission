@@ -1010,7 +1010,7 @@ def test_submit_proposal_returns_unavailable_contract_when_service_down(
     assert response.retry.retryable is True
 
 
-def test_poll_execution_status_returns_running_contract_for_async_trip(
+def test_poll_execution_status_returns_pending_contract_for_async_trip(
     trip_plan: TripPlan,
 ) -> None:
     submit_request = PlannerProposalSubmissionRequest(
@@ -1035,11 +1035,60 @@ def test_poll_execution_status_returns_running_contract_for_async_trip(
     assert response.operation == "poll_execution_status"
     assert response.submission_status == "pending"
     assert response.execution_status is not None
-    assert response.execution_status.state == "running"
+    # Not "running": the evaluation is already done; the request waits for an approver.
+    assert response.execution_status.state == "deferred"
     assert response.retry is not None
     assert response.result_payload["result_endpoint"].endswith(
         f"/{submit_response.result_payload['execution_id']}/evaluation-result"
     )
+
+
+@pytest.mark.parametrize("transport_pattern", ["sync", "async"])
+def test_status_names_approval_as_pending_once_the_evaluation_exists(
+    trip_plan: TripPlan, transport_pattern: str
+) -> None:
+    """Issue 1591: the status said "Proposal queued for evaluation." while the evaluation
+    result endpoint already returned the verdict, and kept saying it until a person
+    approved the trip."""
+
+    submitted = submit_proposal(
+        trip_plan,
+        PlannerProposalSubmissionRequest(
+            trip_id=trip_plan.trip_id,
+            proposal_id="proposal-591",
+            proposal_version="v1",
+            transport_pattern=transport_pattern,
+        ),
+    )
+    execution_id = str(submitted.result_payload["execution_id"])
+    status = poll_execution_status(
+        trip_plan,
+        PlannerProposalStatusRequest(
+            trip_id=trip_plan.trip_id,
+            proposal_id="proposal-591",
+            proposal_version="v1",
+            execution_id=execution_id,
+            transport_pattern=transport_pattern,
+        ),
+    )
+    result = get_evaluation_result(
+        trip_plan,
+        PlannerProposalEvaluationRequest(
+            trip_id=trip_plan.trip_id,
+            proposal_id="proposal-591",
+            proposal_version="v1",
+            execution_id=execution_id,
+        ),
+    )
+
+    assert result.outcome  # the verdict exists now
+    assert status.execution_status is not None
+    assert "queued for evaluation" not in status.execution_status.summary.lower()
+    assert "approver" in status.execution_status.summary
+    assert status.result_payload["queue_state"] == "awaiting_approval"
+    assert status.result_payload["evaluation_state"] == "completed"
+    assert status.result_payload["approval_state"] == "pending"
+    assert status.execution_status.terminal is False
 
 
 def test_poll_execution_status_preserves_supplied_correlation_id(

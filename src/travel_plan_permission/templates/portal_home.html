@@ -45,8 +45,9 @@
       }
       h1 {
         font-size: clamp(2.5rem, 4vw, 4.6rem);
-        line-height: 0.96;
-        max-width: 10ch;
+        line-height: 1.05;
+        /* 10ch collapsed the headline to one word per line at 1024px (issue 1589). */
+        max-width: 24ch;
       }
       p {
         margin: 0;
@@ -133,47 +134,50 @@
         <code>TPP_PORTAL_STATE_PATH</code>) for durable in-perimeter use.
       </section>
       {% endif %}
-      <section class="hero">
-        <div class="eyebrow">Workflow Lite Portal</div>
-        <h1>Travel request drafting without fixture gymnastics.</h1>
+      <section class="hero" data-testid="portal-hero">
+        <div class="eyebrow">Travel requests</div>
+        <h1>Request approval for business travel.</h1>
         <p>
-          Start a browser-facing request, review canonical readiness, and generate the
-          spreadsheet and summary artifacts from the repo’s real travel-plan seams.
+          Describe the trip and what it will cost. The request is checked against your
+          organisation's travel policy before it reaches your approver, so you see anything
+          that needs fixing first.
         </p>
         <div class="actions">
-          <a class="button primary" href="/portal/draft/new">Start a new request</a>
-          <a class="button secondary" href="/portal/expenses/new">Open expense portal</a>
-          <a class="button secondary" href="/readyz">Check runtime readiness</a>
-          <a class="button secondary" href="/portal/admin">Open admin console</a>
+          <a class="button primary" href="/portal/draft/new">Submit a travel request</a>
+          <a class="button secondary" href="/portal/manager/reviews">Review requests waiting for you</a>
+          <a class="button secondary" href="/portal/expenses/new">Submit expenses after a trip</a>
         </div>
       </section>
 
       <section class="grid">
         <article class="panel">
-          <div class="eyebrow">What It Uses</div>
-          <h2>Real repo logic</h2>
-          <ul>
-            <li>Canonical trip fields and missing-input guidance.</li>
-            <li>Planner policy snapshot and policy-lite posture.</li>
-            <li>Spreadsheet and summary artifact generation.</li>
-            <li>Expense receipt intake, review warnings, and accounting export handoff.</li>
-          </ul>
+          <div class="eyebrow">How it works</div>
+          <h2>From request to decision</h2>
+          <ol>
+            <li>You enter the trip: where, when, why, and the fares and rates you were quoted.</li>
+            <li>The travel policy checks it and names any rule it breaks, with what to change.</li>
+            <li>Your approver reviews the request and approves or declines it.</li>
+            <li>After the trip, you submit receipts for reimbursement.</li>
+          </ol>
         </article>
         <article class="panel">
-          <div class="eyebrow">Runtime</div>
-          <h2>Service status</h2>
+          <div class="eyebrow">Service</div>
+          <h2>Can I submit now?</h2>
           <p>
             <span class="status">
-              {% if service_ready %}Planner auth configured{% else %}Planner auth incomplete{% endif %}
+              {% if service_ready %}Ready to accept requests{% else %}Sign-in is not fully set up{% endif %}
             </span>
           </p>
+          {% if not service_ready %}
           <p style="margin-top: 12px;">
-            The portal shell is available without planner credentials; the lower-level planner
-            API still follows the normal token requirements.
+            You can draft a request now. Ask your administrator to finish the sign-in setup
+            before requests can be sent from other tools.
           </p>
-          {% if runtime_config.auth_mode %}
-            <p style="margin-top: 12px;">Auth mode: <strong>{{ runtime_config.auth_mode }}</strong></p>
           {% endif %}
+          <p style="margin-top: 12px;" class="admin-links">
+            For administrators: <a href="/portal/admin">admin console</a> ·
+            <a href="/readyz">service readiness</a>
+          </p>
         </article>
       </section>
     </main>

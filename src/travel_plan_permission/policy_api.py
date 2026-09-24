@@ -799,7 +799,7 @@ def _proposal_response_for_plan(
                 external_status="409 Conflict",
                 updated_at=event_time,
             ),
-            result_payload=base_payload | {"queue_state": "rejected"},
+            result_payload=base_payload | {"queue_state": "rejected", "approval_state": "rejected"},
             error=PlannerErrorRecord(
                 code="proposal_rejected",
                 message="The proposal is currently in a rejected state and cannot proceed.",
@@ -826,14 +826,16 @@ def _proposal_response_for_plan(
                 external_status="200 OK",
                 updated_at=event_time,
             ),
-            result_payload=base_payload | {"queue_state": "completed"},
+            result_payload=base_payload | {"queue_state": "completed", "approval_state": "approved"},
             received_at=event_time,
             status_endpoint=status_endpoint,
             proposal_status=status_payload,
         )
 
-    pending_state: PlannerExecutionState = "running" if transport_pattern == "async" else "deferred"
-    queue_state = "running" if transport_pattern == "async" else "waiting_for_policy_engine"
+    # The evaluation is computed from the plan on request (`get_evaluation_result`), so it
+    # is finished once a proposal exists; what stays open is a person's approval. This said
+    # "Proposal queued for evaluation." until someone approved (issue 1591).
+    pending_state: PlannerExecutionState = "deferred"
     poll_after_seconds = 15.0 if transport_pattern == "async" else 30.0
 
     return PlannerProposalOperationResponse(
@@ -845,19 +847,27 @@ def _proposal_response_for_plan(
         execution_status=PlannerProposalExecutionStatus(
             state=pending_state,
             terminal=False,
-            summary="Proposal queued for evaluation.",
+            summary=(
+                "Policy evaluation finished; the result is available. "
+                "Waiting for an approver's decision."
+            ),
             external_status="202 Accepted",
             poll_after_seconds=poll_after_seconds,
             updated_at=event_time,
         ),
-        result_payload=base_payload | {"queue_state": queue_state},
+        result_payload=base_payload
+        | {
+            "queue_state": "awaiting_approval",
+            "evaluation_state": "completed",
+            "approval_state": "pending",
+        },
         retry=PlannerRetryMetadata(
             attempt=0,
             max_attempts=5,
             retryable=True,
             backoff_seconds=poll_after_seconds,
             next_retry_at=event_time + timedelta(seconds=poll_after_seconds),
-            reason="Await planner-side evaluation completion before retrying.",
+            reason="Waiting for an approver's decision; the evaluation result is available now.",
         ),
         received_at=event_time,
         status_endpoint=status_endpoint,
