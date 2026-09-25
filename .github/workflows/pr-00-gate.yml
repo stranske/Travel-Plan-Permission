@@ -395,10 +395,12 @@ jobs:
               // Keep same-repository permission failures loud and preserve the
               // existing rate-limit path.
               const pullRequest = context.payload.pull_request;
-              const headRepo = pullRequest?.head?.repo?.full_name;
+              const headRepoObject = pullRequest?.head?.repo;
+              const headRepo = headRepoObject?.full_name;
               const baseRepo = pullRequest?.base?.repo?.full_name;
               const isForkPullRequest = Boolean(
-                headRepo && baseRepo && headRepo !== baseRepo,
+                baseRepo &&
+                  (headRepoObject === null || (headRepo && headRepo !== baseRepo)),
               );
               const readOnlyForkToken =
                 error?.status === 403 && isForkPullRequest && !hitRateLimit;
@@ -406,7 +408,9 @@ jobs:
                 core.warning('Rate limit prevented Gate from updating the commit status.');
               } else if (readOnlyForkToken) {
                 core.warning(
-                  `Fork pull request from ${headRepo}: the workflow token is ` +
+                  'Fork pull request from ' +
+                    `${headRepo ?? pullRequest?.head?.label ?? 'deleted source repository'}: ` +
+                    'the workflow token is ' +
                     "read-only, so the 'Gate / gate' commit status could not be " +
                     `written (${error.message}). Gate verdict for ${sha} is ` +
                     `'${state}': ${description}.`,

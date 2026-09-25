@@ -64,7 +64,10 @@ RUNNER_JS = textwrap.dedent("""
           sha: 'basesha',
           payload: {
             pull_request: {
-              head: { sha: 'headsha', repo: { full_name: headRepo } },
+              head: {
+                sha: 'headsha',
+                repo: headRepo === null ? null : { full_name: headRepo },
+              },
               base: { repo: { full_name: baseRepo } },
             },
           },
@@ -97,6 +100,12 @@ RUNNER_JS = textwrap.dedent("""
       const outcomes = {
         fork_read_only: await runCase({
           ...FORK,
+          state: 'success',
+          error: makeError(403, 'Resource not accessible by integration'),
+        }),
+        deleted_fork_read_only: await runCase({
+          headRepo: null,
+          baseRepo: 'stranske/Travel-Plan-Permission',
           state: 'success',
           error: makeError(403, 'Resource not accessible by integration'),
         }),
@@ -170,6 +179,16 @@ def test_fork_read_only_403_reports_the_real_verdict(outcomes: dict[str, Any]) -
     assert "headsha" in summary
     assert "success" in summary
     assert "all checks passed" in summary
+
+
+def test_deleted_fork_read_only_403_reports_the_verdict(
+    outcomes: dict[str, Any],
+) -> None:
+    case = outcomes["deleted_fork_read_only"]
+    warning = " ".join(case["warnings"])
+    assert case["threw"] is None
+    assert "deleted source repository" in warning
+    assert case["summaryWrites"] == 1
 
 
 def test_same_repo_403_still_fails_the_gate(outcomes: dict[str, Any]) -> None:
