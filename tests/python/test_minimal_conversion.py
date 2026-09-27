@@ -4,6 +4,9 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 import travel_plan_permission.conversion as conversion
 from travel_plan_permission import (
     ExpenseCategory,
@@ -65,6 +68,24 @@ def test_trip_plan_from_minimal_applies_overrides() -> None:
     assert plan.trip_id == "TRIP-3001"
     assert plan.status == TripStatus.SUBMITTED
     assert plan.origin_city == "Seattle, WA"
+
+
+def test_trip_plan_from_minimal_validates_overrides() -> None:
+    payload = json.loads(
+        Path("tests/fixtures/sample_trip_plan_minimal.json").read_text(encoding="utf-8")
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        with pytest.raises(ValidationError, match="trip_id"):
+            trip_plan_from_minimal(payload, trip_id=None)  # type: ignore[arg-type]
+
+        with pytest.raises(ValidationError, match="status"):
+            trip_plan_from_minimal(
+                payload,
+                trip_id="TRIP-INVALID-STATUS",
+                status="not-a-status",  # type: ignore[arg-type]
+            )
 
 
 def test_trip_plan_from_minimal_matches_canonical_loader() -> None:

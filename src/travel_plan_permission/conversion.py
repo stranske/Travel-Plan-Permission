@@ -47,4 +47,6 @@ def trip_plan_from_minimal(
     if transportation_mode is not None:
         overrides["transportation_mode"] = transportation_mode
 
-    return plan_input.plan.model_copy(update=overrides)
+    updated_data = plan_input.plan.model_dump()
+    updated_data.update(overrides)
+    return TripPlan.model_validate(updated_data)
