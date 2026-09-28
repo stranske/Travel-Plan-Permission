@@ -95,11 +95,20 @@ tests/python/test_minimal_conversion.py .......                          [100%]
 ============================== 7 passed in 0.69s ===============================
 ```
 
-Cleanup proof:
+Committed branch cleanup proof:
 
 ```text
-git diff --exit-code -- src/travel_plan_permission/conversion.py tests/python/test_minimal_conversion.py
+git diff --exit-code 1647cec33d4e85503f39d3c134d128483b96470a HEAD -- src/travel_plan_permission/conversion.py tests/python/test_minimal_conversion.py
 ```
 
 The command exited 0 with no output, so no deliberate-break source or test
-change remains in the branch.
+change remains in the committed branch history.
+
+Local checkout checks (recorded separately from the branch claim):
+
+```text
+git diff --cached --exit-code -- src/travel_plan_permission/conversion.py tests/python/test_minimal_conversion.py
+git diff --exit-code -- src/travel_plan_permission/conversion.py tests/python/test_minimal_conversion.py
+```
+
+Both commands exited 0 with no output on the closer verification worktree.
