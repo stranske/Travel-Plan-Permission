@@ -107,7 +107,9 @@ class SQLitePortalStateStore(SqlSnapshotStore):
             return self._conn
 
     def initialize(self) -> None:
-        with self._write_lock:
+        # Connection pragmas and schema migration share cross-instance ownership
+        # with service operations, including simultaneous first-process startup.
+        with self.service_operation():
             conn = self._connection()
             with _transaction(conn, self._write_lock):
                 for stmt in _SCHEMA_STATEMENTS:

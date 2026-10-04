@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import queue
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -977,3 +979,76 @@ def test_postgres_service_lock_keeps_data_commits_independent(fail):
     assert "pg_advisory_unlock" in conn.execute.call_args.args[0]
     assert conn.commit.call_count == 3
     conn.rollback.assert_called_once()
+
+
+def test_sqlite_initialization_waits_for_another_service_operation(tmp_path, monkeypatch):
+    """Startup must share service ownership before changing WAL/schema state."""
+    path = tmp_path / "startup.sqlite3"
+    first, second = SQLitePortalStateStore(path), SQLitePortalStateStore(path)
+    first.initialize()
+    finished, resume = threading.Event(), threading.Event()
+    observed = queue.Queue()
+    errors = []
+    connect = sqlite3.connect
+    connection = second._connection
+
+    class ObservedLock:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def execute(self, statement):
+            if statement == "BEGIN IMMEDIATE":
+                self.handle.execute("PRAGMA busy_timeout=0")
+                try:
+                    return self.handle.execute(statement)
+                except sqlite3.OperationalError as exc:
+                    if exc.sqlite_errorcode != sqlite3.SQLITE_BUSY:
+                        raise
+                    # Signal only after real SQLite confirms another service owns
+                    # the lock. A scheduler pause before initialize cannot pass.
+                    observed.put("contended")
+                    if not resume.wait(5):
+                        raise RuntimeError("service owner did not release startup") from exc
+                    self.handle.execute("PRAGMA busy_timeout=30000")
+            return self.handle.execute(statement)
+
+        def close(self):
+            self.handle.close()
+
+    def observe_connect(database, *args, **kwargs):
+        handle = connect(database, *args, **kwargs)
+        if threading.current_thread() is thread and str(database).endswith(".service-lock.sqlite3"):
+            return ObservedLock(handle)
+        return handle
+
+    def observe_database_entry():
+        observed.put("database-entered")
+        return connection()
+
+    monkeypatch.setattr(sqlite3, "connect", observe_connect)
+    monkeypatch.setattr(second, "_connection", observe_database_entry)
+
+    def initialize_peer():
+        try:
+            second.initialize()
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            finished.set()
+
+    thread = threading.Thread(target=initialize_peer)
+    try:
+        with first.service_operation():
+            thread.start()
+            assert (
+                observed.get(timeout=5) == "contended"
+            ), "startup entered the database before contending for service ownership"
+        resume.set()
+        thread.join(5)
+        assert finished.is_set() and not errors
+    finally:
+        resume.set()
+        if thread.ident is not None:
+            thread.join(5)
+        first.close()
+        second.close()
