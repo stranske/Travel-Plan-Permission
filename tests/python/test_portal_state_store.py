@@ -977,3 +977,34 @@ def test_postgres_service_lock_keeps_data_commits_independent(fail):
     assert "pg_advisory_unlock" in conn.execute.call_args.args[0]
     assert conn.commit.call_count == 3
     conn.rollback.assert_called_once()
+
+
+def test_sqlite_initialization_waits_for_another_service_operation(tmp_path):
+    """Startup must share service ownership before changing WAL/schema state."""
+    path = tmp_path / "startup.sqlite3"
+    first, second = SQLitePortalStateStore(path), SQLitePortalStateStore(path)
+    first.initialize()
+    started, finished = threading.Event(), threading.Event()
+    errors = []
+
+    def initialize_peer():
+        started.set()
+        try:
+            second.initialize()
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            finished.set()
+
+    try:
+        with first.service_operation():
+            thread = threading.Thread(target=initialize_peer)
+            thread.start()
+            assert started.wait(2)
+            blocked = not finished.wait(0.2)
+        thread.join(5)
+        assert blocked, "startup entered the database while another service owned it"
+        assert finished.is_set() and not errors
+    finally:
+        first.close()
+        second.close()
