@@ -9,13 +9,12 @@ import os
 import sys
 import tempfile
 import threading
-from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager, nullcontext, suppress
+from contextlib import nullcontext, suppress
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from functools import partial, wraps
+from functools import partial
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs
@@ -64,7 +63,10 @@ from .models import (
     TripPlan,
 )
 from .persistence import PortalStateStore, resolve_portal_state_store
+from .persistence.operations import portal_store_lifespan
+from .persistence.operations import serialized_store_operation as _serialized_store_operation
 from .persistence.resolver import PORTAL_DATABASE_URL_ENV
+from .persistence.serialization import serialize_planner_state
 from .planner_auth import (
     OIDCAuthenticationError,
     PlannerAuthConfig,
@@ -486,29 +488,6 @@ def _portal_state_is_ephemeral() -> bool:
     if os.getenv(PORTAL_DATABASE_URL_ENV):
         return False
     return _path_is_under_tmp(_default_portal_state_path())
-
-
-def _serialized_store_operation[**OperationArgs, OperationResult](
-    method: Callable[OperationArgs, OperationResult],
-) -> Callable[OperationArgs, OperationResult]:
-    """Refresh once under cross-instance coordination, preserving nested calls."""
-
-    @wraps(method)
-    def operation(*args: OperationArgs.args, **kwargs: OperationArgs.kwargs) -> OperationResult:
-        store = cast(PlannerProposalStore, args[0])
-        with store._operation_lock:
-            coordinator = getattr(store.store, "service_operation", None)
-            if store._operation_depth or coordinator is None:
-                return method(*args, **kwargs)
-            with coordinator():
-                store._operation_depth += 1
-                try:
-                    store._load_state()
-                    return method(*args, **kwargs)
-                finally:
-                    store._operation_depth -= 1
-
-    return operation
 
 
 @dataclass
@@ -1160,59 +1139,7 @@ class PlannerProposalStore:
         ]
 
     def _serialize_state(self) -> dict[str, object]:
-        return {
-            "plans_by_trip_id": {
-                trip_id: trip_plan.model_dump(mode="json")
-                for trip_id, trip_plan in self.plans_by_trip_id.items()
-            },
-            "proposals_by_execution_id": {
-                execution_id: {
-                    "trip_plan": stored.trip_plan.model_dump(mode="json"),
-                    "request": stored.request.model_dump(mode="json"),
-                    "response": stored.response.model_dump(mode="json"),
-                }
-                for execution_id, stored in self.proposals_by_execution_id.items()
-            },
-            "portal_drafts_by_id": {
-                draft_id: _portal_draft_to_state(draft)
-                for draft_id, draft in self.portal_drafts_by_id.items()
-            },
-            "expense_drafts_by_id": {
-                draft_id: _portal_draft_to_state(draft)
-                for draft_id, draft in self.expense_drafts_by_id.items()
-            },
-            "manager_reviews": {
-                review_id: {
-                    "draft_id": review.draft_id,
-                    "trip_plan": review.trip_plan.model_dump(mode="json"),
-                    "policy_snapshot": review.policy_snapshot.model_dump(mode="json"),
-                    "policy_result": review.policy_result.model_dump(mode="json"),
-                    "status": review.status.value,
-                    "submitted_at": review.submitted_at.isoformat(),
-                    "updated_at": review.updated_at.isoformat(),
-                    "history": [
-                        {
-                            "event_type": event.event_type,
-                            "actor_id": event.actor_id,
-                            "timestamp": event.timestamp.isoformat(),
-                            "status": event.status.value,
-                            "rationale": event.rationale,
-                        }
-                        for event in review.history
-                    ],
-                }
-                for review_id, review in self.manager_reviews.reviews_by_id.items()
-            },
-            "review_ids_by_draft_id": dict(self.manager_reviews.review_ids_by_draft_id),
-            "exception_requests_by_draft_id": {
-                draft_id: [request.model_dump(mode="json") for request in requests]
-                for draft_id, requests in self.exception_requests_by_draft_id.items()
-            },
-            "audit_events": [
-                _audit_log_event_to_state(event) for event in self.security.audit_log.events
-            ],
-            "pending_audit_events": [event.as_row() for event in self.pending_audit_events],
-        }
+        return serialize_planner_state(self, _portal_draft_to_state, _audit_log_event_to_state)
 
 
 def _portal_draft_to_state(draft: PortalDraft) -> dict[str, object]:
@@ -2461,15 +2388,8 @@ def create_app(
     audit.install_store_from_env()
     proposal_store = store or PlannerProposalStore(state_path=_default_portal_state_path())
 
-    @asynccontextmanager
-    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        try:
-            yield
-        finally:
-            proposal_store.close()
-
     app = FastAPI(
-        lifespan=lifespan,
+        lifespan=portal_store_lifespan(proposal_store),
         title="Travel Plan Permission Planner Service",
         version="0.1.0",
         summary="Thin HTTP adapter over the planner-facing policy API builders.",

@@ -1458,7 +1458,6 @@ def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
     either source fails the verdict and is returned through the same issue
     contract so downstream planner consumers cannot silently ignore it.
     """
-
     # Copies and in-place changes can bypass construction-time validation.
     plan = TripPlan.model_validate(plan)
     engine = PolicyEngine.from_file()

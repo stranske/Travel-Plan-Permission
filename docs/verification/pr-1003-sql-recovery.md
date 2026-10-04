@@ -63,3 +63,5 @@ Final focused command (persistence + audit outbox + HTTP routes):
 passed 318 tests in 24.20s after final connection/close race hardening and migration controls. Ruff passes. Full-repository Black initially exposed eight pre-existing formatting-only files; the exact required formatter repaired them, then the full check passed.
 
 Coordination continuation validation: **323 passed** in 26.43s (persistence, audit and HTTP); the original two-instance loss probe now reports False/False/True for stale read, lost first draft, retained second draft. Full Black, focused Ruff and Mypy on all nine changed source modules pass.
+
+The first CI run37218179553 passed the new production tests on Python3.12 and3.13 but failed the repository module-size guard. The continuation moves operation/lifespan and unchanged snapshot serialization into dedicated persistence modules; no size ceiling was raised. Focused Mypy11modules and full Black/Ruff validate the extraction.
