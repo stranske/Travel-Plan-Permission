@@ -45,14 +45,19 @@ def test_blocking_rules_fail_closed_on_absent_or_nonfinite_input(
         "return_date": date(2026, 10, 12),
         "purpose": "Acceptance audit",
         "estimated_cost": Decimal("100"),
-        field: value,
     }
+    # Prove the fixture is valid before injecting the targeted invalid value.
+    TripPlan.model_validate(payload)
+    payload[field] = value
     with pytest.raises(ValidationError) as exc_info:
         TripPlan.model_validate(payload)
-    assert any(error["loc"] == (field,) for error in exc_info.value.errors())
+    assert {error["loc"] for error in exc_info.value.errors()} == {(field,)}
 
-    missing_fare = FareComparisonRule(Decimal("200"), Severity.BLOCKING).evaluate(
+    missing_lowest_fare = FareComparisonRule(Decimal("200"), Severity.BLOCKING).evaluate(
         PolicyContext(selected_fare=Decimal("100"))
+    )
+    missing_selected_fare = FareComparisonRule(Decimal("200"), Severity.BLOCKING).evaluate(
+        PolicyContext(lowest_fare=Decimal("100"))
     )
     missing_duration = CabinClassRule(5, ["economy"], Severity.BLOCKING).evaluate(
         PolicyContext(cabin_class="business", selected_fare=Decimal("100"))
@@ -60,10 +65,15 @@ def test_blocking_rules_fail_closed_on_absent_or_nonfinite_input(
     missing_expenses = NonReimbursableRule(["alcohol"], Severity.BLOCKING).evaluate(
         PolicyContext(expenses=None)
     )
-    for result in (missing_fare, missing_duration, missing_expenses):
-        assert result.severity == Severity.BLOCKING
-        assert result.passed is False
-        assert result.outcome in {RuleOutcome.FAILED, RuleOutcome.MISSING_DATA}
+    for result in (
+        missing_lowest_fare,
+        missing_selected_fare,
+        missing_duration,
+        missing_expenses,
+    ):
+        assert result.severity == Severity.BLOCKING, result.rule_id
+        assert result.passed is False, result.rule_id
+        assert result.outcome in {RuleOutcome.FAILED, RuleOutcome.MISSING_DATA}, result.rule_id
 
 
 def test_policy_lite_reports_missing_inputs() -> None:
