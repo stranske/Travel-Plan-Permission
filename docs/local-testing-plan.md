@@ -168,11 +168,12 @@ restart-oriented local check whenever you touch portal workflow state:
 4. Restart the service.
 5. Re-open the same portal URLs and verify state is preserved.
 
-For multi-instance staging, also exercise the same flow against a Postgres
-URL: two service instances pointing at the same database should each see the
-latest committed snapshot after a refresh. Keyed record namespaces reconcile
-on save, so records evicted from one instance's serialized state should not
-reappear after restart.
+Use a single service writer for each SQLite file or Postgres database. The
+service replaces keyed namespaces from its complete in-memory snapshot; a
+second instance can delete records it never read, and existing instances do
+not automatically refresh from storage. Validate restart persistence with one
+writer. Multi-instance staging requires a separate coordination and refresh
+repair before it is safe; selecting Postgres does not supply that behavior.
 
 Treat any restart-sensitive data loss as a regression to file rather than as
 an ambiguous flake.

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from travel_plan_permission.http_service import PlannerProposalStore
+from travel_plan_permission.http_service import _PORTAL_MAX_DRAFTS, PlannerProposalStore
 from travel_plan_permission.persistence import (
     JsonPortalStateStore,
     SQLitePortalStateStore,
@@ -237,14 +237,14 @@ class TestSQLitePortalStateStore:
         state_path = tmp_path / "portal-runtime-state.sqlite3"
         first_store = PlannerProposalStore(state_path=state_path)
 
-        for index in range(65):
+        for index in range(_PORTAL_MAX_DRAFTS + 1):
             first_store.save_portal_draft({"traveler_name": f"Traveler {index}"})
 
         expected_keys = set(first_store.portal_drafts_by_id)
 
         reopened = PlannerProposalStore(state_path=state_path)
         assert set(reopened.portal_drafts_by_id) == expected_keys
-        assert len(reopened.portal_drafts_by_id) == 64
+        assert len(reopened.portal_drafts_by_id) == _PORTAL_MAX_DRAFTS
 
 
 class TestJsonPortalStateStore:
@@ -716,3 +716,25 @@ class TestPostgresPortalStateStore:
 
         assert _coerce_jsonb(42) == 42
         assert _coerce_jsonb(None) is None
+
+
+def test_sqlite_replacement_works_with_small_variable_limit(tmp_path: Path) -> None:
+    import sqlite3
+
+    store = SQLitePortalStateStore(tmp_path / "bounded.sqlite3")
+    store.initialize()
+    store.save_snapshot({"portal_drafts_by_id": {"stale": {"name": "stale"}}})
+    connection = store._connection()
+    old_limit = connection.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 32)
+    records = {str(index): {"name": str(index)} for index in range(80)}
+    try:
+        store.save_snapshot({"portal_drafts_by_id": records}, replace=True)
+        snapshot = store.load_snapshot()
+        assert snapshot is not None
+        assert snapshot["portal_drafts_by_id"] == records
+        store.save_snapshot({"portal_drafts_by_id": {}}, replace=True)
+        snapshot = store.load_snapshot()
+        assert snapshot is None or snapshot["portal_drafts_by_id"] == {}
+    finally:
+        connection.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, old_limit)
+        store.close()
