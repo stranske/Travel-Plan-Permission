@@ -827,7 +827,8 @@ def _proposal_response_for_plan(
                 external_status="200 OK",
                 updated_at=event_time,
             ),
-            result_payload=base_payload | {"queue_state": "completed", "approval_state": "approved"},
+            result_payload=base_payload
+            | {"queue_state": "completed", "approval_state": "approved"},
             received_at=event_time,
             status_endpoint=status_endpoint,
             proposal_status=status_payload,
@@ -1457,7 +1458,6 @@ def check_trip_plan(plan: TripPlan) -> PolicyCheckResult:
     either source fails the verdict and is returned through the same issue
     contract so downstream planner consumers cannot silently ignore it.
     """
-
     # Copies and in-place changes can bypass construction-time validation.
     plan = TripPlan.model_validate(plan)
     engine = PolicyEngine.from_file()

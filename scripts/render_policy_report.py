@@ -124,9 +124,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Read a trip plan and write its policy report to the requested path."""
 
     parser = argparse.ArgumentParser(description=__doc__ and __doc__.splitlines()[0])
-    parser.add_argument(
-        "plan", type=Path, help="TripPlan JSON file (canonical or internal)"
-    )
+    parser.add_argument("plan", type=Path, help="TripPlan JSON file (canonical or internal)")
     parser.add_argument("output", type=Path, help="destination .html file")
     args = parser.parse_args(argv)
 
@@ -135,9 +133,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("TripPlan JSON must be an object")
     plan, results = evaluate_plan(payload)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        render_html(plan, results, source=args.plan), encoding="utf-8"
-    )
+    args.output.write_text(render_html(plan, results, source=args.plan), encoding="utf-8")
     print(f"{verdict_for(results)} — wrote {args.output}")
     return 0
 

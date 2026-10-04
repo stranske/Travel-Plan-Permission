@@ -15,6 +15,7 @@ RECORD_NAMESPACES: tuple[str, ...] = (
     "portal_drafts_by_id",
     "expense_drafts_by_id",
     "manager_reviews",
+    "review_ids_by_draft_id",
     "exception_requests_by_draft_id",
 )
 
@@ -30,8 +31,9 @@ class PortalStateStore(Protocol):
     survive across processes when saving independent keyed records with
     ``replace=False``. Full replacement requires one authoritative writer per
     namespace: a stale complete snapshot can otherwise delete another writer's
-    records. PlannerProposalStore currently uses full replacement and keeps an
-    in-memory snapshot, so multiple service writers are not coordinated.
+    records. SQL-backed PlannerProposalStore coordinates its whole operation
+    separately, refreshing before mutations and retaining the guard across data
+    commits. Direct snapshot writers must not bypass that service boundary.
     """
 
     def initialize(self) -> None:
@@ -50,9 +52,8 @@ class PortalStateStore(Protocol):
         Mapped namespaces are merged per record by default so independent
         writers cannot delete records they did not read.  Callers that own the
         complete authoritative namespace, such as LRU eviction, pass
-        ``replace=True`` to remove rows absent from the snapshot. Singleton
-        mappings (e.g. ``review_ids_by_draft_id``) may be stored as a single
-        blob.
+        ``replace=True`` to remove rows absent from the snapshot. Lists such as audit events remain singleton payloads; review indexes
+        are keyed records.
         """
 
     def close(self) -> None:

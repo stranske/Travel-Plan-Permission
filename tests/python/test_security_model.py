@@ -248,9 +248,7 @@ def test_concurrent_role_change_decisions_are_serialized(
             transition=transition,
         )
 
-    monkeypatch.setattr(
-        security, "_require_pending_role_change", controlled_require_pending
-    )
+    monkeypatch.setattr(security, "_require_pending_role_change", controlled_require_pending)
     results: list[RoleChangeRequest] = []
     errors: list[BaseException] = []
 

@@ -168,12 +168,26 @@ restart-oriented local check whenever you touch portal workflow state:
 4. Restart the service.
 5. Re-open the same portal URLs and verify state is preserved.
 
-Use a single service writer for each SQLite file or Postgres database. The
-service replaces keyed namespaces from its complete in-memory snapshot; a
-second instance can delete records it never read, and existing instances do
-not automatically refresh from storage. Validate restart persistence with one
-writer. Multi-instance staging requires a separate coordination and refresh
-repair before it is safe; selecting Postgres does not supply that behavior.
+SQL-backed service operations coordinate across instances and refresh changed
+persisted state before reads or mutations. SQLite uses a transaction in a
+sidecar `<database>.service-lock.sqlite3` at the resolved database path; keep
+that coordination file available to every instance and never replace it while
+services are running. Postgres uses a database-scoped session advisory lock.
+Both guards survive separate data commits, retaining commit-before-audit-delivery
+ordering. Nested service calls reuse the outer operation and refresh only once.
+
+Validate two instances writing different drafts and reading each other's drafts
+without restart, then reopen a third instance to confirm both persisted. Retain
+the single-writer restriction for the legacy JSON backend and for callers that
+write snapshots directly outside PlannerProposalStore's coordinated API. A real
+Postgres server round-trip remains a separate deployment validation step; mock
+connection tests establish locking order but cannot certify server behavior.
+
+Connection access within one SQL store is serialized across request threads,
+and the app closes its backend on lifespan shutdown. Review indexes are stored
+as keyed records, with transactional migration from the legacy singleton.
+These protections preserve ordinary snapshot replacement and LRU deletion while
+coordinated SQL service operations refresh their authoritative snapshot.
 
 Treat any restart-sensitive data loss as a regression to file rather than as
 an ambiguous flake.

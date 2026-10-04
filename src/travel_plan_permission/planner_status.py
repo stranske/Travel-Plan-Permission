@@ -18,8 +18,7 @@ def blocking_codes(result: PolicyCheckResult) -> list[str]:
     return [
         issue.code
         for issue in result.issues
-        if issue.severity == "error"
-        and (issue.context or {}).get("blocking") is not False
+        if issue.severity == "error" and (issue.context or {}).get("blocking") is not False
     ]
 
 

@@ -84,9 +84,7 @@ PLANNER_PROPOSAL_SUBMISSION_ENDPOINT = "POST /api/planner/proposals"
 PLANNER_EXECUTION_STATUS_ENDPOINT = (
     "GET /api/planner/proposals/:proposal_id/executions/:execution_id"
 )
-PLANNER_EVALUATION_RESULT_ENDPOINT = (
-    "GET /api/planner/executions/:execution_id/evaluation-result"
-)
+PLANNER_EVALUATION_RESULT_ENDPOINT = "GET /api/planner/executions/:execution_id/evaluation-result"
 
 
 API_ENDPOINT_PERMISSIONS: dict[str, Permission] = {
@@ -221,9 +219,7 @@ class ExceptionTierEntitlements:
         return cls(subjects=MappingProxyType(resolved))
 
     @classmethod
-    def from_env(
-        cls, env: Mapping[str, str] | None = None
-    ) -> ExceptionTierEntitlements:
+    def from_env(cls, env: Mapping[str, str] | None = None) -> ExceptionTierEntitlements:
         """Load entitlements from ``TPP_EXCEPTION_TIER_ENTITLEMENTS`` (JSON object).
 
         An unset or blank variable yields an empty, fail-closed contract.
@@ -480,14 +476,10 @@ class SecurityModel:
                     "transition": transition,
                     "reason_code": reason_code,
                     "claimed_role": claimed_role.value,
-                    "assigned_role": (
-                        assigned_role.value if assigned_role is not None else None
-                    ),
+                    "assigned_role": (assigned_role.value if assigned_role is not None else None),
                 },
             )
-            raise PermissionError(
-                "Role-change decisions require a matching assigned admin role"
-            )
+            raise PermissionError("Role-change decisions require a matching assigned admin role")
 
         assert assigned_role is not None
         return assigned_role
@@ -521,9 +513,7 @@ class SecurityModel:
                     "current_state": request.state.value,
                 },
             )
-            raise ValueError(
-                f"Role change request '{request_id}' is already {request.state.value}"
-            )
+            raise ValueError(f"Role change request '{request_id}' is already {request.state.value}")
         return request
 
     def _mark_role_change_decided(self, request: RoleChangeRequest) -> None:
