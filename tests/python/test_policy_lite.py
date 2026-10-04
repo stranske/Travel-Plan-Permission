@@ -54,27 +54,41 @@ def test_blocking_rules_fail_closed_on_absent_or_nonfinite_input(
         TripPlan.model_validate(payload)
     assert {error["loc"] for error in exc_info.value.errors()} == {(field,)}
 
-    missing_lowest_fare = FareComparisonRule(Decimal("200"), Severity.BLOCKING).evaluate(
-        PolicyContext(selected_fare=Decimal("100"))
-    )
-    missing_selected_fare = FareComparisonRule(Decimal("200"), Severity.BLOCKING).evaluate(
-        PolicyContext(lowest_fare=Decimal("100"))
-    )
-    missing_duration = CabinClassRule(5, ["economy"], Severity.BLOCKING).evaluate(
-        PolicyContext(cabin_class="business", selected_fare=Decimal("100"))
-    )
-    missing_expenses = NonReimbursableRule(["alcohol"], Severity.BLOCKING).evaluate(
-        PolicyContext(expenses=None)
-    )
-    for result, expected_outcome in (
-        (missing_lowest_fare, RuleOutcome.FAILED),
-        (missing_selected_fare, RuleOutcome.FAILED),
-        (missing_duration, RuleOutcome.MISSING_DATA),
-        (missing_expenses, RuleOutcome.FAILED),
+    for rule, context, expected_outcome, missing_field in (
+        (
+            FareComparisonRule(Decimal("200"), Severity.BLOCKING),
+            PolicyContext(selected_fare=Decimal("100")),
+            RuleOutcome.FAILED,
+            "lowest_fare",
+        ),
+        (
+            FareComparisonRule(Decimal("200"), Severity.BLOCKING),
+            PolicyContext(lowest_fare=Decimal("100")),
+            RuleOutcome.FAILED,
+            "selected_fare",
+        ),
+        (
+            CabinClassRule(5, ["economy"], Severity.BLOCKING),
+            PolicyContext(cabin_class="business", selected_fare=Decimal("100")),
+            RuleOutcome.MISSING_DATA,
+            "flight_duration_hours",
+        ),
+        (
+            NonReimbursableRule(["alcohol"], Severity.BLOCKING),
+            PolicyContext(expenses=None),
+            RuleOutcome.FAILED,
+            "expenses",
+        ),
     ):
+        engine = PolicyEngine([rule])
+        result = engine.validate(context)[0]
         assert result.severity == Severity.BLOCKING, result.rule_id
         assert result.passed is False, result.rule_id
         assert result.outcome == expected_outcome, result.rule_id
+        diagnostics = policy_lite.diagnose_missing_inputs(context, engine)
+        assert len(diagnostics) == 1, result.rule_id
+        assert diagnostics[0].rule_id == result.rule_id
+        assert diagnostics[0].missing_fields == [missing_field], result.rule_id
 
 
 def test_policy_lite_reports_missing_inputs() -> None:
