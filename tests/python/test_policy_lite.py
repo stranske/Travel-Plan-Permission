@@ -4,17 +4,117 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 
 import travel_plan_permission.policy_lite as policy_lite
-from travel_plan_permission import PolicyContext
+from travel_plan_permission import PolicyContext, TripPlan
 from travel_plan_permission.policy import (
     AdvanceBookingRule,
+    CabinClassRule,
     FareComparisonRule,
     LocalOvernightRule,
+    NonReimbursableRule,
     PolicyEngine,
     RuleOutcome,
     Severity,
 )
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "flight_duration_hours",
+        "distance_from_office_miles",
+        "driving_cost",
+        "flight_cost",
+        "selected_fare",
+        "lowest_fare",
+    ],
+)
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf"), -1])
+def test_blocking_rules_fail_closed_on_absent_or_nonfinite_input(
+    field: str, value: float | int
+) -> None:
+    """Keep the source #1429 boundary and omitted-input acceptance gate runnable."""
+
+    payload = {
+        "trip_id": "fail-closed-acceptance",
+        "traveler_name": "Acceptance Traveler",
+        "destination": "Chicago, IL",
+        "departure_date": date(2026, 10, 10),
+        "return_date": date(2026, 10, 12),
+        "purpose": "Acceptance audit",
+        "estimated_cost": Decimal("100"),
+        field: 1,
+    }
+    # Prove the targeted field accepts valid evidence before injecting invalid evidence.
+    TripPlan.model_validate(payload)
+    payload[field] = value
+    with pytest.raises(ValidationError) as exc_info:
+        TripPlan.model_validate(payload)
+    assert {error["loc"] for error in exc_info.value.errors()} == {(field,)}
+
+    for rule, context, expected_outcome, missing_field in (
+        (
+            FareComparisonRule(Decimal("200"), Severity.BLOCKING),
+            PolicyContext(selected_fare=Decimal("100")),
+            RuleOutcome.FAILED,
+            "lowest_fare",
+        ),
+        (
+            FareComparisonRule(Decimal("200"), Severity.BLOCKING),
+            PolicyContext(lowest_fare=Decimal("100")),
+            RuleOutcome.FAILED,
+            "selected_fare",
+        ),
+        (
+            CabinClassRule(5, ["economy"], Severity.BLOCKING),
+            PolicyContext(cabin_class="business", selected_fare=Decimal("100")),
+            RuleOutcome.MISSING_DATA,
+            "flight_duration_hours",
+        ),
+        (
+            NonReimbursableRule(["alcohol"], Severity.BLOCKING),
+            PolicyContext(expenses=None),
+            RuleOutcome.FAILED,
+            "expenses",
+        ),
+    ):
+        engine = PolicyEngine([rule])
+        result = engine.validate(context)[0]
+        assert result.severity == Severity.BLOCKING, result.rule_id
+        assert result.passed is False, result.rule_id
+        assert result.outcome == expected_outcome, result.rule_id
+        diagnostics = policy_lite.diagnose_missing_inputs(context, engine)
+        assert len(diagnostics) == 1, result.rule_id
+        assert diagnostics[0].rule_id == result.rule_id
+        assert diagnostics[0].missing_fields == [missing_field], result.rule_id
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "flight_duration_hours",
+        "distance_from_office_miles",
+        "driving_cost",
+        "flight_cost",
+        "selected_fare",
+        "lowest_fare",
+    ],
+)
+def test_trip_plan_numeric_fields_accept_zero(field: str) -> None:
+    payload = {
+        "trip_id": "zero-boundary",
+        "traveler_name": "Boundary Traveler",
+        "destination": "Chicago, IL",
+        "departure_date": date(2026, 10, 10),
+        "return_date": date(2026, 10, 12),
+        "purpose": "Boundary acceptance audit",
+        "estimated_cost": Decimal("100"),
+        field: 0,
+    }
+    plan = TripPlan.model_validate(payload)
+    assert getattr(plan, field) == 0
 
 
 def test_policy_lite_reports_missing_inputs() -> None:
