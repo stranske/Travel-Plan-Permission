@@ -45,8 +45,9 @@ def test_blocking_rules_fail_closed_on_absent_or_nonfinite_input(
         "return_date": date(2026, 10, 12),
         "purpose": "Acceptance audit",
         "estimated_cost": Decimal("100"),
+        field: 1,
     }
-    # Prove the fixture is valid before injecting the targeted invalid value.
+    # Prove the targeted field accepts valid evidence before injecting invalid evidence.
     TripPlan.model_validate(payload)
     payload[field] = value
     with pytest.raises(ValidationError) as exc_info:
@@ -65,15 +66,15 @@ def test_blocking_rules_fail_closed_on_absent_or_nonfinite_input(
     missing_expenses = NonReimbursableRule(["alcohol"], Severity.BLOCKING).evaluate(
         PolicyContext(expenses=None)
     )
-    for result in (
-        missing_lowest_fare,
-        missing_selected_fare,
-        missing_duration,
-        missing_expenses,
+    for result, expected_outcome in (
+        (missing_lowest_fare, RuleOutcome.FAILED),
+        (missing_selected_fare, RuleOutcome.FAILED),
+        (missing_duration, RuleOutcome.MISSING_DATA),
+        (missing_expenses, RuleOutcome.FAILED),
     ):
         assert result.severity == Severity.BLOCKING, result.rule_id
         assert result.passed is False, result.rule_id
-        assert result.outcome in {RuleOutcome.FAILED, RuleOutcome.MISSING_DATA}, result.rule_id
+        assert result.outcome == expected_outcome, result.rule_id
 
 
 def test_policy_lite_reports_missing_inputs() -> None:
