@@ -4,17 +4,66 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 
 import travel_plan_permission.policy_lite as policy_lite
-from travel_plan_permission import PolicyContext
+from travel_plan_permission import PolicyContext, TripPlan
 from travel_plan_permission.policy import (
     AdvanceBookingRule,
+    CabinClassRule,
     FareComparisonRule,
     LocalOvernightRule,
+    NonReimbursableRule,
     PolicyEngine,
     RuleOutcome,
     Severity,
 )
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "flight_duration_hours",
+        "distance_from_office_miles",
+        "driving_cost",
+        "flight_cost",
+        "selected_fare",
+        "lowest_fare",
+    ],
+)
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf"), -1])
+def test_blocking_rules_fail_closed_on_absent_or_nonfinite_input(
+    field: str, value: float | int
+) -> None:
+    """Keep the source #1429 boundary and omitted-input acceptance gate runnable."""
+
+    payload = {
+        "trip_id": "fail-closed-acceptance",
+        "traveler_name": "Acceptance Traveler",
+        "destination": "Chicago, IL",
+        "departure_date": date(2026, 10, 10),
+        "return_date": date(2026, 10, 12),
+        "purpose": "Acceptance audit",
+        "estimated_cost": Decimal("100"),
+        field: value,
+    }
+    with pytest.raises(ValidationError) as exc_info:
+        TripPlan.model_validate(payload)
+    assert any(error["loc"] == (field,) for error in exc_info.value.errors())
+
+    missing_fare = FareComparisonRule(Decimal("200"), Severity.BLOCKING).evaluate(
+        PolicyContext(selected_fare=Decimal("100"))
+    )
+    missing_duration = CabinClassRule(5, ["economy"], Severity.BLOCKING).evaluate(
+        PolicyContext(cabin_class="business", selected_fare=Decimal("100"))
+    )
+    missing_expenses = NonReimbursableRule(["alcohol"], Severity.BLOCKING).evaluate(
+        PolicyContext(expenses=None)
+    )
+    for result in (missing_fare, missing_duration, missing_expenses):
+        assert result.severity == Severity.BLOCKING
+        assert result.passed is False
+        assert result.outcome in {RuleOutcome.FAILED, RuleOutcome.MISSING_DATA}
 
 
 def test_policy_lite_reports_missing_inputs() -> None:
