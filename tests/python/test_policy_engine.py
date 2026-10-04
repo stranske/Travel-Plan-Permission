@@ -14,6 +14,7 @@ from travel_plan_permission import (
 from travel_plan_permission.policy import (
     AdvanceBookingRule,
     CabinClassRule,
+    DrivingVsFlyingRule,
     LocalOvernightRule,
     RuleOutcome,
 )
@@ -395,3 +396,22 @@ def test_local_overnight_passes_when_distance_meets_minimum(distance: float) -> 
 
     assert result.passed is True
     assert result.outcome == RuleOutcome.PASSED
+
+
+@pytest.mark.parametrize(
+    "driving,flight", [(None, None), (Decimal("50"), None), (None, Decimal("70"))]
+)
+@pytest.mark.parametrize("severity", [Severity.BLOCKING, Severity.ADVISORY, Severity.INFO])
+def test_driving_vs_flying_missing_estimates_follow_severity(driving, flight, severity):
+    rule = DrivingVsFlyingRule(severity=severity)
+    context = PolicyContext(driving_cost=driving, flight_cost=flight)
+    result = rule.evaluate(context)
+    engine = PolicyEngine([rule])
+    if severity == Severity.BLOCKING:
+        assert result.outcome == RuleOutcome.MISSING_DATA
+        assert result.passed is False
+        assert engine.blocking_results(context) == [result]
+    else:
+        assert result.outcome == RuleOutcome.SKIPPED
+        assert result.passed is True
+        assert engine.blocking_results(context) == []
