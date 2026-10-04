@@ -147,9 +147,7 @@ def _default_trip_id(plan: CanonicalTripPlan) -> str:
         "return_date": plan.return_date.isoformat(),
         "traveler_name": plan.traveler_name,
     }
-    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
     suffix = hashlib.sha256(encoded).hexdigest()[:12].upper()
     return f"TRIP-{plan.depart_date:%Y%m%d}-{_slugify(plan.traveler_name)}-{suffix}"
 

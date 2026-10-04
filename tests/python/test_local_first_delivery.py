@@ -71,9 +71,7 @@ def test_static_policy_report_is_self_contained_html(renderer, tmp_path: Path) -
     # evaluate_plan(). Deriving the expectation from the code under test would make
     # this assertion tautological: breaking evaluate_plan would change both sides
     # and the gate would still pass.
-    engine_rule_ids = [
-        str(rule["rule_id"]) for rule in PolicyEngine.from_file().describe_rules()
-    ]
+    engine_rule_ids = [str(rule["rule_id"]) for rule in PolicyEngine.from_file().describe_rules()]
     assert engine_rule_ids, "policy engine exposes no rules"
     missing = [rule_id for rule_id in engine_rule_ids if rule_id not in markup]
     assert not missing, f"report omits policy rules: {missing}"

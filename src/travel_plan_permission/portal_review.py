@@ -293,9 +293,7 @@ def portal_review_state_for_persisted_draft(
         canonical_payload_builder=canonical_payload_builder,
         generate_artifacts=generate_artifacts,
         submission_response=(
-            submission_response
-            if submission_response is not None
-            else draft.submission_response
+            submission_response if submission_response is not None else draft.submission_response
         ),
         manager_review=(
             manager_review

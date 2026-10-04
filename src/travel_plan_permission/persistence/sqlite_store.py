@@ -6,8 +6,8 @@ not set. The store uses three tables:
 * ``schema_version`` — single-row migration marker.
 * ``portal_records`` — per-record rows for mapped namespaces (drafts,
   proposals, manager reviews, exception requests).
-* ``portal_singletons`` — single-row payload for namespaces that don't fit
-  the keyed model (e.g. ``review_ids_by_draft_id``).
+* ``portal_singletons`` — single-row payload for lists such as audit events.
+  Review indexes are keyed records; initialization migrates legacy index blobs.
 
 ``save_snapshot`` merges keyed records by default. With ``replace=True``,
 it reconciles each mapped namespace inside a single transaction: rows whose
@@ -21,6 +21,8 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -72,42 +74,65 @@ class SQLitePortalStateStore(SqlSnapshotStore):
         return self._path
 
     def _connection(self) -> sqlite3.Connection:
-        if self._conn is None:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            conn = sqlite3.connect(
-                self._path,
-                isolation_level=None,
-                check_same_thread=False,
-            )
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
-            conn.execute("PRAGMA foreign_keys=ON")
-            self._conn = conn
-        return self._conn
+        with self._write_lock:
+            if self._conn is None:
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                conn = sqlite3.connect(
+                    self._path,
+                    isolation_level=None,
+                    check_same_thread=False,
+                )
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
+                conn.execute("PRAGMA foreign_keys=ON")
+                self._conn = conn
+            return self._conn
 
     def initialize(self) -> None:
-        conn = self._connection()
-        with _transaction(conn, self._write_lock):
-            for stmt in _SCHEMA_STATEMENTS:
-                conn.execute(stmt)
-            conn.execute(
-                "INSERT OR IGNORE INTO schema_version (version, applied_at) " "VALUES (?, ?)",
-                (SCHEMA_VERSION, _now_iso()),
-            )
+        with self._write_lock:
+            conn = self._connection()
+            with _transaction(conn, self._write_lock):
+                for stmt in _SCHEMA_STATEMENTS:
+                    conn.execute(stmt)
+                conn.execute(
+                    "INSERT OR IGNORE INTO schema_version (version, applied_at) " "VALUES (?, ?)",
+                    (SCHEMA_VERSION, _now_iso()),
+                )
+                legacy = conn.execute(
+                    "SELECT payload_json FROM portal_singletons WHERE namespace = ?",
+                    ("review_ids_by_draft_id",),
+                ).fetchone()
+                if legacy is not None:
+                    index = json.loads(legacy[0])
+                    if not isinstance(index, dict):
+                        raise ValueError("legacy review index is not a mapping")
+                    for key, value in index.items():
+                        conn.execute(
+                            "INSERT OR IGNORE INTO portal_records VALUES (?, ?, ?, ?)",
+                            ("review_ids_by_draft_id", str(key), json.dumps(value), _now_iso()),
+                        )
+                    conn.execute(
+                        "DELETE FROM portal_singletons WHERE namespace = ?",
+                        ("review_ids_by_draft_id",),
+                    )
 
     def _select_all(self) -> tuple[list[tuple[str, str, object]], list[tuple[str, object]]]:
-        conn = self._connection()
-        records = conn.execute(
-            "SELECT namespace, record_key, payload_json FROM portal_records"
-        ).fetchall()
-        singletons = conn.execute(
-            "SELECT namespace, payload_json FROM portal_singletons"
-        ).fetchall()
-        return records, singletons
+        with self._write_lock:
+            conn = self._connection()
+            records = conn.execute(
+                "SELECT namespace, record_key, payload_json FROM portal_records"
+            ).fetchall()
+            singletons = conn.execute(
+                "SELECT namespace, payload_json FROM portal_singletons"
+            ).fetchall()
+            return records, singletons
 
-    def _transaction(self) -> _transaction:
-        conn = self._connection()
-        return _transaction(conn, self._write_lock)
+    @contextmanager
+    def _transaction(self) -> Iterator[sqlite3.Connection]:
+        with self._write_lock:
+            conn = self._connection()
+            with _transaction(conn, self._write_lock) as handle:
+                yield handle
 
     def _delete_absent_records(
         self, handle: sqlite3.Connection, namespace: str, record_keys: list[str]
@@ -169,16 +194,18 @@ class SQLitePortalStateStore(SqlSnapshotStore):
         return _now_iso()
 
     def close(self) -> None:
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        with self._write_lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
 
     def journal_mode(self) -> str:
         """Return the active SQLite journal mode (test/diagnostic helper)."""
+        with self._write_lock:
 
-        conn = self._connection()
-        row = conn.execute("PRAGMA journal_mode").fetchone()
-        return str(row[0]) if row else ""
+            conn = self._connection()
+            row = conn.execute("PRAGMA journal_mode").fetchone()
+            return str(row[0]) if row else ""
 
 
 def _now_iso() -> str:

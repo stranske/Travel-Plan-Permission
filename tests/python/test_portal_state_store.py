@@ -559,6 +559,7 @@ class TestPostgresPortalStateStore:
     @staticmethod
     def _make_mock_psycopg() -> tuple[MagicMock, MagicMock, MagicMock]:
         mock_cur = MagicMock()
+        mock_cur.fetchone.return_value = None
         mock_cur.__enter__ = lambda s: s
         mock_cur.__exit__ = MagicMock(return_value=False)
         mock_cur.fetchall.return_value = []
@@ -738,3 +739,119 @@ def test_sqlite_replacement_works_with_small_variable_limit(tmp_path: Path) -> N
     finally:
         connection.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, old_limit)
         store.close()
+
+
+@pytest.mark.parametrize("backend", ["sqlite", "postgres"])
+def test_snapshot_reads_wait_for_shared_connection_transaction(tmp_path, backend):
+    """A read must not use or commit another thread's open write transaction."""
+    from travel_plan_permission.persistence.postgres_store import PostgresPortalStateStore
+
+    store = (
+        SQLitePortalStateStore(tmp_path / "locked.sqlite3")
+        if backend == "sqlite"
+        else PostgresPortalStateStore("postgresql://unused")
+    )
+    if backend == "sqlite":
+        store.initialize()
+    else:
+        store._conn = MagicMock()
+        store._conn.cursor.return_value.__enter__.return_value.fetchall.return_value = []
+    started = threading.Event()
+    finished = threading.Event()
+    errors = []
+
+    def reader():
+        started.set()
+        try:
+            store.load_snapshot()
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            finished.set()
+
+    with store._transaction():
+        thread = threading.Thread(target=reader)
+        thread.start()
+        assert started.wait(2)
+        blocked = not finished.wait(0.15)
+    thread.join(2)
+    store.close()
+    assert blocked, "reader entered the shared connection during another thread's transaction"
+    assert finished.is_set() and not errors
+
+
+def test_distinct_review_index_records_survive_independent_writers(tmp_path):
+    path = tmp_path / "review-index.sqlite3"
+    first, second = SQLitePortalStateStore(path), SQLitePortalStateStore(path)
+    first.initialize()
+    second.initialize()
+    first.save_snapshot({"review_ids_by_draft_id": {"draft-a": "review-a"}})
+    second.save_snapshot({"review_ids_by_draft_id": {"draft-b": "review-b"}})
+    try:
+        assert first.load_snapshot()["review_ids_by_draft_id"] == {
+            "draft-a": "review-a",
+            "draft-b": "review-b",
+        }
+    finally:
+        first.close()
+        second.close()
+
+
+def test_app_lifespan_closes_portal_database(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from travel_plan_permission.http_service import create_app
+
+    monkeypatch.delenv("TPP_DEMO_MODE", raising=False)
+    backend = SQLitePortalStateStore(tmp_path / "lifecycle.sqlite3")
+    backend.initialize()
+    planner = PlannerProposalStore(store=backend)
+    with TestClient(create_app(planner)):
+        assert backend._conn is not None
+    assert backend._conn is None
+
+
+def test_legacy_review_index_is_migrated_without_resurrection(tmp_path):
+    store = SQLitePortalStateStore(tmp_path / "legacy-index.sqlite3")
+    store.initialize()
+    conn = store._connection()
+    conn.execute(
+        "INSERT INTO portal_singletons VALUES (?, ?, ?)",
+        ("review_ids_by_draft_id", json.dumps({"old": "review-old"}), "2026-01-01"),
+    )
+    store.initialize()
+    assert store.load_snapshot()["review_ids_by_draft_id"] == {"old": "review-old"}
+    store.save_snapshot({"review_ids_by_draft_id": {"new": "review-new"}}, replace=True)
+    assert store.load_snapshot()["review_ids_by_draft_id"] == {"new": "review-new"}
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM portal_singletons WHERE namespace = ?",
+            ("review_ids_by_draft_id",),
+        ).fetchone()[0]
+        == 0
+    )
+    store.close()
+
+
+def test_postgres_legacy_review_index_migration(monkeypatch):
+    mock_pg, mock_conn, mock_cur = TestPostgresPortalStateStore()._make_mock_psycopg()
+    mock_cur.fetchone.return_value = ({"draft-a": "review-a"},)
+    monkeypatch.setitem(sys.modules, "psycopg", mock_pg)
+    from travel_plan_permission.persistence.postgres_store import PostgresPortalStateStore
+
+    store = PostgresPortalStateStore("postgresql://test/db")
+    store.initialize()
+    calls = [
+        (call.args[0], call.args[1] if len(call.args) > 1 else None)
+        for call in mock_cur.execute.call_args_list
+    ]
+    assert any(
+        "INSERT INTO tpp.portal_records" in sql
+        and params[:3] == ("review_ids_by_draft_id", "draft-a", '"review-a"')
+        for sql, params in calls
+    )
+    assert any(
+        "DELETE FROM tpp.portal_singletons" in sql and params == ("review_ids_by_draft_id",)
+        for sql, params in calls
+    )
+    store.close()

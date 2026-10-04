@@ -827,7 +827,8 @@ def _proposal_response_for_plan(
                 external_status="200 OK",
                 updated_at=event_time,
             ),
-            result_payload=base_payload | {"queue_state": "completed", "approval_state": "approved"},
+            result_payload=base_payload
+            | {"queue_state": "completed", "approval_state": "approved"},
             received_at=event_time,
             status_endpoint=status_endpoint,
             proposal_status=status_payload,

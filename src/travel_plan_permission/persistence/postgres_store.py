@@ -64,44 +64,67 @@ class PostgresPortalStateStore(SqlSnapshotStore):
         return self._database_url
 
     def _connection(self) -> Connection:
-        if self._conn is None:
-            try:
-                import psycopg
-            except ImportError as exc:
-                raise RuntimeError(
-                    "TPP_PORTAL_DATABASE_URL is set but the 'psycopg' driver is "
-                    "not installed. Install the optional 'postgres' extra: "
-                    "pip install travel-plan-permission[postgres]"
-                ) from exc
-            self._conn = psycopg.connect(self._database_url, autocommit=False)
-        return self._conn
+        with self._write_lock:
+            if self._conn is None:
+                try:
+                    import psycopg
+                except ImportError as exc:
+                    raise RuntimeError(
+                        "TPP_PORTAL_DATABASE_URL is set but the 'psycopg' driver is "
+                        "not installed. Install the optional 'postgres' extra: "
+                        "pip install travel-plan-permission[postgres]"
+                    ) from exc
+                self._conn = psycopg.connect(self._database_url, autocommit=False)
+            return self._conn
 
     def initialize(self) -> None:
-        conn = self._connection()
-        with conn.transaction(), conn.cursor() as cur:
-            for stmt in _SCHEMA_STATEMENTS:
-                cur.execute(stmt)
-            cur.execute(
-                "INSERT INTO tpp.schema_version (version, applied_at) "
-                "VALUES (%s, %s) ON CONFLICT (version) DO NOTHING",
-                (SCHEMA_VERSION, _now()),
-            )
+        with self._write_lock:
+            conn = self._connection()
+            with conn.transaction(), conn.cursor() as cur:
+                for stmt in _SCHEMA_STATEMENTS:
+                    cur.execute(stmt)
+                cur.execute(
+                    "INSERT INTO tpp.schema_version (version, applied_at) "
+                    "VALUES (%s, %s) ON CONFLICT (version) DO NOTHING",
+                    (SCHEMA_VERSION, _now()),
+                )
+                cur.execute(
+                    "SELECT payload_json FROM tpp.portal_singletons WHERE namespace = %s",
+                    ("review_ids_by_draft_id",),
+                )
+                legacy = cur.fetchone()
+                if legacy is not None:
+                    index = _coerce_jsonb(legacy[0])
+                    if not isinstance(index, dict):
+                        raise ValueError("legacy review index is not a mapping")
+                    for key, value in index.items():
+                        cur.execute(
+                            "INSERT INTO tpp.portal_records VALUES (%s, %s, %s::jsonb, %s) "
+                            "ON CONFLICT (namespace, record_key) DO NOTHING",
+                            ("review_ids_by_draft_id", str(key), json.dumps(value), _now()),
+                        )
+                    cur.execute(
+                        "DELETE FROM tpp.portal_singletons WHERE namespace = %s",
+                        ("review_ids_by_draft_id",),
+                    )
 
     def _select_all(self) -> tuple[list[tuple[str, str, object]], list[tuple[str, object]]]:
-        conn = self._connection()
-        with conn.cursor() as cur:
-            cur.execute("SELECT namespace, record_key, payload_json FROM tpp.portal_records")
-            records = cur.fetchall()
-            cur.execute("SELECT namespace, payload_json FROM tpp.portal_singletons")
-            singletons = cur.fetchall()
-        conn.commit()
-        return records, singletons
+        with self._write_lock:
+            conn = self._connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT namespace, record_key, payload_json FROM tpp.portal_records")
+                records = cur.fetchall()
+                cur.execute("SELECT namespace, payload_json FROM tpp.portal_singletons")
+                singletons = cur.fetchall()
+            conn.commit()
+            return records, singletons
 
     @contextmanager
     def _transaction(self) -> Iterator[Cursor[object]]:
-        conn = self._connection()
-        with self._write_lock, conn.transaction(), conn.cursor() as cur:
-            yield cur
+        with self._write_lock:
+            conn = self._connection()
+            with conn.transaction(), conn.cursor() as cur:
+                yield cur
 
     def _delete_absent_records(
         self, handle: Cursor[object], namespace: str, record_keys: list[str]
@@ -166,9 +189,10 @@ class PostgresPortalStateStore(SqlSnapshotStore):
         return _coerce_jsonb(value)
 
     def close(self) -> None:
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        with self._write_lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
 
 
 def _now() -> datetime:

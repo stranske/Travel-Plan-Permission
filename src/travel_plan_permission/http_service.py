@@ -8,7 +8,8 @@ import logging
 import os
 import sys
 import tempfile
-from contextlib import suppress
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -508,6 +509,12 @@ class PlannerProposalStore:
         if self.store is not None:
             self._load_state()
             self._flush_pending_audit_events()
+
+    def close(self) -> None:
+        """Release the persistence backend after request processing stops."""
+
+        if self.store is not None:
+            self.store.close()
 
     def remember_plan(self, trip_plan: TripPlan) -> None:
         """Store the latest planner trip payload by trip identifier."""
@@ -2285,7 +2292,9 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
             generate_artifacts=not bool(draft.cached_artifacts),
         )
         if review.validation_errors:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=review.validation_errors)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=review.validation_errors
+            )
         if review.policy_blocking_codes:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -2392,7 +2401,16 @@ def create_app(
 
     audit.install_store_from_env()
     proposal_store = store or PlannerProposalStore(state_path=_default_portal_state_path())
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            proposal_store.close()
+
     app = FastAPI(
+        lifespan=lifespan,
         title="Travel Plan Permission Planner Service",
         version="0.1.0",
         summary="Thin HTTP adapter over the planner-facing policy API builders.",

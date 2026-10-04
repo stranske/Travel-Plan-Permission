@@ -19,10 +19,10 @@ class SqlSnapshotStore(PortalStateStore, ABC):
             return None
 
         snapshot: dict[str, Any] = {namespace: {} for namespace in RECORD_NAMESPACES}
-        for namespace, record_key, payload in records:
-            snapshot.setdefault(namespace, {})[record_key] = self._coerce_payload(payload)
         for namespace, payload in singletons:
             snapshot[namespace] = self._coerce_payload(payload)
+        for namespace, record_key, payload in records:
+            snapshot.setdefault(namespace, {})[record_key] = self._coerce_payload(payload)
         return snapshot
 
     def save_snapshot(self, snapshot: dict[str, object], *, replace: bool = False) -> None:

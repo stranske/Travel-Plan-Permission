@@ -175,6 +175,11 @@ not automatically refresh from storage. Validate restart persistence with one
 writer. Multi-instance staging requires a separate coordination and refresh
 repair before it is safe; selecting Postgres does not supply that behavior.
 
+Connection access within one SQL store is serialized across request threads,
+and the app closes its backend on lifespan shutdown. Review indexes are stored
+as keyed records, with transactional migration from the legacy singleton.
+These protections do not change the single-writer restriction above.
+
 Treat any restart-sensitive data loss as a regression to file rather than as
 an ambiguous flake.
 
