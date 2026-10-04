@@ -9,9 +9,9 @@ not set. The store uses three tables:
 * ``portal_singletons`` — single-row payload for namespaces that don't fit
   the keyed model (e.g. ``review_ids_by_draft_id``).
 
-``save_snapshot`` reconciles each mapped namespace inside a single
-transaction: rows whose keys are absent from the latest serialized snapshot are
-deleted before current records are upserted. This keeps SQL-backed restart
+``save_snapshot`` merges keyed records by default. With ``replace=True``,
+it reconciles each mapped namespace inside a single transaction: rows whose
+keys are absent from the authoritative snapshot are deleted before upserts. This keeps SQL-backed restart
 state aligned with in-memory LRU eviction for portal drafts, expense drafts,
 manager reviews, submissions, plans, and exception requests.
 """
@@ -112,19 +112,18 @@ class SQLitePortalStateStore(SqlSnapshotStore):
     def _delete_absent_records(
         self, handle: sqlite3.Connection, namespace: str, record_keys: list[str]
     ) -> None:
-        if record_keys:
-            placeholders = ", ".join("?" for _ in record_keys)
-            handle.execute(
-                "DELETE FROM portal_records "
-                "WHERE namespace = ? "
-                f"AND record_key NOT IN ({placeholders})",
-                (namespace, *record_keys),
-            )
-        else:
-            handle.execute(
-                "DELETE FROM portal_records WHERE namespace = ?",
-                (namespace,),
-            )
+        # Select and delete stale keys with fixed-size bindings. A NOT IN list
+        # consumes one SQLite variable per retained key and can exceed the
+        # connection's runtime limit even for an otherwise valid snapshot.
+        retained = set(record_keys)
+        existing = handle.execute(
+            "SELECT record_key FROM portal_records WHERE namespace = ?",
+            (namespace,),
+        ).fetchall()
+        handle.executemany(
+            "DELETE FROM portal_records WHERE namespace = ? AND record_key = ?",
+            ((namespace, key) for (key,) in existing if key not in retained),
+        )
 
     def _upsert_record(
         self,
