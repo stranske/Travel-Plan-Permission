@@ -61,20 +61,24 @@ def _operation_payload(
             "execution_id": "exec-949",
             "raw_response": {"provider_status": execution_state},
         },
-        "proposal_status": {
-            "trip_id": "TRIP-949",
-            "proposal_id": "proposal-123",
-            "proposal_version": "proposal-v1",
-            "execution_id": "exec-949",
-            "status": (
-                "rejected"
-                if submission_status == "failed"
-                else "approved" if terminal else "submitted"
-            ),
-            "approval_history": [],
-            "validation_results": [],
-            "exception_requests": [],
-        },
+        "proposal_status": (
+            {
+                "trip_id": "TRIP-949",
+                "proposal_id": "proposal-123",
+                "proposal_version": "proposal-v1",
+                "execution_id": "exec-949",
+                "status": (
+                    "rejected"
+                    if submission_status == "failed"
+                    else "approved" if terminal else "submitted"
+                ),
+                "approval_history": [],
+                "validation_results": [],
+                "exception_requests": [],
+            }
+            if operation == "poll_execution_status"
+            else None
+        ),
         "error": None,
         "retry": None,
         "received_at": "2026-04-27T00:00:01Z",
@@ -124,6 +128,7 @@ def test_submit_proposal_returns_stable_ids_and_auth_header() -> None:
         },
     )
 
+    assert result.proposal_status is None
     assert result.result_payload["proposal_id"] == "proposal-123"
     assert result.result_payload["execution_id"] == "exec-949"
     method, url, headers, json_body, timeout = transport.calls[0]
