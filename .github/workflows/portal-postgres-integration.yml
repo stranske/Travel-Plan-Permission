@@ -1,0 +1,44 @@
+name: Portal PostgreSQL Integration
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-integration:
+    name: Real PostgreSQL portal acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: portal_test
+          POSTGRES_PASSWORD: isolated_test_only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U portal_test -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TPP_TEST_POSTGRES_ADMIN_URL: postgresql://portal_test:isolated_test_only@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install production PostgreSQL driver and test dependencies
+        run: python -m pip install -e ".[dev,postgres]"
+      - name: Run production service PostgreSQL acceptance and SQLite parity
+        run: |
+          test -n "${TPP_TEST_POSTGRES_ADMIN_URL:-}"
+          python -m pytest tests/python/test_portal_postgres_integration.py -q -rs --override-ini addopts=
