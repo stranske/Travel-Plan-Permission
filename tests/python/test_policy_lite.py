@@ -91,6 +91,32 @@ def test_blocking_rules_fail_closed_on_absent_or_nonfinite_input(
         assert diagnostics[0].missing_fields == [missing_field], result.rule_id
 
 
+@pytest.mark.parametrize(
+    "field",
+    [
+        "flight_duration_hours",
+        "distance_from_office_miles",
+        "driving_cost",
+        "flight_cost",
+        "selected_fare",
+        "lowest_fare",
+    ],
+)
+def test_trip_plan_numeric_fields_accept_zero(field: str) -> None:
+    payload = {
+        "trip_id": "zero-boundary",
+        "traveler_name": "Boundary Traveler",
+        "destination": "Chicago, IL",
+        "departure_date": date(2026, 10, 10),
+        "return_date": date(2026, 10, 12),
+        "purpose": "Boundary acceptance audit",
+        "estimated_cost": Decimal("100"),
+        field: 0,
+    }
+    plan = TripPlan.model_validate(payload)
+    assert getattr(plan, field) == 0
+
+
 def test_policy_lite_reports_missing_inputs() -> None:
     context = PolicyContext(
         departure_date=date(2024, 9, 15),
@@ -124,9 +150,13 @@ def test_policy_lite_reports_missing_inputs() -> None:
         assert results[rule_id].severity == Severity.BLOCKING
 
 
-@pytest.mark.parametrize("severity", [Severity.BLOCKING, Severity.ADVISORY, Severity.INFO])
+@pytest.mark.parametrize(
+    "severity", [Severity.BLOCKING, Severity.ADVISORY, Severity.INFO]
+)
 @pytest.mark.parametrize("rule_id", ["advance_booking", "local_overnight"])
-def test_policy_lite_matches_severity_dependent_missing_data(rule_id: str, severity: str) -> None:
+def test_policy_lite_matches_severity_dependent_missing_data(
+    rule_id: str, severity: str
+) -> None:
     rule = (
         AdvanceBookingRule(7, severity)
         if rule_id == "advance_booking"
