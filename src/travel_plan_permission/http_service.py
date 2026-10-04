@@ -8,12 +8,14 @@ import logging
 import os
 import sys
 import tempfile
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
+import threading
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager, nullcontext, suppress
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from functools import partial
+from functools import partial, wraps
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs
@@ -486,6 +488,29 @@ def _portal_state_is_ephemeral() -> bool:
     return _path_is_under_tmp(_default_portal_state_path())
 
 
+def _serialized_store_operation[**OperationArgs, OperationResult](
+    method: Callable[OperationArgs, OperationResult],
+) -> Callable[OperationArgs, OperationResult]:
+    """Refresh once under cross-instance coordination, preserving nested calls."""
+
+    @wraps(method)
+    def operation(*args: OperationArgs.args, **kwargs: OperationArgs.kwargs) -> OperationResult:
+        store = cast(PlannerProposalStore, args[0])
+        with store._operation_lock:
+            coordinator = getattr(store.store, "service_operation", None)
+            if store._operation_depth or coordinator is None:
+                return method(*args, **kwargs)
+            with coordinator():
+                store._operation_depth += 1
+                try:
+                    store._load_state()
+                    return method(*args, **kwargs)
+                finally:
+                    store._operation_depth -= 1
+
+    return operation
+
+
 @dataclass
 class PlannerProposalStore:
     """In-memory proposal store for local and preview live testing."""
@@ -500,6 +525,11 @@ class PlannerProposalStore:
     pending_audit_events: list[audit.AuditEvent] = field(default_factory=list)
     state_path: Path | None = None
     store: PortalStateStore | None = None
+    _operation_lock: threading.RLock = field(
+        default_factory=threading.RLock, init=False, repr=False
+    )
+    _operation_depth: int = field(default=0, init=False, repr=False)
+    _database_snapshot: dict[str, object] | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.state_path is not None:
@@ -507,8 +537,10 @@ class PlannerProposalStore:
         if self.store is None and self.state_path is not None:
             self.store = resolve_portal_state_store(self.state_path)
         if self.store is not None:
-            self._load_state()
-            self._flush_pending_audit_events()
+            coordinator = getattr(self.store, "service_operation", None)
+            with coordinator() if coordinator is not None else nullcontext():
+                self._load_state()
+                self._flush_pending_audit_events()
 
     def close(self) -> None:
         """Release the persistence backend after request processing stops."""
@@ -516,12 +548,14 @@ class PlannerProposalStore:
         if self.store is not None:
             self.store.close()
 
+    @_serialized_store_operation
     def remember_plan(self, trip_plan: TripPlan) -> None:
         """Store the latest planner trip payload by trip identifier."""
 
         self.plans_by_trip_id[trip_plan.trip_id] = trip_plan.model_copy(deep=True)
         self._persist_state()
 
+    @_serialized_store_operation
     def lookup_trip_plan(self, trip_id: str) -> TripPlan | None:
         """Return a previously stored plan by trip identifier."""
 
@@ -530,6 +564,7 @@ class PlannerProposalStore:
             return None
         return trip_plan.model_copy(deep=True)
 
+    @_serialized_store_operation
     def record_submission(
         self,
         trip_plan: TripPlan,
@@ -590,6 +625,7 @@ class PlannerProposalStore:
             del self.pending_audit_events[prior_pending_count:]
             raise
 
+    @_serialized_store_operation
     def lookup_submission(self, execution_id: str) -> StoredProposal | None:
         """Return a previously stored proposal submission by execution identifier."""
 
@@ -602,6 +638,7 @@ class PlannerProposalStore:
             response=stored.response.model_copy(deep=True),
         )
 
+    @_serialized_store_operation
     def save_portal_draft(self, answers: dict[str, object]) -> PortalDraft:
         """Persist portal answers so a review route can be revisited."""
 
@@ -628,6 +665,7 @@ class PlannerProposalStore:
         self._persist_state()
         return draft
 
+    @_serialized_store_operation
     def cache_portal_artifacts(
         self,
         draft_id: str,
@@ -647,6 +685,7 @@ class PlannerProposalStore:
         self._persist_state()
         return updated
 
+    @_serialized_store_operation
     def record_portal_submission(
         self,
         draft_id: str,
@@ -666,6 +705,7 @@ class PlannerProposalStore:
         self._persist_state()
         return updated
 
+    @_serialized_store_operation
     def lookup_portal_draft(self, draft_id: str) -> PortalDraft | None:
         """Return a previously stored portal draft by identifier."""
 
@@ -684,6 +724,7 @@ class PlannerProposalStore:
             ),
         )
 
+    @_serialized_store_operation
     def save_expense_draft(self, answers: dict[str, object]) -> PortalDraft:
         """Persist expense portal answers so review and export can be revisited."""
 
@@ -709,6 +750,7 @@ class PlannerProposalStore:
         self._persist_state()
         return draft
 
+    @_serialized_store_operation
     def cache_expense_artifacts(
         self,
         draft_id: str,
@@ -728,6 +770,7 @@ class PlannerProposalStore:
         self._persist_state()
         return updated
 
+    @_serialized_store_operation
     def lookup_expense_draft(self, draft_id: str) -> PortalDraft | None:
         """Return a previously stored expense portal draft by identifier."""
 
@@ -746,6 +789,7 @@ class PlannerProposalStore:
             ),
         )
 
+    @_serialized_store_operation
     def create_manager_review(self, review: PortalReviewState) -> ReviewRequest:
         """Persist a manager review request for a submitted portal draft."""
 
@@ -773,21 +817,25 @@ class PlannerProposalStore:
         self._persist_state()
         return manager_review
 
+    @_serialized_store_operation
     def lookup_manager_review(self, review_id: str) -> ReviewRequest | None:
         """Return a persisted manager review by identifier."""
 
         return self.manager_reviews.lookup(review_id)
 
+    @_serialized_store_operation
     def lookup_manager_review_for_draft(self, draft_id: str) -> ReviewRequest | None:
         """Return the persisted manager review for a portal draft, if any."""
 
         return self.manager_reviews.lookup_by_draft(draft_id)
 
+    @_serialized_store_operation
     def list_manager_reviews(self) -> list[ReviewRequest]:
         """Return the manager review queue ordered by most recent activity."""
 
         return self.manager_reviews.list_reviews()
 
+    @_serialized_store_operation
     def apply_manager_review_action(
         self,
         review_id: str,
@@ -845,6 +893,7 @@ class PlannerProposalStore:
             raise
         return updated
 
+    @_serialized_store_operation
     def list_exception_requests(self, draft_id: str) -> list[ExceptionRequest]:
         """Return exception requests attached to a draft."""
 
@@ -856,6 +905,7 @@ class PlannerProposalStore:
             for item in self.exception_requests_by_draft_id.get(draft_id, [])
         ]
 
+    @_serialized_store_operation
     def create_exception_request(
         self,
         draft_id: str,
@@ -882,6 +932,7 @@ class PlannerProposalStore:
         self._persist_state()
         return self.list_exception_requests(draft_id)
 
+    @_serialized_store_operation
     def lookup_exception_request(
         self,
         draft_id: str,
@@ -899,15 +950,18 @@ class PlannerProposalStore:
             raise KeyError(f"No exception request {exception_index} found for draft '{draft_id}'.")
         return _copy_exception_request(requests[exception_index])
 
+    @_serialized_store_operation
     def escalate_exception_requests(self, draft_id: str) -> None:
         """Persist overdue exception routing before review or authorization."""
         escalate_draft_exceptions(self, draft_id)
 
+    @_serialized_store_operation
     def escalate_all_exception_requests(self) -> None:
         """Apply overdue routing for every draft and persist one snapshot write."""
 
         escalate_all_draft_exceptions(self)
 
+    @_serialized_store_operation
     def decide_exception_request(
         self,
         draft_id: str,
@@ -947,6 +1001,7 @@ class PlannerProposalStore:
         self._persist_state()
         return _copy_exception_request(target)
 
+    @_serialized_store_operation
     def list_exception_entries(self) -> list[DraftExceptionEntry]:
         """Return flattened exception entries ordered by newest draft activity."""
 
@@ -986,6 +1041,7 @@ class PlannerProposalStore:
         )
         return entries
 
+    @_serialized_store_operation
     def list_audit_events(self) -> list[AuditLogEvent]:
         """Return the current audit log ordered by most recent first."""
 
@@ -999,6 +1055,7 @@ class PlannerProposalStore:
         if self.store is None:
             return
         self.store.save_snapshot(self._serialize_state(), replace=True)
+        self._database_snapshot = deepcopy(self.store.load_snapshot())
 
     persist_audit_events = _persist_state
 
@@ -1016,7 +1073,7 @@ class PlannerProposalStore:
         audit.persist_outbox_with_snapshot(
             self.pending_audit_events,
             events,
-            lambda: store.save_snapshot(self._serialize_state(), replace=True),
+            self._persist_state,
         )
 
     def _flush_pending_audit_events(self) -> None:
@@ -1028,15 +1085,17 @@ class PlannerProposalStore:
             return
         audit.flush_pending_outbox(
             self.pending_audit_events,
-            lambda: store.save_snapshot(self._serialize_state(), replace=True),
+            self._persist_state,
         )
 
     def _load_state(self) -> None:
         if self.store is None:
             return
-        payload = cast(dict[str, Any], self.store.load_snapshot())
-        if not payload:
+        loaded = self.store.load_snapshot()
+        if loaded == self._database_snapshot:
             return
+        self._database_snapshot = deepcopy(loaded)
+        payload = cast(dict[str, Any], loaded or {})
         self.plans_by_trip_id = {
             trip_id: TripPlan.model_validate(serialized)
             for trip_id, serialized in payload.get("plans_by_trip_id", {}).items()

@@ -59,6 +59,21 @@ class PostgresPortalStateStore(SqlSnapshotStore):
         self._conn: Connection | None = None
         self._write_lock = threading.RLock()
 
+    @contextmanager
+    def service_operation(self) -> Iterator[None]:
+        """Use a database-wide session lock across independently committed saves."""
+        with self._write_lock:
+            conn = self._connection()
+            key = 0x54505053544F5245  # TPPSTORE: scoped to this PostgreSQL database.
+            try:
+                conn.execute("SELECT pg_advisory_lock(%s)", (key,))
+                conn.commit()
+                yield
+            finally:
+                conn.rollback()
+                conn.execute("SELECT pg_advisory_unlock(%s)", (key,))
+                conn.commit()
+
     @property
     def database_url(self) -> str:
         return self._database_url

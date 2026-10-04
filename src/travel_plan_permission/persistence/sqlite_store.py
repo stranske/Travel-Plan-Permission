@@ -65,9 +65,27 @@ class SQLitePortalStateStore(SqlSnapshotStore):
     """
 
     def __init__(self, path: Path) -> None:
-        self._path = Path(path).expanduser()
+        self._path = Path(path).expanduser().resolve()
         self._conn: sqlite3.Connection | None = None
         self._write_lock = threading.RLock()
+
+    @contextmanager
+    def service_operation(self) -> Iterator[None]:
+        """Serialize full service operations separately from data commits.
+
+        A SQLite sidecar holds only the coordination transaction. Data saves
+        commit on the primary connection before audit outbox delivery.
+        """
+        with self._write_lock:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            lock_path = self._path.with_name(self._path.name + ".service-lock.sqlite3")
+            lock = sqlite3.connect(lock_path, timeout=30, isolation_level=None)
+            try:
+                lock.execute("BEGIN IMMEDIATE")
+                yield
+                lock.execute("COMMIT")
+            finally:
+                lock.close()
 
     @property
     def path(self) -> Path:

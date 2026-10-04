@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import threading
 from datetime import UTC
@@ -855,3 +857,123 @@ def test_postgres_legacy_review_index_migration(monkeypatch):
         for sql, params in calls
     )
     store.close()
+
+
+def test_two_live_service_instances_refresh_and_preserve_drafts(tmp_path):
+    path = tmp_path / "service-shared.sqlite3"
+    first = PlannerProposalStore(state_path=path)
+    second = PlannerProposalStore(state_path=path)
+    draft_a = first.save_portal_draft({"traveler_name": "first"})
+    observed = second.lookup_portal_draft(draft_a.draft_id)
+    assert observed is not None and observed.answers["traveler_name"] == "first"
+    draft_b = second.save_portal_draft({"traveler_name": "second"})
+    observed = first.lookup_portal_draft(draft_b.draft_id)
+    assert observed is not None and observed.answers["traveler_name"] == "second"
+    reopened = PlannerProposalStore(state_path=path)
+    assert set(reopened.portal_drafts_by_id) == {draft_a.draft_id, draft_b.draft_id}
+    first.close()
+    second.close()
+    reopened.close()
+
+
+def test_shared_service_operation_preserves_concurrent_writers(tmp_path):
+    path = tmp_path / "concurrent-service.sqlite3"
+    first = PlannerProposalStore(state_path=path)
+    second = PlannerProposalStore(state_path=path)
+    barrier = threading.Barrier(2)
+    errors = []
+    ids = []
+
+    def writer(store, name):
+        try:
+            barrier.wait()
+            for index in range(5):
+                draft = store.save_portal_draft({"traveler_name": f"{name}-{index}"})
+                ids.append(draft.draft_id)
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=writer, args=(first, "a")),
+        threading.Thread(target=writer, args=(second, "b")),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(5)
+    assert not errors and all(not thread.is_alive() for thread in threads)
+    reopened = PlannerProposalStore(state_path=path)
+    assert len(ids) == 10 and set(reopened.portal_drafts_by_id) == set(ids)
+    first.close()
+    second.close()
+    reopened.close()
+
+
+def test_separate_service_processes_preserve_concurrent_drafts(tmp_path):
+    import travel_plan_permission
+
+    path = tmp_path / "process-shared.sqlite3"
+    source = Path(travel_plan_permission.__file__).resolve().parent.parent
+    env = dict(os.environ, PYTHONPATH=str(source))
+    code = """
+import json, sys
+from pathlib import Path
+from travel_plan_permission.http_service import PlannerProposalStore
+store = PlannerProposalStore(state_path=Path(sys.argv[1]))
+sys.stdin.readline()
+ids = [store.save_portal_draft({"traveler_name": f"{sys.argv[2]}-{i}"}).draft_id for i in range(5)]
+store.close()
+print(json.dumps(ids))
+"""
+    children = [
+        subprocess.Popen(
+            [sys.executable, "-c", code, str(path), name],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
+        for name in ("first", "second")
+    ]
+    ids = []
+    try:
+        for child in children:
+            child.stdin.write("go\n")
+            child.stdin.flush()
+        for child in children:
+            stdout, stderr = child.communicate(timeout=20)
+            assert child.returncode == 0, stderr
+            ids.extend(json.loads(stdout))
+        reopened = PlannerProposalStore(state_path=path)
+        try:
+            assert len(ids) == 10 and set(reopened.portal_drafts_by_id) == set(ids)
+        finally:
+            reopened.close()
+    finally:
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_postgres_service_lock_keeps_data_commits_independent(fail):
+    from travel_plan_permission.persistence.postgres_store import PostgresPortalStateStore
+
+    store = PostgresPortalStateStore("postgresql://test/db")
+    conn = MagicMock()
+    store._conn = conn
+    marker = RuntimeError("operation failed")
+    try:
+        with store.service_operation():
+            assert conn.commit.call_count == 1
+            assert "pg_advisory_lock" in conn.execute.call_args.args[0]
+            conn.commit()  # data/outbox save may commit while the session lock stays held
+            if fail:
+                raise marker
+    except RuntimeError as exc:
+        assert exc is marker and fail
+    assert "pg_advisory_unlock" in conn.execute.call_args.args[0]
+    assert conn.commit.call_count == 3
+    conn.rollback.assert_called_once()

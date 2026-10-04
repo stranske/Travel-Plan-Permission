@@ -31,8 +31,9 @@ class PortalStateStore(Protocol):
     survive across processes when saving independent keyed records with
     ``replace=False``. Full replacement requires one authoritative writer per
     namespace: a stale complete snapshot can otherwise delete another writer's
-    records. PlannerProposalStore currently uses full replacement and keeps an
-    in-memory snapshot, so multiple service writers are not coordinated.
+    records. SQL-backed PlannerProposalStore coordinates its whole operation
+    separately, refreshing before mutations and retaining the guard across data
+    commits. Direct snapshot writers must not bypass that service boundary.
     """
 
     def initialize(self) -> None:
