@@ -283,8 +283,12 @@ class DrivingVsFlyingRule(PolicyRule):
     def evaluate(self, context: PolicyContext) -> PolicyResult:
         if context.driving_cost is None or context.flight_cost is None:
             return self._outcome(
-                RuleOutcome.SKIPPED,
-                "Driving vs flying comparison skipped due to missing estimates",
+                (
+                    RuleOutcome.MISSING_DATA
+                    if self.severity == Severity.BLOCKING
+                    else RuleOutcome.SKIPPED
+                ),
+                "Driving vs flying comparison requires driving and flight estimates.",
             )
 
         if context.driving_cost > context.flight_cost:
