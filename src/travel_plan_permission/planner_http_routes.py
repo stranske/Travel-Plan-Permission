@@ -45,6 +45,7 @@ def register_planner_api_routes(app: FastAPI, proposal_store: Any) -> None:
 
     # Imported lazily to avoid a cycle while http_service assembles the app.
     from . import http_service as service
+    from .portal_receipts import authorize_draft_owner
 
     _authorize_request = service._authorize_request
     _evaluation_request = service._evaluation_request
@@ -160,7 +161,7 @@ def register_planner_api_routes(app: FastAPI, proposal_store: Any) -> None:
         execution_id: str,
         authorization: str | None = Header(default=None),
     ) -> PlannerProposalOperationResponse:
-        _authorize_request(
+        auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
             route=_route_identifier(request),
@@ -171,10 +172,16 @@ def register_planner_api_routes(app: FastAPI, proposal_store: Any) -> None:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No stored proposal found for execution_id '{execution_id}'.",
             )
+        draft_id = stored.request.payload.get("draft_id")
+        draft = proposal_store.lookup_portal_draft(str(draft_id)) if draft_id else None
+        if draft is not None:
+            authorize_draft_owner(draft, auth_context)
         if stored.request.proposal_id != proposal_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=(f"Execution '{execution_id}' does not belong to proposal '{proposal_id}'."),
+                detail=(
+                    f"Execution '{execution_id}' does not belong to proposal '{proposal_id}'."
+                ),
             )
         status_request = _submission_status_request(
             stored,
@@ -198,7 +205,7 @@ def register_planner_api_routes(app: FastAPI, proposal_store: Any) -> None:
         execution_id: str,
         authorization: str | None = Header(default=None),
     ) -> PlannerProposalEvaluationResult:
-        _authorize_request(
+        auth_context = _authorize_request(
             authorization,
             required_permission=Permission.VIEW,
             route=_route_identifier(request),
@@ -209,6 +216,10 @@ def register_planner_api_routes(app: FastAPI, proposal_store: Any) -> None:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No stored proposal found for execution_id '{execution_id}'.",
             )
+        draft_id = stored.request.payload.get("draft_id")
+        draft = proposal_store.lookup_portal_draft(str(draft_id)) if draft_id else None
+        if draft is not None:
+            authorize_draft_owner(draft, auth_context)
         evaluation_request = _evaluation_request(stored, execution_id=execution_id)
         try:
             return get_evaluation_result(stored.trip_plan, evaluation_request)

@@ -19,6 +19,20 @@ from .receipts import ReceiptExtractionResult
 from .security import Permission, RoleName
 
 
+class PortalReceiptBinding(BaseModel):
+    """Immutable identity and snapshot binding for one planner handoff."""
+
+    model_config = {"frozen": True}
+    owner_mode: str
+    owner_provider: str
+    owner_subject: str
+    owner_namespace: str
+    handoff_id: str
+    snapshot_version: str
+    snapshot_sha256: str
+    prepared_at: datetime
+
+
 @dataclass(frozen=True)
 class PortalDraft:
     """Stored portal draft answers for request review and submission."""
@@ -28,6 +42,7 @@ class PortalDraft:
     updated_at: datetime
     cached_artifacts: dict[str, PortalArtifact] = field(default_factory=dict)
     submission_response: PlannerProposalOperationResponse | None = None
+    receipt_binding: PortalReceiptBinding | None = None
 
 
 @dataclass(frozen=True)

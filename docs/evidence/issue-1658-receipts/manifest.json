@@ -1,0 +1,130 @@
+{
+  "schema": "tpp-1658-local-proof/v1",
+  "producer_main_parent": "ac3bfb9f39e7a3144cbe19fd1894d333dfe93b75",
+  "adopted_bootstrap_parent": "8b8b9478db20557bda3b478b34ff578b27a70b14",
+  "consumer_baseline": "stranske/trip-planner#1872@eed6fcb3127672f79a569f8f2bf3025b6a563333",
+  "source_sha256": {
+    "src/travel_plan_permission/http_contract_models.py": "91b45cab168348fd1ca7a36d4486344a6f1a389139dcf35e3c55e51fa3009871",
+    "src/travel_plan_permission/http_service.py": "06c24c1287a568fb96cc6ded271adcc94d21127548fabb6aa6df11dde235b3e1",
+    "src/travel_plan_permission/persistence/serialization.py": "54d1d9b9550547e4f50bd21b0f4144f0a9403d15a3f05f804f41401962c1ffa7",
+    "src/travel_plan_permission/planner_http_routes.py": "0700c29e9152075628dc9b376ca539a66a604bc1151c7583a4d08d28415a7377",
+    "src/travel_plan_permission/portal_receipt_store.py": "691c8277eefce1622e53b216ea3f30f4210b338f0f92c1c15e96f03127bfdbd2",
+    "src/travel_plan_permission/portal_receipts.py": "f1d036b0e0e6c111f1a9e5d620fd6504686aa623e157e269cc01de6ffb9af9e9",
+    "tests/python/test_portal_receipt_api.py": "8b2df5ec11bae0a45a288fd51e26fce29a08c351d6bf2d904bf4cad481205030",
+    "pyproject.toml": "a12cd0c81894b3a1b709936dbb875df068c4e214521800b2a6a4eed37bdaa38c"
+  },
+  "full_suite": {
+    "name": "pytest",
+    "errors": "0",
+    "failures": "0",
+    "skipped": "7",
+    "tests": "1343",
+    "time": "195.630",
+    "timestamp": "2026-10-10T12:12:38.311062-05:00",
+    "hostname": "server.trs.private"
+  },
+  "coverage_percent": 92.0488940628638,
+  "mutation_cases": [
+    {
+      "case": "accepted",
+      "node": "tests/python/test_portal_receipt_api.py::test_unaccepted_submission_cannot_create_request_or_review[unavailable]",
+      "red_exit": 1,
+      "green_exit": 0,
+      "failure_message": "assert 200 == 503"
+    },
+    {
+      "case": "owner",
+      "node": "tests/python/test_portal_receipt_api.py::test_owner_is_identity_not_traveler_name_or_id",
+      "red_exit": 1,
+      "green_exit": 0,
+      "failure_message": "AssertionError: foreign subject must not read the receipt"
+    },
+    {
+      "case": "snapshot",
+      "node": "tests/python/test_portal_receipt_api.py::test_retries_snapshot_conflicts_and_same_trip_new_snapshot",
+      "red_exit": 1,
+      "green_exit": 0,
+      "failure_message": "AssertionError: changed snapshot must conflict"
+    },
+    {
+      "case": "tenant",
+      "node": "tests/python/test_portal_receipt_api.py::test_oidc_signed_tokens_validate_issuer_audience_and_namespace",
+      "red_exit": 1,
+      "green_exit": 0,
+      "failure_message": "AssertionError: tenant namespace must remain isolated"
+    },
+    {
+      "case": "retry",
+      "node": "tests/python/test_portal_receipt_api.py::test_decision_is_not_reset_by_submission_retry[request_changes]",
+      "red_exit": 1,
+      "green_exit": 0,
+      "failure_message": "AssertionError: retry must preserve the recorded decision"
+    },
+    {
+      "case": "truthful",
+      "node": "tests/python/test_portal_receipt_api.py::test_real_submission_manager_decision_and_restart",
+      "red_exit": 1,
+      "green_exit": 0,
+      "failure_message": "AssertionError: assert 'submitted' == 'prepared'"
+    }
+  ],
+  "tools": {
+    "python": "3.12.2",
+    "ruff": "0.16.10",
+    "black": "26.10.0",
+    "mypy": "2.4.0"
+  },
+  "archive_sha256": "6335e88a45f2bcdc5ac404123bfb33af1c42b36a2b65ea50dd1bd93423e2ace2",
+  "raw_members_sha256": {
+    "final-suite.txt": "b401c8992785b2e7e251cff8c49ac061b6d6b9f9336ce31da71148755cc227de",
+    "final-suite.xml": "3951a31c57ea95cb03453d285475dc65aa499d76f90df0101d626c5c7bc11b91",
+    "final-suite-process.json": "f01d361c5bd44abeb2fd26990bfc4b2503a31fbd2c2897821ee71126a224cbf4",
+    "final-source-inventory.json": "0f59de700d605fb211f5d16046de124572f7612c5a27529df8f69113f96b9722",
+    "final-coverage.json": "2fab88ace21e965e8fd6fb4fd53a887815ea307c140a69919ed4b8253c9dd324",
+    "delivery-focused.txt": "e394beeb89b041358ca44a10af5bab67634a82f522f9560b94873c01e7bbe8d2",
+    "delivery-focused.xml": "90d40d210fa3a592aafc6b9e0a7aa4b7329191ba0c2fa4cb8c45393322920e46",
+    "delivery-black.txt": "0b479fee9c3c70313b9c5c7a6339ecd413b78bbea93f1ad5050f49bdd3a655af",
+    "delivery-ruff.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "delivery-mypy.txt": "ab35ee42183d4d6d3ba483825ab037d18a5a15622d03be01d82220b1564851ff",
+    "delivery-diff.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "run-final-suite.py": "296e7cd818359a27fdd5a9d1d11d9fbf7acc70d19d40f8bdb422441da883a92b",
+    "mutate-accepted-receipts.py": "6a4622514b7be41e064eb7f0faed3b58bee7fb828445ae7bd45fb79ded3d690c",
+    "pre-seam-final-suite.txt": "95b6d4a213bc0d3c8c97cb92661530c6a8da57bb662ab480a5654f15ac070841",
+    "pre-seam-final-suite-process.json": "e8e84a1667aa2625d66601b7728c6757eb07b396773b96e1e025c237f45d8249",
+    "python-suite.txt": "4e1d06c68aeee9a98f05979162bfb671fdd4bf23c0974f72a71c7754ffff355a",
+    "pre-acceptance-final-suite.txt": "8e7bf24819bc74c531af30988e639c9ea3f8c88208f3dc7107a7408593a16843",
+    "pre-acceptance-final-suite-process.json": "656e3f93d1525e353064b4980cda8b6c9368cfee7db085c0afa5732bb36d6711",
+    "accepted-mutations/accepted-green.txt": "ee86d355ce7d06771bab7d38f0fa481d8bb8e91acd2d6f1b07c1f2b56ad6dc10",
+    "accepted-mutations/accepted-green.xml": "1c5aab3155d5ffee1c4784a1e7cb78778b90b59fee3d4376a716488f7139cd20",
+    "accepted-mutations/accepted-red.txt": "e0c087bdfadef5284022d6fef49a79621565915a9914eae4d9461b59ce5f25c2",
+    "accepted-mutations/accepted-red.xml": "13fa233362e882f8095def98fcc8d37a89bdaacd200f0f7274b3c34b5d07e569",
+    "accepted-mutations/controls.json": "f7953e03192e4d7565502d7d765b17a66a986cb7b81a2153571d502c8ff6f6fd",
+    "accepted-mutations/owner-green.txt": "930d3a40162e849a90cbe429e250d0eb0d892048093d3bcba542e7a29715e7df",
+    "accepted-mutations/owner-green.xml": "814c07a4b551952197c390316a23786e9d025e30c5456ede45088acef87add6c",
+    "accepted-mutations/owner-red.txt": "82eda421bdae86513f3be49c9f305ee3df2c3d036168f735c388cc4efa6df75f",
+    "accepted-mutations/owner-red.xml": "90bb8b175ecfc7c530c86bdeac56b2acf2cd64004c8f89137b9f03ba627e8e27",
+    "accepted-mutations/retry-green.txt": "03fe1b4131049b4688bfa46ceb849a079236d09fe21fd34b1959542e0a58aeae",
+    "accepted-mutations/retry-green.xml": "8fc1a5677d35c13584880da45abcbd70ea498822bb637d74414d0e9e89c2405e",
+    "accepted-mutations/retry-red.txt": "e4aa494a0a178bdd383fee9c6feceb28c69171124a7d47336f7cc99a6e202698",
+    "accepted-mutations/retry-red.xml": "545591ba3f55077113e477962174f855c555e4ff4dd97feb9a3358e760b80f00",
+    "accepted-mutations/snapshot-green.txt": "b41b78345068dd44184ec1f48392b35e99955e1757109882c5b1252df9398538",
+    "accepted-mutations/snapshot-green.xml": "e21ffcefa3224db517aebf46255b3507f3234f82085fe7925978a90f2917877d",
+    "accepted-mutations/snapshot-red.txt": "785a81739c09a6b94132a2800c0226a8a6f7843f07d44f1385d0e64e67fa1591",
+    "accepted-mutations/snapshot-red.xml": "66e5a4cea11ee8a937000c6e6cb3160f3e5fbc1c714bcaa4d53e9deaf2417f5b",
+    "accepted-mutations/tenant-green.txt": "080a26965bdc42becd1f2b54de6f7f4f527ec6b45f634e8303150df3c6c412e3",
+    "accepted-mutations/tenant-green.xml": "c05d27c8da7dc1f839533abae152c5cdd6546fd9f796f6db8e848a89c3b8a0f6",
+    "accepted-mutations/tenant-red.txt": "46f4fb6ddfad64d7e5956a8e5ffa9d1fb0d372f667d5f466057842ea9ecb9bbe",
+    "accepted-mutations/tenant-red.xml": "3d39c96dcb65903f88851d7d1a7279cf34938c1a7dc73f2479f3f7791c2de672",
+    "accepted-mutations/truthful-green.txt": "67a8149b8ae3e797772cb4c7f9a823a3f829400408f739274c589ff90a70a61b",
+    "accepted-mutations/truthful-green.xml": "95c97ff1e4ef626998ce0f5b59a184a76fc0a4b6807e480cf2d804edbc96ed29",
+    "accepted-mutations/truthful-red.txt": "beaac7475b03e28baf727175ec259c1abc86c072442f2173b557f26ab6fd5287",
+    "accepted-mutations/truthful-red.xml": "400a37f06fcdcd9d938126aac384eaf5300cb270d548335350c84052afac68da"
+  },
+  "limits": [
+    "Producer ASGI/local SQLite and signed OIDC/JWKS acceptance only.",
+    "No hosted CI, merge, deployment, actual verify:compare or two-app consumer acceptance attested.",
+    "PostgreSQL tests require an external test DSN and remain skipped.",
+    "The isolated capture scripts contain original absolute paths and are provenance, not a portable replay product.",
+    "Historical failed runs are included with explicit pre-seam/python-suite names; final-suite is the current successful source-bound run."
+  ]
+}
