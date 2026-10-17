@@ -200,9 +200,9 @@ def test_retries_snapshot_conflicts_and_same_trip_new_snapshot(app_client):
     assert first["snapshot_sha256"] == retry["snapshot_sha256"]
     changed = payload()
     changed["answers"]["notes"] = "Changed after preparation"
-    assert (
-        client.post(BASE, json=changed, headers=auth()).status_code == 409
-    ), "changed snapshot must conflict"
+    assert client.post(BASE, json=changed, headers=auth()).status_code == 409, (
+        "changed snapshot must conflict"
+    )
     assert (
         client.post(BASE, json=payload(snapshot_version="trip-v8"), headers=auth()).status_code
         == 409
@@ -475,6 +475,12 @@ def test_manager_decision_reaches_typed_planner_readback(
         assert status_response.proposal_status.status.value == trip_status
         history = status_response.proposal_status.approval_history
         assert len(history) == 1, "planner must see the authoritative decision"
+        expected_decision = {
+            "approve": "approved",
+            "reject": "rejected",
+            "request_changes": "flagged",
+        }[action]
+        assert history[0].outcome == expected_decision
         assert history[0].approver_id == "manager"
         assert history[0].level == "manager"
         assert history[0].justification == rationale
