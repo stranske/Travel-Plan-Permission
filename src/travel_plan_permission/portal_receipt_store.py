@@ -34,7 +34,8 @@ class PortalReceiptStoreMixin:
 
         The submitted snapshot stays immutable; only the decision state
         (``status`` and attributed ``approval_history``) is read from the manager
-        review that belongs to the same draft and execution.  Draft, submission
+        review, and the draft's exception requests from the draft-keyed policy
+        store, for the draft bound to this execution.  Draft, submission
         and review are read under one store operation so a concurrent decision
         cannot be observed half-applied.
         """
@@ -48,21 +49,18 @@ class PortalReceiptStoreMixin:
         if draft is None:
             return stored, None
         latest = draft.submission_response
-        bound_execution = (
-            latest.result_payload.get("execution_id") if latest is not None else None
-        )
-        review = store.lookup_manager_review_for_draft(draft.draft_id)
-        if (
-            review is None
-            or bound_execution != execution_id
-            or review.trip_plan.trip_id != stored.trip_plan.trip_id
-        ):
+        bound_execution = latest.result_payload.get("execution_id") if latest is not None else None
+        if bound_execution != execution_id:
             return stored, draft
         projected = stored.trip_plan.model_copy(deep=True)
-        projected.status = review.trip_plan.status
-        projected.approval_history = tuple(
-            event.model_copy(deep=True) for event in review.trip_plan.approval_history
-        )
+        # Exception requests are keyed by draft, not carried by the snapshot.
+        projected.exception_requests = store.list_exception_requests(draft.draft_id)
+        review = store.lookup_manager_review_for_draft(draft.draft_id)
+        if review is not None and review.trip_plan.trip_id == stored.trip_plan.trip_id:
+            projected.status = review.trip_plan.status
+            projected.approval_history = tuple(
+                event.model_copy(deep=True) for event in review.trip_plan.approval_history
+            )
         return replace(stored, trip_plan=projected), draft
 
     @_serialized_store_operation
@@ -80,16 +78,12 @@ class PortalReceiptStoreMixin:
                 prior.snapshot_version != binding.snapshot_version
                 or prior.snapshot_sha256 != binding.snapshot_sha256
             ):
-                raise HTTPException(
-                    status_code=409, detail="Handoff snapshot conflict."
-                )
+                raise HTTPException(status_code=409, detail="Handoff snapshot conflict.")
             return existing
         return store.save_portal_draft(answers, receipt_binding=binding)
 
     @_serialized_store_operation
-    def lookup_portal_receipt(
-        self, binding: PortalReceiptBinding
-    ) -> PortalDraft | None:
+    def lookup_portal_receipt(self, binding: PortalReceiptBinding) -> PortalDraft | None:
         """Find a receipt only within the authenticated caller's identity scope."""
 
         store = cast("PlannerProposalStore", self)
