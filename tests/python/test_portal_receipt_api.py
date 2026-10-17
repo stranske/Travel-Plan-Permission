@@ -7,6 +7,11 @@ from fastapi.testclient import TestClient
 
 from travel_plan_permission.http_service import PlannerProposalStore, create_app
 from travel_plan_permission.planner_auth import mint_bootstrap_token
+from travel_plan_permission.planner_client import (
+    PlannerHttpError,
+    PlannerJsonResponse,
+    TravelPlanPermissionClient,
+)
 from travel_plan_permission.security import Permission
 
 from .test_http_service import _portal_form_payload, _set_bootstrap_runtime_env
@@ -451,3 +456,106 @@ def test_legacy_review_and_execution_routes_cannot_bypass_receipt_ownership(app_
         ).status_code
         == 404
     )
+
+
+class _AsgiTransport:
+    """Route the typed planner client through the real ASGI app."""
+
+    def __init__(self, client):
+        self.client = client
+
+    def __call__(self, method, url, headers, json_body, _timeout):
+        path = url.removeprefix("http://tpp.test")
+        response = self.client.request(method, path, headers=headers, json=json_body)
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        return PlannerJsonResponse(
+            status_code=response.status_code, body=body, text=response.text
+        )
+
+
+def _planner(client, subject="traveler-a"):
+    token = auth(subject)["Authorization"].removeprefix("Bearer ")
+    return TravelPlanPermissionClient(
+        base_url="http://tpp.test", token=token, transport=_AsgiTransport(client)
+    )
+
+
+@pytest.mark.parametrize(
+    ("action", "trip_status", "submission_status", "terminal"),
+    [
+        ("approve", "approved", "succeeded", True),
+        ("reject", "rejected", "failed", True),
+        # request_changes maps onto the canonical "submitted" TripPlan status.
+        ("request_changes", "submitted", "pending", False),
+    ],
+)
+def test_manager_decision_reaches_typed_planner_readback(
+    app_client, tmp_path, action, trip_status, submission_status, terminal
+):
+    client, store = app_client
+    draft = prepare(client)
+    submitted = client.post(f"/portal/review/{draft['draft_id']}/submit", headers=auth())
+    assert submitted.status_code == 200, submitted.text
+    pending = lookup(client).json()
+    execution = pending["execution_id"]
+    proposal_id = store.lookup_submission(execution).request.proposal_id
+    planner = _planner(client)
+    before = planner.poll_status(proposal_id=proposal_id, execution_id=execution)
+    assert before.submission_status == "pending"
+    assert before.proposal_status.approval_history == ()
+    evaluation_before = planner.fetch_evaluation_result(execution_id=execution)
+
+    rationale = f"Manager {action} rationale"
+    decision = client.post(
+        f"/portal/manager/reviews/{pending['review_id']}/decision",
+        headers=auth("manager", (Permission.APPROVE,)),
+        data={"action": action, "rationale": rationale},
+        follow_redirects=False,
+    )
+    assert decision.status_code == 303, decision.text
+
+    def assert_projected(reader):
+        status_response = reader.poll_status(
+            proposal_id=proposal_id, execution_id=execution
+        )
+        assert status_response.submission_status == submission_status
+        assert status_response.execution_status.terminal is terminal
+        assert status_response.proposal_status.status.value == trip_status
+        history = status_response.proposal_status.approval_history
+        assert len(history) == 1, "planner must see the authoritative decision"
+        assert history[0].approver_id == "manager"
+        assert history[0].level == "manager"
+        assert history[0].justification == rationale
+        evaluation = reader.fetch_evaluation_result(execution_id=execution)
+        if action == "reject":
+            assert evaluation.exception_requirements == []
+            assert evaluation.outcome == "non_compliant"
+        else:
+            # Approval is not policy compliance; the verdict must not move.
+            assert evaluation.outcome == evaluation_before.outcome
+        return status_response
+
+    recorded = assert_projected(planner)
+    with pytest.raises(PlannerHttpError) as foreign:
+        _planner(client, "traveler-b").poll_status(
+            proposal_id=proposal_id, execution_id=execution
+        )
+    assert foreign.value.status_code == 404
+
+    store.close()
+    reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
+    restarted_client = TestClient(create_app(reloaded))
+    restarted = assert_projected(_planner(restarted_client))
+    assert restarted.result_payload["execution_id"] == execution
+    assert restarted.proposal_status.proposal_id == recorded.proposal_status.proposal_id
+    # The submitted snapshot itself stays immutable; only the projection moves.
+    snapshot = reloaded.lookup_submission(execution).trip_plan
+    assert snapshot.approval_history == ()
+    with pytest.raises(PlannerHttpError) as foreign_after_restart:
+        _planner(restarted_client, "traveler-b").fetch_evaluation_result(
+            execution_id=execution
+        )
+    assert foreign_after_restart.value.status_code == 404

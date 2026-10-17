@@ -1,0 +1,8 @@
+E     - submitted
+E     + draft
+- generated xml file: /Users/teacher/.codex/worktrees/tpp-1658-u01/docs/evidence/issue-1658-u01/break-red.xml -
+=========================== short test summary info ============================
+FAILED tests/python/test_portal_receipt_api.py::test_manager_decision_reaches_typed_planner_readback[approve-approved-succeeded-True]
+FAILED tests/python/test_portal_receipt_api.py::test_manager_decision_reaches_typed_planner_readback[reject-rejected-failed-True]
+FAILED tests/python/test_portal_receipt_api.py::test_manager_decision_reaches_typed_planner_readback[request_changes-submitted-pending-False]
+======================= 3 failed, 21 deselected in 4.90s =======================

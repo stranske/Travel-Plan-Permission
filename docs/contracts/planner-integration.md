@@ -197,6 +197,22 @@ Callers should use `submission_status` and `execution_status` to decide whether
 to keep polling, then read `proposal_status` for approval, validation, and
 exception state that belongs to the trip proposal itself.
 
+**Manager authority (issue 1658, U01).** For an execution submitted through the
+browser portal, the manager review recorded through the existing
+`/portal/manager/reviews/{review_id}/decision` route is the single authoritative
+decision source. Both planner read routes (proposal status and
+`evaluation-result`) project that review's `status` and attributed
+`approval_history` onto the immutable submitted snapshot, reading the
+submission, draft and review under one store operation, so the two reads and
+the `portal-receipt/v1` receipt agree. The submitted trip content itself is
+never rewritten. `request_changes` maps onto the canonical `submitted` status
+(still pollable, with the `flagged` decision in `approval_history`); approve maps
+to `approved` (terminal success) and reject to `rejected` (terminal failure,
+evaluation `non_compliant`). Approval never changes the policy verdict on its
+own. The projection applies only while the review belongs to the draft's
+latest submitted execution; legacy executions with no bound portal draft keep
+their stored state. Decision writes stay on the manager route only.
+
 ### 4. Consume policy evaluation results
 
 TPP returns a `PlannerProposalEvaluationResult` whenever the planner needs the

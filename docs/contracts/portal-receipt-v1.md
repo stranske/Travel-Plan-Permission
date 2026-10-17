@@ -33,6 +33,8 @@ The response is a `portal-receipt/v1` object. Preparation creates no manager rev
 3. The actual existing `/portal/review/{draft_id}/submit` route still requires the owner's authenticated `CREATE` permission. The view-only browser capability does not supply that credential. Deployments must use their established trusted authenticated request path; merely opening the review page is not submission.
 4. Existing manager routes remain authoritative for decisions and require `APPROVE` to write. The receipt API contains no manager-decision write operation. Bound draft HTML, artifacts, legacy execution lookups and manager review pages cannot provide alternate cross-owner read paths. Authorized approvers in the same identity namespace retain manager access.
 
+   The planner execution status and evaluation-result reads use the same authoritative manager review as this receipt (see `planner-integration.md`, "Manager authority"), so a recorded decision is reported consistently through the receipt and the planner client.
+
 Each bound draft uses a distinct proposal version, preventing different snapshots of the same trip from colliding in the execution store. An unavailable or failed actual submission is rejected before request/review persistence; its receipt remains prepared. Retry of an already submitted immutable snapshot preserves the existing review, including a recorded `changes_requested` decision. To address changes, prepare a new snapshot/key; do not replay an old snapshot to reset a decision.
 
 ## Read state and freshness
