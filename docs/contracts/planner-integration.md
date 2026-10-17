@@ -209,8 +209,8 @@ never rewritten. `request_changes` maps onto the canonical `submitted` status
 (still pollable, with the `flagged` decision in `approval_history`); approve maps
 to `approved` (terminal success) and reject to `rejected` (terminal failure,
 evaluation `non_compliant` when no exception requirements are present).
-Approval never changes the policy verdict on its
-own. The projection applies only while the review belongs to the draft's
+Approval and `request_changes` change status and history without changing the
+policy verdict. The projection applies only while the review belongs to the draft's
 latest submitted execution; legacy executions with no bound portal draft keep
 their stored state. Decision writes stay on the manager route only.
 
