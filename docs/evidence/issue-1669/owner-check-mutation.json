@@ -1,0 +1,32 @@
+{
+  "source": "src/travel_plan_permission/portal_receipt_store.py",
+  "restored_sha256": "25bf99939b5544948b5e07b290f16ade77912a74294816ae4738bf48bc2551a1",
+  "byte_identical_restoration": true,
+  "mutation": "remove the bound-execution owner authorization from preserve_bound_submission",
+  "red": {
+    "argv": [
+      "/Users/teacher/Library/CloudStorage/Dropbox/Learning/Code/Travel-Plan-Permission/.venv/bin/python",
+      "-m",
+      "pytest",
+      "tests/python/test_portal_receipt_api.py",
+      "-k",
+      "test_foreign_overwrite_cannot_replace_bound_execution",
+      "-q",
+      "--junitxml=/Users/teacher/.codex/automations/pd-workloop-resume/worktrees/travel-1669-owner-binding-0900/docs/evidence/issue-1669/owner-check-red.xml"
+    ],
+    "returncode": 1
+  },
+  "restored": {
+    "argv": [
+      "/Users/teacher/Library/CloudStorage/Dropbox/Learning/Code/Travel-Plan-Permission/.venv/bin/python",
+      "-m",
+      "pytest",
+      "tests/python/test_portal_receipt_api.py",
+      "-k",
+      "test_foreign_overwrite_cannot_replace_bound_execution",
+      "-q",
+      "--junitxml=/Users/teacher/.codex/automations/pd-workloop-resume/worktrees/travel-1669-owner-binding-0900/docs/evidence/issue-1669/owner-check-restored.xml"
+    ],
+    "returncode": 0
+  }
+}

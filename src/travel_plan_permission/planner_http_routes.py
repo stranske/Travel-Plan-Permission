@@ -45,7 +45,6 @@ def register_planner_api_routes(app: FastAPI, proposal_store: Any) -> None:
 
     # Imported lazily to avoid a cycle while http_service assembles the app.
     from . import http_service as service
-    from .portal_receipts import authorize_draft_owner
 
     _authorize_request = service._authorize_request
     _evaluation_request = service._evaluation_request
@@ -132,7 +131,7 @@ def register_planner_api_routes(app: FastAPI, proposal_store: Any) -> None:
         payload: PlannerProposalSubmissionHttpRequest,
         authorization: str | None = Header(default=None),
     ) -> PlannerProposalOperationResponse:
-        _authorize_request(
+        auth_context = _authorize_request(
             authorization,
             required_permission=Permission.CREATE,
             route=_route_identifier(request),
@@ -148,6 +147,7 @@ def register_planner_api_routes(app: FastAPI, proposal_store: Any) -> None:
             payload.trip_plan,
             payload.request,
             planner_response,
+            auth_context=auth_context,
         )
         return planner_response
 
@@ -166,15 +166,15 @@ def register_planner_api_routes(app: FastAPI, proposal_store: Any) -> None:
             required_permission=Permission.VIEW,
             route=_route_identifier(request),
         )
-        projection = proposal_store.lookup_execution_projection(execution_id)
+        projection = proposal_store.lookup_execution_projection(
+            execution_id, auth_context=auth_context
+        )
         if projection is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No stored proposal found for execution_id '{execution_id}'.",
             )
-        stored, draft = projection
-        if draft is not None:
-            authorize_draft_owner(draft, auth_context)
+        stored, _ = projection
         if stored.request.proposal_id != proposal_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -207,15 +207,15 @@ def register_planner_api_routes(app: FastAPI, proposal_store: Any) -> None:
             required_permission=Permission.VIEW,
             route=_route_identifier(request),
         )
-        projection = proposal_store.lookup_execution_projection(execution_id)
+        projection = proposal_store.lookup_execution_projection(
+            execution_id, auth_context=auth_context
+        )
         if projection is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No stored proposal found for execution_id '{execution_id}'.",
             )
-        stored, draft = projection
-        if draft is not None:
-            authorize_draft_owner(draft, auth_context)
+        stored, _ = projection
         evaluation_request = _evaluation_request(stored, execution_id=execution_id)
         try:
             return get_evaluation_result(stored.trip_plan, evaluation_request)

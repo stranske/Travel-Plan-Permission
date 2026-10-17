@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from threading import Barrier
 
 import pytest
 from fastapi.testclient import TestClient
@@ -459,7 +460,7 @@ def approved_submission(app_client, request):
 
 
 @pytest.mark.parametrize("changed_field", ["trip_plan", "draft_id", "missing_draft_id"])
-def test_bound_execution_rejects_changed_replay(approved_submission, tmp_path, changed_field):
+def test_bound_execution_rejects_conflicting_replay(approved_submission, tmp_path, changed_field):
     client, store, pending, original = approved_submission
     body = {
         "trip_plan": original.trip_plan.model_dump(mode="json"),
@@ -482,12 +483,157 @@ def test_bound_execution_rejects_changed_replay(approved_submission, tmp_path, c
     try:
         assert reloaded.lookup_submission(pending["execution_id"]) == original
         status = _planner(TestClient(create_app(reloaded))).poll_status(
-            proposal_id=original.request.proposal_id, execution_id=pending["execution_id"]
+            proposal_id=original.request.proposal_id,
+            execution_id=pending["execution_id"],
         )
         assert status.proposal_status.status.value == "approved"
         assert len(status.proposal_status.approval_history) == 1
     finally:
         reloaded.close()
+
+
+@pytest.fixture
+def bound_execution(app_client):
+    client, store = app_client
+    draft = prepare(client)
+    assert (
+        client.post(f"/portal/review/{draft['draft_id']}/submit", headers=auth()).status_code == 200
+    )
+    pending = lookup(client).json()
+    decision = client.post(
+        f"/portal/manager/reviews/{pending['review_id']}/decision",
+        headers=auth("manager", (Permission.APPROVE,)),
+        data={
+            "action": "approve",
+            "rationale": "Keep this decision and immutable snapshot",
+        },
+        follow_redirects=False,
+    )
+    assert decision.status_code == 303
+    return (
+        client,
+        store,
+        lookup(client).json(),
+        store.lookup_submission(pending["execution_id"]),
+    )
+
+
+def _assert_receipt_snapshot(client, store, receipt, original):
+    assert store.lookup_submission(receipt["execution_id"]) == original
+    assert store.lookup_trip_plan(original.trip_plan.trip_id) == original.trip_plan
+    assert {k: v for k, v in lookup(client).json().items() if k != "observed_at"} == {
+        k: v for k, v in receipt.items() if k != "observed_at"
+    }
+
+
+@pytest.mark.parametrize("request_payload", [{}, {"draft_id": "foreign-draft"}, None])
+def test_foreign_overwrite_cannot_replace_bound_execution(
+    bound_execution, tmp_path, request_payload
+):
+    client, store, receipt, original = bound_execution
+    body = {
+        "trip_plan": original.trip_plan.model_dump(mode="json"),
+        "request": original.request.model_dump(mode="json"),
+    }
+    if request_payload is not None:
+        body["request"]["payload"] = request_payload
+        body["trip_plan"]["purpose"] = "Foreign replacement trip"
+    # Exact replay is unauthorized too: knowledge of a snapshot is not ownership.
+    response = client.post("/api/planner/proposals", headers=auth("traveler-b"), json=body)
+    assert response.status_code == 404, response.text
+    _assert_receipt_snapshot(client, store, receipt, original)
+    store.close()
+    reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
+    try:
+        restarted = TestClient(create_app(reloaded))
+        _assert_receipt_snapshot(restarted, reloaded, receipt, original)
+        for url in (
+            f"/api/planner/proposals/{original.request.proposal_id}/executions/{receipt['execution_id']}",
+            f"/api/planner/executions/{receipt['execution_id']}/evaluation-result",
+        ):
+            assert restarted.get(url, headers=auth("traveler-b")).status_code == 404
+            assert restarted.get(url, headers=auth()).status_code == 200
+    finally:
+        reloaded.close()
+
+
+@pytest.mark.parametrize("payload_draft", [None, "another-draft"])
+def test_execution_reads_use_persisted_receipt_index(bound_execution, payload_draft):
+    client, store, receipt, original = bound_execution
+    stored = store.proposals_by_execution_id[receipt["execution_id"]]
+    stored.request.payload.pop("draft_id", None)
+    if payload_draft is not None:
+        stored.request.payload["draft_id"] = payload_draft
+    store._persist_state()
+    for url in (
+        f"/api/planner/proposals/{original.request.proposal_id}/executions/{receipt['execution_id']}",
+        f"/api/planner/executions/{receipt['execution_id']}/evaluation-result",
+    ):
+        assert client.get(url, headers=auth("traveler-b")).status_code == 404
+        assert client.get(url, headers=auth()).status_code == 200
+
+
+def test_missing_bound_state_fails_closed_after_restart(bound_execution, tmp_path):
+    client, store, receipt, original = bound_execution
+    del store.portal_drafts_by_id[receipt["draft_id"]]
+    store._persist_state()
+    store.close()
+    reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
+    try:
+        restarted = TestClient(create_app(reloaded))
+        for url in (
+            f"/api/planner/proposals/{original.request.proposal_id}/executions/{receipt['execution_id']}",
+            f"/api/planner/executions/{receipt['execution_id']}/evaluation-result",
+        ):
+            assert restarted.get(url, headers=auth()).status_code == 404
+        response = restarted.post(
+            "/api/planner/proposals",
+            headers=auth(),
+            json={
+                "trip_plan": original.trip_plan.model_dump(mode="json"),
+                "request": original.request.model_dump(mode="json"),
+            },
+        )
+        assert response.status_code == 404
+        assert reloaded.lookup_submission(receipt["execution_id"]) == original
+    finally:
+        reloaded.close()
+
+
+def test_cross_instance_foreign_overwrite_and_portal_retry_preserve_binding(
+    bound_execution, tmp_path
+):
+    client, store, receipt, original = bound_execution
+    other = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
+    second = TestClient(create_app(other))
+    barrier = Barrier(2)
+
+    def foreign_write():
+        barrier.wait(timeout=10)
+        return second.post(
+            "/api/planner/proposals",
+            headers=auth("traveler-b"),
+            json={
+                "trip_plan": original.trip_plan.model_dump(mode="json"),
+                "request": original.request.model_dump(mode="json"),
+            },
+        ).status_code
+
+    def owner_retry():
+        barrier.wait(timeout=10)
+        return client.post(
+            f"/portal/review/{receipt['draft_id']}/submit", headers=auth()
+        ).status_code
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            foreign = pool.submit(foreign_write)
+            owner = pool.submit(owner_retry)
+            assert (foreign.result(timeout=30), owner.result(timeout=30)) == (404, 200)
+        _assert_receipt_snapshot(client, store, receipt, original)
+        _assert_receipt_snapshot(second, other, receipt, original)
+    finally:
+        other.close()
 
 
 def test_projection_rejects_mismatched_review_snapshot(approved_submission, tmp_path):

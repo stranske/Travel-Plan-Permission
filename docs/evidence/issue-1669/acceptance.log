@@ -1,0 +1,27 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/teacher/.codex/automations/pd-workloop-resume/worktrees/travel-1669-owner-binding-0900
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.14.1, datadir-1.8.0, hypothesis-6.156.1, regressions-2.11.0, langsmith-0.9.7
+collected 242 items
+
+tests/python/test_portal_receipt_api.py ................................ [ 13%]
+.........                                                                [ 16%]
+tests/python/test_http_service.py ...................................... [ 32%]
+........................................................................ [ 62%]
+........................................................................ [ 92%]
+..................                                                       [ 99%]
+tests/python/test_policy_api.py .                                        [100%]
+
+=============================== warnings summary ===============================
+../../../../../Library/CloudStorage/Dropbox/Learning/Code/Travel-Plan-Permission/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/teacher/Library/CloudStorage/Dropbox/Learning/Code/Travel-Plan-Permission/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/python/test_http_service.py::test_oidc_unsupported_algorithm_returns_structured_bearer_error
+  /Users/teacher/Library/CloudStorage/Dropbox/Learning/Code/Travel-Plan-Permission/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:147: InsecureKeyLengthWarning: The HMAC key is 13 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /Users/teacher/.codex/automations/pd-workloop-resume/worktrees/travel-1669-owner-binding-0900/docs/evidence/issue-1669/acceptance.xml -
+======================= 242 passed, 2 warnings in 50.98s =======================

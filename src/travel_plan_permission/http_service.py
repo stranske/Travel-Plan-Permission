@@ -558,6 +558,7 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
         response: PlannerProposalOperationResponse,
         *,
         portal_resubmission: bool = False,
+        auth_context: PlannerAuthContext | None = None,
     ) -> None:
         """Store proposal context keyed by the stable execution identifier."""
 
@@ -565,7 +566,11 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
         if not isinstance(execution_id, str):
             raise ValueError("Planner proposal response missing required string execution_id")
         if self.preserve_bound_submission(
-            execution_id, trip_plan, request, portal_resubmission=portal_resubmission
+            execution_id,
+            trip_plan,
+            request,
+            portal_resubmission=portal_resubmission,
+            auth_context=auth_context,
         ):
             return
         prior_plan = self.plans_by_trip_id.get(trip_plan.trip_id)
