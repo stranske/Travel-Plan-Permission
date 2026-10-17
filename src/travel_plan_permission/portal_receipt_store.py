@@ -12,11 +12,12 @@ from .models import TripPlan
 from .persistence.operations import (
     serialized_store_operation as _serialized_store_operation,
 )
+from .planner_auth import PlannerAuthContext
 from .policy_api import (
     PlannerProposalOperationResponse,
     PlannerProposalSubmissionRequest,
 )
-from .portal_receipts import PortalReceipt, receipt_for
+from .portal_receipts import PortalReceipt, authorize_draft_owner, receipt_for
 from .portal_review import PortalReviewState
 from .review_workflow import ReviewRequest
 
@@ -27,6 +28,28 @@ if TYPE_CHECKING:
 class PortalReceiptStoreMixin:
     """Receipt-specific behavior without growing the legacy HTTP/store module."""
 
+    @_serialized_store_operation
+    def lookup_execution_draft(self, execution_id: str) -> PortalDraft | None:
+        """Resolve linkage from persisted portal state, never a caller's payload."""
+
+        store = cast("PlannerProposalStore", self)
+        matches = [
+            draft
+            for draft in store.portal_drafts_by_id.values()
+            if draft.submission_response is not None
+            and draft.submission_response.result_payload.get("execution_id") == execution_id
+        ]
+        if len(matches) > 1:
+            raise HTTPException(status_code=409, detail="Submitted portal snapshot conflict.")
+        if matches:
+            return matches[0]
+        stored = store.lookup_submission(execution_id)
+        # Receipt-bound submissions use a reserved version prefix. Free-form
+        # caller payload keys do not establish portal linkage.
+        if stored is not None and stored.request.proposal_version.startswith("portal-v1:"):
+            raise HTTPException(status_code=404, detail="Portal receipt not found.")
+        return None
+
     def preserve_bound_submission(
         self,
         execution_id: str,
@@ -34,14 +57,17 @@ class PortalReceiptStoreMixin:
         request: PlannerProposalSubmissionRequest,
         *,
         portal_resubmission: bool = False,
+        auth_context: PlannerAuthContext | None = None,
     ) -> bool:
         """Keep bound snapshots immutable inside record_submission's lock."""
 
         store = cast("PlannerProposalStore", self)
-        for draft in store.portal_drafts_by_id.values():
-            latest = draft.submission_response
-            if latest is None or latest.result_payload.get("execution_id") != execution_id:
-                continue
+        draft = store.lookup_execution_draft(execution_id)
+        if draft is not None:
+            if draft.receipt_binding is not None:
+                if auth_context is None:
+                    raise HTTPException(status_code=404, detail="Portal receipt not found.")
+                authorize_draft_owner(draft, auth_context)
             if portal_resubmission and draft.receipt_binding is None:
                 return False  # Only the legacy portal can resubmit its mutable drafts.
             prior = store.lookup_submission(execution_id)
@@ -52,7 +78,7 @@ class PortalReceiptStoreMixin:
 
     @_serialized_store_operation
     def lookup_execution_projection(
-        self, execution_id: str
+        self, execution_id: str, *, auth_context: PlannerAuthContext
     ) -> tuple[StoredProposal, PortalDraft | None] | None:
         """Return a submission with the authoritative manager decision applied.
 
@@ -68,10 +94,10 @@ class PortalReceiptStoreMixin:
         stored = store.lookup_submission(execution_id)
         if stored is None:
             return None
-        draft_id = stored.request.payload.get("draft_id")
-        draft = store.lookup_portal_draft(str(draft_id)) if draft_id else None
+        draft = store.lookup_execution_draft(execution_id)
         if draft is None:
             return stored, None
+        authorize_draft_owner(draft, auth_context)
         latest = draft.submission_response
         bound_execution = latest.result_payload.get("execution_id") if latest is not None else None
         if bound_execution != execution_id:
@@ -159,6 +185,8 @@ class PortalReceiptStoreMixin:
         self,
         review: PortalReviewState,
         submission_request: PlannerProposalSubmissionRequest,
+        *,
+        auth_context: PlannerAuthContext | None = None,
     ) -> tuple[PlannerProposalOperationResponse, ReviewRequest]:
         """Coordinate submission retries with manager decisions across app instances."""
 
@@ -169,6 +197,10 @@ class PortalReceiptStoreMixin:
         draft = store.lookup_portal_draft(review.draft_id)
         if draft is None or review.trip_plan is None:
             raise ValueError("A persisted valid portal draft is required.")
+        if draft.receipt_binding is not None:
+            if auth_context is None:
+                raise HTTPException(status_code=404, detail="Portal receipt not found.")
+            authorize_draft_owner(draft, auth_context)
         manager_review = store.lookup_manager_review_for_draft(review.draft_id)
         if draft.receipt_binding and draft.submission_response and manager_review:
             return draft.submission_response, manager_review
@@ -182,7 +214,11 @@ class PortalReceiptStoreMixin:
                 detail="Portal proposal submission was not accepted.",
             )
         store.record_submission(
-            review.trip_plan, submission_request, response, portal_resubmission=True
+            review.trip_plan,
+            submission_request,
+            response,
+            portal_resubmission=True,
+            auth_context=auth_context,
         )
         store.record_portal_submission(draft.draft_id, response)
         return response, store.create_manager_review(review)

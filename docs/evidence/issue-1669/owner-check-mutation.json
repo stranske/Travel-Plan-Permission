@@ -1,0 +1,32 @@
+{
+  "source": "src/travel_plan_permission/portal_receipt_store.py",
+  "restored_sha256": "ae1569ae1d8b82b66a3c19f2a3f35b0d5defdc1d017202d3e107f96d33e68bdd",
+  "byte_identical_restoration": true,
+  "mutation": "remove the bound-execution owner authorization from preserve_bound_submission",
+  "red": {
+    "argv": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/python/test_portal_receipt_api.py",
+      "-k",
+      "test_foreign_overwrite_cannot_replace_bound_execution",
+      "-q",
+      "--junitxml=docs/evidence/issue-1669/owner-check-red.xml"
+    ],
+    "returncode": 1
+  },
+  "restored": {
+    "argv": [
+      "python",
+      "-m",
+      "pytest",
+      "tests/python/test_portal_receipt_api.py",
+      "-k",
+      "test_foreign_overwrite_cannot_replace_bound_execution",
+      "-q",
+      "--junitxml=docs/evidence/issue-1669/owner-check-restored.xml"
+    ],
+    "returncode": 0
+  }
+}

@@ -332,7 +332,7 @@ def register_portal_submission_route(app: FastAPI, proposal_store: PlannerPropos
             },
         )
         submission_response, manager_review = proposal_store.complete_portal_submission(
-            review, submission_request
+            review, submission_request, auth_context=auth_context
         )
         review = service.portal_review_state_for_persisted_draft(
             draft,

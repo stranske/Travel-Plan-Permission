@@ -1,0 +1,12 @@
+src/travel_plan_permission/http_service.py:554-623 record_submission complexity=6
+src/travel_plan_permission/planner_http_routes.py:43-226 register_planner_api_routes complexity=1
+src/travel_plan_permission/planner_http_routes.py:129-152 proposal_submission complexity=2
+src/travel_plan_permission/planner_http_routes.py:158-194 proposal_status complexity=4
+src/travel_plan_permission/planner_http_routes.py:200-226 evaluation_result complexity=3
+src/travel_plan_permission/portal_receipt_store.py:32-51 lookup_execution_draft complexity=8
+src/travel_plan_permission/portal_receipt_store.py:53-77 preserve_bound_submission complexity=9
+src/travel_plan_permission/portal_receipt_store.py:80-120 lookup_execution_projection complexity=9
+src/travel_plan_permission/portal_receipt_store.py:184-224 complete_portal_submission complexity=11
+src/travel_plan_permission/portal_receipts.py:281-354 register_portal_submission_route complexity=1
+src/travel_plan_permission/portal_receipts.py:287-354 portal_submit_request complexity=8
+Changed-function complexity guard passed: 11 function(s) at or below their applicable ceilings (default 25).

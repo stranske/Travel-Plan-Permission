@@ -1,0 +1,71 @@
+{
+  "purpose": "Published evidence omits local absolute paths and private JUnit hostname; outcome counts and assertion text preserved",
+  "raw_originals_retained_locally": true,
+  "files": [
+    {
+      "file": "legacy-review-red.log",
+      "raw_sha256": "11ae2d25e7d8a1d7d5f6db2ad4ef0e6b2688d22e447149954f7faec55d031a91",
+      "published_sha256": "fa7d12fa0a13d6816a7d014951150ad8a9e26e3594bc07291646ef82784b7cad"
+    },
+    {
+      "file": "owner-check-restored.xml",
+      "raw_sha256": "1363fdd38194610fe4b41b4afd03739051bec4246f900642702c115c0205d8a7",
+      "published_sha256": "1363fdd38194610fe4b41b4afd03739051bec4246f900642702c115c0205d8a7"
+    },
+    {
+      "file": "acceptance.log",
+      "raw_sha256": "78598d7ad288653ccd26c1c598853baa9a6deaba5b0618efd9a1c98f726b143a",
+      "published_sha256": "8161c3423fdeb9ab459e44f9117eb065f3b7b84f302da2faae9ca40c91a73f18"
+    },
+    {
+      "file": "owner-check-mutation.json",
+      "raw_sha256": "e20c80b2d1b75d21e5b8f1545d61ec78db9151e60eac55c6e22c447636ffd4fa",
+      "published_sha256": "e20c80b2d1b75d21e5b8f1545d61ec78db9151e60eac55c6e22c447636ffd4fa"
+    },
+    {
+      "file": "owner-check-red.xml",
+      "raw_sha256": "d2b9a2f99e5958da2739e684cded23e4b25235a40a58fc89027ea535d227e36b",
+      "published_sha256": "d2b9a2f99e5958da2739e684cded23e4b25235a40a58fc89027ea535d227e36b"
+    },
+    {
+      "file": "owner-check-restored.log",
+      "raw_sha256": "dd0e53cb17c53f2b0addd9d3d53e10b9ce9064677e9640a24c7fdddc2f8b3dd4",
+      "published_sha256": "dd0e53cb17c53f2b0addd9d3d53e10b9ce9064677e9640a24c7fdddc2f8b3dd4"
+    },
+    {
+      "file": "acceptance.xml",
+      "raw_sha256": "fdda944757e4d23dabf8c37b4a78823a226a573647692207e9d6ebc10d71e1e1",
+      "published_sha256": "904653ca0d560f2d45475632a2be57081e46191a39e4851097c4f357025cf451"
+    },
+    {
+      "file": "mypy.log",
+      "raw_sha256": "8797c60315242ee16057cb107ea1ec62e2678d358c86bc2be797e23d87e87578",
+      "published_sha256": "8797c60315242ee16057cb107ea1ec62e2678d358c86bc2be797e23d87e87578"
+    },
+    {
+      "file": "ruff.log",
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "validation.json",
+      "raw_sha256": "36e05e26ac4d91da6620d539844f109b9f14dbe8e736b39f1ee300e002b5535b",
+      "published_sha256": "dda0514801b9bda98c962bf56a895a2b8d4eba4a143dc5c480f182039a798cf3"
+    },
+    {
+      "file": "owner-check-red.log",
+      "raw_sha256": "145002351797897d4868d834ace4589a587eef01cbac5fbce86c57b6971573a5",
+      "published_sha256": "145002351797897d4868d834ace4589a587eef01cbac5fbce86c57b6971573a5"
+    },
+    {
+      "file": "complexity.log",
+      "raw_sha256": "5763af1bbbe5e26cc099bb8dc6d465bc69c5980bcf52dddee0bdc75610ee8299",
+      "published_sha256": "e335cc01064e229918ba4effca25faff553a0ca4e4fd406692bfad05941aa3d6"
+    },
+    {
+      "file": "legacy-review-red.xml",
+      "raw_sha256": "a7ce29992a01f1147b1bc23856d672a728045c7ab6bcf2d98bcaf14d7cd68115",
+      "published_sha256": "94cca4bf4b30b225568a0011b49c397030219b9c164ce0fb9e86b4e90bcc4131"
+    }
+  ]
+}
