@@ -155,9 +155,7 @@ __all__ = [
     "main",
 ]
 
-_TEMPLATES = Jinja2Templates(
-    directory=str(Path(__file__).resolve().parent / "templates")
-)
+_TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 _PORTAL_CANONICAL_FIELDS: tuple[str, ...] = (
     "traveler_name",
     "business_purpose",
@@ -448,9 +446,7 @@ def _resolve_role_view(role_name: str | None) -> RoleView:
         role = RoleName(role_name or RoleName.TRAVELER.value)
     except ValueError:
         role = RoleName.TRAVELER
-    permissions = tuple(
-        sorted(DEFAULT_ROLES[role].permissions, key=lambda item: item.value)
-    )
+    permissions = tuple(sorted(DEFAULT_ROLES[role].permissions, key=lambda item: item.value))
     return RoleView(role=role, permissions=permissions)
 
 
@@ -510,9 +506,7 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
     portal_drafts_by_id: dict[str, PortalDraft] = field(default_factory=dict)
     expense_drafts_by_id: dict[str, PortalDraft] = field(default_factory=dict)
     manager_reviews: ReviewWorkflowStore = field(default_factory=ReviewWorkflowStore)
-    exception_requests_by_draft_id: dict[str, list[ExceptionRequest]] = field(
-        default_factory=dict
-    )
+    exception_requests_by_draft_id: dict[str, list[ExceptionRequest]] = field(default_factory=dict)
     security: SecurityModel = field(default_factory=SecurityModel)
     pending_audit_events: list[audit.AuditEvent] = field(default_factory=list)
     state_path: Path | None = None
@@ -521,9 +515,7 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
         default_factory=threading.RLock, init=False, repr=False
     )
     _operation_depth: int = field(default=0, init=False, repr=False)
-    _database_snapshot: dict[str, object] | None = field(
-        default=None, init=False, repr=False
-    )
+    _database_snapshot: dict[str, object] | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.state_path is not None:
@@ -564,14 +556,18 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
         trip_plan: TripPlan,
         request: PlannerProposalSubmissionRequest,
         response: PlannerProposalOperationResponse,
+        *,
+        portal_resubmission: bool = False,
     ) -> None:
         """Store proposal context keyed by the stable execution identifier."""
 
         execution_id = response.result_payload.get("execution_id")
         if not isinstance(execution_id, str):
-            raise ValueError(
-                "Planner proposal response missing required string execution_id"
-            )
+            raise ValueError("Planner proposal response missing required string execution_id")
+        if self.preserve_bound_submission(
+            execution_id, trip_plan, request, portal_resubmission=portal_resubmission
+        ):
+            return
         prior_plan = self.plans_by_trip_id.get(trip_plan.trip_id)
         prior_submission = self.proposals_by_execution_id.get(execution_id)
         prior_pending_count = len(self.pending_audit_events)
@@ -650,9 +646,7 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
                 if value.receipt_binding is None
             }
             if not evictable:
-                raise HTTPException(
-                    status_code=503, detail="Portal draft capacity is unavailable."
-                )
+                raise HTTPException(status_code=503, detail="Portal draft capacity is unavailable.")
             oldest_draft_id = min(
                 evictable.items(),
                 key=lambda item: item[1].updated_at,
@@ -959,9 +953,7 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
 
         requests = self.exception_requests_by_draft_id.get(draft_id)
         if requests is None or exception_index < 0 or exception_index >= len(requests):
-            raise KeyError(
-                f"No exception request {exception_index} found for draft '{draft_id}'."
-            )
+            raise KeyError(f"No exception request {exception_index} found for draft '{draft_id}'.")
         return _copy_exception_request(requests[exception_index])
 
     @_serialized_store_operation
@@ -989,15 +981,11 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
 
         requests = self.exception_requests_by_draft_id.get(draft_id)
         if requests is None or exception_index < 0 or exception_index >= len(requests):
-            raise KeyError(
-                f"No exception request {exception_index} found for draft '{draft_id}'."
-            )
+            raise KeyError(f"No exception request {exception_index} found for draft '{draft_id}'.")
         target = requests[exception_index]
         target.ensure_decidable()
         if approved:
-            target.approve(
-                approver_id=actor_id, level=routed_exception_level(target), notes=notes
-            )
+            target.approve(approver_id=actor_id, level=routed_exception_level(target), notes=notes)
             outcome = "approved"
         else:
             target.reject()
@@ -1121,16 +1109,10 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
         self.proposals_by_execution_id = {
             execution_id: StoredProposal(
                 trip_plan=TripPlan.model_validate(serialized["trip_plan"]),
-                request=PlannerProposalSubmissionRequest.model_validate(
-                    serialized["request"]
-                ),
-                response=PlannerProposalOperationResponse.model_validate(
-                    serialized["response"]
-                ),
+                request=PlannerProposalSubmissionRequest.model_validate(serialized["request"]),
+                response=PlannerProposalOperationResponse.model_validate(serialized["response"]),
             )
-            for execution_id, serialized in payload.get(
-                "proposals_by_execution_id", {}
-            ).items()
+            for execution_id, serialized in payload.get("proposals_by_execution_id", {}).items()
         }
         self.portal_drafts_by_id = {
             draft_id: _portal_draft_from_state(draft_id, serialized)
@@ -1149,9 +1131,7 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
                     policy_snapshot=PlannerPolicySnapshot.model_validate(
                         serialized["policy_snapshot"]
                     ),
-                    policy_result=PolicyCheckResult.model_validate(
-                        serialized["policy_result"]
-                    ),
+                    policy_result=PolicyCheckResult.model_validate(serialized["policy_result"]),
                     status=ReviewStatus(serialized["status"]),
                     submitted_at=datetime.fromisoformat(serialized["submitted_at"]),
                     updated_at=datetime.fromisoformat(serialized["updated_at"]),
@@ -1159,9 +1139,7 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
                         ReviewHistoryEvent(
                             event_type=event_payload["event_type"],
                             actor_id=event_payload["actor_id"],
-                            timestamp=datetime.fromisoformat(
-                                event_payload["timestamp"]
-                            ),
+                            timestamp=datetime.fromisoformat(event_payload["timestamp"]),
                             status=ReviewStatus(event_payload["status"]),
                             rationale=event_payload.get("rationale"),
                         )
@@ -1173,9 +1151,7 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
             review_ids_by_draft_id=dict(payload.get("review_ids_by_draft_id", {})),
         )
         self.exception_requests_by_draft_id = {
-            draft_id: [
-                ExceptionRequest.model_validate(item) for item in serialized_requests
-            ]
+            draft_id: [ExceptionRequest.model_validate(item) for item in serialized_requests]
             for draft_id, serialized_requests in payload.get(
                 "exception_requests_by_draft_id", {}
             ).items()
@@ -1190,9 +1166,7 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
         ]
 
     def _serialize_state(self) -> dict[str, object]:
-        return serialize_planner_state(
-            self, _portal_draft_to_state, _audit_log_event_to_state
-        )
+        return serialize_planner_state(self, _portal_draft_to_state, _audit_log_event_to_state)
 
 
 def _audit_log_event_to_state(event: AuditLogEvent) -> dict[str, object]:
@@ -1345,9 +1319,7 @@ def _expense_export_artifacts(
 ) -> dict[str, PortalArtifact]:
     service = service or ExportService()
     csv_filename, csv_content = service.to_csv([expense_report], batch_id=draft_id)
-    excel_filename, excel_content = service.to_excel(
-        [expense_report], batch_id=draft_id
-    )
+    excel_filename, excel_content = service.to_excel([expense_report], batch_id=draft_id)
     return {
         "expense-csv": PortalArtifact(
             filename=csv_filename,
@@ -1396,9 +1368,7 @@ def _resolve_expense_linkage(
             traveler_name=manager_review.trip_plan.traveler_name,
             trip_id=manager_review.trip_plan.trip_id,
         )
-    exception_requests = proposal_store.exception_requests_by_draft_id.get(
-        approved_request_id
-    )
+    exception_requests = proposal_store.exception_requests_by_draft_id.get(approved_request_id)
     if exception_requests:
         approved = next(
             (
@@ -1445,9 +1415,7 @@ def _validate_expense_linkage(
             f"Approved request id '{approved_request_id}' was not found in the "
             "manager-review or exception-request stores.",
         )
-        return _ExpenseLinkageValidation(
-            errors=missing_linkage_errors, blocks_export=True
-        )
+        return _ExpenseLinkageValidation(errors=missing_linkage_errors, blocks_export=True)
     errors: list[str] = []
     if not resolution.is_approved:
         errors.append(
@@ -1622,9 +1590,7 @@ def _admin_dashboard_context(
     return {
         "request": request,
         "role_view": role_view,
-        "actor_permissions": tuple(
-            sorted(auth_context.permissions, key=lambda item: item.value)
-        ),
+        "actor_permissions": tuple(sorted(auth_context.permissions, key=lambda item: item.value)),
         "role_can_approve": auth_context.can(Permission.APPROVE),
         "available_roles": tuple(RoleName),
         "reviews": reviews,
@@ -1673,9 +1639,7 @@ def register_portal_routes(
             request=request,
             name="portal_home.html",
             context={
-                "service_ready": portal_submission_ready(
-                    _readiness_response().status == "ready"
-                ),
+                "service_ready": portal_submission_ready(_readiness_response().status == "ready"),
                 "runtime_config": PlannerRuntimeConfig.from_env(),
                 "state_ephemeral": _portal_state_is_ephemeral(),
             },
@@ -1840,9 +1804,7 @@ def register_portal_routes(
             export_service=request.app.state.expense_export_service,
         )
         if persisted_review.artifacts:
-            proposal_store.cache_expense_artifacts(
-                draft.draft_id, persisted_review.artifacts
-            )
+            proposal_store.cache_expense_artifacts(draft.draft_id, persisted_review.artifacts)
         return RedirectResponse(
             url=request.url_for("portal_expense_detail", draft_id=draft.draft_id),
             status_code=status.HTTP_303_SEE_OTHER,
@@ -1949,9 +1911,7 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
             keep_blank_values=True,
         )
         try:
-            exception_type = ExceptionType(
-                parsed.get("exception_type", [""])[-1].strip()
-            )
+            exception_type = ExceptionType(parsed.get("exception_type", [""])[-1].strip())
         except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1991,9 +1951,7 @@ def register_review_routes(app: FastAPI, proposal_store: PlannerProposalStore) -
                 supporting_docs=[supporting_doc] if supporting_doc else [],
             )
         except ValidationError as exc:
-            messages = "; ".join(
-                error["msg"] for error in exc.errors() if error.get("msg")
-            )
+            messages = "; ".join(error["msg"] for error in exc.errors() if error.get("msg"))
             return _TEMPLATES.TemplateResponse(
                 request=request,
                 name="review_summary.html",
@@ -2093,9 +2051,7 @@ def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) 
             route=_route_identifier(request),
         )
         role_view = _resolve_role_view(actor_role)
-        parsed = parse_qs(
-            (await request.body()).decode("utf-8"), keep_blank_values=True
-        )
+        parsed = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
         action_name = parsed.get("action", [""])[-1].strip()
         actor_id = auth_context.subject
         rationale = parsed.get("rationale", [""])[-1].strip()
@@ -2126,9 +2082,7 @@ def register_manager_routes(app: FastAPI, proposal_store: PlannerProposalStore) 
                     refreshed,
                     role_view=role_view,
                     auth_context=auth_context,
-                    exceptions=proposal_store.list_exception_requests(
-                        refreshed.draft_id
-                    ),
+                    exceptions=proposal_store.list_exception_requests(refreshed.draft_id),
                     audit_events=[
                         event
                         for event in proposal_store.list_audit_events()
@@ -2176,17 +2130,12 @@ def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) ->
         resolved_role = _resolve_role_view(actor_role).role.value
         if review is not None:
             return RedirectResponse(
-                url=str(
-                    request.url_for(
-                        "portal_manager_review_detail", review_id=review.review_id
-                    )
-                )
+                url=str(request.url_for("portal_manager_review_detail", review_id=review.review_id))
                 + f"?actor_role={resolved_role}",
                 status_code=status.HTTP_303_SEE_OTHER,
             )
         return RedirectResponse(
-            url=str(request.url_for("portal_admin_dashboard"))
-            + f"?actor_role={resolved_role}",
+            url=str(request.url_for("portal_admin_dashboard")) + f"?actor_role={resolved_role}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -2221,9 +2170,7 @@ def register_admin_routes(app: FastAPI, proposal_store: PlannerProposalStore) ->
         )
 
 
-def register_artifact_routes(
-    app: FastAPI, proposal_store: PlannerProposalStore
-) -> None:
+def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
     """Register portal and expense artifact download routes."""
 
     @app.get("/portal/review/{draft_id}/artifacts/{artifact_name}")
@@ -2284,18 +2231,14 @@ def register_artifact_routes(
                 "provider": auth_context.provider,
                 "permissions": [
                     permission.value
-                    for permission in sorted(
-                        auth_context.permissions, key=lambda item: item.value
-                    )
+                    for permission in sorted(auth_context.permissions, key=lambda item: item.value)
                 ],
             },
         )
         return Response(
             content=artifact.content,
             media_type=artifact.media_type,
-            headers={
-                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
-            },
+            headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
         )
 
     @app.get("/portal/expenses/{draft_id}/artifacts/{artifact_name}")
@@ -2320,8 +2263,7 @@ def register_artifact_routes(
         if linkage_validation.blocks_export:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Expense export is blocked: "
-                + "; ".join(linkage_validation.errors),
+                detail="Expense export is blocked: " + "; ".join(linkage_validation.errors),
             )
         review = _expense_review_state(
             draft.draft_id,
@@ -2330,9 +2272,7 @@ def register_artifact_routes(
             export_service=request.app.state.expense_export_service,
         )
         if review.validation_errors:
-            raise HTTPException(
-                status_code=400, detail="; ".join(review.validation_errors)
-            )
+            raise HTTPException(status_code=400, detail="; ".join(review.validation_errors))
         artifacts = review.artifacts
         artifact = artifacts.get(artifact_name)
         if artifact is None:
@@ -2350,18 +2290,14 @@ def register_artifact_routes(
                 "provider": auth_context.provider,
                 "permissions": [
                     permission.value
-                    for permission in sorted(
-                        auth_context.permissions, key=lambda item: item.value
-                    )
+                    for permission in sorted(auth_context.permissions, key=lambda item: item.value)
                 ],
             },
         )
         return Response(
             content=artifact.content,
             media_type=artifact.media_type,
-            headers={
-                "Content-Disposition": f'attachment; filename="{artifact.filename}"'
-            },
+            headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
         )
 
 
@@ -2373,9 +2309,7 @@ def create_app(
     """Create the planner-facing ASGI application."""
 
     audit.install_store_from_env()
-    proposal_store = store or PlannerProposalStore(
-        state_path=_default_portal_state_path()
-    )
+    proposal_store = store or PlannerProposalStore(state_path=_default_portal_state_path())
 
     app = FastAPI(
         lifespan=portal_store_lifespan(proposal_store),
@@ -2392,9 +2326,7 @@ def create_app(
         if receipt_mode
         else None
     )
-    app.state.expense_export_service = export_service or ExportService(
-        receipt_delivery=delivery
-    )
+    app.state.expense_export_service = export_service or ExportService(receipt_delivery=delivery)
     demo_mode = demo_seed.demo_mode_enabled()
     if demo_mode:
         try:

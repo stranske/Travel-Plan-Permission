@@ -65,21 +65,15 @@ def serialize_planner_state(
             draft_id: [request.model_dump(mode="json") for request in requests]
             for draft_id, requests in store.exception_requests_by_draft_id.items()
         },
-        "audit_events": [
-            serialize_audit_event(event) for event in store.security.audit_log.events
-        ],
-        "pending_audit_events": [
-            event.as_row() for event in store.pending_audit_events
-        ],
+        "audit_events": [serialize_audit_event(event) for event in store.security.audit_log.events],
+        "pending_audit_events": [event.as_row() for event in store.pending_audit_events],
     }
 
 
 def portal_draft_to_state(draft: PortalDraft) -> dict[str, object]:
     return {
         "receipt_binding": (
-            draft.receipt_binding.model_dump(mode="json")
-            if draft.receipt_binding
-            else None
+            draft.receipt_binding.model_dump(mode="json") if draft.receipt_binding else None
         ),
         "answers": dict(draft.answers),
         "updated_at": draft.updated_at.isoformat(),
@@ -115,14 +109,10 @@ def portal_draft_from_state(draft_id: str, serialized: dict[str, Any]) -> Portal
                 content=base64.b64decode(artifact_payload["content"]),
                 media_type=artifact_payload["media_type"],
             )
-            for artifact_name, artifact_payload in serialized.get(
-                "cached_artifacts", {}
-            ).items()
+            for artifact_name, artifact_payload in serialized.get("cached_artifacts", {}).items()
         },
         submission_response=(
-            PlannerProposalOperationResponse.model_validate(
-                serialized["submission_response"]
-            )
+            PlannerProposalOperationResponse.model_validate(serialized["submission_response"])
             if serialized.get("submission_response") is not None
             else None
         ),

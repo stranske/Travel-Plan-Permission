@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import re
 import sqlite3
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from copy import deepcopy
@@ -16,6 +18,7 @@ from datetime import UTC, date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
+import httpx
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -4241,3 +4244,228 @@ def test_portal_landing_speaks_to_travellers_and_approvers(
     assert heading_rule is not None
     width = re.search(r"max-width:\s*(\d+)ch", heading_rule.group(0))
     assert width is None or int(width.group(1)) >= 20, heading_rule.group(0)
+
+
+@contextmanager
+def _uds_http_service(log_path: Path, env: dict[str, str]) -> Iterator[httpx.Client]:
+    """Run the production app in one owned process, with HTTP only over a short UDS."""
+    # macOS sockaddr_un paths are short; pytest's nested tmp_path can exceed the limit.
+    with tempfile.TemporaryDirectory(prefix="tpp-", dir="/tmp") as socket_dir:
+        socket_path = Path(socket_dir) / "http.sock"
+        with log_path.open("wb") as output:
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "travel_plan_permission.http_service:create_app",
+                    "--factory",
+                    "--uds",
+                    str(socket_path),
+                    "--loop",
+                    "asyncio",
+                    "--http",
+                    "h11",
+                    "--timeout-graceful-shutdown",
+                    "3",
+                ],
+                cwd=Path(__file__).resolve().parents[2],
+                env=env,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+            )
+            try:
+                with httpx.Client(
+                    transport=httpx.HTTPTransport(uds=str(socket_path)),
+                    base_url="http://tpp.test",
+                    timeout=1,
+                    follow_redirects=False,
+                    trust_env=False,
+                ) as client:
+                    deadline = time.monotonic() + 15
+                    last_error = "socket not ready"
+                    while time.monotonic() < deadline:
+                        assert process.poll() is None, "Uvicorn exited before readiness"
+                        try:
+                            ready = client.get("/readyz")
+                            if ready.status_code == 200:
+                                break
+                            last_error = f"{ready.status_code}: {ready.text}"
+                        except httpx.TransportError as exc:
+                            last_error = repr(exc)
+                        time.sleep(0.05)
+                    else:
+                        pytest.fail(f"Uvicorn readiness timed out: {last_error}")
+                    print(f"UDS service ready: pid={process.pid}, socket={socket_path}")
+                    yield client
+            except BaseException as exc:
+                exc.add_note(f"Uvicorn diagnostics ({log_path}):\n{log_path.read_text()}")
+                raise
+            finally:
+                # Never signal a process group, a discovered PID, or another run's socket.
+                if process.poll() is None:
+                    process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+                socket_path.unlink(missing_ok=True)
+                assert process.returncode is not None
+                assert not socket_path.exists()
+                print(f"UDS service reaped: pid={process.pid}, returncode={process.returncode}")
+
+
+@pytest.mark.parametrize("with_exception", [False, True], ids=["no-exception", "exception"])
+@pytest.mark.parametrize(
+    ("action", "trip_status", "submission_status", "terminal", "decision"),
+    [
+        ("approve", "approved", "succeeded", True, "approved"),
+        ("reject", "rejected", "failed", True, "rejected"),
+        ("request_changes", "submitted", "pending", False, "flagged"),
+    ],
+)
+def test_manager_decision_http_process_restart(
+    tmp_path, action, trip_status, submission_status, terminal, decision, with_exception
+) -> None:
+    """Real serialized/authenticated HTTP survives two separate Uvicorn lifetimes."""
+    # No inherited TPP settings, proxy, credentials, or OIDC discovery/provider calls.
+    env = {
+        "PATH": os.defpath,
+        "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src"),
+        "TPP_BASE_URL": "http://tpp.test",
+        "TPP_OIDC_PROVIDER": "google",
+        "TPP_AUTH_MODE": "bootstrap-token",
+        "TPP_BOOTSTRAP_SIGNING_SECRET": "bootstrap-secret-123",
+        "TPP_HANDOFF_SIGNING_SECRET": "test-handoff-signing-secret",
+        "TPP_PORTAL_STATE_PATH": str(tmp_path / "restart.sqlite3"),
+        "TPP_AUDIT_STATE_PATH": str(tmp_path / "audit.sqlite3"),
+    }
+    owner = _bootstrap_auth_header(
+        subject="restart-traveler", permissions=(Permission.VIEW, Permission.CREATE)
+    )
+    manager = _bootstrap_auth_header(
+        subject="restart-manager", permissions=(Permission.VIEW, Permission.APPROVE)
+    )
+    foreign = _bootstrap_auth_header(subject="foreign-traveler", permissions=(Permission.VIEW,))
+    base = "/api/planner/portal-handoffs"
+    receipt_url = f"{base}/restart-handoff?snapshot_version=restart-v1"
+    rationale = f"Synthetic manager {action} justification"
+
+    def get_json(client, url):
+        response = client.get(url, headers=owner)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def assert_readback(client):
+        receipt = get_json(client, receipt_url)
+        assert receipt["state"] == "decision_recorded"
+        assert (
+            receipt["decision"]
+            == {
+                "approve": "approved",
+                "reject": "rejected",
+                "request_changes": "changes_requested",
+            }[action]
+        )
+        assert receipt["execution_id"] == execution
+        assert receipt["draft_id"] == draft_id
+        assert receipt["review_id"] == pending["review_id"]
+        assert receipt["snapshot_sha256"] == prepared["snapshot_sha256"]
+        assert receipt["snapshot_version"] == "restart-v1"
+        status = get_json(client, status_url)
+        assert status["submission_status"] == submission_status, "authoritative manager status"
+        assert status["execution_status"]["terminal"] is terminal
+        assert status["proposal_status"]["status"] == trip_status
+        history = status["proposal_status"]["approval_history"]
+        assert len(history) == 1, "authoritative manager history survives HTTP restart"
+        assert history[0]["outcome"] == decision
+        assert history[0]["approver_id"] == "restart-manager"
+        assert history[0]["level"] == "manager"
+        assert history[0]["justification"] == rationale
+        assert history[0]["new_status"] == trip_status
+        evaluation = get_json(client, evaluation_url)
+        assert evaluation["outcome"] == (
+            "exception_required"
+            if with_exception
+            else "non_compliant" if action == "reject" else evaluation_before["outcome"]
+        )
+        assert evaluation["exception_requirements"] == evaluation_before["exception_requirements"]
+        assert evaluation["policy_result"] == evaluation_before["policy_result"]
+        assert evaluation["policy_result"]["policy_version"]
+        for key in ("trip_id", "proposal_id", "proposal_version", "execution_id", "correlation_id"):
+            assert evaluation[key] == evaluation_before[key], key
+        assert status["proposal_status"]["proposal_id"] == evaluation["proposal_id"]
+        for url in (receipt_url, status_url, evaluation_url):
+            assert client.get(url, headers=foreign).status_code == 404, url
+            assert client.get(url).status_code == 401, url
+        # Exclude only read-time clocks, retaining all decision times and metadata.
+        assert status["execution_status"].pop("updated_at") == status["received_at"]
+        if not terminal:
+            retry = status["retry"]
+            assert retry["retryable"] is True
+            assert datetime.fromisoformat(retry.pop("next_retry_at")) - datetime.fromisoformat(
+                status["received_at"]
+            ) == timedelta(seconds=retry["backoff_seconds"])
+        else:
+            assert status["retry"] is None
+        return (
+            {k: v for k, v in receipt.items() if k != "observed_at"},
+            {k: v for k, v in status.items() if k != "received_at"},
+            {k: v for k, v in evaluation.items() if k != "generated_at"},
+        )
+
+    with _uds_http_service(tmp_path / "first-uvicorn.log", env) as client:
+        response = client.post(
+            base,
+            headers=owner,
+            json={
+                "handoff_id": "restart-handoff",
+                "snapshot_version": "restart-v1",
+                "answers": _portal_form_payload(),
+            },
+        )
+        assert response.status_code == 200, response.text
+        prepared = response.json()
+        assert prepared["state"] == "prepared"
+        draft_id = prepared["draft_id"]
+        if with_exception:
+            created = client.post(
+                f"/portal/review/{draft_id}/exceptions",
+                headers=owner,
+                data={
+                    "exception_type": "advance_booking",
+                    "amount": "250",
+                    "justification": "Synthetic documented business need for an exception. " * 2,
+                    "supporting_doc": "docs/exception-policy.md",
+                },
+            )
+            assert created.status_code == 303, created.text
+        submitted = client.post(f"/portal/review/{draft_id}/submit", headers=owner)
+        assert submitted.status_code == 200, submitted.text
+        pending = get_json(client, receipt_url)
+        assert pending["state"] == "pending_review"
+        execution = pending["execution_id"]
+        evaluation_url = f"/api/planner/executions/{execution}/evaluation-result"
+        evaluation_before = get_json(client, evaluation_url)
+        assert [r["status"] for r in evaluation_before["exception_requirements"]] == (
+            ["pending"] if with_exception else []
+        )
+        if with_exception:
+            requirement = evaluation_before["exception_requirements"][0]
+            assert requirement["type"] == "advance_booking"
+            assert requirement["approval_level"] == "manager"
+        status_url = evaluation_before["status_endpoint"].removeprefix("GET ")
+        assert get_json(client, status_url)["proposal_status"]["approval_history"] == []
+        decided = client.post(
+            f"/portal/manager/reviews/{pending['review_id']}/decision",
+            headers=manager,
+            data={"action": action, "rationale": rationale},
+        )
+        assert decided.status_code == 303, decided.text
+        recorded = assert_readback(client)
+
+    assert (tmp_path / "restart.sqlite3").is_file()
+    # The first process has been stopped and waited for before launching the second.
+    with _uds_http_service(tmp_path / "second-uvicorn.log", env) as restarted:
+        assert assert_readback(restarted) == recorded
