@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 from fastapi import HTTPException
 
-from .http_contract_models import PortalDraft, PortalReceiptBinding
+from .http_contract_models import PortalDraft, PortalReceiptBinding, StoredProposal
 from .persistence.operations import (
     serialized_store_operation as _serialized_store_operation,
 )
@@ -24,6 +25,45 @@ if TYPE_CHECKING:
 
 class PortalReceiptStoreMixin:
     """Receipt-specific behavior without growing the legacy HTTP/store module."""
+
+    @_serialized_store_operation
+    def lookup_execution_projection(
+        self, execution_id: str
+    ) -> tuple[StoredProposal, PortalDraft | None] | None:
+        """Return a submission with the authoritative manager decision applied.
+
+        The submitted snapshot stays immutable; only the decision state
+        (``status`` and attributed ``approval_history``) is read from the manager
+        review that belongs to the same draft and execution.  Draft, submission
+        and review are read under one store operation so a concurrent decision
+        cannot be observed half-applied.
+        """
+
+        store = cast("PlannerProposalStore", self)
+        stored = store.lookup_submission(execution_id)
+        if stored is None:
+            return None
+        draft_id = stored.request.payload.get("draft_id")
+        draft = store.lookup_portal_draft(str(draft_id)) if draft_id else None
+        if draft is None:
+            return stored, None
+        latest = draft.submission_response
+        bound_execution = (
+            latest.result_payload.get("execution_id") if latest is not None else None
+        )
+        review = store.lookup_manager_review_for_draft(draft.draft_id)
+        if (
+            review is None
+            or bound_execution != execution_id
+            or review.trip_plan.trip_id != stored.trip_plan.trip_id
+        ):
+            return stored, draft
+        projected = stored.trip_plan.model_copy(deep=True)
+        projected.status = review.trip_plan.status
+        projected.approval_history = tuple(
+            event.model_copy(deep=True) for event in review.trip_plan.approval_history
+        )
+        return replace(stored, trip_plan=projected), draft
 
     @_serialized_store_operation
     def prepare_portal_receipt(
