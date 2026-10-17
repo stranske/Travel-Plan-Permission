@@ -4,6 +4,7 @@ import hashlib
 import json
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -25,11 +26,18 @@ def run(name):
         "-k",
         "test_foreign_overwrite_cannot_replace_bound_execution",
         "-q",
-        "--junitxml=" + str(EVIDENCE / (name + ".xml")),
+        "--junitxml=" + str((EVIDENCE / (name + ".xml")).relative_to(ROOT)),
     ]
     result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
-    (EVIDENCE / (name + ".log")).write_text(result.stdout + result.stderr)
-    return {"argv": command, "returncode": result.returncode}
+    # Preserve results while omitting workstation layout and JUnit hostnames.
+    output = (result.stdout + result.stderr).replace(str(Path.home()), "<home>")
+    (EVIDENCE / (name + ".log")).write_text(output)
+    xml_path = EVIDENCE / (name + ".xml")
+    tree = ET.parse(xml_path)
+    for element in tree.iter():
+        element.attrib.pop("hostname", None)
+    tree.write(xml_path, encoding="unicode")
+    return {"argv": ["python", *command[1:]], "returncode": result.returncode}
 
 
 original = SOURCE.read_bytes()

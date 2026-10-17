@@ -783,3 +783,56 @@ def test_exception_decision_reaches_typed_planner_readback(app_client, tmp_path,
     assert_projected(_planner(TestClient(create_app(reloaded))))
     stored = reloaded.lookup_submission(execution).trip_plan
     assert stored.exception_requests == []
+
+
+def _assert_execution_readable(client, stored, execution):
+    for url in (
+        f"/api/planner/proposals/{stored.request.proposal_id}/executions/{execution}",
+        f"/api/planner/executions/{execution}/evaluation-result",
+    ):
+        assert client.get(url, headers=auth()).status_code == 200
+    assert (
+        client.post(
+            "/api/planner/proposals",
+            headers=auth(),
+            json={
+                "trip_plan": stored.trip_plan.model_dump(mode="json"),
+                "request": stored.request.model_dump(mode="json"),
+            },
+        ).status_code
+        == 200
+    )
+
+
+def test_generic_draft_id_payload_is_not_a_portal_binding(bound_execution):
+    client, store, _receipt, original = bound_execution
+    body = {
+        "trip_plan": original.trip_plan.model_dump(mode="json"),
+        "request": original.request.model_dump(mode="json"),
+    }
+    body["request"].update(
+        proposal_id="legacy-context", proposal_version="generic-v1", payload={"draft_id": "x"}
+    )
+    response = client.post("/api/planner/proposals", headers=auth(), json=body)
+    assert response.status_code == 200
+    execution = response.json()["result_payload"]["execution_id"]
+    _assert_execution_readable(client, store.lookup_submission(execution), execution)
+
+
+def test_evicted_unbound_portal_execution_remains_readable(app_client, monkeypatch):
+    client, store = app_client
+    prepared = prepare(client)
+    draft_id = prepared["draft_id"]
+    store.portal_drafts_by_id[draft_id] = replace(
+        store.portal_drafts_by_id[draft_id], receipt_binding=None
+    )
+    store._persist_state()
+    assert client.post(f"/portal/review/{draft_id}/submit", headers=auth()).status_code == 200
+    draft = store.lookup_portal_draft(draft_id)
+    execution = draft.submission_response.result_payload["execution_id"]
+    stored = store.lookup_submission(execution)
+    assert stored.request.proposal_version == "portal-v1"
+    monkeypatch.setattr("travel_plan_permission.http_service._PORTAL_MAX_DRAFTS", 1)
+    store.save_portal_draft({"traveler_name": "Another legacy traveler"})
+    assert store.lookup_portal_draft(draft_id) is None
+    _assert_execution_readable(client, stored, execution)

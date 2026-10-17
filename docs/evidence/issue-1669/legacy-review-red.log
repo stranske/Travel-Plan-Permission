@@ -1,0 +1,41 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: .
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.14.1, datadir-1.8.0, hypothesis-6.156.1, regressions-2.11.0, langsmith-0.9.7
+collected 43 items / 41 deselected / 2 selected
+
+tests/python/test_portal_receipt_api.py FF                               [100%]
+
+=================================== FAILURES ===================================
+____________ test_generic_draft_id_payload_is_not_a_portal_binding _____________
+tests/python/test_portal_receipt_api.py:810: in test_generic_draft_id_payload_is_not_a_portal_binding
+    _assert_execution_readable(client, store.lookup_submission(execution), execution)
+tests/python/test_portal_receipt_api.py:793: in _assert_execution_readable
+    assert client.get(url, headers=auth()).status_code == 200
+E   AssertionError: assert 404 == 200
+E    +  where 404 = <Response [404 Not Found]>.status_code
+E    +    where <Response [404 Not Found]> = get('/api/planner/proposals/legacy-context/executions/exec-2df4d699225b', headers={'Authorization': 'Bearer tppv1.eyJhdWQiOiJwbGFubmVyLXNlcnZpY2UiLCJleHAiOjE3OTIyMzE2MzMsImlhdCI6MTc5MjIzMTAzMywicGVybW...mlldyIsImNyZWF0ZSJdLCJwcm92aWRlciI6Imdvb2dsZSIsInN1YiI6InRyYXZlbGVyLWEifQ.cjhZQR_sZe_igZf01qU-4-XkBYWcdvqAYU4Kx3xFOYo'})
+E    +      where get = <starlette.testclient.TestClient object at 0x11441d3a0>.get
+E    +      and   {'Authorization': 'Bearer tppv1.eyJhdWQiOiJwbGFubmVyLXNlcnZpY2UiLCJleHAiOjE3OTIyMzE2MzMsImlhdCI6MTc5MjIzMTAzMywicGVybW...mlldyIsImNyZWF0ZSJdLCJwcm92aWRlciI6Imdvb2dsZSIsInN1YiI6InRyYXZlbGVyLWEifQ.cjhZQR_sZe_igZf01qU-4-XkBYWcdvqAYU4Kx3xFOYo'} = auth()
+____________ test_evicted_unbound_portal_execution_remains_readable ____________
+tests/python/test_portal_receipt_api.py:829: in test_evicted_unbound_portal_execution_remains_readable
+    _assert_execution_readable(client, stored, execution)
+tests/python/test_portal_receipt_api.py:793: in _assert_execution_readable
+    assert client.get(url, headers=auth()).status_code == 200
+E   AssertionError: assert 404 == 200
+E    +  where 404 = <Response [404 Not Found]>.status_code
+E    +    where <Response [404 Not Found]> = get('/api/planner/proposals/trip-20261201-alex-rivera-428fe76f6e61-portal-request/executions/exec-60159da95226', headers={'Authorization': 'Bearer tppv1.eyJhdWQiOiJwbGFubmVyLXNlcnZpY2UiLCJleHAiOjE3OTIyMzE2MzMsImlhdCI6MTc5MjIzMTAzMywicGVybW...mlldyIsImNyZWF0ZSJdLCJwcm92aWRlciI6Imdvb2dsZSIsInN1YiI6InRyYXZlbGVyLWEifQ.cjhZQR_sZe_igZf01qU-4-XkBYWcdvqAYU4Kx3xFOYo'})
+E    +      where get = <starlette.testclient.TestClient object at 0x1145d0b30>.get
+E    +      and   {'Authorization': 'Bearer tppv1.eyJhdWQiOiJwbGFubmVyLXNlcnZpY2UiLCJleHAiOjE3OTIyMzE2MzMsImlhdCI6MTc5MjIzMTAzMywicGVybW...mlldyIsImNyZWF0ZSJdLCJwcm92aWRlciI6Imdvb2dsZSIsInN1YiI6InRyYXZlbGVyLWEifQ.cjhZQR_sZe_igZf01qU-4-XkBYWcdvqAYU4Kx3xFOYo'} = auth()
+=============================== warnings summary ===============================
+../../../../../Library/CloudStorage/Dropbox/Learning/Code/Travel-Plan-Permission/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  <local-path> StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: ./docs/evidence/issue-1669/legacy-review-red.xml -
+=========================== short test summary info ============================
+FAILED tests/python/test_portal_receipt_api.py::test_generic_draft_id_payload_is_not_a_portal_binding
+FAILED tests/python/test_portal_receipt_api.py::test_evicted_unbound_portal_execution_remains_readable
+================= 2 failed, 41 deselected, 1 warning in 1.68s ==================

@@ -1,19 +1,20 @@
 {
   "base": "f5c0ea0e1fbaa01af45dd3b3b34dbd6f64af9bb5",
-  "tests": 242,
+  "tests": 244,
   "failures": 0,
   "errors": 0,
   "skips": 0,
   "files": {
     "src/travel_plan_permission/http_service.py": "b988306c3cec928d3efcec2a5c12aa68a0737dc7bab73f1f9aa62759a9c77c81",
     "src/travel_plan_permission/planner_http_routes.py": "4f90825f7b04a1cad5f7dea8ef7f8522ffeda977e5d38cc850e05bca68ebd59e",
-    "src/travel_plan_permission/portal_receipt_store.py": "25bf99939b5544948b5e07b290f16ade77912a74294816ae4738bf48bc2551a1",
+    "src/travel_plan_permission/portal_receipt_store.py": "ae1569ae1d8b82b66a3c19f2a3f35b0d5defdc1d017202d3e107f96d33e68bdd",
     "src/travel_plan_permission/portal_receipts.py": "10b59f9672cd8edd9a5189af29ad958ce40e1e7aa0c2d15bcae27b7cd1dea5fa",
-    "tests/python/test_portal_receipt_api.py": "c6d94ab1f394f3b4d766d1ee4ca8d9f6a51c052d88b7906d46727d49fbf77f85"
+    "tests/python/test_portal_receipt_api.py": "3d7f637eb16ddd35642b605897b6a8266bb12d14aee6de6eaaf1df59e7e5d715"
   },
   "runtime": "repository-selected canonical .venv/bin/python (Python 3.12.2)",
   "mypy": "2.1.0; 58 production files PASS (hosted pin 2.4.0 remains separate)",
   "ruff": "0.16.7; exact hosted whole-tree command PASS (hosted pin 0.17.0 remains separate)",
   "black": "26.10.1 with --line-length 100; repo CI disables format check; no default-88 whole-repo pass claimed",
-  "mutation": "owner-check-mutation.json: 3 assertion failures / 0 errors, restored 3 PASS"
+  "mutation": "owner-check-mutation.json: 3 assertion failures / 0 errors, restored 3 PASS",
+  "legacy_review": "Two assertion failures on previous draft_id hint; both controls and full244 pass after removing caller-payload hint"
 }

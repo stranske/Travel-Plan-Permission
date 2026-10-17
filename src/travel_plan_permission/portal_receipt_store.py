@@ -44,12 +44,9 @@ class PortalReceiptStoreMixin:
         if matches:
             return matches[0]
         stored = store.lookup_submission(execution_id)
-        # These are only fail-closed migration hints for an unavailable index;
-        # neither can grant access or choose a different draft's owner.
-        if stored is not None and (
-            stored.request.payload.get("draft_id")
-            or stored.request.proposal_version.startswith("portal-v1:")
-        ):
+        # Receipt-bound submissions use a reserved version prefix. Free-form
+        # caller payload keys do not establish portal linkage.
+        if stored is not None and stored.request.proposal_version.startswith("portal-v1:"):
             raise HTTPException(status_code=404, detail="Portal receipt not found.")
         return None
 

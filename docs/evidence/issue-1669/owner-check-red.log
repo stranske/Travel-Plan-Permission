@@ -1,9 +1,9 @@
 ============================= test session starts ==============================
 platform darwin -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
-rootdir: /Users/teacher/.codex/automations/pd-workloop-resume/worktrees/travel-1669-owner-binding-0900
+rootdir: <home>/.codex/automations/pd-workloop-resume/worktrees/travel-1669-owner-binding-0900
 configfile: pyproject.toml
 plugins: cov-7.1.0, anyio-4.14.1, datadir-1.8.0, hypothesis-6.156.1, regressions-2.11.0, langsmith-0.9.7
-collected 41 items / 38 deselected / 3 selected
+collected 43 items / 40 deselected / 3 selected
 
 tests/python/test_portal_receipt_api.py FFF                              [100%]
 
@@ -23,18 +23,18 @@ E    +  where 409 = <Response [409 Conflict]>.status_code
 _________ test_foreign_overwrite_cannot_replace_bound_execution[None] __________
 tests/python/test_portal_receipt_api.py:543: in test_foreign_overwrite_cannot_replace_bound_execution
     assert response.status_code == 404, response.text
-E   AssertionError: {"operation":"submit_proposal","submission_status":"pending","request_id":"req-3bff99c383e5","correlation_id":{"value":"corr-984c87c817bb","issued_by":"trip-planner"},"transport_pattern":"deferred","execution_status":{"state":"deferred","terminal":false,"summary":"Policy evaluation finished; the result is available. Waiting for an approver's decision.","external_status":"202 Accepted","poll_after_seconds":30.0,"updated_at":"2026-10-17T09:49:20.235218Z"},"result_payload":{"trip_id":"TRIP-20261201-ALEX-RIVERA-428FE76F6E61","proposal_id":"trip-20261201-alex-rivera-428fe76f6e61-portal-request","proposal_version":"portal-v1:d244c31dd3d4","execution_id":"exec-984c87c817bb","queue_state":"awaiting_approval","result_endpoint":"GET /api/planner/executions/exec-984c87c817bb/evaluation-result","evaluation_state":"completed","approval_state":"pending","submitted_payload_keys":["channel","draft_id","review_surface"]},"proposal_status":null,"error":null,"retry":{"attempt":0,"max_attempts":5,"retryable":true,"backoff_seconds":30.0,"next_retry_at":"2026-10-17T09:49:50.235218Z","reason":"Waiting for an approver's decision; the evaluation result is available now."},"received_at":"2026-10-17T09:49:20.235218Z","status_endpoint":"GET /api/planner/proposals/trip-20261201-alex-rivera-428fe76f6e61-portal-request/executions/exec-984c87c817bb"}
+E   AssertionError: {"operation":"submit_proposal","submission_status":"pending","request_id":"req-e7bd4fd2db92","correlation_id":{"value":"corr-02dcc9fc584e","issued_by":"trip-planner"},"transport_pattern":"deferred","execution_status":{"state":"deferred","terminal":false,"summary":"Policy evaluation finished; the result is available. Waiting for an approver's decision.","external_status":"202 Accepted","poll_after_seconds":30.0,"updated_at":"2026-10-17T09:57:32.427867Z"},"result_payload":{"trip_id":"TRIP-20261201-ALEX-RIVERA-428FE76F6E61","proposal_id":"trip-20261201-alex-rivera-428fe76f6e61-portal-request","proposal_version":"portal-v1:7865f2bc43a2","execution_id":"exec-02dcc9fc584e","queue_state":"awaiting_approval","result_endpoint":"GET /api/planner/executions/exec-02dcc9fc584e/evaluation-result","evaluation_state":"completed","approval_state":"pending","submitted_payload_keys":["channel","draft_id","review_surface"]},"proposal_status":null,"error":null,"retry":{"attempt":0,"max_attempts":5,"retryable":true,"backoff_seconds":30.0,"next_retry_at":"2026-10-17T09:58:02.427867Z","reason":"Waiting for an approver's decision; the evaluation result is available now."},"received_at":"2026-10-17T09:57:32.427867Z","status_endpoint":"GET /api/planner/proposals/trip-20261201-alex-rivera-428fe76f6e61-portal-request/executions/exec-02dcc9fc584e"}
 E   assert 200 == 404
 E    +  where 200 = <Response [200 OK]>.status_code
 =============================== warnings summary ===============================
 ../../../../../Library/CloudStorage/Dropbox/Learning/Code/Travel-Plan-Permission/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
-  /Users/teacher/Library/CloudStorage/Dropbox/Learning/Code/Travel-Plan-Permission/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  <home>/Library/CloudStorage/Dropbox/Learning/Code/Travel-Plan-Permission/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
     from starlette.testclient import TestClient as TestClient  # noqa
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-- generated xml file: /Users/teacher/.codex/automations/pd-workloop-resume/worktrees/travel-1669-owner-binding-0900/docs/evidence/issue-1669/owner-check-red.xml -
+- generated xml file: <home>/.codex/automations/pd-workloop-resume/worktrees/travel-1669-owner-binding-0900/docs/evidence/issue-1669/owner-check-red.xml -
 =========================== short test summary info ============================
 FAILED tests/python/test_portal_receipt_api.py::test_foreign_overwrite_cannot_replace_bound_execution[request_payload0]
 FAILED tests/python/test_portal_receipt_api.py::test_foreign_overwrite_cannot_replace_bound_execution[request_payload1]
 FAILED tests/python/test_portal_receipt_api.py::test_foreign_overwrite_cannot_replace_bound_execution[None]
-================= 3 failed, 38 deselected, 1 warning in 1.96s ==================
+================= 3 failed, 40 deselected, 1 warning in 1.69s ==================
