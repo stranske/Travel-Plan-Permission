@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="3" time="4.229" timestamp="2026-10-16T21:07:38.513313-05:00" hostname="server.trs.private"><testcase classname="tests.python.test_portal_receipt_api" name="test_manager_decision_reaches_typed_planner_readback[approve-approved-succeeded-True]" time="0.593"><failure message="AssertionError: assert 'pending' == 'succeeded'&#10;  &#10;  - succeeded&#10;  + pending">tests/python/test_portal_receipt_api.py:541: in test_manager_decision_reaches_typed_planner_readback
+    recorded = assert_projected(planner)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/python/test_portal_receipt_api.py:524: in assert_projected
+    assert status_response.submission_status == submission_status
+E   AssertionError: assert 'pending' == 'succeeded'
+E     
+E     - succeeded
+E     + pending</failure></testcase><testcase classname="tests.python.test_portal_receipt_api" name="test_manager_decision_reaches_typed_planner_readback[reject-rejected-failed-True]" time="0.559"><failure message="AssertionError: assert 'pending' == 'failed'&#10;  &#10;  - failed&#10;  + pending">tests/python/test_portal_receipt_api.py:541: in test_manager_decision_reaches_typed_planner_readback
+    recorded = assert_projected(planner)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/python/test_portal_receipt_api.py:524: in assert_projected
+    assert status_response.submission_status == submission_status
+E   AssertionError: assert 'pending' == 'failed'
+E     
+E     - failed
+E     + pending</failure></testcase><testcase classname="tests.python.test_portal_receipt_api" name="test_manager_decision_reaches_typed_planner_readback[request_changes-submitted-pending-False]" time="0.491"><failure message="AssertionError: assert 'draft' == 'submitted'&#10;  &#10;  - submitted&#10;  + draft">tests/python/test_portal_receipt_api.py:541: in test_manager_decision_reaches_typed_planner_readback
+    recorded = assert_projected(planner)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/python/test_portal_receipt_api.py:526: in assert_projected
+    assert status_response.proposal_status.status.value == trip_status
+E   AssertionError: assert 'draft' == 'submitted'
+E     
+E     - submitted
+E     + draft</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,4 @@
+    return self._jws.encode(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 265 passed, 1 warning in 46.52s ========================

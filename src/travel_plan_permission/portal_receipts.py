@@ -45,9 +45,7 @@ class PortalHandoffRequest(BaseModel):
     @field_validator("answers")
     @classmethod
     def bound_answers(cls, value: dict[str, str]) -> dict[str, str]:
-        if len(value) > 80 or any(
-            len(k) > 100 or len(v) > 4096 for k, v in value.items()
-        ):
+        if len(value) > 80 or any(len(k) > 100 or len(v) > 4096 for k, v in value.items()):
             raise ValueError("Portal answers exceed the bounded handoff contract.")
         if len(json.dumps(value).encode()) > 65536:
             raise ValueError("Portal answers exceed the bounded handoff contract.")
@@ -78,9 +76,7 @@ def identity_namespace(context: PlannerAuthContext) -> str:
 
     if context.auth_mode == PlannerAuthMode.OIDC:
         config = PlannerAuthConfig.from_env()
-        return json.dumps(
-            [_oidc_provider_settings(config)["issuer"], config.oidc_audience]
-        )
+        return json.dumps([_oidc_provider_settings(config)["issuer"], config.oidc_audience])
     return context.provider
 
 
@@ -103,15 +99,11 @@ def owner_matches(binding: PortalReceiptBinding, context: PlannerAuthContext) ->
 def authorize_draft_owner(draft: PortalDraft, context: PlannerAuthContext) -> None:
     """Preserve legacy portal behavior while protecting newly bound drafts."""
 
-    if draft.receipt_binding is not None and not owner_matches(
-        draft.receipt_binding, context
-    ):
+    if draft.receipt_binding is not None and not owner_matches(draft.receipt_binding, context):
         raise HTTPException(status_code=404, detail="Portal receipt not found.")
 
 
-def review_visible(
-    store: Any, review: ReviewRequest, context: PlannerAuthContext
-) -> bool:
+def review_visible(store: Any, review: ReviewRequest, context: PlannerAuthContext) -> bool:
     """Bound review pages must not become an alternate cross-owner read path."""
 
     draft = store.lookup_portal_draft(review.draft_id)
@@ -123,9 +115,7 @@ def review_visible(
         binding.owner_provider,
         binding.owner_namespace,
     ) == (context.auth_mode.value, context.provider, identity_namespace(context))
-    return owner_matches(binding, context) or (
-        same_namespace and context.can(Permission.APPROVE)
-    )
+    return owner_matches(binding, context) or (same_namespace and context.can(Permission.APPROVE))
 
 
 def receipt_for(draft: PortalDraft, review: ReviewRequest | None) -> PortalReceipt:
@@ -135,9 +125,7 @@ def receipt_for(draft: PortalDraft, review: ReviewRequest | None) -> PortalRecei
     if binding is None:
         raise HTTPException(status_code=404, detail="Portal receipt not found.")
     submission = draft.submission_response
-    state: Literal["prepared", "submitted", "pending_review", "decision_recorded"] = (
-        "prepared"
-    )
+    state: Literal["prepared", "submitted", "pending_review", "decision_recorded"] = "prepared"
     decision = None
     decision_at = None
     if submission is not None:
@@ -157,9 +145,7 @@ def receipt_for(draft: PortalDraft, review: ReviewRequest | None) -> PortalRecei
         prepared_at=binding.prepared_at,
         observed_at=datetime.now(UTC),
         request_id=submission.request_id if submission else None,
-        execution_id=(
-            str(submission.result_payload["execution_id"]) if submission else None
-        ),
+        execution_id=(str(submission.result_payload["execution_id"]) if submission else None),
         review_id=review.review_id if review else None,
         submitted_at=review.submitted_at if review else None,
         decision=decision,
@@ -213,9 +199,7 @@ def register_portal_receipt_routes(app: FastAPI, store: PlannerProposalStore) ->
         context = context_for(request, authorization, Permission.CREATE)
         if set(payload.answers) - set(service._PORTAL_FIELDS):
             raise HTTPException(status_code=422, detail="Unknown portal answer field.")
-        answers = service._portal_answers_from_encoded_body(
-            urlencode(payload.answers).encode()
-        )
+        answers = service._portal_answers_from_encoded_body(urlencode(payload.answers).encode())
         review = portal_validation_state(
             answers,
             required_fields=service._PORTAL_REQUIRED_FIELDS,
@@ -245,9 +229,7 @@ def register_portal_receipt_routes(app: FastAPI, store: PlannerProposalStore) ->
     ) -> PortalReceipt:
         context = context_for(request, authorization, Permission.VIEW)
         response.headers["Cache-Control"] = "no-store"
-        return store.read_portal_receipt(
-            binding_for(context, handoff_id), snapshot_version
-        )
+        return store.read_portal_receipt(binding_for(context, handoff_id), snapshot_version)
 
     @app.post("/api/planner/portal-handoffs/{handoff_id}/browser-session")
     def browser_session(
@@ -280,17 +262,13 @@ def register_portal_receipt_routes(app: FastAPI, store: PlannerProposalStore) ->
         # POST body keeps this view-only capability out of browser history and referrers.
         body = await request.body()
         if len(body) > 4096:
-            raise HTTPException(
-                status_code=413, detail="Handoff capability is too large."
-            )
+            raise HTTPException(status_code=413, detail="Handoff capability is too large.")
         values = parse_qs(body.decode(), keep_blank_values=True)
         token = values.get("handoff_token", [""])[-1]
         secret = service._resolve_handoff_secret_or_503()
         draft_id = verify_handoff_token(token, secret=secret)
         if draft_id is None or store.lookup_portal_draft(draft_id) is None:
-            raise HTTPException(
-                status_code=401, detail="Handoff session is invalid or expired."
-            )
+            raise HTTPException(status_code=401, detail="Handoff session is invalid or expired.")
         response = RedirectResponse(
             url=request.url_for("portal_review_detail", draft_id=draft_id),
             status_code=303,
@@ -300,9 +278,7 @@ def register_portal_receipt_routes(app: FastAPI, store: PlannerProposalStore) ->
         return response
 
 
-def register_portal_submission_route(
-    app: FastAPI, proposal_store: PlannerProposalStore
-) -> None:
+def register_portal_submission_route(app: FastAPI, proposal_store: PlannerProposalStore) -> None:
     """Keep the existing authenticated browser submission on the receipt-aware store."""
 
     from . import http_service as service
@@ -331,11 +307,7 @@ def register_portal_submission_route(
             required_fields=service._PORTAL_REQUIRED_FIELDS,
             canonical_payload_builder=service._canonical_payload_from_answers,
         )
-        if (
-            review.trip_plan is None
-            or review.missing_fields
-            or review.validation_errors
-        ):
+        if review.trip_plan is None or review.missing_fields or review.validation_errors:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="; ".join(review.validation_errors)
@@ -352,9 +324,7 @@ def register_portal_submission_route(
         submission_request = PlannerProposalSubmissionRequest(
             trip_id=review.trip_plan.trip_id,
             proposal_id=f"{review.trip_plan.trip_id.lower()}-portal-request",
-            proposal_version=(
-                f"portal-v1:{draft_id}" if draft.receipt_binding else "portal-v1"
-            ),
+            proposal_version=(f"portal-v1:{draft_id}" if draft.receipt_binding else "portal-v1"),
             payload={
                 "channel": "workflow-portal",
                 "draft_id": draft_id,
