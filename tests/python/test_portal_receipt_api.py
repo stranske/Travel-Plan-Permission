@@ -1,6 +1,7 @@
 """Real ASGI/auth/persistence contract for owner-scoped portal receipts."""
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -200,9 +201,9 @@ def test_retries_snapshot_conflicts_and_same_trip_new_snapshot(app_client):
     assert first["snapshot_sha256"] == retry["snapshot_sha256"]
     changed = payload()
     changed["answers"]["notes"] = "Changed after preparation"
-    assert client.post(BASE, json=changed, headers=auth()).status_code == 409, (
-        "changed snapshot must conflict"
-    )
+    assert (
+        client.post(BASE, json=changed, headers=auth()).status_code == 409
+    ), "changed snapshot must conflict"
     assert (
         client.post(BASE, json=payload(snapshot_version="trip-v8"), headers=auth()).status_code
         == 409
@@ -432,6 +433,81 @@ def _planner(client, subject="traveler-a"):
     return TravelPlanPermissionClient(
         base_url="http://tpp.test", token=token, transport=_AsgiTransport(client)
     )
+
+
+@pytest.fixture(params=[True, False], ids=["receipt", "legacy"])
+def approved_submission(app_client, request):
+    client, store = app_client
+    draft = prepare(client)
+    assert (
+        client.post(f"/portal/review/{draft['draft_id']}/submit", headers=auth()).status_code == 200
+    )
+    pending = lookup(client).json()
+    response = client.post(
+        f"/portal/manager/reviews/{pending['review_id']}/decision",
+        headers=auth("manager", (Permission.APPROVE,)),
+        data={"action": "approve", "rationale": "Approve this submitted snapshot only"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    if not request.param:
+        # Exercise legacy submissions without an immutable handoff receipt too.
+        stored_draft = store.portal_drafts_by_id[draft["draft_id"]]
+        store.portal_drafts_by_id[draft["draft_id"]] = replace(stored_draft, receipt_binding=None)
+        store._persist_state()
+    return client, store, pending, store.lookup_submission(pending["execution_id"])
+
+
+@pytest.mark.parametrize("changed_field", ["trip_plan", "draft_id", "missing_draft_id"])
+def test_bound_execution_rejects_changed_replay(approved_submission, tmp_path, changed_field):
+    client, store, pending, original = approved_submission
+    body = {
+        "trip_plan": original.trip_plan.model_dump(mode="json"),
+        "request": original.request.model_dump(mode="json"),
+    }
+    # An identical replay stays accepted, without replacing the saved response.
+    assert client.post("/api/planner/proposals", headers=auth(), json=body).status_code == 200
+    if changed_field == "trip_plan":
+        body["trip_plan"]["purpose"] = "A different trip purpose after approval"
+    elif changed_field == "draft_id":
+        body["request"]["payload"]["draft_id"] = "another-draft"
+    else:
+        del body["request"]["payload"]["draft_id"]
+    replay = client.post("/api/planner/proposals", headers=auth(), json=body)
+    assert replay.status_code == 409, replay.text
+    assert store.lookup_submission(pending["execution_id"]) == original
+    assert store.lookup_trip_plan(original.trip_plan.trip_id) == original.trip_plan
+    store.close()
+    reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
+    try:
+        assert reloaded.lookup_submission(pending["execution_id"]) == original
+        status = _planner(TestClient(create_app(reloaded))).poll_status(
+            proposal_id=original.request.proposal_id, execution_id=pending["execution_id"]
+        )
+        assert status.proposal_status.status.value == "approved"
+        assert len(status.proposal_status.approval_history) == 1
+    finally:
+        reloaded.close()
+
+
+def test_projection_rejects_mismatched_review_snapshot(approved_submission, tmp_path):
+    client, store, pending, original = approved_submission
+    # Simulate a legacy overwritten snapshot already persisted before this guard.
+    stored = store.proposals_by_execution_id[pending["execution_id"]]
+    stored.trip_plan.purpose = "Changed content with the same trip and execution IDs"
+    store._persist_state()
+    store.close()
+    reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
+    try:
+        restarted = TestClient(create_app(reloaded))
+        for url in (
+            f"/api/planner/proposals/{original.request.proposal_id}/executions/{pending['execution_id']}",
+            f"/api/planner/executions/{pending['execution_id']}/evaluation-result",
+        ):
+            response = restarted.get(url, headers=auth())
+            assert response.status_code == 409, response.text
+    finally:
+        reloaded.close()
 
 
 @pytest.mark.parametrize(

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 from fastapi import HTTPException
 
 from .http_contract_models import PortalDraft, PortalReceiptBinding, StoredProposal
+from .models import TripPlan
 from .persistence.operations import (
     serialized_store_operation as _serialized_store_operation,
 )
@@ -25,6 +26,29 @@ if TYPE_CHECKING:
 
 class PortalReceiptStoreMixin:
     """Receipt-specific behavior without growing the legacy HTTP/store module."""
+
+    def preserve_bound_submission(
+        self,
+        execution_id: str,
+        trip_plan: TripPlan,
+        request: PlannerProposalSubmissionRequest,
+        *,
+        portal_resubmission: bool = False,
+    ) -> bool:
+        """Keep bound snapshots immutable inside record_submission's lock."""
+
+        store = cast("PlannerProposalStore", self)
+        for draft in store.portal_drafts_by_id.values():
+            latest = draft.submission_response
+            if latest is None or latest.result_payload.get("execution_id") != execution_id:
+                continue
+            if portal_resubmission and draft.receipt_binding is None:
+                return False  # Only the legacy portal can resubmit its mutable drafts.
+            prior = store.lookup_submission(execution_id)
+            if prior is None or prior.trip_plan != trip_plan or prior.request != request:
+                raise HTTPException(status_code=409, detail="Submitted portal snapshot conflict.")
+            return True
+        return False
 
     @_serialized_store_operation
     def lookup_execution_projection(
@@ -57,6 +81,12 @@ class PortalReceiptStoreMixin:
         projected.exception_requests = store.list_exception_requests(draft.draft_id)
         review = store.lookup_manager_review_for_draft(draft.draft_id)
         if review is not None and review.trip_plan.trip_id == stored.trip_plan.trip_id:
+            # Only workflow-owned fields may differ from the reviewed snapshot.
+            mutable = {"status", "approval_history", "exception_requests"}
+            if review.trip_plan.model_dump(exclude=mutable) != stored.trip_plan.model_dump(
+                exclude=mutable
+            ):
+                raise HTTPException(status_code=409, detail="Submitted portal snapshot conflict.")
             projected.status = review.trip_plan.status
             projected.approval_history = tuple(
                 event.model_copy(deep=True) for event in review.trip_plan.approval_history
@@ -151,6 +181,8 @@ class PortalReceiptStoreMixin:
                 status_code=503 if response.submission_status == "unavailable" else 409,
                 detail="Portal proposal submission was not accepted.",
             )
-        store.record_submission(review.trip_plan, submission_request, response)
+        store.record_submission(
+            review.trip_plan, submission_request, response, portal_resubmission=True
+        )
         store.record_portal_submission(draft.draft_id, response)
         return response, store.create_manager_review(review)

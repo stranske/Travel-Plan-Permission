@@ -4388,9 +4388,7 @@ def test_manager_decision_http_process_restart(
         assert evaluation["outcome"] == (
             "exception_required"
             if with_exception
-            else "non_compliant"
-            if action == "reject"
-            else evaluation_before["outcome"]
+            else "non_compliant" if action == "reject" else evaluation_before["outcome"]
         )
         assert evaluation["exception_requirements"] == evaluation_before["exception_requirements"]
         assert evaluation["policy_result"] == evaluation_before["policy_result"]
