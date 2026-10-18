@@ -3181,10 +3181,21 @@ def artifact_audit_download(request, tmp_path):
     store.close()
 
 
-def test_artifact_download_audit_survives_immediate_restart(artifact_audit_download):
+def test_artifact_download_audit_survives_immediate_restart(artifact_audit_download, monkeypatch):
     client, store, path, state_path, draft, artifact_name = artifact_audit_download
-    expected = draft.cached_artifacts[artifact_name]
+    generated = {}
+    real_export = http_service._expense_export_artifacts
+
+    def capture_current_artifacts(*args, **kwargs):
+        artifacts = real_export(*args, **kwargs)
+        generated.update(artifacts)
+        return artifacts
+
+    # Expense downloads already regenerate exports; ZIP timestamps may differ
+    # from the earlier review cache. Compare the real output for this request.
+    monkeypatch.setattr(http_service, "_expense_export_artifacts", capture_current_artifacts)
     response = client.get(path)
+    expected = generated.get(artifact_name, draft.cached_artifacts[artifact_name])
     assert response.status_code == 200
     assert response.content == expected.content
     assert response.headers["content-disposition"] == f'attachment; filename="{expected.filename}"'
