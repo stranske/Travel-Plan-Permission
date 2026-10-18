@@ -1062,11 +1062,12 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
             reverse=True,
         )
 
-    def _persist_state(self) -> None:
+    def _persist_state(self, *, refresh: bool = True) -> None:
         if self.store is None:
             return
-        self.store.save_snapshot(self._serialize_state(), replace=True)
-        self._database_snapshot = deepcopy(self.store.load_snapshot())
+        snapshot = self._serialize_state()
+        self.store.save_snapshot(snapshot, replace=True)
+        self._database_snapshot = deepcopy(self.store.load_snapshot() if refresh else snapshot)
 
     persist_audit_events = _persist_state
 
@@ -1092,7 +1093,9 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
             },
         )
         try:
-            self._persist_state()
+            # replace=True committed this exact snapshot; a second read is unnecessary
+            # and must not turn an already committed download into a failed attempt.
+            self._persist_state(refresh=False)
         except Exception as exc:
             del self.security.audit_log.events[prior_event_count:]
             raise HTTPException(

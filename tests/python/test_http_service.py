@@ -3272,6 +3272,56 @@ def test_artifact_download_audit_failure_rolls_back_and_returns_503(
     assert client.get(path).status_code == 200
 
 
+def test_artifact_download_keeps_committed_event_when_refresh_would_fail(
+    artifact_audit_download, monkeypatch
+):
+    client, store, path, state_path, _, _ = artifact_audit_download
+    original_save = store.store.save_snapshot
+    original_load = store.store.load_snapshot
+    committed = False
+
+    def save_then_lose_read_access(*args, **kwargs):
+        nonlocal committed
+        original_save(*args, **kwargs)
+        committed = True
+
+    def fail_post_commit_load():
+        if committed:
+            raise OSError("synthetic post-commit read failure")
+        return original_load()
+
+    with monkeypatch.context() as failure:
+        failure.setattr(store.store, "save_snapshot", save_then_lose_read_access)
+        failure.setattr(store.store, "load_snapshot", fail_post_commit_load)
+        response = client.get(path)
+    assert committed
+    assert response.status_code == 200
+    assert (
+        len(
+            [
+                event
+                for event in store.security.audit_log.events
+                if event.outcome == "artifact_downloaded"
+            ]
+        )
+        == 1
+    )
+    restored = PlannerProposalStore(state_path=state_path)
+    try:
+        assert (
+            len(
+                [
+                    event
+                    for event in restored.list_audit_events()
+                    if event.outcome == "artifact_downloaded"
+                ]
+            )
+            == 1
+        )
+    finally:
+        restored.close()
+
+
 def test_in_process_audit_log_survives_restart(tmp_path) -> None:
     state_path = tmp_path / "portal-runtime-state.sqlite3"
     first_store = PlannerProposalStore(state_path=state_path)
