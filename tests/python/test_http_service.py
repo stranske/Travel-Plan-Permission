@@ -3146,6 +3146,132 @@ def test_expense_drafts_round_trip_serialize_and_load(tmp_path) -> None:
     )
 
 
+@pytest.fixture(
+    params=[
+        ("travel", "itinerary"),
+        ("travel", "summary"),
+        ("expense", "expense-csv"),
+        ("expense", "expense-xlsx"),
+    ]
+)
+def artifact_audit_download(request, tmp_path):
+    request.getfixturevalue("expense_auth_header")
+    kind, artifact_name = request.param
+    state_path = tmp_path / "download-state.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    headers = _bootstrap_auth_header(subject="artifact-downloader", permissions=tuple(Permission))
+    client = TestClient(create_app(store), headers=headers)
+    if kind == "travel":
+        draft_id, _ = _create_portal_draft(client)
+        assert client.get(f"/portal/review/{draft_id}").status_code == 200
+        draft = store.lookup_portal_draft(draft_id)
+        path = f"/portal/review/{draft_id}/artifacts/{artifact_name}"
+    else:
+        _seed_manager_review(store)
+        response = client.post("/portal/expenses/review", data=_expense_form_payload())
+        assert response.status_code == 200
+        match = re.search(r"/portal/expenses/([^/]+)/artifacts/expense-csv", response.text)
+        assert match is not None
+        draft_id = match.group(1)
+        draft = store.lookup_expense_draft(draft_id)
+        path = f"/portal/expenses/{draft_id}/artifacts/{artifact_name}"
+    assert draft is not None
+    assert artifact_name in draft.cached_artifacts
+    yield client, store, path, state_path, draft, artifact_name
+    store.close()
+
+
+def test_artifact_download_audit_survives_immediate_restart(artifact_audit_download):
+    client, store, path, state_path, draft, artifact_name = artifact_audit_download
+    expected = draft.cached_artifacts[artifact_name]
+    response = client.get(path)
+    assert response.status_code == 200
+    assert response.content == expected.content
+    assert response.headers["content-disposition"] == f'attachment; filename="{expected.filename}"'
+    store.close()
+    restored = PlannerProposalStore(state_path=state_path)
+    try:
+        events = [
+            event
+            for event in restored.list_audit_events()
+            if event.outcome == "artifact_downloaded"
+        ]
+        assert len(events) == 1
+        event = events[0]
+        assert event.event_type == AuditEventType.EXPORT
+        assert event.actor == "artifact-downloader"
+        assert event.subject == draft.draft_id
+        assert event.metadata == {
+            "artifact": artifact_name,
+            "provider": "google",
+            "permissions": sorted(permission.value for permission in Permission),
+        }
+        console = TestClient(create_app(restored)).get(
+            "/portal/admin",
+            headers=_bootstrap_auth_header(
+                subject="audit-admin",
+                permissions=(Permission.CONFIGURE, Permission.VIEW),
+            ),
+        )
+        assert console.status_code == 200
+        assert "artifact_downloaded" in console.text
+        assert "artifact-downloader" in console.text
+        assert draft.draft_id in console.text
+    finally:
+        restored.close()
+
+
+def test_cached_artifact_downloads_each_commit_audit_event(artifact_audit_download):
+    client, store, path, state_path, draft, _ = artifact_audit_download
+    cached = dict(draft.cached_artifacts)
+    for expected_count in (1, 2):
+        assert client.get(path).status_code == 200
+        restored = PlannerProposalStore(state_path=state_path)
+        try:
+            events = [
+                event
+                for event in restored.list_audit_events()
+                if event.outcome == "artifact_downloaded"
+            ]
+            assert len(events) == expected_count
+        finally:
+            restored.close()
+    assert draft.cached_artifacts == cached
+
+
+def test_artifact_download_audit_failure_rolls_back_and_returns_503(
+    artifact_audit_download, monkeypatch
+):
+    client, store, path, state_path, _, _ = artifact_audit_download
+    before = list(store.security.audit_log.events)
+    persisted_before = store.store.load_snapshot()
+    attempted = []
+
+    def fail_save(snapshot, **_kwargs):
+        attempted.append(snapshot)
+        raise OSError("synthetic snapshot write failure")
+
+    with monkeypatch.context() as failure:
+        failure.setattr(store.store, "save_snapshot", fail_save)
+        response = client.get(path)
+    assert response.status_code == 503
+    assert (
+        response.json()["detail"]
+        == "Artifact download audit could not be persisted. Retry the download."
+    )
+    assert len(attempted) == 1
+    assert store.security.audit_log.events == before
+    assert store.store.load_snapshot() == persisted_before
+    restored = PlannerProposalStore(state_path=state_path)
+    try:
+        assert not any(
+            event.outcome == "artifact_downloaded" for event in restored.list_audit_events()
+        )
+    finally:
+        restored.close()
+    assert client.get(path).status_code == 200
+
+
 def test_in_process_audit_log_survives_restart(tmp_path) -> None:
     state_path = tmp_path / "portal-runtime-state.sqlite3"
     first_store = PlannerProposalStore(state_path=state_path)

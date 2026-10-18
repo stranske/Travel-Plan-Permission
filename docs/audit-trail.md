@@ -28,6 +28,16 @@ Each snapshot is stored as a compact JSON document (`<trip_id>/<timestamp>.json`
 - Captures include the exact validation results used for the decision; if they are missing, the policy validator is run automatically before writing the snapshot.
 - The portal admin runtime also records lightweight audit events for draft saves, manager-review submissions, manager decisions, exception requests and decisions, and artifact exports so the current request/review workflow can be inspected end to end from `/portal/admin`.
 
+Artifact downloads (travel and expense, including cache hits) commit an
+`artifact_downloaded` EXPORT event to the configured portal-state snapshot
+before returning the artifact. The serialized store operation preserves actor,
+draft, artifact, provider and permission metadata across an immediate restart;
+`/portal/admin` displays the restored events. If persistence fails, the appended
+in-memory event is rolled back and the route returns HTTP 503 with an explicit
+retry message instead of serving an unaudited successful download. Each retry
+that succeeds records its own event. Stores configured without a persistence
+backend retain their existing in-memory-only behavior.
+
 ## Storage and integrity
 
 - Files are written immutably and chained by hash; any modification breaks the chain.
