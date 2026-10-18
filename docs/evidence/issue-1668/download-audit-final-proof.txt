@@ -1,0 +1,133 @@
+Scope: disconnect only record_artifact_download -> _persist_state; restore identical bytes.
+Restored source SHA256: 8779048c43c4deea36dbf9bbbc4ff3e02f1ba7554507977549c29f10595913c3
+Command: PYTHONPATH=src python -m pytest tests/python/test_http_service.py -q -k "artifact_download_audit or cached_artifact_downloads_each or committed_event"
+
+RED exit=1
+============================= test session starts ==============================
+platform darwin -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/teacher/.codex/automations/pd-workloop-resume/worktrees/Travel-Plan-Permission-1668
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.14.1, datadir-1.8.0, hypothesis-6.156.1, regressions-2.11.0, langsmith-0.9.7
+collected 216 items / 200 deselected / 16 selected
+
+tests/python/test_http_service.py FFFFFFFFFFFFFFFF                       [100%]
+
+=================================== FAILURES ===================================
+_ test_artifact_download_audit_survives_immediate_restart[artifact_audit_download0] _
+tests/python/test_http_service.py:3199: in test_artifact_download_audit_survives_immediate_restart
+    assert len(events) == 1
+E   assert 0 == 1
+E    +  where 0 = len([])
+_ test_artifact_download_audit_survives_immediate_restart[artifact_audit_download1] _
+tests/python/test_http_service.py:3199: in test_artifact_download_audit_survives_immediate_restart
+    assert len(events) == 1
+E   assert 0 == 1
+E    +  where 0 = len([])
+_ test_artifact_download_audit_survives_immediate_restart[artifact_audit_download2] _
+tests/python/test_http_service.py:3199: in test_artifact_download_audit_survives_immediate_restart
+    assert len(events) == 1
+E   assert 0 == 1
+E    +  where 0 = len([])
+_ test_artifact_download_audit_survives_immediate_restart[artifact_audit_download3] _
+tests/python/test_http_service.py:3199: in test_artifact_download_audit_survives_immediate_restart
+    assert len(events) == 1
+E   assert 0 == 1
+E    +  where 0 = len([])
+_ test_cached_artifact_downloads_each_commit_audit_event[artifact_audit_download0] _
+tests/python/test_http_service.py:3236: in test_cached_artifact_downloads_each_commit_audit_event
+    assert len(events) == expected_count
+E   assert 0 == 1
+E    +  where 0 = len([])
+_ test_cached_artifact_downloads_each_commit_audit_event[artifact_audit_download1] _
+tests/python/test_http_service.py:3236: in test_cached_artifact_downloads_each_commit_audit_event
+    assert len(events) == expected_count
+E   assert 0 == 1
+E    +  where 0 = len([])
+_ test_cached_artifact_downloads_each_commit_audit_event[artifact_audit_download2] _
+tests/python/test_http_service.py:3236: in test_cached_artifact_downloads_each_commit_audit_event
+    assert len(events) == expected_count
+E   assert 0 == 1
+E    +  where 0 = len([])
+_ test_cached_artifact_downloads_each_commit_audit_event[artifact_audit_download3] _
+tests/python/test_http_service.py:3236: in test_cached_artifact_downloads_each_commit_audit_event
+    assert len(events) == expected_count
+E   assert 0 == 1
+E    +  where 0 = len([])
+_ test_artifact_download_audit_failure_rolls_back_and_returns_503[artifact_audit_download0] _
+tests/python/test_http_service.py:3257: in test_artifact_download_audit_failure_rolls_back_and_returns_503
+    assert response.status_code == 503
+E   assert 200 == 503
+E    +  where 200 = <Response [200 OK]>.status_code
+_ test_artifact_download_audit_failure_rolls_back_and_returns_503[artifact_audit_download1] _
+tests/python/test_http_service.py:3257: in test_artifact_download_audit_failure_rolls_back_and_returns_503
+    assert response.status_code == 503
+E   assert 200 == 503
+E    +  where 200 = <Response [200 OK]>.status_code
+_ test_artifact_download_audit_failure_rolls_back_and_returns_503[artifact_audit_download2] _
+tests/python/test_http_service.py:3257: in test_artifact_download_audit_failure_rolls_back_and_returns_503
+    assert response.status_code == 503
+E   assert 200 == 503
+E    +  where 200 = <Response [200 OK]>.status_code
+_ test_artifact_download_audit_failure_rolls_back_and_returns_503[artifact_audit_download3] _
+tests/python/test_http_service.py:3257: in test_artifact_download_audit_failure_rolls_back_and_returns_503
+    assert response.status_code == 503
+E   assert 200 == 503
+E    +  where 200 = <Response [200 OK]>.status_code
+_ test_artifact_download_keeps_committed_event_when_refresh_would_fail[artifact_audit_download0] _
+tests/python/test_http_service.py:3297: in test_artifact_download_keeps_committed_event_when_refresh_would_fail
+    assert committed
+E   assert False
+_ test_artifact_download_keeps_committed_event_when_refresh_would_fail[artifact_audit_download1] _
+tests/python/test_http_service.py:3297: in test_artifact_download_keeps_committed_event_when_refresh_would_fail
+    assert committed
+E   assert False
+_ test_artifact_download_keeps_committed_event_when_refresh_would_fail[artifact_audit_download2] _
+tests/python/test_http_service.py:3297: in test_artifact_download_keeps_committed_event_when_refresh_would_fail
+    assert committed
+E   assert False
+_ test_artifact_download_keeps_committed_event_when_refresh_would_fail[artifact_audit_download3] _
+tests/python/test_http_service.py:3297: in test_artifact_download_keeps_committed_event_when_refresh_would_fail
+    assert committed
+E   assert False
+=============================== warnings summary ===============================
+../../../../../Library/CloudStorage/Dropbox/Learning/Code/Travel-Plan-Permission/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/teacher/Library/CloudStorage/Dropbox/Learning/Code/Travel-Plan-Permission/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/python/test_http_service.py::test_artifact_download_audit_survives_immediate_restart[artifact_audit_download0]
+FAILED tests/python/test_http_service.py::test_artifact_download_audit_survives_immediate_restart[artifact_audit_download1]
+FAILED tests/python/test_http_service.py::test_artifact_download_audit_survives_immediate_restart[artifact_audit_download2]
+FAILED tests/python/test_http_service.py::test_artifact_download_audit_survives_immediate_restart[artifact_audit_download3]
+FAILED tests/python/test_http_service.py::test_cached_artifact_downloads_each_commit_audit_event[artifact_audit_download0]
+FAILED tests/python/test_http_service.py::test_cached_artifact_downloads_each_commit_audit_event[artifact_audit_download1]
+FAILED tests/python/test_http_service.py::test_cached_artifact_downloads_each_commit_audit_event[artifact_audit_download2]
+FAILED tests/python/test_http_service.py::test_cached_artifact_downloads_each_commit_audit_event[artifact_audit_download3]
+FAILED tests/python/test_http_service.py::test_artifact_download_audit_failure_rolls_back_and_returns_503[artifact_audit_download0]
+FAILED tests/python/test_http_service.py::test_artifact_download_audit_failure_rolls_back_and_returns_503[artifact_audit_download1]
+FAILED tests/python/test_http_service.py::test_artifact_download_audit_failure_rolls_back_and_returns_503[artifact_audit_download2]
+FAILED tests/python/test_http_service.py::test_artifact_download_audit_failure_rolls_back_and_returns_503[artifact_audit_download3]
+FAILED tests/python/test_http_service.py::test_artifact_download_keeps_committed_event_when_refresh_would_fail[artifact_audit_download0]
+FAILED tests/python/test_http_service.py::test_artifact_download_keeps_committed_event_when_refresh_would_fail[artifact_audit_download1]
+FAILED tests/python/test_http_service.py::test_artifact_download_keeps_committed_event_when_refresh_would_fail[artifact_audit_download2]
+FAILED tests/python/test_http_service.py::test_artifact_download_keeps_committed_event_when_refresh_would_fail[artifact_audit_download3]
+================ 16 failed, 200 deselected, 1 warning in 3.76s =================
+
+RESTORED GREEN exit=0
+============================= test session starts ==============================
+platform darwin -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/teacher/.codex/automations/pd-workloop-resume/worktrees/Travel-Plan-Permission-1668
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.14.1, datadir-1.8.0, hypothesis-6.156.1, regressions-2.11.0, langsmith-0.9.7
+collected 216 items / 200 deselected / 16 selected
+
+tests/python/test_http_service.py ................                       [100%]
+
+=============================== warnings summary ===============================
+../../../../../Library/CloudStorage/Dropbox/Learning/Code/Travel-Plan-Permission/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/teacher/Library/CloudStorage/Dropbox/Learning/Code/Travel-Plan-Permission/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================ 16 passed, 200 deselected, 1 warning in 3.22s =================

@@ -1062,13 +1062,46 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
             reverse=True,
         )
 
-    def _persist_state(self) -> None:
+    def _persist_state(self, *, refresh: bool = True) -> None:
         if self.store is None:
             return
-        self.store.save_snapshot(self._serialize_state(), replace=True)
-        self._database_snapshot = deepcopy(self.store.load_snapshot())
+        snapshot = self._serialize_state()
+        self.store.save_snapshot(snapshot, replace=True)
+        self._database_snapshot = deepcopy(self.store.load_snapshot() if refresh else snapshot)
 
     persist_audit_events = _persist_state
+
+    @_serialized_store_operation
+    def record_artifact_download(
+        self, auth_context: PlannerAuthContext, draft_id: str, artifact_name: str
+    ) -> None:
+        """Persist the export event before the route releases artifact bytes."""
+
+        prior_event_count = len(self.security.audit_log.events)
+        self.security.audit_log.record(
+            event_type=AuditEventType.EXPORT,
+            actor=auth_context.subject,
+            subject=draft_id,
+            outcome="artifact_downloaded",
+            metadata={
+                "artifact": artifact_name,
+                "provider": auth_context.provider,
+                "permissions": [
+                    permission.value
+                    for permission in sorted(auth_context.permissions, key=lambda item: item.value)
+                ],
+            },
+        )
+        try:
+            # replace=True committed this exact snapshot; a second read is unnecessary
+            # and must not turn an already committed download into a failed attempt.
+            self._persist_state(refresh=False)
+        except Exception as exc:
+            del self.security.audit_log.events[prior_event_count:]
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Artifact download audit could not be persisted. Retry the download.",
+            ) from exc
 
     def _persist_state_with_audit(self, *events: audit.AuditEvent) -> None:
         """Commit state and its audit outbox before attempting delivery."""
@@ -2226,20 +2259,7 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No artifact named '{artifact_name}' for draft '{draft_id}'.",
             )
-        proposal_store.security.audit_log.record(
-            event_type=AuditEventType.EXPORT,
-            actor=auth_context.subject,
-            subject=draft_id,
-            outcome="artifact_downloaded",
-            metadata={
-                "artifact": artifact_name,
-                "provider": auth_context.provider,
-                "permissions": [
-                    permission.value
-                    for permission in sorted(auth_context.permissions, key=lambda item: item.value)
-                ],
-            },
-        )
+        proposal_store.record_artifact_download(auth_context, draft_id, artifact_name)
         return Response(
             content=artifact.content,
             media_type=artifact.media_type,
@@ -2285,20 +2305,7 @@ def register_artifact_routes(app: FastAPI, proposal_store: PlannerProposalStore)
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No artifact named '{artifact_name}' for expense draft '{draft_id}'.",
             )
-        proposal_store.security.audit_log.record(
-            event_type=AuditEventType.EXPORT,
-            actor=auth_context.subject,
-            subject=draft_id,
-            outcome="artifact_downloaded",
-            metadata={
-                "artifact": artifact_name,
-                "provider": auth_context.provider,
-                "permissions": [
-                    permission.value
-                    for permission in sorted(auth_context.permissions, key=lambda item: item.value)
-                ],
-            },
-        )
+        proposal_store.record_artifact_download(auth_context, draft_id, artifact_name)
         return Response(
             content=artifact.content,
             media_type=artifact.media_type,
