@@ -71,6 +71,14 @@ export TPP_AUTH_MODE="static-token"
 export TPP_ACCESS_TOKEN="dev-token"
 ```
 
+For the cross-repo restart smoke, configure a disposable state store **before**
+starting the service. Export the same path in both shells, including the shell
+that starts the replacement process:
+
+```bash
+export TPP_PORTAL_STATE_PATH=/tmp/tpp-smoke-state.sqlite3
+```
+
 ### 2. Start the planner-facing service
 
 ```bash
@@ -149,22 +157,47 @@ smoke harness from this repo:
 tpp-cross-repo-smoke --trip-planner-root ../trip-planner
 ```
 
-The command validates the `trip-planner` TPP contract docs and proposal
-fixture, submits the packaged TPP proposal through the live service at
-`TPP_BASE_URL`, polls proposal status, fetches the evaluation result, then
-reopens the configured TPP state store to prove the live HTTP submission
-survived persistence. Set `TRIP_PLANNER_REPO` instead of passing
-`--trip-planner-root` when the checkout is not a sibling directory.
+The command validates the pinned `trip-planner` contract docs and proposal fixture,
+submits the packaged synthetic proposal over live HTTP, and reads its status and
+evaluation. Its separate **TripState store round trip** is a smoke-written record;
+it is not evidence that the service persisted a manager decision.
 
-Use the token minted in step 4 as `TPP_PLANNER_TOKEN`, or set
-`TPP_ACCESS_TOKEN` when running in static-token mode. If you need an isolated
-state file for the assertion, set `TPP_PORTAL_STATE_PATH` before starting
-`tpp-planner-service` and before running `tpp-cross-repo-smoke`.
+The smoke also prepares a synthetic immutable portal handoff, submits it through
+the existing authenticated portal route, and records a synthetic manager approval
+through the existing manager route. It reads the receipt and requires
+`decision_recorded`, `approved`, nonempty decision timestamp and unchanged
+submission linkage. Use only a disposable local/CI state store and test identities
+for this mutating rehearsal; no real manager action is certified.
 
-Recent local verification on 2026-05-09 showed both `tpp-planner-smoke` and
-`tpp-cross-repo-smoke --trip-planner-root ../trip-planner` passing against the
-live local service once the service and smoke command shared the same
-`TPP_PORTAL_STATE_PATH`.
+Set `TPP_PLANNER_TOKEN` to a `view`/`create` bootstrap token and mint a separate
+approver in the same identity namespace:
+
+```bash
+export TPP_MANAGER_TOKEN="$(tpp-planner-token --subject smoke-manager --permission approve)"
+tpp-cross-repo-smoke --trip-planner-root ../trip-planner --receipt-output /tmp/tpp-approved-receipt.json
+```
+
+Stop the original service process completely, start a new `tpp-planner-service`
+process on the **same** `TPP_PORTAL_STATE_PATH`, wait for `/readyz` HTTP 200,
+and perform the read-only verification:
+
+```bash
+tpp-cross-repo-smoke --verify-receipt /tmp/tpp-approved-receipt.json
+```
+
+This must print `portal receipt after service restart: decision_recorded/approved`.
+It performs only a receipt GET and compares every persisted receipt field except
+`observed_at` to the pre-restart observation. It never recreates the handoff or
+resubmits/approves a missing decision. Lost state, wrong linkage, HTTP errors or
+changed decisions cause a nonzero exit. The saved receipt contains no credentials.
+Static-token mode cannot exercise these owner-bound receipt routes; use bootstrap
+mode for this cross-repo smoke. `TRIP_PLANNER_REPO` remains the alternative to
+`--trip-planner-root`.
+
+The existing `cross-repo-smoke` CI job carries out this exact process restart with
+the existing pinned checkout. The job fails if the original PID cannot terminate,
+if the new service is not ready, or if its receipt read fails. Logs retain the
+before/restart read outcomes; a passed store round trip alone cannot pass the job.
 
 ## Preview or remote base URLs
 
