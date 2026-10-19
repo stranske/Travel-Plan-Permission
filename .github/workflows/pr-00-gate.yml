@@ -213,7 +213,13 @@ jobs:
             echo "tpp-planner-token returned empty token" >&2
             exit 1
           fi
+          echo "::add-mask::${token}"
           echo "TPP_PLANNER_TOKEN=${token}" >> "$GITHUB_ENV"
+          manager_token="$(tpp-planner-token --subject ci-gate-cross-repo-manager --permission approve)"
+          test -n "${manager_token}"
+          echo "::add-mask::${manager_token}"
+          echo "TPP_MANAGER_TOKEN=${manager_token}" >> "$GITHUB_ENV"
+
 
       - name: Start tpp-planner-service in background
         working-directory: travel-plan-permission
@@ -242,7 +248,38 @@ jobs:
         env:
           TRIP_PLANNER_REPO: ${{ github.workspace }}/trip-planner
         run: |
-          tpp-cross-repo-smoke
+          tpp-cross-repo-smoke --receipt-output "${{ github.workspace }}/_runtime/approved-receipt.json"
+
+      - name: Restart planner service and re-read the approved receipt
+        working-directory: travel-plan-permission
+        run: |
+          # Wait for the original PID to exit before starting a replacement on the same port/state.
+          kill "${PLANNER_SERVICE_PID}"
+          for _ in $(seq 1 20); do
+            kill -0 "${PLANNER_SERVICE_PID}" 2>/dev/null || break
+            sleep 1
+          done
+          if kill -0 "${PLANNER_SERVICE_PID}" 2>/dev/null; then
+            echo "Original planner service did not exit; restart evidence unavailable." >&2
+            exit 1
+          fi
+          nohup tpp-planner-service --host 127.0.0.1 --port "${TPP_PORT}" \
+            >>"${{ github.workspace }}/_runtime/planner-service.log" 2>&1 &
+          echo "PLANNER_SERVICE_PID=$!" >> "$GITHUB_ENV"
+          ready=false
+          for _ in $(seq 1 60); do
+            if curl --fail --silent "${TPP_BASE_URL}/readyz" >/dev/null; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "${ready}" != true ]; then
+            echo "Restarted planner service never reported ready." >&2
+            exit 1
+          fi
+          tpp-cross-repo-smoke --verify-receipt "${{ github.workspace }}/_runtime/approved-receipt.json"
+
 
       - name: Run tpp-planner-smoke
         working-directory: travel-plan-permission

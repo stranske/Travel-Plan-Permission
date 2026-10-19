@@ -233,7 +233,7 @@ The same contract is gated automatically in CI by the `cross-repo-smoke` job in
    sibling-like path (`${{ github.workspace }}/trip-planner`).
 3. Installs this repo's `[dev,orchestration]` extras.
 4. Generates a fresh `TPP_BOOTSTRAP_SIGNING_SECRET` and mints a bootstrap token
-   via `tpp-planner-token`.
+   via `tpp-planner-token`, plus a separate APPROVE-only `TPP_MANAGER_TOKEN`.
 5. Sets `TPP_PORTAL_STATE_PATH` to the CI runtime directory so the service and
    smoke command assert against the same persisted state file.
 6. Starts `tpp-planner-service` on `127.0.0.1:8000` in the background and waits
@@ -242,9 +242,13 @@ The same contract is gated automatically in CI by the `cross-repo-smoke` job in
    `TRIP_PLANNER_REPO` pointed at the trip-planner checkout so the harness's
    contract-doc and proposal-fixture lookups succeed. The smoke submits,
    polls, fetches evaluation, and reopens the configured state store to verify
-   the live submission persisted.
-8. Runs `tpp-planner-smoke` against the same service.
-9. Tears down the background service in an `if: always()` step and uploads the
+   the live submission persisted. It also prepares/submits a synthetic portal
+   handoff, records a manager approval over HTTP and saves the observed receipt.
+8. Stops the original service, starts a different process on the same state path,
+   waits for readiness and performs a read-only approved-receipt comparison.
+   Lost decisions fail the job; this step never recreates a missing approval.
+9. Runs `tpp-planner-smoke` against the same service.
+10. Tears down the background service in an `if: always()` step and uploads the
    service log on failure.
 
 The job runs on every pull request and push to `main` and is intended to be
