@@ -836,3 +836,94 @@ def test_evicted_unbound_portal_execution_remains_readable(app_client, monkeypat
     store.save_portal_draft({"traveler_name": "Another legacy traveler"})
     assert store.lookup_portal_draft(draft_id) is None
     _assert_execution_readable(client, stored, execution)
+
+
+@pytest.mark.parametrize(
+    ("action", "expected_status", "expected_decision"),
+    [
+        ("approve", "approved", "approved"),
+        ("reject", "rejected", "rejected"),
+        ("request_changes", "submitted", "flagged"),
+    ],
+)
+def test_generic_snapshot_cache_cannot_replace_portal_authority(
+    app_client, tmp_path, action, expected_status, expected_decision
+):
+    """Audit both generic execution reads across a stale cache write and restart."""
+    client, store = app_client
+    prepared = prepare(client)
+    assert (
+        client.post(
+            f"/portal/review/{prepared['draft_id']}/submit", headers=auth()
+        ).status_code
+        == 200
+    )
+    receipt = lookup(client).json()
+    execution = receipt["execution_id"]
+    original = store.lookup_submission(execution)
+    original_outcome = (
+        _planner(client).fetch_evaluation_result(execution_id=execution).outcome
+    )
+    decision = client.post(
+        f"/portal/manager/reviews/{receipt['review_id']}/decision",
+        headers=auth("manager", (Permission.APPROVE,)),
+        data={
+            "action": action,
+            "rationale": "Audit authoritative state, not cached plan",
+        },
+        follow_redirects=False,
+    )
+    assert decision.status_code == 303, decision.text
+
+    # This is a real generic policy-snapshot write, not an in-memory substitute
+    # for that route. It changes the trip-ID cache but must not rewrite the
+    # execution snapshot or supply its authoritative owner/manager state.
+    stale = original.trip_plan.model_dump(mode="json")
+    stale["traveler_name"] = "Synthetic stale cache traveler"
+    cached = client.request(
+        "GET", "/api/planner/policy-snapshot", headers=auth(), json={"trip_plan": stale}
+    )
+    assert cached.status_code == 200, cached.text
+    assert (
+        store.lookup_trip_plan(original.trip_plan.trip_id).traveler_name
+        == stale["traveler_name"]
+    )
+
+    def assert_authoritative(reader, current_store):
+        planner = _planner(reader)
+        status = planner.poll_status(
+            proposal_id=original.request.proposal_id, execution_id=execution
+        )
+        assert status.proposal_status.status.value == expected_status
+        history = status.proposal_status.approval_history
+        assert len(history) == 1
+        assert history[0].outcome == expected_decision
+        assert history[0].approver_id == "manager"
+        evaluation = planner.fetch_evaluation_result(execution_id=execution)
+        if action == "reject":
+            assert evaluation.outcome == "non_compliant"
+        else:
+            # Approval and request_changes change workflow state, not policy compliance.
+            assert evaluation.outcome == original_outcome
+        assert current_store.lookup_submission(execution) == original
+        assert (
+            lookup(reader).json()["decision"]
+            == {
+                "approve": "approved",
+                "reject": "rejected",
+                "request_changes": "changes_requested",
+            }[action]
+        )
+        for url in (
+            f"/api/planner/proposals/{original.request.proposal_id}/executions/{execution}",
+            f"/api/planner/executions/{execution}/evaluation-result",
+        ):
+            assert reader.get(url, headers=auth("traveler-b")).status_code == 404
+
+    assert_authoritative(client, store)
+    store.close()
+    reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
+    try:
+        assert_authoritative(TestClient(create_app(reloaded)), reloaded)
+    finally:
+        reloaded.close()
