@@ -10,12 +10,16 @@ from dataclasses import dataclass
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
+from urllib.parse import urlencode
+from uuid import uuid4
 
+import httpx
 from pydantic import ValidationError
 
 from .orchestration.graph import TripState
 from .persistence import resolve_portal_state_store
 from .planner_client import (
+    PlannerJsonResponse,
     PlannerTransportError,
     Transport,
     TravelPlanPermissionClient,
@@ -24,6 +28,7 @@ from .planner_client import (
 from .policy_api import (
     PlannerProposalOperationResponse,
 )
+from .portal_receipts import PortalReceipt
 
 _FIXTURE_ROOT: Traversable = resources.files("travel_plan_permission").joinpath(
     "fixtures", "planner_integration"
@@ -59,6 +64,7 @@ class CrossRepoSmokeResult:
     proposal_id: str
     execution_id: str
     outcome: str
+    portal_receipt: PortalReceipt
     trip_state_persisted: bool = False
 
 
@@ -67,7 +73,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="tpp-cross-repo-smoke",
         description=(
             "Validate trip-planner contract fixtures against the local TPP policy "
-            "API/store and prove proposal status/evaluation survive a store reload."
+            "API/store, record a manager decision, and verify it after a service restart."
         ),
     )
     parser.add_argument(
@@ -85,6 +91,16 @@ def _build_parser() -> argparse.ArgumentParser:
             "Path for the temporary TPP proposal state file. Defaults to an isolated "
             "file under a temporary directory."
         ),
+    )
+    parser.add_argument(
+        "--receipt-output",
+        type=Path,
+        help="Save the observed approved receipt for a later restart check (no credentials).",
+    )
+    parser.add_argument(
+        "--verify-receipt",
+        type=Path,
+        help="Only re-read a saved receipt from the restarted HTTP service; never resubmit it.",
     )
     return parser
 
@@ -405,6 +421,176 @@ def _resolve_state_path(configured_path: Path | None) -> Path:
     return (Path.cwd() / _PORTAL_STATE_DEFAULT_PATH).resolve()
 
 
+def portal_transport(
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    body: dict[str, object] | None,
+    timeout: float,
+) -> PlannerJsonResponse:
+    """Send real portal JSON/forms without following a manager's 303 redirect."""
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+            if headers.get("Content-Type") == "application/x-www-form-urlencoded":
+                response = client.request(
+                    method,
+                    url,
+                    headers=headers,
+                    data={k: str(v) for k, v in (body or {}).items()},
+                )
+            else:
+                response = client.request(method, url, headers=headers, json=body)
+    except httpx.HTTPError as exc:
+        raise CrossRepoSmokeError(f"Live portal transport failed: {exc}") from exc
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    return PlannerJsonResponse(response.status_code, payload, response.text)
+
+
+def _portal_request(
+    transport: Transport,
+    *,
+    method: str,
+    path: str,
+    token: str,
+    body: dict[str, object] | None = None,
+    form: bool = False,
+    expected_status: int = 200,
+    timeout: float = 10.0,
+) -> object:
+    headers = {"Authorization": f"Bearer {token}"}
+    if form:
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+    response = transport(method, _resolve_base_url().rstrip("/") + path, headers, body, timeout)
+    if response.status_code != expected_status:
+        raise CrossRepoSmokeError(
+            f"Portal {method} {path} failed with HTTP {response.status_code}."
+        )
+    return response.body
+
+
+def _parse_receipt(payload: object) -> PortalReceipt:
+    try:
+        return PortalReceipt.model_validate(payload)
+    except ValidationError as exc:
+        raise CrossRepoSmokeError("Portal returned an invalid receipt.") from exc
+
+
+def verify_portal_receipt(
+    expected: PortalReceipt,
+    *,
+    transport: Transport | None = None,
+    timeout: float = 10.0,
+) -> PortalReceipt:
+    """Read only service state; the saved receipt cannot supply a missing decision."""
+    query = urlencode({"snapshot_version": expected.snapshot_version})
+    observed = _parse_receipt(
+        _portal_request(
+            transport or portal_transport,
+            method="GET",
+            path=f"/api/planner/portal-handoffs/{expected.handoff_id}?{query}",
+            token=_resolve_planner_token(),
+            timeout=timeout,
+        )
+    )
+    if (
+        observed.state != "decision_recorded"
+        or observed.decision != "approved"
+        or not observed.decision_at
+    ):
+        raise CrossRepoSmokeError(
+            "Portal receipt must report decision_recorded/approved with a decision timestamp."
+        )
+    # observed_at necessarily changes across reads; all persisted identity/evidence must survive.
+    if observed.model_dump(exclude={"observed_at"}) != expected.model_dump(exclude={"observed_at"}):
+        raise CrossRepoSmokeError("Portal receipt changed after the manager decision/restart.")
+    return observed
+
+
+def _record_portal_decision(*, transport: Transport, timeout: float) -> PortalReceipt:
+    manager_token = os.getenv("TPP_MANAGER_TOKEN", "").strip()
+    if not manager_token:
+        raise CrossRepoSmokeError(
+            "TPP_MANAGER_TOKEN with APPROVE permission is required for the decision smoke."
+        )
+    token = _resolve_planner_token()
+    handoff_id = "cross-repo-" + uuid4().hex
+    version = "cross-repo-v1"
+    prepared = _parse_receipt(
+        _portal_request(
+            transport,
+            method="POST",
+            path="/api/planner/portal-handoffs",
+            token=token,
+            body={
+                "handoff_id": handoff_id,
+                "snapshot_version": version,
+                "answers": _load_packaged_fixture("portal_handoff.json"),
+            },
+            timeout=timeout,
+        )
+    )
+    if (
+        prepared.handoff_id != handoff_id
+        or prepared.snapshot_version != version
+        or prepared.state != "prepared"
+    ):
+        raise CrossRepoSmokeError("Portal did not prepare the requested immutable snapshot.")
+    _portal_request(
+        transport,
+        method="POST",
+        path=f"/portal/review/{prepared.draft_id}/submit",
+        token=token,
+        timeout=timeout,
+    )
+    path = f"/api/planner/portal-handoffs/{handoff_id}?" + urlencode({"snapshot_version": version})
+    pending = _parse_receipt(
+        _portal_request(transport, method="GET", path=path, token=token, timeout=timeout)
+    )
+    if (
+        pending.state != "pending_review"
+        or not pending.review_id
+        or not pending.execution_id
+        or not pending.request_id
+        or not pending.submitted_at
+        or pending.draft_id != prepared.draft_id
+        or pending.snapshot_sha256 != prepared.snapshot_sha256
+    ):
+        raise CrossRepoSmokeError(
+            "Portal submission did not yield the bound pending manager review."
+        )
+    _portal_request(
+        transport,
+        method="POST",
+        path=f"/portal/manager/reviews/{pending.review_id}/decision",
+        token=manager_token,
+        body={"action": "approve", "rationale": "Synthetic cross-repo smoke approval"},
+        form=True,
+        expected_status=303,
+        timeout=timeout,
+    )
+    recorded = _parse_receipt(
+        _portal_request(transport, method="GET", path=path, token=token, timeout=timeout)
+    )
+    if any(
+        getattr(recorded, k) != getattr(pending, k)
+        for k in (
+            "handoff_id",
+            "snapshot_version",
+            "snapshot_sha256",
+            "draft_id",
+            "request_id",
+            "execution_id",
+            "review_id",
+            "submitted_at",
+        )
+    ):
+        raise CrossRepoSmokeError("Manager decision lost its immutable submission linkage.")
+    return verify_portal_receipt(recorded, transport=transport, timeout=timeout)
+
+
 def run_cross_repo_smoke(
     *,
     trip_planner_root: Path,
@@ -481,6 +667,8 @@ def run_cross_repo_smoke(
     except PlannerTransportError as exc:
         raise CrossRepoSmokeError(f"Live planner transport failed: {exc}") from exc
 
+    receipt = _record_portal_decision(transport=transport or portal_transport, timeout=timeout)
+
     return CrossRepoSmokeResult(
         trip_planner_root=trip_planner_root,
         state_path=resolved_state_path,
@@ -489,6 +677,7 @@ def run_cross_repo_smoke(
         execution_id=execution_id,
         outcome=evaluation.outcome,
         trip_state_persisted=True,
+        portal_receipt=receipt,
     )
 
 
@@ -496,6 +685,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     try:
+        if args.verify_receipt:
+            expected = _parse_receipt(_load_json(args.verify_receipt))
+            receipt = verify_portal_receipt(expected)
+            print(
+                f"portal receipt after service restart: decision_recorded/approved for {receipt.handoff_id}"
+            )
+            return 0
         trip_planner_root = _resolve_trip_planner_root(args.trip_planner_root)
         state_path = Path(args.state_path).expanduser().resolve() if args.state_path else None
         result = run_cross_repo_smoke(
@@ -506,8 +702,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"proposal submission: ok for {result.proposal_id}")
         print(f"proposal status reload: ok for {result.execution_id}")
         print(f"evaluation reload: ok with outcome {result.outcome}")
-        print(f"TripState persistence: ok for {result.execution_id}")
-    except CrossRepoSmokeError as exc:
+        print(f"TripState store round trip: ok for {result.execution_id} (smoke-written record)")
+        print(f"portal receipt: decision_recorded/approved for {result.portal_receipt.handoff_id}")
+        if args.receipt_output:
+            args.receipt_output.write_text(
+                result.portal_receipt.model_dump_json(indent=2) + "\n", encoding="utf-8"
+            )
+    except (CrossRepoSmokeError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     return 0

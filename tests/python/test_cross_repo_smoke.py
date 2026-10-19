@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
+from fastapi.testclient import TestClient
 
 import travel_plan_permission.cross_repo_smoke as cross_repo_smoke
 from travel_plan_permission.cross_repo_smoke import (
@@ -22,8 +23,9 @@ from travel_plan_permission.cross_repo_smoke import (
     main,
     run_cross_repo_smoke,
 )
-from travel_plan_permission.http_service import PlannerProposalStore
+from travel_plan_permission.http_service import PlannerProposalStore, create_app
 from travel_plan_permission.persistence import resolve_portal_state_store
+from travel_plan_permission.planner_auth import mint_bootstrap_token
 from travel_plan_permission.planner_client import PlannerJsonResponse
 from travel_plan_permission.policy_api import (
     PlannerCorrelationId,
@@ -37,6 +39,9 @@ from travel_plan_permission.policy_api import (
     poll_execution_status,
     submit_proposal,
 )
+from travel_plan_permission.security import Permission
+
+from .test_http_service import _set_bootstrap_runtime_env
 
 
 def _write_trip_planner_contracts(root: Path) -> None:
@@ -88,8 +93,23 @@ def _write_trip_planner_contracts(root: Path) -> None:
 
 
 def _configure_live_smoke_env(monkeypatch: pytest.MonkeyPatch, state_path: Path) -> None:
+    _set_bootstrap_runtime_env(monkeypatch)
+    monkeypatch.setattr(cross_repo_smoke, "portal_transport", _LivePlannerTransport())
     monkeypatch.setenv("TPP_BASE_URL", "http://live-tpp.test")
-    monkeypatch.setenv("TPP_PLANNER_TOKEN", "live-smoke-token")
+    for name, subject, permissions in (
+        ("TPP_PLANNER_TOKEN", "smoke-traveler", (Permission.VIEW, Permission.CREATE)),
+        ("TPP_MANAGER_TOKEN", "smoke-manager", (Permission.APPROVE,)),
+    ):
+        monkeypatch.setenv(
+            name,
+            mint_bootstrap_token(
+                subject=subject,
+                permissions=permissions,
+                provider="google",
+                secret="bootstrap-secret-123",
+                expires_in_seconds=600,
+            ),
+        )
     monkeypatch.setenv("TPP_PORTAL_STATE_PATH", str(state_path))
 
 
@@ -108,11 +128,29 @@ class _LivePlannerTransport:
         timeout: float,
     ) -> PlannerJsonResponse:
         assert timeout > 0
-        assert headers == {"Authorization": "Bearer live-smoke-token"}
+        assert headers["Authorization"] in {
+            "Bearer " + os.environ["TPP_PLANNER_TOKEN"],
+            "Bearer " + os.environ["TPP_MANAGER_TOKEN"],
+        }
         path = urlparse(url).path
         state_path = Path(os.environ["TPP_PORTAL_STATE_PATH"])
         store = PlannerProposalStore(state_path=state_path)
         try:
+            if path.startswith(("/api/planner/portal-handoffs", "/portal/")):
+                with TestClient(create_app(store)) as client:
+                    options = (
+                        {"data": json_body}
+                        if headers.get("Content-Type") == "application/x-www-form-urlencoded"
+                        else {"json": json_body}
+                    )
+                    response = client.request(
+                        method, url, headers=headers, follow_redirects=False, **options
+                    )
+                    try:
+                        body = response.json()
+                    except ValueError:
+                        body = None
+                    return PlannerJsonResponse(response.status_code, body, response.text)
             return self._dispatch(method, path, json_body, store)
         finally:
             self._close_store(store)
@@ -353,7 +391,7 @@ def test_cross_repo_smoke_resolves_root_via_trip_planner_repo_env(
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "trip-planner contracts: ok" in captured.out
-    assert "TripState persistence: ok" in captured.out
+    assert "TripState store round trip: ok" in captured.out
 
 
 def test_cross_repo_smoke_resolves_root_via_sibling_checkout_fallback(
@@ -382,7 +420,7 @@ def test_cross_repo_smoke_resolves_root_via_sibling_checkout_fallback(
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "trip-planner contracts: ok" in captured.out
-    assert "TripState persistence: ok" in captured.out
+    assert "TripState store round trip: ok" in captured.out
 
 
 def test_cross_repo_smoke_fails_when_fixture_operation_is_renamed(
@@ -540,18 +578,23 @@ def test_validate_contracts_raises_when_doc_phrases_missing(tmp_path: Path) -> N
     )
 
     with pytest.raises(CrossRepoSmokeError, match="missing required contract language"):
-        from travel_plan_permission.cross_repo_smoke import _validate_trip_planner_contracts
+        from travel_plan_permission.cross_repo_smoke import (
+            _validate_trip_planner_contracts,
+        )
 
         _validate_trip_planner_contracts(tmp_path)
 
 
-def test_validate_contracts_raises_when_response_operation_wrong(tmp_path: Path) -> None:
+def test_validate_contracts_raises_when_response_operation_wrong(
+    tmp_path: Path,
+) -> None:
     contracts = tmp_path / "docs" / "contracts"
     fixtures = tmp_path / "tests" / "fixtures" / "integrations" / "tpp"
     contracts.mkdir(parents=True)
     fixtures.mkdir(parents=True)
     (contracts / "tpp-proposal-execution.md").write_text(
-        "Persist the returned `ProposalSubmissionRecord`\nstatus polling\n", encoding="utf-8"
+        "Persist the returned `ProposalSubmissionRecord`\nstatus polling\n",
+        encoding="utf-8",
     )
     (contracts / "tpp-execution-contracts.md").write_text(
         "correlation identifiers\n", encoding="utf-8"
@@ -575,7 +618,9 @@ def test_validate_contracts_raises_when_response_operation_wrong(tmp_path: Path)
     )
 
     with pytest.raises(CrossRepoSmokeError, match="fixture response must submit a proposal"):
-        from travel_plan_permission.cross_repo_smoke import _validate_trip_planner_contracts
+        from travel_plan_permission.cross_repo_smoke import (
+            _validate_trip_planner_contracts,
+        )
 
         _validate_trip_planner_contracts(tmp_path)
 
@@ -593,7 +638,8 @@ def test_cross_repo_smoke_uses_default_proposal_version_when_fixture_omits_it(
     contracts.mkdir(parents=True)
     fixtures.mkdir(parents=True)
     (contracts / "tpp-proposal-execution.md").write_text(
-        "Persist the returned `ProposalSubmissionRecord`\nstatus polling\n", encoding="utf-8"
+        "Persist the returned `ProposalSubmissionRecord`\nstatus polling\n",
+        encoding="utf-8",
     )
     (contracts / "tpp-execution-contracts.md").write_text(
         "correlation identifiers\n", encoding="utf-8"
@@ -670,7 +716,11 @@ def test_assert_submit_echoes_raises_on_transport_pattern_mismatch() -> None:
 
 def test_assert_submit_echoes_raises_on_field_mismatch() -> None:
     contract = _make_op_response(
-        result_payload={"trip_id": "wrong-trip", "proposal_id": "p", "proposal_version": "v"}
+        result_payload={
+            "trip_id": "wrong-trip",
+            "proposal_id": "p",
+            "proposal_version": "v",
+        }
     )
     with pytest.raises(CrossRepoSmokeError, match="did not echo trip_id"):
         _assert_submit_echoes_planner_fixture(
@@ -822,5 +872,77 @@ def test_cross_repo_smoke_cli_accepts_explicit_state_path(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "trip-planner contracts: ok" in captured.out
-    assert "TripState persistence: ok" in captured.out
+    assert "TripState store round trip: ok" in captured.out
     assert state_path.exists()
+
+
+def test_cross_repo_smoke_reads_real_manager_decision(tmp_path, monkeypatch):
+    root = tmp_path / "trip-planner"
+    _write_trip_planner_contracts(root)
+    state_path = tmp_path / "decisions.sqlite3"
+    _configure_live_smoke_env(monkeypatch, state_path)
+    result = run_cross_repo_smoke(
+        trip_planner_root=root, state_path=state_path, transport=_LivePlannerTransport()
+    )
+    assert result.portal_receipt.state == "decision_recorded"
+    assert result.portal_receipt.decision == "approved"
+    assert result.portal_receipt.decision_at is not None
+    assert result.portal_receipt.review_id and result.portal_receipt.execution_id
+
+
+def test_cross_repo_smoke_rejects_missing_manager_decision(tmp_path, monkeypatch):
+    root = tmp_path / "trip-planner"
+    _write_trip_planner_contracts(root)
+    state_path = tmp_path / "missing-decision.sqlite3"
+    _configure_live_smoke_env(monkeypatch, state_path)
+    monkeypatch.setattr(
+        PlannerProposalStore, "apply_manager_review_action", lambda *_a, **_kw: None
+    )
+    with pytest.raises(CrossRepoSmokeError, match="decision_recorded/approved"):
+        run_cross_repo_smoke(
+            trip_planner_root=root,
+            state_path=state_path,
+            transport=_LivePlannerTransport(),
+        )
+
+
+@pytest.mark.parametrize("damage", ["decision", "snapshot_sha256", "review_id", "unavailable"])
+def test_restart_read_fails_closed_without_replaying_writes(tmp_path, monkeypatch, damage):
+    root = tmp_path / "trip-planner"
+    _write_trip_planner_contracts(root)
+    state_path = tmp_path / "restart.sqlite3"
+    _configure_live_smoke_env(monkeypatch, state_path)
+    observed = run_cross_repo_smoke(
+        trip_planner_root=root, state_path=state_path, transport=_LivePlannerTransport()
+    ).portal_receipt
+    calls = []
+
+    def damaged_read(method, url, headers, body, timeout):
+        calls.append(method)
+        assert method == "GET" and body is None
+        response = _LivePlannerTransport()(method, url, headers, body, timeout)
+        if damage == "unavailable":
+            return PlannerJsonResponse(503, {"detail": "unavailable"}, "")
+        payload = dict(response.body)
+        payload[damage] = "pending" if damage == "decision" else "wrong-linkage"
+        return PlannerJsonResponse(200, payload, "")
+
+    monkeypatch.setattr(cross_repo_smoke, "portal_transport", damaged_read)
+    saved = tmp_path / "receipt.json"
+    saved.write_text(observed.model_dump_json())
+    assert main(["--verify-receipt", str(saved)]) == 1
+    assert calls == ["GET"]
+
+
+def test_restart_cli_reads_persisted_approval_without_trip_checkout(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "trip-planner"
+    _write_trip_planner_contracts(root)
+    state_path = tmp_path / "restart-ok.sqlite3"
+    _configure_live_smoke_env(monkeypatch, state_path)
+    saved = tmp_path / "receipt.json"
+    monkeypatch.setattr(cross_repo_smoke, "urllib_transport", _LivePlannerTransport())
+    assert main(["--trip-planner-root", str(root), "--receipt-output", str(saved)]) == 0
+    assert saved.exists() and "Bearer" not in saved.read_text()
+    monkeypatch.setenv("TRIP_PLANNER_REPO", str(tmp_path / "nonexistent"))
+    assert main(["--verify-receipt", str(saved)]) == 0
+    assert "after service restart: decision_recorded/approved" in capsys.readouterr().out
