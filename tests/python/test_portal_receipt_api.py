@@ -861,6 +861,9 @@ def test_generic_snapshot_cache_cannot_replace_portal_authority(
     receipt = lookup(client).json()
     execution = receipt["execution_id"]
     original = store.lookup_submission(execution)
+    original_outcome = (
+        _planner(client).fetch_evaluation_result(execution_id=execution).outcome
+    )
     decision = client.post(
         f"/portal/manager/reviews/{receipt['review_id']}/decision",
         headers=auth("manager", (Permission.APPROVE,)),
@@ -899,6 +902,9 @@ def test_generic_snapshot_cache_cannot_replace_portal_authority(
         evaluation = planner.fetch_evaluation_result(execution_id=execution)
         if action == "reject":
             assert evaluation.outcome == "non_compliant"
+        else:
+            # Approval and request_changes change workflow state, not policy compliance.
+            assert evaluation.outcome == original_outcome
         assert current_store.lookup_submission(execution) == original
         assert (
             lookup(reader).json()["decision"]
