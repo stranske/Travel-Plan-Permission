@@ -427,10 +427,14 @@ def portal_transport(
     headers: dict[str, str],
     body: dict[str, object] | None,
     timeout: float,
+    *,
+    http_transport: httpx.BaseTransport | None = None,
 ) -> PlannerJsonResponse:
     """Send real portal JSON/forms without following a manager's 303 redirect."""
     try:
-        with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+        with httpx.Client(
+            timeout=timeout, follow_redirects=False, transport=http_transport
+        ) as client:
             if headers.get("Content-Type") == "application/x-www-form-urlencoded":
                 response = client.request(
                     method,

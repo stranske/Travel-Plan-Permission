@@ -71,6 +71,14 @@ export TPP_AUTH_MODE="static-token"
 export TPP_ACCESS_TOKEN="dev-token"
 ```
 
+For the cross-repo restart smoke, configure a disposable state store **before**
+starting the service. Export the same path in both shells, including the shell
+that starts the replacement process:
+
+```bash
+export TPP_PORTAL_STATE_PATH=/tmp/tpp-smoke-state.sqlite3
+```
+
 ### 2. Start the planner-facing service
 
 ```bash
@@ -166,8 +174,6 @@ approver in the same identity namespace:
 
 ```bash
 export TPP_MANAGER_TOKEN="$(tpp-planner-token --subject smoke-manager --permission approve)"
-export TPP_PORTAL_STATE_PATH=/tmp/tpp-smoke-state.sqlite3
-# Start the service with that same state path, then in the second shell:
 tpp-cross-repo-smoke --trip-planner-root ../trip-planner --receipt-output /tmp/tpp-approved-receipt.json
 ```
 

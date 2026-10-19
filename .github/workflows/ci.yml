@@ -197,7 +197,7 @@ jobs:
       - name: Wait for /readyz to return 200
         run: |
           for attempt in $(seq 1 60); do
-            status="$(curl -s -o /dev/null -w '%{http_code}' "${TPP_BASE_URL}/readyz" || echo '000')"
+            status="$(curl --max-time 5 -s -o /dev/null -w '%{http_code}' "${TPP_BASE_URL}/readyz" || echo '000')"
             if [ "${status}" = "200" ]; then
               echo "Planner service ready after ${attempt} attempt(s)."
               exit 0
@@ -233,7 +233,7 @@ jobs:
           echo "PLANNER_SERVICE_PID=$!" >> "$GITHUB_ENV"
           ready=false
           for _ in $(seq 1 60); do
-            if curl --fail --silent "${TPP_BASE_URL}/readyz" >/dev/null; then
+            if curl --fail --silent --max-time 5 "${TPP_BASE_URL}/readyz" >/dev/null; then
               ready=true
               break
             fi
