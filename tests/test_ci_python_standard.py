@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
@@ -75,3 +76,50 @@ def test_workflow_python_pins_follow_standard() -> None:
         if "python-version" in step.get("with", {})
     ]
     assert runtimes == ["3.14"]
+
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """Reject duplicate explicit keys while retaining SafeLoader semantics."""
+
+    def construct_mapping(self, node: Any, deep: bool = False) -> dict[Any, Any]:
+        seen = set()
+        for key_node, _ in node.value:
+            if key_node.tag == "tag:yaml.org,2002:merge":
+                continue
+            key = self.construct_object(key_node, deep=deep)
+            if key in seen:
+                raise yaml.constructor.ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    f"duplicate key {key!r}",
+                    key_node.start_mark,
+                )
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
+
+
+def test_workflow_yaml_has_no_duplicate_keys() -> None:
+    for path in sorted(WORKFLOWS.iterdir()):
+        if path.is_file() and path.suffix in {".yml", ".yaml"}:
+            yaml.load(path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
+
+
+def test_duplicate_key_validation_rejects_hidden_runtime_pin() -> None:
+    fixture = (
+        Path(__file__).parent
+        / "fixtures"
+        / "ci_python_standard"
+        / "duplicate-runtime.yml"
+    )
+    with pytest.raises(
+        yaml.constructor.ConstructorError, match="duplicate key 'python-version'"
+    ):
+        yaml.load(fixture.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
+
+
+def test_duplicate_key_validation_allows_explicit_merge_overrides() -> None:
+    document = (
+        "base: &base {python-version: '3.13'}\njob: {<<: *base, python-version: '3.14'}"
+    )
+    loaded = yaml.load(document, Loader=_UniqueKeyLoader)
+    assert loaded["job"]["python-version"] == "3.14"
