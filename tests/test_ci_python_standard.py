@@ -81,7 +81,14 @@ def test_workflow_python_pins_follow_standard() -> None:
 class _UniqueKeyLoader(yaml.SafeLoader):
     """Reject duplicate explicit keys while retaining SafeLoader semantics."""
 
+    def __init__(self, stream: Any) -> None:
+        super().__init__(stream)
+        self._checked_mappings: set[int] = set()
+
     def _check_mapping_for_duplicate_keys(self, node: yaml.nodes.MappingNode) -> None:
+        if id(node) in self._checked_mappings:
+            return
+        self._checked_mappings.add(id(node))
         seen: set[Any] = set()
         for key_node, value_node in node.value:
             if key_node.tag == "tag:yaml.org,2002:merge":
@@ -147,3 +154,14 @@ def test_duplicate_key_validation_rejects_merge_operand(operand: str) -> None:
         yaml.constructor.ConstructorError, match="duplicate key 'python-version'"
     ):
         yaml.load("job: {<<: " + operand + "}", Loader=_UniqueKeyLoader)
+
+
+@pytest.mark.parametrize("reuse", ["*override", "[*override]"])
+def test_duplicate_key_validation_allows_reused_flattened_anchor(reuse: str) -> None:
+    document = (
+        "base: &base {python-version: '3.13'}\n"
+        "override: &override {<<: *base, python-version: '3.14'}\n"
+        "job: {<<: " + reuse + "}\n"
+    )
+    loaded = yaml.load(document, Loader=_UniqueKeyLoader)
+    assert loaded["job"]["python-version"] == "3.14"
