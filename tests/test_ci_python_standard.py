@@ -81,12 +81,18 @@ def test_workflow_python_pins_follow_standard() -> None:
 class _UniqueKeyLoader(yaml.SafeLoader):
     """Reject duplicate explicit keys while retaining SafeLoader semantics."""
 
-    def construct_mapping(self, node: Any, deep: bool = False) -> dict[Any, Any]:
-        seen = set()
-        for key_node, _ in node.value:
+    def _check_mapping_for_duplicate_keys(self, node: yaml.nodes.MappingNode) -> None:
+        seen: set[Any] = set()
+        for key_node, value_node in node.value:
             if key_node.tag == "tag:yaml.org,2002:merge":
+                if isinstance(value_node, yaml.nodes.MappingNode):
+                    self._check_mapping_for_duplicate_keys(value_node)
+                elif isinstance(value_node, yaml.nodes.SequenceNode):
+                    for item in value_node.value:
+                        if isinstance(item, yaml.nodes.MappingNode):
+                            self._check_mapping_for_duplicate_keys(item)
                 continue
-            key = self.construct_object(key_node, deep=deep)
+            key = self.construct_object(key_node, deep=False)
             if key in seen:
                 raise yaml.constructor.ConstructorError(
                     "while constructing a mapping",
@@ -95,6 +101,10 @@ class _UniqueKeyLoader(yaml.SafeLoader):
                     key_node.start_mark,
                 )
             seen.add(key)
+
+    def construct_mapping(self, node: Any, deep: bool = False) -> dict[Any, Any]:
+        if isinstance(node, yaml.nodes.MappingNode):
+            self._check_mapping_for_duplicate_keys(node)
         return super().construct_mapping(node, deep=deep)
 
 
@@ -123,3 +133,17 @@ def test_duplicate_key_validation_allows_explicit_merge_overrides() -> None:
     )
     loaded = yaml.load(document, Loader=_UniqueKeyLoader)
     assert loaded["job"]["python-version"] == "3.14"
+
+
+@pytest.mark.parametrize(
+    "operand",
+    [
+        "&base {python-version: '3.12', python-version: '3.14'}",
+        "[&base {python-version: '3.12', python-version: '3.14'}]",
+    ],
+)
+def test_duplicate_key_validation_rejects_merge_operand(operand: str) -> None:
+    with pytest.raises(
+        yaml.constructor.ConstructorError, match="duplicate key 'python-version'"
+    ):
+        yaml.load("job: {<<: " + operand + "}", Loader=_UniqueKeyLoader)
