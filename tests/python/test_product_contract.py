@@ -1,3 +1,4 @@
+from itertools import takewhile
 from pathlib import Path
 
 
@@ -5,10 +6,10 @@ def test_product_contract_lists_pp1_through_pp8_with_current_statuses() -> None:
     contract = Path(__file__).resolve().parents[2] / "docs" / "PRODUCT_CONTRACT.md"
     # A blank line ends the Markdown table, so detached rows must not count.
     table = contract.read_text(encoding="utf-8").split("## Core functions\n", 1)[1]
-    table = table.split("\n\n", 1)[0]
+    table_lines = takewhile(lambda line: bool(line.strip()), table.splitlines())
     rows = [
         [cell.strip() for cell in line.strip("|").split("|")]
-        for line in table.splitlines()
+        for line in table_lines
         if line.startswith("| PP")
     ]
     assert [cells[0] for cells in rows] == [f"PP{number}" for number in range(1, 9)]
