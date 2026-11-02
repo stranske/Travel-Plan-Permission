@@ -3,6 +3,9 @@ from itertools import takewhile
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
+
+from travel_plan_permission.http_service import PlannerProposalStore, create_app
 
 CONTRACT = Path(__file__).resolve().parents[2] / "docs" / "PRODUCT_CONTRACT.md"
 
@@ -11,9 +14,7 @@ def _assert_product_contract(text: str) -> None:
     # A blank line ends the Markdown table, so detached rows must not count.
     table = text.split("## Core functions\n", 1)[1]
     table_lines = list(takewhile(lambda line: bool(line.strip()), table.splitlines()))
-    assert (
-        len(table_lines) >= 2
-    ), "Core functions must have a table header and delimiter"
+    assert len(table_lines) >= 2, "Core functions must have a table header and delimiter"
     header = [cell.strip() for cell in table_lines[0].strip("|").split("|")]
     delimiter = [cell.strip() for cell in table_lines[1].strip("|").split("|")]
     assert len(header) == len(delimiter) == 5, "Core functions table needs five columns"
@@ -49,6 +50,23 @@ def test_product_contract_lists_pp1_through_pp8_with_current_statuses() -> None:
 
 
 @pytest.mark.parametrize(
+    "path",
+    [
+        pytest.param("/portal/admin", id="PP4"),
+        pytest.param("/api/planner/policy-snapshot", id="PP8"),
+    ],
+)
+@pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
+def test_product_contract_read_routes_reject_mutating_requests(path: str, method: str) -> None:
+    client = TestClient(create_app(PlannerProposalStore()))
+
+    response = client.request(method, path)
+
+    assert response.status_code == 405
+    assert response.headers["Allow"] == "GET"
+
+
+@pytest.mark.parametrize(
     "separator",
     [
         pytest.param(None, id="missing-pp8"),
@@ -61,14 +79,10 @@ def test_product_contract_rejects_missing_or_detached_pp8(
     separator: str | None,
 ) -> None:
     text = CONTRACT.read_text(encoding="utf-8")
-    pp8 = next(
-        line for line in text.splitlines(keepends=True) if line.startswith("| PP8 |")
-    )
+    pp8 = next(line for line in text.splitlines(keepends=True) if line.startswith("| PP8 |"))
     broken = text.replace(pp8, "" if separator is None else separator + pp8, 1)
 
-    with pytest.raises(
-        AssertionError, match="Core functions must list PP1 through PP8"
-    ):
+    with pytest.raises(AssertionError, match="Core functions must list PP1 through PP8"):
         _assert_product_contract(broken)
 
 
