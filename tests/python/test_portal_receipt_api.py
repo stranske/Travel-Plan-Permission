@@ -853,17 +853,13 @@ def test_generic_snapshot_cache_cannot_replace_portal_authority(
     client, store = app_client
     prepared = prepare(client)
     assert (
-        client.post(
-            f"/portal/review/{prepared['draft_id']}/submit", headers=auth()
-        ).status_code
+        client.post(f"/portal/review/{prepared['draft_id']}/submit", headers=auth()).status_code
         == 200
     )
     receipt = lookup(client).json()
     execution = receipt["execution_id"]
     original = store.lookup_submission(execution)
-    original_outcome = (
-        _planner(client).fetch_evaluation_result(execution_id=execution).outcome
-    )
+    original_outcome = _planner(client).fetch_evaluation_result(execution_id=execution).outcome
     decision = client.post(
         f"/portal/manager/reviews/{receipt['review_id']}/decision",
         headers=auth("manager", (Permission.APPROVE,)),
@@ -885,8 +881,7 @@ def test_generic_snapshot_cache_cannot_replace_portal_authority(
     )
     assert cached.status_code == 200, cached.text
     assert (
-        store.lookup_trip_plan(original.trip_plan.trip_id).traveler_name
-        == stale["traveler_name"]
+        store.lookup_trip_plan(original.trip_plan.trip_id).traveler_name == stale["traveler_name"]
     )
 
     def assert_authoritative(reader, current_store):

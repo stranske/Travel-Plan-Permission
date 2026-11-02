@@ -122,22 +122,13 @@ def test_workflow_yaml_has_no_duplicate_keys() -> None:
 
 
 def test_duplicate_key_validation_rejects_hidden_runtime_pin() -> None:
-    fixture = (
-        Path(__file__).parent
-        / "fixtures"
-        / "ci_python_standard"
-        / "duplicate-runtime.yml"
-    )
-    with pytest.raises(
-        yaml.constructor.ConstructorError, match="duplicate key 'python-version'"
-    ):
+    fixture = Path(__file__).parent / "fixtures" / "ci_python_standard" / "duplicate-runtime.yml"
+    with pytest.raises(yaml.constructor.ConstructorError, match="duplicate key 'python-version'"):
         yaml.load(fixture.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
 
 
 def test_duplicate_key_validation_allows_explicit_merge_overrides() -> None:
-    document = (
-        "base: &base {python-version: '3.13'}\njob: {<<: *base, python-version: '3.14'}"
-    )
+    document = "base: &base {python-version: '3.13'}\njob: {<<: *base, python-version: '3.14'}"
     loaded = yaml.load(document, Loader=_UniqueKeyLoader)
     assert loaded["job"]["python-version"] == "3.14"
 
@@ -150,9 +141,7 @@ def test_duplicate_key_validation_allows_explicit_merge_overrides() -> None:
     ],
 )
 def test_duplicate_key_validation_rejects_merge_operand(operand: str) -> None:
-    with pytest.raises(
-        yaml.constructor.ConstructorError, match="duplicate key 'python-version'"
-    ):
+    with pytest.raises(yaml.constructor.ConstructorError, match="duplicate key 'python-version'"):
         yaml.load("job: {<<: " + operand + "}", Loader=_UniqueKeyLoader)
 
 
