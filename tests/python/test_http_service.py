@@ -3726,13 +3726,20 @@ def test_portal_routes_do_not_leave_legacy_request_paths_active() -> None:
 
 
 def test_operator_docs_do_not_reference_legacy_portal_requests_paths() -> None:
+    """Operator docs must cite registered portal routes, not removed /portal/requests/*."""
     repo_root = Path(__file__).resolve().parents[2]
     readme = (repo_root / "README.md").read_text(encoding="utf-8")
-    local_plan = (repo_root / "docs" / "local-testing-plan.md").read_text(
-        encoding="utf-8"
-    )
-    assert "/portal/requests" not in readme
-    assert "/portal/requests" not in local_plan
+    local_plan = (repo_root / "docs" / "local-testing-plan.md").read_text(encoding="utf-8")
+    for label, text in (("README.md", readme), ("docs/local-testing-plan.md", local_plan)):
+        assert (
+            "/portal/requests" not in text
+        ), f"{label} still references removed /portal/requests paths"
+        assert (
+            "/portal/draft/new" in text
+        ), f"{label} must document /portal/draft/new for draft creation"
+        assert (
+            "/portal/review/{draft_id}" in text
+        ), f"{label} must document /portal/review/{{draft_id}} for review"
 
 
 def test_portal_artifacts_raise_runtime_error_without_bundle_mappings(
