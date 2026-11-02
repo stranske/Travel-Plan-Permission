@@ -18,9 +18,9 @@ def _assert_table_line_not_indented_code_block(line: str) -> None:
     if not line.lstrip().startswith("|"):
         return
     leading = _leading_whitespace(line)
-    assert "\t" not in leading and len(leading) < 4, (
-        "Core functions table lines must not be indented as a Markdown code block"
-    )
+    assert (
+        "\t" not in leading and len(leading) < 4
+    ), "Core functions table lines must not be indented as a Markdown code block"
 
 
 def _assert_product_contract(text: str) -> None:
@@ -62,6 +62,18 @@ def _assert_product_contract(text: str) -> None:
 
 def test_product_contract_lists_pp1_through_pp8_with_current_statuses() -> None:
     _assert_product_contract(CONTRACT.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("function_id", [f"PP{number}" for number in range(1, 9)])
+def test_product_contract_rejects_changed_status(function_id: str) -> None:
+    text = CONTRACT.read_text(encoding="utf-8")
+    row = next(line for line in text.splitlines() if line.startswith(f"| {function_id} |"))
+    cells = row.rsplit("|", 2)
+    cells[1] = " WORKS " if function_id == "PP6" else " PARTIAL "
+    broken = text.replace(row, "|".join(cells), 1)
+
+    with pytest.raises(AssertionError):
+        _assert_product_contract(broken)
 
 
 @pytest.mark.parametrize(
@@ -123,8 +135,7 @@ def test_product_contract_accepts_short_aligned_table_delimiter() -> None:
 def test_product_contract_accepts_whitespace_around_table_lines(padding: str) -> None:
     text = CONTRACT.read_text(encoding="utf-8")
     padded = "\n".join(
-        padding + line + padding if line.startswith("|") else line
-        for line in text.splitlines()
+        padding + line + padding if line.startswith("|") else line for line in text.splitlines()
     )
     _assert_product_contract(padded)
 
