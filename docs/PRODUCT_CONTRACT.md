@@ -17,7 +17,6 @@ Create draft → submit for policy evaluation → request exception if needed �
 | PP5 | a manager can review a request and decide approve, reject or request changes and sees attributed state | `GET /portal/manager/reviews` → `POST /portal/manager/reviews/{review_id}/decision` | exercise approve and request_changes; diff state and audit actor | WORKS |
 | PP6 | a traveller can correct answers only by creating a new draft and sees the original review unchanged | `POST /portal/draft` after `changes_requested` | request changes; create corrected draft and verify original review remains unchanged | PARTIAL |
 | PP7 | an approver can export itinerary or summary and sees usable policy-gated artifacts | `GET /portal/review/{id}/artifacts/{itinerary or summary}` | download both artifacts from compliant and blocked drafts; diff status/content | WORKS |
-
 | PP8 | a policy evaluator can read caps and requirements aligned with `config/policy.yaml` | `GET /api/planner/policy-snapshot` | vary budget-related trip fields; diff snapshot requirements list; `test_snapshot_route_returns_planner_contract` verifies the route contract | WORKS |
 
 ## Known gaps at draft time
