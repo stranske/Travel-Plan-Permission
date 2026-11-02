@@ -131,9 +131,9 @@ contract failure.
 
 With the service still running, open `http://127.0.0.1:8000/portal` and test:
 
-1. Request creation from `/portal/requests/new`.
+1. Request creation from `/portal/draft/new`.
 2. Validation feedback for missing required fields.
-3. Review rendering from `/portal/requests/{draft_id}`.
+3. Review rendering from `/portal/review/{draft_id}`.
 4. Itinerary and summary artifact download links.
 5. Request submission through the portal-backed workflow path.
 

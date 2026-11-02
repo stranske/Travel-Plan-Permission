@@ -116,8 +116,8 @@ mode with its matching token configuration must all be present.
 The same runtime now also exposes a minimal browser-facing workflow portal:
 
 - Open `http://127.0.0.1:8000/portal` for the portal home.
-- Use `http://127.0.0.1:8000/portal/requests/new` to draft and review a travel
-  request through the canonical form fields.
+- Use `http://127.0.0.1:8000/portal/draft/new` to draft a travel request through
+  the canonical form fields, then open `/portal/review/{draft_id}` to review it.
 - A sibling `trip-planner` app can POST its known business-trip fields to
   `/portal/handoff`. TPP then collects the traveler and organization-specific
   fields, creates a local draft, and generates the organization's Excel workbook
