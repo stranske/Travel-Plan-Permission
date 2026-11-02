@@ -10,11 +10,26 @@ from travel_plan_permission.http_service import PlannerProposalStore, create_app
 CONTRACT = Path(__file__).resolve().parents[2] / "docs" / "PRODUCT_CONTRACT.md"
 
 
+def _leading_whitespace(line: str) -> str:
+    return line[: len(line) - len(line.lstrip())]
+
+
+def _assert_table_line_not_indented_code_block(line: str) -> None:
+    if not line.lstrip().startswith("|"):
+        return
+    leading = _leading_whitespace(line)
+    assert "\t" not in leading and len(leading) < 4, (
+        "Core functions table lines must not be indented as a Markdown code block"
+    )
+
+
 def _assert_product_contract(text: str) -> None:
     # A blank line ends the Markdown table, so detached rows must not count.
     table = text.split("## Core functions\n", 1)[1]
     table_lines = list(takewhile(lambda line: bool(line.strip()), table.splitlines()))
     assert len(table_lines) >= 2, "Core functions must have a table header and delimiter"
+    for line in table_lines:
+        _assert_table_line_not_indented_code_block(line)
     header = [cell.strip() for cell in table_lines[0].strip().strip("|").split("|")]
     delimiter = [cell.strip() for cell in table_lines[1].strip().strip("|").split("|")]
     assert len(header) == len(delimiter) == 5, "Core functions table needs five columns"
@@ -79,7 +94,9 @@ def test_product_contract_rejects_missing_or_detached_pp8(
     separator: str | None,
 ) -> None:
     text = CONTRACT.read_text(encoding="utf-8")
-    pp8 = next(line for line in text.splitlines(keepends=True) if line.startswith("| PP8 |"))
+    pp8 = next(
+        line for line in text.splitlines(keepends=True) if line.lstrip().startswith("| PP8 |")
+    )
     broken = text.replace(pp8, "" if separator is None else separator + pp8, 1)
 
     with pytest.raises(AssertionError, match="Core functions must list PP1 through PP8"):
@@ -102,7 +119,7 @@ def test_product_contract_accepts_short_aligned_table_delimiter() -> None:
     _assert_product_contract(text.replace(original, "| - | :- | -: | :-: | - |", 1))
 
 
-@pytest.mark.parametrize("padding", [" ", "\t", "  \t"])
+@pytest.mark.parametrize("padding", [" ", "  "])
 def test_product_contract_accepts_whitespace_around_table_lines(padding: str) -> None:
     text = CONTRACT.read_text(encoding="utf-8")
     padded = "\n".join(
@@ -110,3 +127,13 @@ def test_product_contract_accepts_whitespace_around_table_lines(padding: str) ->
         for line in text.splitlines()
     )
     _assert_product_contract(padded)
+
+
+@pytest.mark.parametrize("padding", ["\t", "    ", "  \t"])
+def test_product_contract_rejects_codeblock_indented_table_lines(padding: str) -> None:
+    text = CONTRACT.read_text(encoding="utf-8")
+    padded = "\n".join(
+        padding + line if line.startswith("|") else line for line in text.splitlines()
+    )
+    with pytest.raises(AssertionError, match="code block"):
+        _assert_product_contract(padded)
