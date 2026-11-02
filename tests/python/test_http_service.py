@@ -3725,6 +3725,16 @@ def test_portal_routes_do_not_leave_legacy_request_paths_active() -> None:
     assert all(not path.startswith("/portal/requests") for path in paths)
 
 
+def test_operator_docs_do_not_reference_legacy_portal_requests_paths() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    local_plan = (repo_root / "docs" / "local-testing-plan.md").read_text(
+        encoding="utf-8"
+    )
+    assert "/portal/requests" not in readme
+    assert "/portal/requests" not in local_plan
+
+
 def test_portal_artifacts_raise_runtime_error_without_bundle_mappings(
     monkeypatch,
 ) -> None:
