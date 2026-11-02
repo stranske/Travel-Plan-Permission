@@ -15,17 +15,17 @@ def _assert_product_contract(text: str) -> None:
     table = text.split("## Core functions\n", 1)[1]
     table_lines = list(takewhile(lambda line: bool(line.strip()), table.splitlines()))
     assert len(table_lines) >= 2, "Core functions must have a table header and delimiter"
-    header = [cell.strip() for cell in table_lines[0].strip("|").split("|")]
-    delimiter = [cell.strip() for cell in table_lines[1].strip("|").split("|")]
+    header = [cell.strip() for cell in table_lines[0].strip().strip("|").split("|")]
+    delimiter = [cell.strip() for cell in table_lines[1].strip().strip("|").split("|")]
     assert len(header) == len(delimiter) == 5, "Core functions table needs five columns"
     assert header[0] == "id", "Core functions table must start with the id column"
     assert all(
         re.fullmatch(r":?-+:?", cell) for cell in delimiter
     ), "Core functions table delimiter must contain hyphens and optional colons"
     rows = [
-        [cell.strip() for cell in line.strip("|").split("|")]
+        [cell.strip() for cell in line.strip().strip("|").split("|")]
         for line in table_lines
-        if line.startswith("| PP")
+        if line.lstrip().startswith("| PP")
     ]
     assert [cells[0] for cells in rows] == [
         f"PP{number}" for number in range(1, 9)
@@ -100,3 +100,13 @@ def test_product_contract_accepts_short_aligned_table_delimiter() -> None:
     text = CONTRACT.read_text(encoding="utf-8")
     original = next(line for line in text.splitlines() if line.startswith("|---"))
     _assert_product_contract(text.replace(original, "| - | :- | -: | :-: | - |", 1))
+
+
+@pytest.mark.parametrize("padding", [" ", "\t", "  \t"])
+def test_product_contract_accepts_whitespace_around_table_lines(padding: str) -> None:
+    text = CONTRACT.read_text(encoding="utf-8")
+    padded = "\n".join(
+        padding + line + padding if line.startswith("|") else line
+        for line in text.splitlines()
+    )
+    _assert_product_contract(padded)
