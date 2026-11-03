@@ -73,7 +73,7 @@ def _assert_product_contract(text: str) -> None:
         "approved versus rejected/changes_requested manager-review linkage" in expense[3]
     ), "PP9 must vary approved and unapproved manager-review linkage"
     assert (
-        " approved yields CSV/XLSX artifacts" in expense[3]
+        ": approved yields CSV/XLSX artifacts" in expense[3]
     ), "PP9 must describe the approved-linkage outcome"
     assert (
         "unapproved returns 400 without saving an expense draft" in expense[3]
@@ -210,7 +210,21 @@ def test_product_contract_rejects_inverted_approved_outcome() -> None:
     text = CONTRACT.read_text(encoding="utf-8")
     row = next(line for line in text.splitlines() if line.startswith("| PP9 |"))
     inverted = row.replace(
-        "approved yields CSV/XLSX artifacts", "unapproved yields CSV/XLSX artifacts", 1
+        ": approved yields CSV/XLSX artifacts",
+        ": unapproved yields CSV/XLSX artifacts",
+        1,
     )
     with pytest.raises(AssertionError, match="PP9 must describe the approved-linkage outcome"):
         _assert_product_contract(text.replace(row, inverted, 1))
+
+
+def test_product_contract_rejects_not_approved_outcome_phrasing() -> None:
+    text = CONTRACT.read_text(encoding="utf-8")
+    row = next(line for line in text.splitlines() if line.startswith("| PP9 |"))
+    broken = row.replace(
+        ": approved yields CSV/XLSX artifacts",
+        ": not approved yields CSV/XLSX artifacts",
+        1,
+    )
+    with pytest.raises(AssertionError, match="PP9 must describe the approved-linkage outcome"):
+        _assert_product_contract(text.replace(row, broken, 1))
