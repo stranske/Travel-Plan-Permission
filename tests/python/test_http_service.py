@@ -4482,7 +4482,7 @@ def _uds_http_service(log_path: Path, env: dict[str, str]) -> Iterator[httpx.Cli
                 with httpx.Client(
                     transport=httpx.HTTPTransport(uds=str(socket_path)),
                     base_url="http://tpp.test",
-                    timeout=1,
+                    timeout=httpx.Timeout(1, read=10),
                     follow_redirects=False,
                     trust_env=False,
                 ) as client:
@@ -4491,7 +4491,7 @@ def _uds_http_service(log_path: Path, env: dict[str, str]) -> Iterator[httpx.Cli
                     while time.monotonic() < deadline:
                         assert process.poll() is None, "Uvicorn exited before readiness"
                         try:
-                            ready = client.get("/readyz")
+                            ready = client.get("/readyz", timeout=1)
                             if ready.status_code == 200:
                                 break
                             last_error = f"{ready.status_code}: {ready.text}"
