@@ -129,7 +129,7 @@ def test_product_contract_read_routes_reject_mutating_requests(path: str, method
         pytest.param("\t\n", id="tab-only-line-before-row"),
     ],
 )
-@pytest.mark.parametrize("function_id", ["PP8", "PP9"])
+@pytest.mark.parametrize("function_id", [f"PP{number}" for number in range(1, 10)])
 def test_product_contract_rejects_missing_or_detached_row(
     function_id: str,
     separator: str | None,
@@ -141,6 +141,15 @@ def test_product_contract_rejects_missing_or_detached_row(
         if line.lstrip().startswith(f"| {function_id} |")
     )
     broken = text.replace(row, "" if separator is None else separator + row, 1)
+
+    with pytest.raises(AssertionError, match="Core functions must list PP1 through PP9"):
+        _assert_product_contract(broken)
+
+
+def test_product_contract_rejects_duplicate_expense_row() -> None:
+    text = CONTRACT.read_text(encoding="utf-8")
+    row = next(line for line in text.splitlines(keepends=True) if line.startswith("| PP9 |"))
+    broken = text.replace(row, row + row, 1)
 
     with pytest.raises(AssertionError, match="Core functions must list PP1 through PP9"):
         _assert_product_contract(broken)
