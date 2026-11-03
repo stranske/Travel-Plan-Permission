@@ -70,6 +70,12 @@ def _assert_product_contract(text: str) -> None:
     for outcome in ("CSV", "XLSX"):
         assert outcome in expense[1], f"PP9 must describe the {outcome} artifact outcome"
     assert (
+        "approved versus rejected/changes_requested manager-review linkage" in expense[3]
+    ), "PP9 must vary approved and unapproved manager-review linkage"
+    assert (
+        "approved yields CSV/XLSX artifacts" in expense[3]
+    ), "PP9 must describe the approved-linkage outcome"
+    assert (
         "unapproved returns 400 without saving an expense draft" in expense[3]
     ), "PP9 must describe the rejected-linkage outcome"
     for test_name in (
@@ -149,6 +155,8 @@ def test_product_contract_rejects_missing_or_detached_row(
         "GET /portal/expenses/{draft_id}/artifacts/expense-xlsx",
         "CSV",
         "XLSX",
+        "approved versus rejected/changes_requested manager-review linkage",
+        "approved yields CSV/XLSX artifacts",
         "unapproved returns 400 without saving an expense draft",
         "tests/python/test_http_service.py::test_expense_portal_generates_exports_and_policy_warning",
         "tests/python/test_http_service.py::test_expense_portal_blocks_export_when_linkage_not_approved",
