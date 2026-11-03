@@ -69,6 +69,9 @@ def _assert_product_contract(text: str) -> None:
         assert f"`{route}`" in expense[2], f"PP9 must name the expense route: {route}"
     for outcome in ("CSV", "XLSX"):
         assert outcome in expense[1], f"PP9 must describe the {outcome} artifact outcome"
+    assert (
+        "unapproved returns 400 without saving an expense draft" in expense[3]
+    ), "PP9 must describe the rejected-linkage outcome"
     for test_name in (
         "test_expense_portal_generates_exports_and_policy_warning",
         "test_expense_portal_blocks_export_when_linkage_not_approved",
@@ -146,6 +149,7 @@ def test_product_contract_rejects_missing_or_detached_row(
         "GET /portal/expenses/{draft_id}/artifacts/expense-xlsx",
         "CSV",
         "XLSX",
+        "unapproved returns 400 without saving an expense draft",
         "tests/python/test_http_service.py::test_expense_portal_generates_exports_and_policy_warning",
         "tests/python/test_http_service.py::test_expense_portal_blocks_export_when_linkage_not_approved",
     ],
