@@ -43,8 +43,8 @@ def _assert_product_contract(text: str) -> None:
         if line.lstrip().startswith("| PP")
     ]
     assert [cells[0] for cells in rows] == [
-        f"PP{number}" for number in range(1, 9)
-    ], "Core functions must list PP1 through PP8 exactly once, in order"
+        f"PP{number}" for number in range(1, 10)
+    ], "Core functions must list PP1 through PP9 exactly once, in order"
     assert all(len(cells) == 5 for cells in rows)
     assert {cells[0]: cells[-1] for cells in rows} == {
         "PP1": "WORKS",
@@ -55,16 +55,34 @@ def _assert_product_contract(text: str) -> None:
         "PP6": "PARTIAL",
         "PP7": "WORKS",
         "PP8": "WORKS",
+        "PP9": "WORKS",
     }
     assert "`GET /portal/admin`" in rows[3][2]
     assert "`GET /api/planner/policy-snapshot`" in rows[7][2]
+    expense = rows[8]
+    for route in (
+        "GET /portal/expenses/new",
+        "POST /portal/expenses/review",
+        "GET /portal/expenses/{draft_id}/artifacts/expense-csv",
+        "GET /portal/expenses/{draft_id}/artifacts/expense-xlsx",
+    ):
+        assert f"`{route}`" in expense[2], f"PP9 must name the expense route: {route}"
+    for outcome in ("CSV", "XLSX"):
+        assert outcome in expense[1], f"PP9 must describe the {outcome} artifact outcome"
+    for test_name in (
+        "test_expense_portal_generates_exports_and_policy_warning",
+        "test_expense_portal_blocks_export_when_linkage_not_approved",
+    ):
+        assert (
+            f"`tests/python/test_http_service.py::{test_name}`" in expense[3]
+        ), f"PP9 must name its runtime evidence: {test_name}"
 
 
-def test_product_contract_lists_pp1_through_pp8_with_current_statuses() -> None:
+def test_product_contract_lists_pp1_through_pp9_with_current_statuses() -> None:
     _assert_product_contract(CONTRACT.read_text(encoding="utf-8"))
 
 
-@pytest.mark.parametrize("function_id", [f"PP{number}" for number in range(1, 9)])
+@pytest.mark.parametrize("function_id", [f"PP{number}" for number in range(1, 10)])
 def test_product_contract_rejects_changed_status(function_id: str) -> None:
     text = CONTRACT.read_text(encoding="utf-8")
     row = next(line for line in text.splitlines() if line.startswith(f"| {function_id} |"))
@@ -96,22 +114,48 @@ def test_product_contract_read_routes_reject_mutating_requests(path: str, method
 @pytest.mark.parametrize(
     "separator",
     [
-        pytest.param(None, id="missing-pp8"),
-        pytest.param("\n", id="blank-line-before-pp8"),
-        pytest.param(" \n", id="space-only-line-before-pp8"),
-        pytest.param("\t\n", id="tab-only-line-before-pp8"),
+        pytest.param(None, id="missing"),
+        pytest.param("\n", id="blank-line-before-row"),
+        pytest.param(" \n", id="space-only-line-before-row"),
+        pytest.param("\t\n", id="tab-only-line-before-row"),
     ],
 )
-def test_product_contract_rejects_missing_or_detached_pp8(
+@pytest.mark.parametrize("function_id", ["PP8", "PP9"])
+def test_product_contract_rejects_missing_or_detached_row(
+    function_id: str,
     separator: str | None,
 ) -> None:
     text = CONTRACT.read_text(encoding="utf-8")
-    pp8 = next(
-        line for line in text.splitlines(keepends=True) if line.lstrip().startswith("| PP8 |")
+    row = next(
+        line
+        for line in text.splitlines(keepends=True)
+        if line.lstrip().startswith(f"| {function_id} |")
     )
-    broken = text.replace(pp8, "" if separator is None else separator + pp8, 1)
+    broken = text.replace(row, "" if separator is None else separator + row, 1)
 
-    with pytest.raises(AssertionError, match="Core functions must list PP1 through PP8"):
+    with pytest.raises(AssertionError, match="Core functions must list PP1 through PP9"):
+        _assert_product_contract(broken)
+
+
+@pytest.mark.parametrize(
+    "required_content",
+    [
+        "GET /portal/expenses/new",
+        "POST /portal/expenses/review",
+        "GET /portal/expenses/{draft_id}/artifacts/expense-csv",
+        "GET /portal/expenses/{draft_id}/artifacts/expense-xlsx",
+        "CSV",
+        "XLSX",
+        "tests/python/test_http_service.py::test_expense_portal_generates_exports_and_policy_warning",
+        "tests/python/test_http_service.py::test_expense_portal_blocks_export_when_linkage_not_approved",
+    ],
+)
+def test_product_contract_rejects_missing_expense_content(required_content: str) -> None:
+    text = CONTRACT.read_text(encoding="utf-8")
+    row = next(line for line in text.splitlines() if line.startswith("| PP9 |"))
+    broken = text.replace(row, row.replace(required_content, ""), 1)
+
+    with pytest.raises(AssertionError, match="PP9 must"):
         _assert_product_contract(broken)
 
 
