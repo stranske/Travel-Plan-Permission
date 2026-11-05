@@ -10,7 +10,54 @@
 
 Core permissions: `view`, `create`, `approve`, `export`, `configure`.
 
-## Endpoint permission map
+## Implemented endpoint permissions
+
+`create_app()` in `src/travel_plan_permission/http_service.py` registers the
+routes in this table: portal pages and `/api/planner/*`. Path templates match
+the OpenAPI schema from that app. `/healthz` and `/readyz` are process probes
+and are omitted here.
+
+| Endpoint | Permission |
+| --- | --- |
+| `GET /portal` | `unauthenticated` |
+| `GET /portal/demo` | `unauthenticated` |
+| `GET /portal/draft/new` | `unauthenticated` |
+| `POST /portal/draft` | `unauthenticated` |
+| `POST /portal/handoff` | `unauthenticated` |
+| `POST /portal/handoff/draft` | `handoff` |
+| `POST /portal/handoff/receipt` | `handoff` |
+| `GET /portal/expenses/new` | `unauthenticated` |
+| `POST /portal/expenses/review` | `create` |
+| `GET /portal/expenses/{draft_id}` | `view` |
+| `GET /portal/expenses/{draft_id}/artifacts/{artifact_name}` | `export` |
+| `GET /portal/review/{draft_id}` | `view` |
+| `POST /portal/review/{draft_id}/submit` | `create` |
+| `POST /portal/review/{draft_id}/exceptions` | `create` |
+| `GET /portal/review/{draft_id}/artifacts/{artifact_name}` | `view` |
+| `GET /portal/manager/reviews` | `view` |
+| `GET /portal/manager/reviews/{review_id}` | `view` |
+| `POST /portal/manager/reviews/{review_id}/decision` | `approve` |
+| `GET /portal/admin` | `configure` |
+| `POST /portal/admin/exceptions/{draft_id}/{exception_index}/decision` | `approve` |
+| `GET /api/planner/intake-requirements` | `view` |
+| `GET /api/planner/policy-snapshot` | `view` |
+| `POST /api/planner/proposals` | `create` |
+| `GET /api/planner/proposals/{proposal_id}/executions/{execution_id}` | `view` |
+| `GET /api/planner/executions/{execution_id}/evaluation-result` | `view` |
+| `POST /api/planner/portal-handoffs` | `create` |
+| `GET /api/planner/portal-handoffs/{handoff_id}` | `view` |
+| `POST /api/planner/portal-handoffs/{handoff_id}/browser-session` | `view` |
+
+Bearer checks use those permissions. `GET /portal/review/{draft_id}` and
+`GET /portal/review/{draft_id}/artifacts/{artifact_name}` also accept the draft
+handoff view capability described under Trip-planner handoff capability.
+`unauthenticated` rows do not require a bearer token. `handoff` rows require
+the signed handoff cookie or token instead of a role permission.
+
+## Planned / not implemented
+
+These paths are not registered by `create_app()`. They are omitted from
+`API_ENDPOINT_PERMISSIONS`, so permission checks cannot authorize them.
 
 | Endpoint | Permission |
 | --- | --- |
@@ -69,8 +116,8 @@ The expected deployment config shape is:
 
 The planner-facing endpoints currently require:
 
-- `view` for policy snapshot, execution status, and evaluation-result reads
-- `create` for proposal submission
+- `view` for intake requirements, policy snapshot, execution status, evaluation-result reads, and portal-handoff status
+- `create` for proposal submission and portal-handoff preparation
 
 The snapshot response advertises the currently supported SSO providers
 (`azure_ad`, `okta`, `google`) and the required `view` permission so planner

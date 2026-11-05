@@ -10,6 +10,7 @@ from travel_plan_permission.security import (
     API_ENDPOINT_PERMISSIONS,
     DEFAULT_ROLES,
     DEFAULT_SSO_PLANS,
+    PLANNED_ENDPOINT_PERMISSIONS,
     PLANNER_POLICY_SNAPSHOT_ENDPOINT,
     AuditEventType,
     AuditLog,
@@ -36,28 +37,33 @@ def test_roles_and_permissions_matrix() -> None:
     assert Permission.CONFIGURE in DEFAULT_ROLES[RoleName.POLICY_ADMIN].permissions
     assert set(Permission) == DEFAULT_ROLES[RoleName.SYSTEM_ADMIN].permissions
     assert PLANNER_POLICY_SNAPSHOT_ENDPOINT in API_ENDPOINT_PERMISSIONS
-    assert "POST /api/approvals/:id/decision" in API_ENDPOINT_PERMISSIONS
+    assert "POST /api/approvals/:id/decision" in PLANNED_ENDPOINT_PERMISSIONS
+    assert "POST /api/approvals/:id/decision" not in API_ENDPOINT_PERMISSIONS
+    assert "GET /api/itineraries" not in API_ENDPOINT_PERMISSIONS
 
 
 def test_endpoint_authorization_and_delegation() -> None:
     security = SecurityModel()
     security.register_delegation(primary_user="primary.approver", backup_user="backup")
 
-    # Backup acts on behalf of primary approver for approval endpoint.
+    # Backup acts on behalf of primary approver for a registered approval route.
     assert security.authorize(
         user="backup",
         role=RoleName.APPROVER,
-        endpoint="POST /api/approvals/:id/decision",
+        endpoint="POST /portal/manager/reviews/{review_id}/decision",
         acting_on_behalf_of="primary.approver",
     )
 
-    # Non-delegated backup cannot access configuration without proper role.
+    # Approver role cannot configure, and delegation only grants approve.
     assert not security.authorize(
         user="backup",
         role=RoleName.APPROVER,
-        endpoint="POST /api/policy/rules",
+        endpoint="GET /portal/admin",
         acting_on_behalf_of="primary.approver",
     )
+
+    with pytest.raises(KeyError, match="/api/policy/rules"):
+        security.required_permission("POST /api/policy/rules")
 
 
 def test_role_change_requires_admin_approval_and_is_logged() -> None:

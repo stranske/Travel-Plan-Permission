@@ -35,7 +35,9 @@ from travel_plan_permission.models import ExceptionApprovalLevel, ExceptionStatu
 from travel_plan_permission.planner_auth import mint_bootstrap_token
 from travel_plan_permission.policy_api import PlannerProposalOperationResponse
 from travel_plan_permission.security import (
+    API_ENDPOINT_PERMISSIONS,
     EXCEPTION_TIER_ENTITLEMENT_ENV_VAR,
+    PLANNED_ENDPOINT_PERMISSIONS,
     AuditEventType,
     Permission,
 )
@@ -3723,6 +3725,126 @@ def test_portal_routes_do_not_leave_legacy_request_paths_active() -> None:
     assert "/portal/expenses/review" in paths
     assert "/portal/expenses/{draft_id}" in paths
     assert all(not path.startswith("/portal/requests") for path in paths)
+
+
+_SECURITY_MODEL_DOC = Path(__file__).resolve().parents[2] / "docs" / "security-model.md"
+_MARKDOWN_HEADING_RE = re.compile(r"^(#{2,6})\s+(.+?)\s*$", re.MULTILINE)
+_PERMISSION_TABLE_PATH_RE = re.compile(
+    r"^\|\s*`(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(/[^`]+)`",
+    re.MULTILINE,
+)
+_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+_LEGACY_UNWIRED_PREFIXES = (
+    "/api/itineraries",
+    "/api/approvals",
+    "/api/exports",
+    "/api/policy",
+)
+
+
+def _security_model_text() -> str:
+    return _SECURITY_MODEL_DOC.read_text(encoding="utf-8")
+
+
+def _markdown_sections(text: str) -> list[tuple[str, str]]:
+    matches = list(_MARKDOWN_HEADING_RE.finditer(text))
+    sections: list[tuple[str, str]] = []
+    for index, match in enumerate(matches):
+        level = len(match.group(1))
+        end = len(text)
+        for later in matches[index + 1 :]:
+            if len(later.group(1)) <= level:
+                end = later.start()
+                break
+        sections.append((match.group(2).strip(), text[match.end() : end]))
+    return sections
+
+
+def _is_implemented_permission_heading(title: str) -> bool:
+    folded = title.casefold()
+    return "implemented" in folded and "not implemented" not in folded and "planned" not in folded
+
+
+def _implemented_permission_text(text: str) -> str:
+    sections = [
+        body
+        for title, body in _markdown_sections(text)
+        if _is_implemented_permission_heading(title)
+    ]
+    assert sections, "docs/security-model.md needs an implemented permission heading"
+    return "\n".join(sections)
+
+
+def _permission_table_paths(section: str) -> set[str]:
+    return set(_PERMISSION_TABLE_PATH_RE.findall(section))
+
+
+def _registered_openapi_paths() -> dict[str, set[str]]:
+    spec = create_app().openapi()["paths"]
+    return {
+        path: {method.upper() for method in methods if method.lower() in _HTTP_METHODS}
+        for path, methods in spec.items()
+    }
+
+
+def _assert_documented_paths_are_registered(section: str, registered: set[str]) -> None:
+    listed = _permission_table_paths(section)
+    assert listed, "implemented permission table must list routes"
+    unwired = sorted(listed - registered)
+    assert not unwired, f"implemented permission table lists unregistered paths: {unwired}"
+
+
+def test_security_model_doc_lists_only_registered_api_routes() -> None:
+    """Implemented permission rows must be routes create_app() actually registers."""
+
+    registered = set(_registered_openapi_paths())
+    text = _security_model_text()
+    implemented = _implemented_permission_text(text)
+    listed = _permission_table_paths(implemented)
+    scoped = {
+        path
+        for path in registered
+        if path.startswith("/portal") or path.startswith("/api/planner/")
+    }
+    _assert_documented_paths_are_registered(implemented, registered)
+    assert listed == scoped
+    for legacy in _LEGACY_UNWIRED_PREFIXES:
+        assert legacy not in implemented
+
+    planned = [
+        body
+        for title, body in _markdown_sections(text)
+        if "planned" in title.casefold() and "not implemented" in title.casefold()
+    ]
+    assert planned, "legacy routes must sit under a planned / not implemented heading"
+    planned_text = "\n".join(planned)
+    for legacy in _LEGACY_UNWIRED_PREFIXES:
+        assert legacy in planned_text
+
+
+def test_security_model_doc_rejects_unregistered_itineraries_row() -> None:
+    registered = set(_registered_openapi_paths())
+    broken = _implemented_permission_text(_security_model_text())
+    broken += "| `GET /api/itineraries` | `view` |\n"
+
+    with pytest.raises(AssertionError, match="/api/itineraries"):
+        _assert_documented_paths_are_registered(broken, registered)
+
+
+def test_api_endpoint_permissions_reference_only_registered_routes() -> None:
+    registered = _registered_openapi_paths()
+
+    assert API_ENDPOINT_PERMISSIONS
+    for endpoint in API_ENDPOINT_PERMISSIONS:
+        method, path = endpoint.split(" ", 1)
+        assert path in registered, endpoint
+        assert method in registered[path], endpoint
+        assert not any(path.startswith(legacy) for legacy in _LEGACY_UNWIRED_PREFIXES)
+
+    for endpoint in PLANNED_ENDPOINT_PERMISSIONS:
+        _method, path = endpoint.split(" ", 1)
+        assert path not in registered
+        assert endpoint not in API_ENDPOINT_PERMISSIONS
 
 
 def test_operator_docs_do_not_reference_legacy_portal_requests_paths() -> None:

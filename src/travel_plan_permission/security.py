@@ -87,12 +87,37 @@ PLANNER_EXECUTION_STATUS_ENDPOINT = (
 PLANNER_EVALUATION_RESULT_ENDPOINT = "GET /api/planner/executions/:execution_id/evaluation-result"
 
 
+# Paths here are the route templates ``create_app()`` registers in
+# ``http_service``. Permission checks must not name paths that never mount.
+# Colon placeholders such as ``:execution_id`` stay on the planner response
+# constants above; they are not registered route templates.
 API_ENDPOINT_PERMISSIONS: dict[str, Permission] = {
-    "GET /api/itineraries": Permission.VIEW,
+    "GET /api/planner/intake-requirements": Permission.VIEW,
     PLANNER_POLICY_SNAPSHOT_ENDPOINT: Permission.VIEW,
     PLANNER_PROPOSAL_SUBMISSION_ENDPOINT: Permission.CREATE,
-    PLANNER_EXECUTION_STATUS_ENDPOINT: Permission.VIEW,
-    PLANNER_EVALUATION_RESULT_ENDPOINT: Permission.VIEW,
+    "GET /api/planner/proposals/{proposal_id}/executions/{execution_id}": Permission.VIEW,
+    "GET /api/planner/executions/{execution_id}/evaluation-result": Permission.VIEW,
+    "POST /api/planner/portal-handoffs": Permission.CREATE,
+    "GET /api/planner/portal-handoffs/{handoff_id}": Permission.VIEW,
+    "POST /api/planner/portal-handoffs/{handoff_id}/browser-session": Permission.VIEW,
+    "POST /portal/expenses/review": Permission.CREATE,
+    "GET /portal/review/{draft_id}": Permission.VIEW,
+    "POST /portal/review/{draft_id}/submit": Permission.CREATE,
+    "POST /portal/review/{draft_id}/exceptions": Permission.CREATE,
+    "GET /portal/review/{draft_id}/artifacts/{artifact_name}": Permission.VIEW,
+    "GET /portal/expenses/{draft_id}": Permission.VIEW,
+    "GET /portal/expenses/{draft_id}/artifacts/{artifact_name}": Permission.EXPORT,
+    "GET /portal/manager/reviews": Permission.VIEW,
+    "GET /portal/manager/reviews/{review_id}": Permission.VIEW,
+    "POST /portal/manager/reviews/{review_id}/decision": Permission.APPROVE,
+    "GET /portal/admin": Permission.CONFIGURE,
+    "POST /portal/admin/exceptions/{draft_id}/{exception_index}/decision": Permission.APPROVE,
+}
+
+# Kept for the security-model writeup. ``SecurityModel`` does not consult this
+# map, and ``create_app()`` does not register these paths.
+PLANNED_ENDPOINT_PERMISSIONS: dict[str, Permission] = {
+    "GET /api/itineraries": Permission.VIEW,
     "POST /api/itineraries": Permission.CREATE,
     "GET /api/itineraries/:id": Permission.VIEW,
     "POST /api/approvals/:id/decision": Permission.APPROVE,
