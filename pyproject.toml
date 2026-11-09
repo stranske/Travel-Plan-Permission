@@ -33,7 +33,7 @@ dev = [
     "pytest==9.2.0",
     "pytest-cov==7.1.0",
     "cryptography",
-    "ruff==0.17.3",
+    "ruff==0.17.4",
     "black==26.10.1",
     "mypy==2.4.1",
     "types-PyYAML>=6.0.12",
