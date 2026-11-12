@@ -21,6 +21,7 @@ from pathlib import Path
 import httpx
 import jwt
 import pytest
+import yaml
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
@@ -4795,3 +4796,65 @@ def test_manager_decision_http_process_restart(
     # The first process has been stopped and waited for before launching the second.
     with _uds_http_service(tmp_path / "second-uvicorn.log", env) as restarted:
         assert assert_readback(restarted) == recorded
+
+
+def test_issues_txt_orchestration_ci_tasks_match_workflow() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    ci_workflow_path = repo_root / ".github" / "workflows" / "ci.yml"
+    issues_txt_path = repo_root / "Issues.txt"
+
+    ci_raw = ci_workflow_path.read_text(encoding="utf-8")
+    ci_lines = ci_raw.splitlines()
+    assert len(ci_lines) >= 88
+    assert ci_lines[61].startswith("  orchestration:")
+
+    workflow = yaml.safe_load(ci_raw)
+    jobs = workflow.get("jobs", {})
+    assert "orchestration" in jobs, "Expected 'orchestration' job in .github/workflows/ci.yml"
+
+    orchestration_steps = jobs["orchestration"].get("steps", [])
+    installs_orchestration_extra = any(
+        isinstance(step, dict)
+        and isinstance(step.get("run"), str)
+        and re.search(r"\.\[[^\]]*\borchestration\b[^\]]*\]", step["run"]) is not None
+        for step in orchestration_steps
+    )
+    assert (
+        installs_orchestration_extra
+    ), "Expected 'orchestration' job in .github/workflows/ci.yml to install .[orchestration]"
+
+    lines = issues_txt_path.read_text(encoding="utf-8").splitlines()
+    orchestration_task_window = "\n".join(lines[111:114])
+    assert "(needs-human)" not in orchestration_task_window
+
+    for line_no in (112, 114):
+        line = lines[line_no - 1]
+        assert line.startswith("- [x] "), (
+            f"Issues.txt line {line_no} must be marked [x] when ci.yml defines the "
+            f"orchestration job: {line!r}"
+        )
+        assert "(needs-human)" not in line
+        assert "orchestration" in line
+        assert ".github/workflows/ci.yml:62-88" in line
+
+    issue3_start = next(idx for idx, line in enumerate(lines) if line.startswith("Issue 3 — CI:"))
+    issue4_start = next(idx for idx, line in enumerate(lines) if line.startswith("Issue 4 —"))
+    issue3_lines = lines[issue3_start:issue4_start]
+    orchestration_checkbox_lines = [
+        line
+        for line in issue3_lines
+        if line.startswith(("- [ ]", "- [x]"))
+        and (".[orchestration]" in line or ".github/workflows/ci.yml" in line)
+    ]
+    assert len(orchestration_checkbox_lines) >= 2
+    for line in orchestration_checkbox_lines:
+        assert line.startswith(
+            "- [x] "
+        ), f"Unchecked orchestration CI task in Issues.txt Issue 3: {line!r}"
+        assert "(needs-human)" not in line
+        assert ".github/workflows/ci.yml:62-88" in line
+
+    implementation_notes_window = "\n".join(lines[129:132])
+    assert ".github/workflows/*" not in implementation_notes_window
+    assert ".github/workflows/ci.yml" in implementation_notes_window
+    assert "orchestration" in implementation_notes_window

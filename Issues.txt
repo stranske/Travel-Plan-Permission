@@ -109,9 +109,9 @@ Tasks
 
 - [x] asserts policy result exists + artifact produced
 
-- [ ] Ensure at least one CI run installs .[orchestration] so that test executes (not skipped).
+- [x] Ensure at least one CI run installs .[orchestration] so that test executes (not skipped) (`orchestration` job in `.github/workflows/ci.yml:62-88`).
 
-- [ ] (needs-human) Update `.github/workflows/ci.yml` or the Workflows reusable CI to install `.[orchestration]`.
+- [x] Update `.github/workflows/ci.yml` or the Workflows reusable CI to install `.[orchestration]` (`orchestration` job in `.github/workflows/ci.yml:62-88`).
 
 - [x] Keep runtime small (smoke-level only).
 
@@ -129,7 +129,7 @@ Relevant files:
 
 pyproject.toml (extras already exist)
 
-.github/workflows/* (may need a small additional workflow if reusable CI can’t be configured)
+.github/workflows/ci.yml (`orchestration` job in `.github/workflows/ci.yml:62-88` installs `.[orchestration,dev]`)
 
 src/travel_plan_permission/orchestration/graph.py
 
