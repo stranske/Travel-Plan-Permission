@@ -4803,7 +4803,12 @@ def test_issues_txt_orchestration_ci_tasks_match_workflow() -> None:
     ci_workflow_path = repo_root / ".github" / "workflows" / "ci.yml"
     issues_txt_path = repo_root / "Issues.txt"
 
-    workflow = yaml.safe_load(ci_workflow_path.read_text(encoding="utf-8"))
+    ci_raw = ci_workflow_path.read_text(encoding="utf-8")
+    ci_lines = ci_raw.splitlines()
+    assert len(ci_lines) >= 88
+    assert ci_lines[61].startswith("  orchestration:")
+
+    workflow = yaml.safe_load(ci_raw)
     jobs = workflow.get("jobs", {})
     assert "orchestration" in jobs, "Expected 'orchestration' job in .github/workflows/ci.yml"
 
@@ -4819,10 +4824,8 @@ def test_issues_txt_orchestration_ci_tasks_match_workflow() -> None:
     ), "Expected 'orchestration' job in .github/workflows/ci.yml to install .[orchestration]"
 
     lines = issues_txt_path.read_text(encoding="utf-8").splitlines()
-    orchestration_task_window = "\n".join(lines[111:115])
+    orchestration_task_window = "\n".join(lines[111:114])
     assert "(needs-human)" not in orchestration_task_window
-    assert ".github/workflows/ci.yml:62-88" in orchestration_task_window
-    assert "orchestration" in orchestration_task_window
 
     for line_no in (112, 114):
         line = lines[line_no - 1]
@@ -4830,6 +4833,9 @@ def test_issues_txt_orchestration_ci_tasks_match_workflow() -> None:
             f"Issues.txt line {line_no} must be marked [x] when ci.yml defines the "
             f"orchestration job: {line!r}"
         )
+        assert "(needs-human)" not in line
+        assert "orchestration" in line
+        assert ".github/workflows/ci.yml:62-88" in line
 
     issue3_start = next(idx for idx, line in enumerate(lines) if line.startswith("Issue 3 — CI:"))
     issue4_start = next(idx for idx, line in enumerate(lines) if line.startswith("Issue 4 —"))
@@ -4846,7 +4852,9 @@ def test_issues_txt_orchestration_ci_tasks_match_workflow() -> None:
             "- [x] "
         ), f"Unchecked orchestration CI task in Issues.txt Issue 3: {line!r}"
         assert "(needs-human)" not in line
+        assert ".github/workflows/ci.yml:62-88" in line
 
-    implementation_notes_window = "\n".join(lines[129:133])
+    implementation_notes_window = "\n".join(lines[129:132])
+    assert ".github/workflows/*" not in implementation_notes_window
     assert ".github/workflows/ci.yml" in implementation_notes_window
     assert "orchestration" in implementation_notes_window
