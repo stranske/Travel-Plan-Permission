@@ -861,13 +861,16 @@ def test_exception_decision_rejects_foreign_namespace(
             monkeypatch.setenv(
                 "TPP_OIDC_ROLE_MAP", '{"approver": "approver", "traveler-a": "approver"}'
             )
-        # A foreign caller must not even reach exception access or SLA routing.
+        # A foreign caller must not reach exception access, SLA routing, or writes,
+        # even if persisting an unchanged snapshot would hide the side effect.
         with monkeypatch.context() as guarded:
             downstream = {}
             for method in (
                 "escalate_exception_requests",
                 "lookup_exception_request",
                 "decide_exception_request",
+                "_persist_state",
+                "persist_audit_events",
             ):
                 downstream[method] = Mock(wraps=getattr(store, method))
                 guarded.setattr(store, method, downstream[method])

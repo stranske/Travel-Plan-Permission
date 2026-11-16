@@ -254,3 +254,32 @@ is never`. The verified source changes and evidence remain in the working tree;
 the PR acceptance checkboxes could not be updated. PR #1750 was confirmed open
 and ready for review (`draft=false`). A writable checkout and permitted GitHub
 metadata access are still required for the commit and PR updates.
+
+No-persistence verification follow-up (2026-11-16)
+------------------------------------------------
+
+The named regression now also spies on `_persist_state` and `persist_audit_events`.
+Foreign requests must not invoke either method, even to write an unchanged
+snapshot, before or after SQLite reopen. Existing namespace, tier, state, and
+decision assertions remain in place; production code is unchanged.
+
+- [x] Named regression: 64 passed in 31.95 seconds.
+- [x] Whole receipt test file: 110 passed in 48.22 seconds.
+
+```text
+python3 -m pytest tests/python/test_portal_receipt_api.py::test_exception_decision_rejects_foreign_namespace -q -m 'not slow'
+python3 -m pytest tests/python/test_portal_receipt_api.py -q -m 'not slow'
+black --line-length 100 tests/python/test_portal_receipt_api.py
+BLACK_NUM_WORKERS=1 black --check --line-length 100 --exclude '(\.workflows-lib|node_modules)' .
+ruff check tests/python/test_portal_receipt_api.py src/travel_plan_permission/exception_decisions.py
+git diff --check
+```
+
+Repository-wide Black passed for 242 Python files; scoped Ruff and whitespace
+checks passed. Staging the verified test change failed with
+`.git/index.lock: Read-only file system`, so no commit was created. Updating
+the two stale verification checkboxes in the embedded PR checklist, posting
+the evidence comment, and adding `needs-human` were each rejected with
+`MCP tool call requires approval, but approval policy is never`. These changes
+remain local and need a writable checkout for committing and permitted GitHub
+metadata access for publication. PR #1750 was confirmed open with `draft=false`.
