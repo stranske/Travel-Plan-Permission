@@ -150,3 +150,34 @@ to PR #1750 were both rejected with `MCP tool call requires approval, but approv
 policy is never`. The test changes and this evidence remain uncommitted in the
 working tree. Ordinary CI verification, committing, and publishing the evidence
 still require a suitably permitted environment.
+
+Offline JWKS verification follow-up
+-----------------------------------
+
+The existing receipt OIDC regression now supplies its JWKS document in process,
+matching the exception fixture, instead of starting a local HTTP listener. Real
+signature, issuer, audience, and namespace validation still run. An additional
+assertion checks that a bearer signed with an untrusted key gets 401, and a
+fetch spy verifies the configured JWKS URL is fetched once.
+
+With a temporary `/tmp/receipt_event_loop.py` plugin that only selects uvloop
+for TestClient, the named regression passed 32 cases in 17.98 seconds and the
+whole file passed 78 tests in 32.79 seconds. No authentication or JWKS runtime
+patch was needed in that plugin, and no tests or assertions were skipped:
+
+```text
+PYTHONPATH=/tmp:src python3 -m pytest -p receipt_event_loop tests/python/test_portal_receipt_api.py::test_exception_decision_rejects_foreign_namespace -q -m 'not slow'
+PYTHONPATH=/tmp:src python3 -m pytest -p receipt_event_loop tests/python/test_portal_receipt_api.py -q -m 'not slow'
+```
+
+The ordinary named command still stalled at its first ASGI request and was
+interrupted. The ordinary whole-file run timed out; faulthandler showed the
+default asyncio event loop and the cross-thread TestClient call waiting.
+Ordinary-runtime acceptance therefore remains unchecked. Black formatting,
+repository-wide Black (242 files), scoped Ruff, and `git diff --check` passed.
+
+Committing was attempted after verification, but staging failed with
+`.git/index.lock: Read-only file system`. Posting this evidence and adding
+`needs-human` to PR #1750 were rejected with `MCP tool call requires approval,
+but approval policy is never`. The verified Python changes remain uncommitted.
+The PR was confirmed open and ready for review (`draft=false`).

@@ -299,15 +299,13 @@ def test_oidc_signed_tokens_validate_issuer_audience_and_namespace(app_client, m
 
     from travel_plan_permission import planner_auth
 
-    from .test_http_service import _serve_jwks
-
     client, _ = app_client
     private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private.public_key()))
     jwk.update({"kid": "receipt-test", "alg": "RS256", "use": "sig"})
     issuer = "https://issuer.example/tenant-a"
 
-    def headers(subject="alice", iss=issuer, aud="trip-planner"):
+    def headers(subject="alice", iss=issuer, aud="trip-planner", signing_key=private):
         now = datetime.now(UTC)
         token = jwt.encode(
             {
@@ -317,33 +315,34 @@ def test_oidc_signed_tokens_validate_issuer_audience_and_namespace(app_client, m
                 "exp": now + timedelta(minutes=5),
                 "nbf": now - timedelta(seconds=5),
             },
-            private,
+            signing_key,
             algorithm="RS256",
             headers={"kid": "receipt-test"},
         )
         return {"Authorization": "Bearer " + token}
 
-    with _serve_jwks({"keys": [jwk]}) as jwks_url:
-        planner_auth._JWKS_CACHE.clear()
-        monkeypatch.setenv("TPP_AUTH_MODE", "oidc")
-        monkeypatch.setenv("TPP_OIDC_AUDIENCE", "trip-planner")
-        monkeypatch.setenv("TPP_OIDC_ISSUER", issuer)
-        monkeypatch.setenv("TPP_OIDC_JWKS_URL", jwks_url)
-        prepared = client.post(BASE, json=payload(), headers=headers())
-        assert prepared.status_code == 200, prepared.text
-        assert lookup(client, headers=headers()).status_code == 200
-        assert lookup(client, headers=headers(subject="bob")).status_code == 404
-        assert (
-            lookup(client, headers=headers(iss="https://issuer.example/tenant-b")).status_code
-            == 401
-        )
-        assert lookup(client, headers=headers(aud="different-app")).status_code == 401
-        # Even a later valid tenant-B configuration cannot reuse tenant-A subject ownership.
-        monkeypatch.setenv("TPP_OIDC_ISSUER", "https://issuer.example/tenant-b")
-        assert (
-            lookup(client, headers=headers(iss="https://issuer.example/tenant-b")).status_code
-            == 404
-        ), "tenant namespace must remain isolated"
+    # Receipt authorization needs real signature validation, without a local listener.
+    fetch_jwks = Mock(return_value={"keys": [jwk]})
+    monkeypatch.setattr(planner_auth, "_fetch_jwks_document", fetch_jwks)
+    planner_auth._JWKS_CACHE.clear()
+    monkeypatch.setenv("TPP_AUTH_MODE", "oidc")
+    monkeypatch.setenv("TPP_OIDC_AUDIENCE", "trip-planner")
+    monkeypatch.setenv("TPP_OIDC_ISSUER", issuer)
+    monkeypatch.setenv("TPP_OIDC_JWKS_URL", "https://issuer.example/jwks.json")
+    prepared = client.post(BASE, json=payload(), headers=headers())
+    assert prepared.status_code == 200, prepared.text
+    assert lookup(client, headers=headers()).status_code == 200
+    assert lookup(client, headers=headers(subject="bob")).status_code == 404
+    foreign_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    assert lookup(client, headers=headers(signing_key=foreign_key)).status_code == 401
+    assert lookup(client, headers=headers(iss="https://issuer.example/tenant-b")).status_code == 401
+    assert lookup(client, headers=headers(aud="different-app")).status_code == 401
+    # Even a later valid tenant-B configuration cannot reuse tenant-A subject ownership.
+    monkeypatch.setenv("TPP_OIDC_ISSUER", "https://issuer.example/tenant-b")
+    assert (
+        lookup(client, headers=headers(iss="https://issuer.example/tenant-b")).status_code == 404
+    ), "tenant namespace must remain isolated"
+    fetch_jwks.assert_called_once_with("https://issuer.example/jwks.json")
 
 
 @pytest.mark.parametrize("failure", ["failed", "unavailable"])
