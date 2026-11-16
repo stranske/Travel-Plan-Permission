@@ -786,6 +786,9 @@ def oidc_exception_auth(monkeypatch):
 
 
 @pytest.mark.parametrize("namespace", ["provider", "issuer", "audience", "auth_mode"])
+@pytest.mark.parametrize(
+    "exception_index", [0, 999], ids=["existing-exception", "missing-exception"]
+)
 @pytest.mark.parametrize("decision", ["approve", "reject"])
 @pytest.mark.parametrize("overdue", [False, True], ids=["pending", "overdue"])
 @pytest.mark.parametrize(
@@ -797,6 +800,7 @@ def test_exception_decision_rejects_foreign_namespace(
     tmp_path,
     oidc_exception_auth,
     namespace,
+    exception_index,
     decision,
     overdue,
     foreign_subject,
@@ -856,7 +860,7 @@ def test_exception_decision_rejects_foreign_namespace(
                 downstream[method] = Mock(wraps=getattr(store, method))
                 guarded.setattr(store, method, downstream[method])
             denied = client.post(
-                url,
+                f"/portal/admin/exceptions/{draft_id}/{exception_index}/decision",
                 headers=foreign_headers,
                 data={"decision": decision, "notes": "Foreign decision"},
                 follow_redirects=False,

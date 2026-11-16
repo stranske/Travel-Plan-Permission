@@ -68,6 +68,38 @@ this run has approval policy `never`. The implementation and this evidence remai
 as working-tree changes.
 The PR was confirmed open and ready for review (`draft=false`).
 
+Missing-index verification follow-up (2026-11-16)
+----------------------------------------------
+
+Reviewed commits `9b6530e` through `f780337`: implementation, namespace regression,
+and deliberate-break evidence are already recorded as complete. No additional
+acceptance checkbox can be checked: ordinary-runtime verification remains blocked.
+
+The named regression now covers both existing and missing exception indexes.
+Foreign requests must return the same 404 without invoking exception lookup,
+escalation, or decision, preserving state before and after SQLite reopen.
+
+With the temporary `/tmp/receipt_event_loop.py` plugin selecting uvloop only,
+the named regression passed 64 cases in 31.91 seconds; the whole file passed
+110 tests in 54.28 seconds. No tests or assertions were skipped:
+
+```text
+PYTHONPATH=/tmp:src python3 -m pytest -p receipt_event_loop tests/python/test_portal_receipt_api.py::test_exception_decision_rejects_foreign_namespace -q -m 'not slow'
+PYTHONPATH=/tmp:src python3 -m pytest -p receipt_event_loop tests/python/test_portal_receipt_api.py -q -m 'not slow'
+```
+
+The ordinary named and whole-file commands, with `-m 'not slow'`, stalled at the
+first ASGI request and were stopped by timeouts. Faulthandler again showed the
+default asyncio event loop and cross-thread TestClient call waiting. Black
+formatting, the required repository-wide Black check (242 files), scoped Ruff,
+and `git diff --check` passed.
+
+Staging failed with `.git/index.lock: Read-only file system`, preventing the
+requested commit. PR-body reconciliation, posting the evidence comment, and
+adding `needs-human` were rejected with `MCP tool call requires approval, but
+approval policy is never`. Changes remain local. PR #1750 is open and ready
+for review (`draft=false`).
+
 Follow-up verification
 ----------------------
 
