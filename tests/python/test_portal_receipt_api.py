@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from threading import Barrier
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -831,18 +832,30 @@ def test_exception_decision_rejects_foreign_namespace(
                 else {"audience": "different-app"}
             )
             foreign_headers = oidc_exception_auth("approver", **changed)
-        denied = client.post(
-            url,
-            headers=foreign_headers,
-            data={"decision": decision, "notes": "Foreign decision"},
-            follow_redirects=False,
-        )
+        # A foreign caller must not even reach exception access or SLA routing.
+        with monkeypatch.context() as guarded:
+            downstream = {}
+            for method in (
+                "escalate_exception_requests",
+                "lookup_exception_request",
+                "decide_exception_request",
+            ):
+                downstream[method] = Mock(wraps=getattr(store, method))
+                guarded.setattr(store, method, downstream[method])
+            denied = client.post(
+                url,
+                headers=foreign_headers,
+                data={"decision": decision, "notes": "Foreign decision"},
+                follow_redirects=False,
+            )
         # Inspect raw state; listing exceptions would itself apply overdue escalation.
         after = store.exception_requests_by_draft_id[draft_id][0]
         assert (
             denied.status_code == 404
         ), f"foreign {namespace}: HTTP {denied.status_code}, exception {after.status.value}"
         assert denied.json() == {"detail": "Exception request not found."}
+        for call in downstream.values():
+            call.assert_not_called()
         assert store._serialize_state() == before
         assert store.store.load_snapshot() == persisted_before
 

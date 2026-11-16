@@ -67,3 +67,48 @@ the `needs-human` label were also rejected: the connector requires approval and
 this run has approval policy `never`. The implementation and this evidence remain
 as working-tree changes.
 The PR was confirmed open and ready for review (`draft=false`).
+
+Follow-up verification
+----------------------
+
+The prior implementation is now present in commit `9b6530e`. This follow-up
+strengthens the named regression with spies around escalation, exception lookup,
+and decision mutation. Every foreign request must return 404 without invoking
+any of those methods, both before and after reopening SQLite. The spies wrap
+the actual methods, so an authorization regression still exposes real mutation
+in the failure message. Same-namespace controls run after the spies are removed.
+
+The ordinary named-test and whole-file commands collected 16 and 62 cases,
+respectively, but stalled at the first ASGI request and were interrupted. These
+ordinary-runtime acceptance items remain unchecked.
+
+With the same temporary runtime adaptation described above, removing only the
+namespace guard again produced 16 failures, including:
+
+```text
+test_exception_decision_rejects_foreign_namespace[pending-approve-provider]
+AssertionError: foreign provider: HTTP 303, exception approved
+assert 303 == 404
+```
+
+The guard was restored in a `finally` block and confirmed identical to its
+original contents. After strengthening the regression, the named test passed
+all 16 cases in 6.28 seconds and the whole file passed all 62 tests in 21.61
+seconds. No tests or assertions were skipped. The commands were:
+
+```text
+PYTHONPATH=/tmp:src python3 -m pytest -p receipt_test_runtime tests/python/test_portal_receipt_api.py::test_exception_decision_rejects_foreign_namespace -q -m 'not slow'
+PYTHONPATH=/tmp:src python3 -m pytest -p receipt_test_runtime tests/python/test_portal_receipt_api.py -q -m 'not slow'
+```
+
+Black formatting of the changed Python file, the required repository-wide Black
+check (242 files), scoped Ruff, and `git diff --check` passed. No production code
+or test-runtime configuration was changed by this follow-up.
+
+The follow-up staging attempt failed with `.git/index.lock: Read-only file
+system`, so this follow-up could not be committed. Posting the verification
+evidence to PR #1750 and adding the `needs-human` label were rejected with
+`MCP tool call requires approval, but approval policy is never`. The PR was
+confirmed open and ready for review (`draft=false`). The changes and evidence
+remain local; ordinary CI verification, a commit, and publication of the
+evidence are still required.
