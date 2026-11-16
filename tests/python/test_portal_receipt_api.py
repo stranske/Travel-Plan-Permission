@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from threading import Barrier
 
 import pytest
@@ -741,6 +742,132 @@ def _exception_form():
         "justification": "Documented business need for this routed exception tier. " * 2,
         "supporting_doc": "docs/exception-policy.md",
     }
+
+
+@pytest.fixture
+def oidc_exception_auth(monkeypatch):
+    """Issue real signed bearers for independently configured identity namespaces."""
+    import json
+
+    import jwt
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    from travel_plan_permission import planner_auth
+
+    private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private.public_key()))
+    jwk.update({"kid": "exception-test", "alg": "RS256", "use": "sig"})
+    planner_auth._JWKS_CACHE.clear()
+    monkeypatch.setattr(planner_auth, "_fetch_jwks_document", lambda _url: {"keys": [jwk]})
+
+    def headers(subject, *, issuer="https://issuer.example/tenant-a", audience="trip-planner"):
+        monkeypatch.setenv("TPP_AUTH_MODE", "oidc")
+        monkeypatch.setenv("TPP_OIDC_PROVIDER", "google")
+        monkeypatch.setenv("TPP_OIDC_ISSUER", issuer)
+        monkeypatch.setenv("TPP_OIDC_AUDIENCE", audience)
+        monkeypatch.setenv("TPP_OIDC_JWKS_URL", "https://issuer.example/jwks.json")
+        monkeypatch.setenv("TPP_OIDC_ROLE_MAP", '{"approver": "approver"}')
+        now = datetime.now(UTC)
+        bearer = jwt.encode(
+            {
+                "sub": subject,
+                "iss": issuer,
+                "aud": audience,
+                "exp": now + timedelta(minutes=5),
+                "nbf": now - timedelta(seconds=5),
+            },
+            private,
+            algorithm="RS256",
+            headers={"kid": "exception-test"},
+        )
+        return {"Authorization": "Bearer " + bearer}
+
+    return headers
+
+
+@pytest.mark.parametrize("namespace", ["provider", "issuer", "audience", "auth_mode"])
+@pytest.mark.parametrize("decision", ["approve", "reject"])
+@pytest.mark.parametrize("overdue", [False, True], ids=["pending", "overdue"])
+def test_exception_decision_rejects_foreign_namespace(
+    app_client, monkeypatch, tmp_path, oidc_exception_auth, namespace, decision, overdue
+):
+    client, store = app_client
+    owner_headers = auth() if namespace == "provider" else oidc_exception_auth("traveler-a")
+    prepared = client.post(BASE, json=payload(), headers=owner_headers)
+    assert prepared.status_code == 200, prepared.text
+    draft_id = prepared.json()["draft_id"]
+    created = client.post(
+        f"/portal/review/{draft_id}/exceptions",
+        headers=owner_headers,
+        data=_exception_form(),
+        follow_redirects=False,
+    )
+    assert created.status_code == 303, created.text
+    if overdue:
+        store.exception_requests_by_draft_id[draft_id][0].requested_at = datetime.now(
+            UTC
+        ) - timedelta(hours=49)
+        store._persist_state()
+
+    url = f"/portal/admin/exceptions/{draft_id}/0/decision"
+    for reopened in (False, True):
+        if reopened:
+            store.close()
+            store = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
+            client = TestClient(create_app(store))
+        before = store._serialize_state()
+        persisted_before = store.store.load_snapshot()
+        # The foreign bearer must pass real authentication and grant APPROVE.
+        if namespace == "provider":
+            _set_bootstrap_runtime_env(monkeypatch, provider="okta")
+            foreign_headers = auth("approver", (Permission.APPROVE,), provider="okta")
+        elif namespace == "auth_mode":
+            _set_bootstrap_runtime_env(monkeypatch)
+            foreign_headers = auth("approver", (Permission.APPROVE,))
+        else:
+            changed = (
+                {"issuer": "https://issuer.example/tenant-b"}
+                if namespace == "issuer"
+                else {"audience": "different-app"}
+            )
+            foreign_headers = oidc_exception_auth("approver", **changed)
+        denied = client.post(
+            url,
+            headers=foreign_headers,
+            data={"decision": decision, "notes": "Foreign decision"},
+            follow_redirects=False,
+        )
+        # Inspect raw state; listing exceptions would itself apply overdue escalation.
+        after = store.exception_requests_by_draft_id[draft_id][0]
+        assert (
+            denied.status_code == 404
+        ), f"foreign {namespace}: HTTP {denied.status_code}, exception {after.status.value}"
+        assert denied.json() == {"detail": "Exception request not found."}
+        assert store._serialize_state() == before
+        assert store.store.load_snapshot() == persisted_before
+
+    # A different subject in the original namespace retains the normal tier checks.
+    if namespace == "provider":
+        _set_bootstrap_runtime_env(monkeypatch)
+        approver_headers = auth("approver", (Permission.APPROVE,))
+    else:
+        approver_headers = oidc_exception_auth("approver")
+    if overdue:
+        insufficient = client.post(
+            url, headers=approver_headers, data={"decision": decision}, follow_redirects=False
+        )
+        assert insufficient.status_code == 403, insufficient.text
+        assert store.exception_requests_by_draft_id[draft_id][0].status.value == "escalated"
+        monkeypatch.setenv("TPP_EXCEPTION_TIER_ENTITLEMENTS", '{"approver": "director"}')
+    allowed = client.post(
+        url, headers=approver_headers, data={"decision": decision}, follow_redirects=False
+    )
+    assert allowed.status_code == 303, allowed.text
+    recorded = store.exception_requests_by_draft_id[draft_id][0]
+    assert recorded.status.value == ("approved" if decision == "approve" else "rejected")
+    if decision == "approve":
+        assert recorded.approval.approver_id == "approver"
+    store.close()
 
 
 @pytest.mark.parametrize("decision", ["approve", "reject"])
