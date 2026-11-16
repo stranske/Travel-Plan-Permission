@@ -10,8 +10,8 @@ Exception decision namespace verification
   and persisted state, SQLite reopen, and same-namespace approver tier checks.
 - [x] Verify the regression detects deliberate removal of the guard and passes
   again after restoring it, using the runtime adaptation described below.
-- [ ] Confirm the exact named-test and whole-file commands in the ordinary CI
-  environment, without the temporary runtime adapter.
+- [x] Confirm the named-test and whole-file commands in the ordinary pytest
+  runtime, without the temporary runtime adapter (see Ordinary pytest runtime follow-up below).
 - [ ] Commit the implementation on the current PR branch and publish this
   verification evidence in the PR.
 
@@ -213,3 +213,44 @@ Committing was attempted after verification, but staging failed with
 `needs-human` to PR #1750 were rejected with `MCP tool call requires approval,
 but approval policy is never`. The verified Python changes remain uncommitted.
 The PR was confirmed open and ready for review (`draft=false`).
+
+Ordinary pytest runtime follow-up (2026-11-16)
+--------------------------------------------
+
+Reviewed commits `9b6530e` through `2803484`. The source guard and namespace
+regression are already committed; prior ordinary-runtime acceptance items were
+correctly left unchecked because those runs stalled.
+
+All receipt test clients, including clients created after reopening SQLite, now
+use one local factory. It selects uvloop when available from the existing
+`uvicorn[standard]` dependency and otherwise retains asyncio. A minimal FastAPI
+reproduction confirmed asyncio TestClient stalls in this sandbox, even with a
+client context manager, while uvloop completes. No global loop configuration,
+authentication patches, external pytest plugins, or additional dependencies
+are required. All existing assertions still run.
+
+- [x] Named regression: 64 passed in 37.78 seconds.
+- [x] Whole receipt test file: 110 passed in 57.62 seconds.
+
+```text
+python3 -m pytest tests/python/test_portal_receipt_api.py::test_exception_decision_rejects_foreign_namespace -q -m 'not slow'
+python3 -m pytest tests/python/test_portal_receipt_api.py -q -m 'not slow'
+black --line-length 100 tests/python/test_portal_receipt_api.py
+BLACK_NUM_WORKERS=1 black --check --line-length 100 --exclude '(\.workflows-lib|node_modules)' .
+ruff check tests/python/test_portal_receipt_api.py src/travel_plan_permission/exception_decisions.py
+git diff --check
+```
+
+The required repository-wide Black check passed for all 242 Python files;
+scoped Ruff and whitespace checks also passed. Both pytest runs used the normal
+repository configuration, with only the required `not slow` marker selection.
+The existing deliberate-break evidence above remains applicable; this follow-up
+changes test client construction only.
+
+Staging this follow-up failed with `.git/index.lock: Read-only file system`.
+PR-body reconciliation, posting the evidence comment, and adding `needs-human`
+were each rejected with `MCP tool call requires approval, but approval policy
+is never`. The verified source changes and evidence remain in the working tree;
+the PR acceptance checkboxes could not be updated. PR #1750 was confirmed open
+and ready for review (`draft=false`). A writable checkout and permitted GitHub
+metadata access are still required for the commit and PR updates.

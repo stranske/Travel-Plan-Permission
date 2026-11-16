@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from importlib.util import find_spec
 from threading import Barrier
 from unittest.mock import Mock
 
@@ -38,11 +39,22 @@ def auth(
     return {"Authorization": f"Bearer {token}"}
 
 
+def _receipt_client(store, **kwargs):
+    # Match Uvicorn's preferred loop when its standard extras are installed.
+    # uvloop also avoids asyncio's socket-based cross-thread wakeup, which can
+    # stall in-process ASGI requests in environments restricting socket writes.
+    return TestClient(
+        create_app(store),
+        backend_options={"use_uvloop": find_spec("uvloop") is not None},
+        **kwargs,
+    )
+
+
 @pytest.fixture
 def app_client(monkeypatch, tmp_path):
     _set_bootstrap_runtime_env(monkeypatch)
     store = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
-    return TestClient(create_app(store)), store
+    return _receipt_client(store), store
 
 
 def payload(**updates):
@@ -97,7 +109,7 @@ def test_real_submission_manager_decision_and_restart(app_client, tmp_path):
     assert recorded["decision_at"]
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
-    restarted = lookup(TestClient(create_app(reloaded))).json()
+    restarted = lookup(_receipt_client(reloaded)).json()
     assert {k: v for k, v in restarted.items() if k != "observed_at"} == {
         k: v for k, v in recorded.items() if k != "observed_at"
     }
@@ -256,7 +268,7 @@ def test_browser_capability_is_view_only_and_cannot_read_status(app_client):
 def test_cross_instance_concurrent_retries_keep_one_persisted_draft(app_client, tmp_path):
     client, store = app_client
     other = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
-    second = TestClient(create_app(other))
+    second = _receipt_client(other)
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(prepare, [client, second]))
     assert results[0]["draft_id"] == results[1]["draft_id"]
@@ -374,7 +386,7 @@ def test_backend_failure_cannot_be_reported_as_missing_or_prepared(app_client, m
         raise OSError("backend unavailable")
 
     monkeypatch.setattr(store, "lookup_portal_receipt", unavailable)
-    result = lookup(TestClient(create_app(store), raise_server_exceptions=False))
+    result = lookup(_receipt_client(store, raise_server_exceptions=False))
     assert result.status_code >= 500
     assert "prepared" not in result.text and "decision_recorded" not in result.text
 
@@ -483,7 +495,7 @@ def test_bound_execution_rejects_conflicting_replay(approved_submission, tmp_pat
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
     try:
         assert reloaded.lookup_submission(pending["execution_id"]) == original
-        status = _planner(TestClient(create_app(reloaded))).poll_status(
+        status = _planner(_receipt_client(reloaded)).poll_status(
             proposal_id=original.request.proposal_id,
             execution_id=pending["execution_id"],
         )
@@ -546,7 +558,7 @@ def test_foreign_overwrite_cannot_replace_bound_execution(
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
     try:
-        restarted = TestClient(create_app(reloaded))
+        restarted = _receipt_client(reloaded)
         _assert_receipt_snapshot(restarted, reloaded, receipt, original)
         for url in (
             f"/api/planner/proposals/{original.request.proposal_id}/executions/{receipt['execution_id']}",
@@ -581,7 +593,7 @@ def test_missing_bound_state_fails_closed_after_restart(bound_execution, tmp_pat
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
     try:
-        restarted = TestClient(create_app(reloaded))
+        restarted = _receipt_client(reloaded)
         for url in (
             f"/api/planner/proposals/{original.request.proposal_id}/executions/{receipt['execution_id']}",
             f"/api/planner/executions/{receipt['execution_id']}/evaluation-result",
@@ -606,7 +618,7 @@ def test_cross_instance_foreign_overwrite_and_portal_retry_preserve_binding(
 ):
     client, store, receipt, original = bound_execution
     other = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
-    second = TestClient(create_app(other))
+    second = _receipt_client(other)
     barrier = Barrier(2)
 
     def foreign_write():
@@ -646,7 +658,7 @@ def test_projection_rejects_mismatched_review_snapshot(approved_submission, tmp_
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
     try:
-        restarted = TestClient(create_app(reloaded))
+        restarted = _receipt_client(reloaded)
         for url in (
             f"/api/planner/proposals/{original.request.proposal_id}/executions/{pending['execution_id']}",
             f"/api/planner/executions/{pending['execution_id']}/evaluation-result",
@@ -723,7 +735,7 @@ def test_manager_decision_reaches_typed_planner_readback(
 
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
-    restarted_client = TestClient(create_app(reloaded))
+    restarted_client = _receipt_client(reloaded)
     restarted = assert_projected(_planner(restarted_client))
     assert restarted.result_payload["execution_id"] == execution
     assert restarted.proposal_status.proposal_id == recorded.proposal_status.proposal_id
@@ -828,7 +840,7 @@ def test_exception_decision_rejects_foreign_namespace(
         if reopened:
             store.close()
             store = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
-            client = TestClient(create_app(store))
+            client = _receipt_client(store)
         before = store._serialize_state()
         persisted_before = store.store.load_snapshot()
         # The foreign bearer must pass real authentication and grant APPROVE.
@@ -937,7 +949,7 @@ def test_exception_decision_reaches_typed_planner_readback(app_client, tmp_path,
     assert foreign.value.status_code == 404
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
-    assert_projected(_planner(TestClient(create_app(reloaded))))
+    assert_projected(_planner(_receipt_client(reloaded)))
     stored = reloaded.lookup_submission(execution).trip_plan
     assert stored.exception_requests == []
 
@@ -1076,6 +1088,6 @@ def test_generic_snapshot_cache_cannot_replace_portal_authority(
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
     try:
-        assert_authoritative(TestClient(create_app(reloaded)), reloaded)
+        assert_authoritative(_receipt_client(reloaded), reloaded)
     finally:
         reloaded.close()
