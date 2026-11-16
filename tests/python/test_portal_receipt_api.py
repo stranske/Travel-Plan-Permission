@@ -2,7 +2,10 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from importlib.util import find_spec
 from threading import Barrier
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -36,11 +39,22 @@ def auth(
     return {"Authorization": f"Bearer {token}"}
 
 
+def _receipt_client(store, **kwargs):
+    # Match Uvicorn's preferred loop when its standard extras are installed.
+    # uvloop also avoids asyncio's socket-based cross-thread wakeup, which can
+    # stall in-process ASGI requests in environments restricting socket writes.
+    return TestClient(
+        create_app(store),
+        backend_options={"use_uvloop": find_spec("uvloop") is not None},
+        **kwargs,
+    )
+
+
 @pytest.fixture
 def app_client(monkeypatch, tmp_path):
     _set_bootstrap_runtime_env(monkeypatch)
     store = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
-    return TestClient(create_app(store)), store
+    return _receipt_client(store), store
 
 
 def payload(**updates):
@@ -95,7 +109,7 @@ def test_real_submission_manager_decision_and_restart(app_client, tmp_path):
     assert recorded["decision_at"]
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
-    restarted = lookup(TestClient(create_app(reloaded))).json()
+    restarted = lookup(_receipt_client(reloaded)).json()
     assert {k: v for k, v in restarted.items() if k != "observed_at"} == {
         k: v for k, v in recorded.items() if k != "observed_at"
     }
@@ -254,7 +268,7 @@ def test_browser_capability_is_view_only_and_cannot_read_status(app_client):
 def test_cross_instance_concurrent_retries_keep_one_persisted_draft(app_client, tmp_path):
     client, store = app_client
     other = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
-    second = TestClient(create_app(other))
+    second = _receipt_client(other)
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(prepare, [client, second]))
     assert results[0]["draft_id"] == results[1]["draft_id"]
@@ -297,15 +311,13 @@ def test_oidc_signed_tokens_validate_issuer_audience_and_namespace(app_client, m
 
     from travel_plan_permission import planner_auth
 
-    from .test_http_service import _serve_jwks
-
     client, _ = app_client
     private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private.public_key()))
     jwk.update({"kid": "receipt-test", "alg": "RS256", "use": "sig"})
     issuer = "https://issuer.example/tenant-a"
 
-    def headers(subject="alice", iss=issuer, aud="trip-planner"):
+    def headers(subject="alice", iss=issuer, aud="trip-planner", signing_key=private):
         now = datetime.now(UTC)
         token = jwt.encode(
             {
@@ -315,33 +327,34 @@ def test_oidc_signed_tokens_validate_issuer_audience_and_namespace(app_client, m
                 "exp": now + timedelta(minutes=5),
                 "nbf": now - timedelta(seconds=5),
             },
-            private,
+            signing_key,
             algorithm="RS256",
             headers={"kid": "receipt-test"},
         )
         return {"Authorization": "Bearer " + token}
 
-    with _serve_jwks({"keys": [jwk]}) as jwks_url:
-        planner_auth._JWKS_CACHE.clear()
-        monkeypatch.setenv("TPP_AUTH_MODE", "oidc")
-        monkeypatch.setenv("TPP_OIDC_AUDIENCE", "trip-planner")
-        monkeypatch.setenv("TPP_OIDC_ISSUER", issuer)
-        monkeypatch.setenv("TPP_OIDC_JWKS_URL", jwks_url)
-        prepared = client.post(BASE, json=payload(), headers=headers())
-        assert prepared.status_code == 200, prepared.text
-        assert lookup(client, headers=headers()).status_code == 200
-        assert lookup(client, headers=headers(subject="bob")).status_code == 404
-        assert (
-            lookup(client, headers=headers(iss="https://issuer.example/tenant-b")).status_code
-            == 401
-        )
-        assert lookup(client, headers=headers(aud="different-app")).status_code == 401
-        # Even a later valid tenant-B configuration cannot reuse tenant-A subject ownership.
-        monkeypatch.setenv("TPP_OIDC_ISSUER", "https://issuer.example/tenant-b")
-        assert (
-            lookup(client, headers=headers(iss="https://issuer.example/tenant-b")).status_code
-            == 404
-        ), "tenant namespace must remain isolated"
+    # Receipt authorization needs real signature validation, without a local listener.
+    fetch_jwks = Mock(return_value={"keys": [jwk]})
+    monkeypatch.setattr(planner_auth, "_fetch_jwks_document", fetch_jwks)
+    planner_auth._JWKS_CACHE.clear()
+    monkeypatch.setenv("TPP_AUTH_MODE", "oidc")
+    monkeypatch.setenv("TPP_OIDC_AUDIENCE", "trip-planner")
+    monkeypatch.setenv("TPP_OIDC_ISSUER", issuer)
+    monkeypatch.setenv("TPP_OIDC_JWKS_URL", "https://issuer.example/jwks.json")
+    prepared = client.post(BASE, json=payload(), headers=headers())
+    assert prepared.status_code == 200, prepared.text
+    assert lookup(client, headers=headers()).status_code == 200
+    assert lookup(client, headers=headers(subject="bob")).status_code == 404
+    foreign_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    assert lookup(client, headers=headers(signing_key=foreign_key)).status_code == 401
+    assert lookup(client, headers=headers(iss="https://issuer.example/tenant-b")).status_code == 401
+    assert lookup(client, headers=headers(aud="different-app")).status_code == 401
+    # Even a later valid tenant-B configuration cannot reuse tenant-A subject ownership.
+    monkeypatch.setenv("TPP_OIDC_ISSUER", "https://issuer.example/tenant-b")
+    assert (
+        lookup(client, headers=headers(iss="https://issuer.example/tenant-b")).status_code == 404
+    ), "tenant namespace must remain isolated"
+    fetch_jwks.assert_called_once_with("https://issuer.example/jwks.json")
 
 
 @pytest.mark.parametrize("failure", ["failed", "unavailable"])
@@ -373,7 +386,7 @@ def test_backend_failure_cannot_be_reported_as_missing_or_prepared(app_client, m
         raise OSError("backend unavailable")
 
     monkeypatch.setattr(store, "lookup_portal_receipt", unavailable)
-    result = lookup(TestClient(create_app(store), raise_server_exceptions=False))
+    result = lookup(_receipt_client(store, raise_server_exceptions=False))
     assert result.status_code >= 500
     assert "prepared" not in result.text and "decision_recorded" not in result.text
 
@@ -482,7 +495,7 @@ def test_bound_execution_rejects_conflicting_replay(approved_submission, tmp_pat
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
     try:
         assert reloaded.lookup_submission(pending["execution_id"]) == original
-        status = _planner(TestClient(create_app(reloaded))).poll_status(
+        status = _planner(_receipt_client(reloaded)).poll_status(
             proposal_id=original.request.proposal_id,
             execution_id=pending["execution_id"],
         )
@@ -545,7 +558,7 @@ def test_foreign_overwrite_cannot_replace_bound_execution(
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
     try:
-        restarted = TestClient(create_app(reloaded))
+        restarted = _receipt_client(reloaded)
         _assert_receipt_snapshot(restarted, reloaded, receipt, original)
         for url in (
             f"/api/planner/proposals/{original.request.proposal_id}/executions/{receipt['execution_id']}",
@@ -580,7 +593,7 @@ def test_missing_bound_state_fails_closed_after_restart(bound_execution, tmp_pat
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
     try:
-        restarted = TestClient(create_app(reloaded))
+        restarted = _receipt_client(reloaded)
         for url in (
             f"/api/planner/proposals/{original.request.proposal_id}/executions/{receipt['execution_id']}",
             f"/api/planner/executions/{receipt['execution_id']}/evaluation-result",
@@ -605,7 +618,7 @@ def test_cross_instance_foreign_overwrite_and_portal_retry_preserve_binding(
 ):
     client, store, receipt, original = bound_execution
     other = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
-    second = TestClient(create_app(other))
+    second = _receipt_client(other)
     barrier = Barrier(2)
 
     def foreign_write():
@@ -645,7 +658,7 @@ def test_projection_rejects_mismatched_review_snapshot(approved_submission, tmp_
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
     try:
-        restarted = TestClient(create_app(reloaded))
+        restarted = _receipt_client(reloaded)
         for url in (
             f"/api/planner/proposals/{original.request.proposal_id}/executions/{pending['execution_id']}",
             f"/api/planner/executions/{pending['execution_id']}/evaluation-result",
@@ -722,7 +735,7 @@ def test_manager_decision_reaches_typed_planner_readback(
 
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
-    restarted_client = TestClient(create_app(reloaded))
+    restarted_client = _receipt_client(reloaded)
     restarted = assert_projected(_planner(restarted_client))
     assert restarted.result_payload["execution_id"] == execution
     assert restarted.proposal_status.proposal_id == recorded.proposal_status.proposal_id
@@ -741,6 +754,165 @@ def _exception_form():
         "justification": "Documented business need for this routed exception tier. " * 2,
         "supporting_doc": "docs/exception-policy.md",
     }
+
+
+@pytest.fixture
+def oidc_exception_auth(monkeypatch):
+    """Issue real signed bearers for independently configured identity namespaces."""
+    import json
+
+    import jwt
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    from travel_plan_permission import planner_auth
+
+    private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private.public_key()))
+    jwk.update({"kid": "exception-test", "alg": "RS256", "use": "sig"})
+    planner_auth._JWKS_CACHE.clear()
+    monkeypatch.setattr(planner_auth, "_fetch_jwks_document", lambda _url: {"keys": [jwk]})
+
+    def headers(subject, *, issuer="https://issuer.example/tenant-a", audience="trip-planner"):
+        monkeypatch.setenv("TPP_AUTH_MODE", "oidc")
+        monkeypatch.setenv("TPP_OIDC_PROVIDER", "google")
+        monkeypatch.setenv("TPP_OIDC_ISSUER", issuer)
+        monkeypatch.setenv("TPP_OIDC_AUDIENCE", audience)
+        monkeypatch.setenv("TPP_OIDC_JWKS_URL", "https://issuer.example/jwks.json")
+        monkeypatch.setenv("TPP_OIDC_ROLE_MAP", '{"approver": "approver"}')
+        now = datetime.now(UTC)
+        bearer = jwt.encode(
+            {
+                "sub": subject,
+                "iss": issuer,
+                "aud": audience,
+                "exp": now + timedelta(minutes=5),
+                "nbf": now - timedelta(seconds=5),
+            },
+            private,
+            algorithm="RS256",
+            headers={"kid": "exception-test"},
+        )
+        return {"Authorization": "Bearer " + bearer}
+
+    return headers
+
+
+@pytest.mark.parametrize("namespace", ["provider", "issuer", "audience", "auth_mode"])
+@pytest.mark.parametrize(
+    "exception_index", [0, 999], ids=["existing-exception", "missing-exception"]
+)
+@pytest.mark.parametrize("decision", ["approve", "reject"])
+@pytest.mark.parametrize("overdue", [False, True], ids=["pending", "overdue"])
+@pytest.mark.parametrize(
+    "foreign_subject", ["approver", "traveler-a"], ids=["other-subject", "same-subject"]
+)
+def test_exception_decision_rejects_foreign_namespace(
+    app_client,
+    monkeypatch,
+    tmp_path,
+    oidc_exception_auth,
+    namespace,
+    exception_index,
+    decision,
+    overdue,
+    foreign_subject,
+):
+    client, store = app_client
+    owner_headers = auth() if namespace == "provider" else oidc_exception_auth("traveler-a")
+    prepared = client.post(BASE, json=payload(), headers=owner_headers)
+    assert prepared.status_code == 200, prepared.text
+    draft_id = prepared.json()["draft_id"]
+    created = client.post(
+        f"/portal/review/{draft_id}/exceptions",
+        headers=owner_headers,
+        data=_exception_form(),
+        follow_redirects=False,
+    )
+    assert created.status_code == 303, created.text
+    if overdue:
+        store.exception_requests_by_draft_id[draft_id][0].requested_at = datetime.now(
+            UTC
+        ) - timedelta(hours=49)
+        store._persist_state()
+
+    url = f"/portal/admin/exceptions/{draft_id}/0/decision"
+    for reopened in (False, True):
+        if reopened:
+            store.close()
+            store = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
+            client = _receipt_client(store)
+        before = store._serialize_state()
+        persisted_before = store.store.load_snapshot()
+        # The foreign bearer must pass real authentication and grant APPROVE.
+        # Even reusing the owner's subject cannot bypass namespace isolation.
+        if namespace == "provider":
+            _set_bootstrap_runtime_env(monkeypatch, provider="okta")
+            foreign_headers = auth(foreign_subject, (Permission.APPROVE,), provider="okta")
+        elif namespace == "auth_mode":
+            _set_bootstrap_runtime_env(monkeypatch)
+            foreign_headers = auth(foreign_subject, (Permission.APPROVE,))
+        else:
+            changed = (
+                {"issuer": "https://issuer.example/tenant-b"}
+                if namespace == "issuer"
+                else {"audience": "different-app"}
+            )
+            foreign_headers = oidc_exception_auth(foreign_subject, **changed)
+            monkeypatch.setenv(
+                "TPP_OIDC_ROLE_MAP", '{"approver": "approver", "traveler-a": "approver"}'
+            )
+        # A foreign caller must not reach exception access, SLA routing, or writes,
+        # even if persisting an unchanged snapshot would hide the side effect.
+        with monkeypatch.context() as guarded:
+            downstream = {}
+            for method in (
+                "escalate_exception_requests",
+                "lookup_exception_request",
+                "decide_exception_request",
+                "_persist_state",
+                "persist_audit_events",
+            ):
+                downstream[method] = Mock(wraps=getattr(store, method))
+                guarded.setattr(store, method, downstream[method])
+            denied = client.post(
+                f"/portal/admin/exceptions/{draft_id}/{exception_index}/decision",
+                headers=foreign_headers,
+                data={"decision": decision, "notes": "Foreign decision"},
+                follow_redirects=False,
+            )
+        # Inspect raw state; listing exceptions would itself apply overdue escalation.
+        after = store.exception_requests_by_draft_id[draft_id][0]
+        assert (
+            denied.status_code == 404
+        ), f"foreign {namespace}: HTTP {denied.status_code}, exception {after.status.value}"
+        assert denied.json() == {"detail": "Exception request not found."}
+        for call in downstream.values():
+            call.assert_not_called()
+        assert store._serialize_state() == before
+        assert store.store.load_snapshot() == persisted_before
+
+    # A different subject in the original namespace retains the normal tier checks.
+    if namespace == "provider":
+        _set_bootstrap_runtime_env(monkeypatch)
+        approver_headers = auth("approver", (Permission.APPROVE,))
+    else:
+        approver_headers = oidc_exception_auth("approver")
+    if overdue:
+        insufficient = client.post(
+            url, headers=approver_headers, data={"decision": decision}, follow_redirects=False
+        )
+        assert insufficient.status_code == 403, insufficient.text
+        assert store.exception_requests_by_draft_id[draft_id][0].status.value == "escalated"
+        monkeypatch.setenv("TPP_EXCEPTION_TIER_ENTITLEMENTS", '{"approver": "director"}')
+    allowed = client.post(
+        url, headers=approver_headers, data={"decision": decision}, follow_redirects=False
+    )
+    assert allowed.status_code == 303, allowed.text
+    recorded = store.exception_requests_by_draft_id[draft_id][0]
+    assert recorded.status.value == ("approved" if decision == "approve" else "rejected")
+    if decision == "approve":
+        assert recorded.approval.approver_id == "approver"
+    store.close()
 
 
 @pytest.mark.parametrize("decision", ["approve", "reject"])
@@ -780,7 +952,7 @@ def test_exception_decision_reaches_typed_planner_readback(app_client, tmp_path,
     assert foreign.value.status_code == 404
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
-    assert_projected(_planner(TestClient(create_app(reloaded))))
+    assert_projected(_planner(_receipt_client(reloaded)))
     stored = reloaded.lookup_submission(execution).trip_plan
     assert stored.exception_requests == []
 
@@ -919,6 +1091,6 @@ def test_generic_snapshot_cache_cannot_replace_portal_authority(
     store.close()
     reloaded = PlannerProposalStore(state_path=tmp_path / "receipts.sqlite3")
     try:
-        assert_authoritative(TestClient(create_app(reloaded)), reloaded)
+        assert_authoritative(_receipt_client(reloaded), reloaded)
     finally:
         reloaded.close()

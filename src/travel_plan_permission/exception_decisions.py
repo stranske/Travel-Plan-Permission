@@ -10,6 +10,7 @@ from fastapi import HTTPException, status
 from .exception_authority import authorize_exception_tier
 from .models import ExceptionRequest, InvalidExceptionTransition
 from .planner_auth import PlannerAuthContext
+from .portal_receipts import identity_namespace
 from .security import AuditEventType
 
 if TYPE_CHECKING:
@@ -114,7 +115,20 @@ def decide_portal_exception(
     approved: bool,
     notes: str | None,
 ) -> None:
-    """Authorize the routed tier and translate missing or finalized decisions."""
+    """Authorize the bound namespace and routed tier before deciding."""
+
+    draft = proposal_store.lookup_portal_draft(draft_id)
+    if draft is not None and draft.receipt_binding is not None:
+        binding = draft.receipt_binding
+        if (binding.owner_mode, binding.owner_provider, binding.owner_namespace) != (
+            auth_context.auth_mode.value,
+            auth_context.provider,
+            identity_namespace(auth_context),
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Exception request not found.",
+            )
 
     # Refresh once before authorization; never raise the tier after it succeeds.
     proposal_store.escalate_exception_requests(draft_id)
