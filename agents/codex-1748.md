@@ -112,3 +112,41 @@ evidence to PR #1750 and adding the `needs-human` label were rejected with
 confirmed open and ready for review (`draft=false`). The changes and evidence
 remain local; ordinary CI verification, a commit, and publication of the
 evidence are still required.
+
+Subject-collision follow-up
+--------------------------
+
+- [x] Extend the named regression to foreign bearers that reuse the draft owner's
+  subject, as well as bearers with a different subject. All four namespace
+  boundaries still cover approve/reject, pending/overdue routing, unchanged state,
+  SQLite reopen, and same-namespace tier checks. The foreign OIDC configuration
+  grants APPROVE to the colliding subject so the request reaches the guard.
+
+Using the temporary sandbox runtime adapter, the expanded named test passed all
+32 cases. Removing only the namespace guard caused all 32 cases to fail in 11.55
+seconds. The other-subject/pending/approve/provider case again reported
+`foreign provider: HTTP 303, exception approved`. The same-subject equivalent
+also exposed the unauthorized approval. The guard was restored byte-for-byte
+in a `finally` block. The restored named test passed 32 cases in 13.60 seconds;
+the entire file passed 78 tests in 29.73 seconds. No assertions were skipped.
+The adapter uses uvloop for ASGI and supplies the existing OIDC receipt test's
+JWKS document in process, preserving signature/issuer/audience checks.
+
+```text
+PYTHONPATH=/tmp:src python3 -m pytest -p receipt_test_runtime tests/python/test_portal_receipt_api.py::test_exception_decision_rejects_foreign_namespace -q -m 'not slow'
+PYTHONPATH=/tmp:src python3 -m pytest -p receipt_test_runtime tests/python/test_portal_receipt_api.py -q -m 'not slow'
+```
+
+The ordinary named-test and whole-file commands again stalled at the first ASGI
+request and were stopped by timeouts. A run with only the uvloop adaptation
+confirmed that the existing JWKS HTTP listener raises `PermissionError: [Errno 1]
+Operation not permitted`. The ordinary-runtime acceptance items remain unchecked.
+Black formatting, the repository-wide Black check (242 files), scoped Ruff, and
+`git diff --check` passed.
+
+Staging this follow-up failed because `.git/index.lock` cannot be created on the
+read-only filesystem. Publishing the evidence comment and adding `needs-human`
+to PR #1750 were both rejected with `MCP tool call requires approval, but approval
+policy is never`. The test changes and this evidence remain uncommitted in the
+working tree. Ordinary CI verification, committing, and publishing the evidence
+still require a suitably permitted environment.

@@ -789,8 +789,18 @@ def oidc_exception_auth(monkeypatch):
 @pytest.mark.parametrize("namespace", ["provider", "issuer", "audience", "auth_mode"])
 @pytest.mark.parametrize("decision", ["approve", "reject"])
 @pytest.mark.parametrize("overdue", [False, True], ids=["pending", "overdue"])
+@pytest.mark.parametrize(
+    "foreign_subject", ["approver", "traveler-a"], ids=["other-subject", "same-subject"]
+)
 def test_exception_decision_rejects_foreign_namespace(
-    app_client, monkeypatch, tmp_path, oidc_exception_auth, namespace, decision, overdue
+    app_client,
+    monkeypatch,
+    tmp_path,
+    oidc_exception_auth,
+    namespace,
+    decision,
+    overdue,
+    foreign_subject,
 ):
     client, store = app_client
     owner_headers = auth() if namespace == "provider" else oidc_exception_auth("traveler-a")
@@ -819,19 +829,23 @@ def test_exception_decision_rejects_foreign_namespace(
         before = store._serialize_state()
         persisted_before = store.store.load_snapshot()
         # The foreign bearer must pass real authentication and grant APPROVE.
+        # Even reusing the owner's subject cannot bypass namespace isolation.
         if namespace == "provider":
             _set_bootstrap_runtime_env(monkeypatch, provider="okta")
-            foreign_headers = auth("approver", (Permission.APPROVE,), provider="okta")
+            foreign_headers = auth(foreign_subject, (Permission.APPROVE,), provider="okta")
         elif namespace == "auth_mode":
             _set_bootstrap_runtime_env(monkeypatch)
-            foreign_headers = auth("approver", (Permission.APPROVE,))
+            foreign_headers = auth(foreign_subject, (Permission.APPROVE,))
         else:
             changed = (
                 {"issuer": "https://issuer.example/tenant-b"}
                 if namespace == "issuer"
                 else {"audience": "different-app"}
             )
-            foreign_headers = oidc_exception_auth("approver", **changed)
+            foreign_headers = oidc_exception_auth(foreign_subject, **changed)
+            monkeypatch.setenv(
+                "TPP_OIDC_ROLE_MAP", '{"approver": "approver", "traveler-a": "approver"}'
+            )
         # A foreign caller must not even reach exception access or SLA routing.
         with monkeypatch.context() as guarded:
             downstream = {}
