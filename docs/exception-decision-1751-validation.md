@@ -501,3 +501,32 @@ required marker. PR #1754 was verified open and ready for review (`draft=false`)
 Automatic approval review also rejected the results comment with the same
 approval-policy error, so the remote reconciliation and blocker report remain
 unpublished.
+
+## Follow-up: reauthorize the requested index in a multi-request draft
+
+The named concurrency regression now targets either index in a two-request
+draft. It checks that the other request stays unchanged in both committed
+snapshots, and that denial and decision audits identify the requested index.
+All existing tier, lock, persistence, and restart assertions still apply.
+
+- [x] Named regression: **16 passed** with
+  `python3 -m pytest tests/python/test_http_service.py::test_exception_decision_reauthorizes_concurrent_escalation -q -m "not slow"`.
+- [x] Black formatting, the required repository-wide Black check (**242
+  files**), Ruff, and `git diff --check` pass.
+- [ ] Whole HTTP file passes: the run stalls in
+  `test_readyz_reports_missing_runtime_config` waiting for the synchronous
+  TestClient's event loop. A diagnostic run with a 30-second timeout and
+  `faulthandler_timeout=10` was killed after its shutdown grace period.
+  Direct probes confirm TCP socket creation and Unix socket binding both
+  raise `PermissionError: [Errno 1] Operation not permitted`.
+
+The commit is blocked because `git add -- tests/python/test_http_service.py`
+cannot create `.git/index.lock` on the read-only filesystem. The Python change
+remains in the working tree on `codex/issue-1751`. Commit it from a writable
+checkout and rerun the full HTTP file where sockets are permitted.
+
+Automatic approval review rejected the verified named-test checkbox update
+with `MCP tool call requires approval, but approval policy is never`.
+PR #1754 was verified open and ready for review (`draft=false`).
+The `needs-human` label and results comment were rejected with the same
+approval-policy error, leaving the remote checklist and blocker report unchanged.

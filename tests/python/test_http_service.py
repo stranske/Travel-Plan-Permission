@@ -4310,10 +4310,11 @@ def test_manager_review_refresh_only_after_changes_requested(status) -> None:
 @pytest.mark.parametrize("decision", ["approve", "reject"])
 @pytest.mark.parametrize("escalations", [1, 2], ids=["director", "board"])
 @pytest.mark.parametrize("defer_escalation", [False, True], ids=["routed", "overdue"])
+@pytest.mark.parametrize("exception_index", [0, 1], ids=["first-request", "second-request"])
 @pytest.mark.parametrize("anyio_backend", ["asyncio"])
 @pytest.mark.anyio
 async def test_exception_decision_reauthorizes_concurrent_escalation(
-    monkeypatch, tmp_path, decision, escalations, defer_escalation
+    monkeypatch, tmp_path, decision, escalations, defer_escalation, exception_index
 ) -> None:
     """A stale read cannot authorize routing changed or made overdue by a peer."""
     _set_bootstrap_runtime_env(monkeypatch)
@@ -4321,16 +4322,21 @@ async def test_exception_decision_reauthorizes_concurrent_escalation(
     state_path = tmp_path / "concurrent-escalation.sqlite3"
     store = PlannerProposalStore(state_path=state_path)
     peer = PlannerProposalStore(state_path=state_path)
-    # Seed the pending request through public store operations.
+    # Keep another pending request beside the target to detect index mix-ups.
     draft_id = store.save_portal_draft(_portal_form_payload()).draft_id
-    store.create_exception_request(
-        draft_id,
-        http_service.ExceptionRequest(
-            type=http_service.ExceptionType.ADVANCE_BOOKING,
-            amount="250",
-            justification="Documented business need for this routed exception tier. " * 2,
-            requestor="traveler",
-        ),
+    for _ in range(2):
+        store.create_exception_request(
+            draft_id,
+            http_service.ExceptionRequest(
+                type=http_service.ExceptionType.ADVANCE_BOOKING,
+                amount="250",
+                justification="Documented business need for this routed exception tier. " * 2,
+                requestor="traveler",
+            ),
+        )
+    sibling_index = 1 - exception_index
+    sibling = store.lookup_exception_request(draft_id, exception_index=sibling_index).model_dump(
+        mode="json"
     )
     app = create_app(store)
 
@@ -4341,7 +4347,7 @@ async def test_exception_decision_reauthorizes_concurrent_escalation(
             transport=httpx.ASGITransport(app=app), base_url="http://testserver"
         ) as client:
             return await client.post(
-                f"/portal/admin/exceptions/{draft_id}/0/decision?actor_role=approver",
+                f"/portal/admin/exceptions/{draft_id}/{exception_index}/decision?actor_role=approver",
                 headers=headers,
                 data={"decision": decision, "notes": "Tier authority check."},
                 follow_redirects=False,
@@ -4364,7 +4370,7 @@ async def test_exception_decision_reauthorizes_concurrent_escalation(
     monkeypatch.setattr(store.store, "save_snapshot", capture_snapshot)
 
     def authorize_live_target(auth_context, target, **kwargs):
-        assert target is store.exception_requests_by_draft_id[draft_id][0]
+        assert target is store.exception_requests_by_draft_id[draft_id][exception_index]
         authorizations.append((auth_context.subject, target.approval_level, store._operation_depth))
         return authorize(auth_context, target, **kwargs)
 
@@ -4372,7 +4378,7 @@ async def test_exception_decision_reauthorizes_concurrent_escalation(
 
     def pause_before_decision(*args, **kwargs):
         # This hook runs outside the serialized method, at the old read/write gap.
-        stale = store.lookup_exception_request(draft_id, exception_index=0)
+        stale = store.lookup_exception_request(draft_id, exception_index=exception_index)
         assert stale.approval_level is ExceptionApprovalLevel.MANAGER
         assert (
             authorize(
@@ -4381,7 +4387,7 @@ async def test_exception_decision_reauthorizes_concurrent_escalation(
                 security=store.security,
                 persist_audit=store.persist_audit_events,
                 draft_id=draft_id,
-                exception_index=0,
+                exception_index=exception_index,
             )
             is ExceptionApprovalLevel.MANAGER
         )
@@ -4401,9 +4407,9 @@ async def test_exception_decision_reauthorizes_concurrent_escalation(
     thread.start()
     try:
         assert read_complete.wait(5), "decision did not reach the read/write gap"
-        peer.lookup_exception_request(draft_id, exception_index=0)  # refresh the peer
+        peer.lookup_exception_request(draft_id, exception_index=exception_index)  # refresh the peer
         for step in range(escalations):
-            pending = peer.exception_requests_by_draft_id[draft_id][0]
+            pending = peer.exception_requests_by_draft_id[draft_id][exception_index]
             pending.requested_at = datetime.now(UTC) - timedelta(hours=49)
             if pending.escalated_at is not None:
                 pending.escalated_at = pending.requested_at
@@ -4419,7 +4425,7 @@ async def test_exception_decision_reauthorizes_concurrent_escalation(
         persisted_level = (
             ExceptionApprovalLevel.MANAGER if escalations == 1 else ExceptionApprovalLevel.DIRECTOR
         )
-        assert peer.exception_requests_by_draft_id[draft_id][0].approval_level is (
+        assert peer.exception_requests_by_draft_id[draft_id][exception_index].approval_level is (
             persisted_level if defer_escalation else required
         )
         resume.set()
@@ -4432,10 +4438,11 @@ async def test_exception_decision_reauthorizes_concurrent_escalation(
         # for overdue escalation or an intermediate snapshot authorizing a manager.
         assert len(committed_snapshots) == 1
         committed = committed_snapshots[0]
-        persisted = committed["exception_requests_by_draft_id"][draft_id][0]
+        persisted = committed["exception_requests_by_draft_id"][draft_id][exception_index]
         assert persisted["approval_level"] == required.value
         assert persisted["status"] == ExceptionStatus.ESCALATED.value
         assert persisted["approval"] is None
+        assert committed["exception_requests_by_draft_id"][draft_id][sibling_index] == sibling
         assert committed["audit_events"][: len(initial_audits)] == initial_audits
         assert [event["outcome"] for event in committed["audit_events"][len(initial_audits) :]] == [
             *(["escalated"] * escalations),
@@ -4448,7 +4455,7 @@ async def test_exception_decision_reauthorizes_concurrent_escalation(
             assert restarted._serialize_state() == committed
         finally:
             restarted.close()
-        saved = peer.lookup_exception_request(draft_id, exception_index=0)
+        saved = peer.lookup_exception_request(draft_id, exception_index=exception_index)
         assert saved.approval_level is required
         assert saved.status is ExceptionStatus.ESCALATED
         assert saved.approval is None
@@ -4456,6 +4463,7 @@ async def test_exception_decision_reauthorizes_concurrent_escalation(
         assert len(denials) == 1
         assert denials[0].actor == "manager"
         assert denials[0].metadata["required_level"] == required.value
+        assert denials[0].metadata["exception_index"] == exception_index
         assert not any(
             event.outcome in {"approved", "rejected"} for event in peer.list_audit_events()
         )
@@ -4469,10 +4477,12 @@ async def test_exception_decision_reauthorizes_concurrent_escalation(
         assert len(committed_snapshots) == 2
         finalized = committed_snapshots[-1]
         assert finalized["audit_events"][:-1] == committed["audit_events"]
+        assert finalized["exception_requests_by_draft_id"][draft_id][sibling_index] == sibling
         final_audit = finalized["audit_events"][-1]
+        assert final_audit["metadata"]["exception_index"] == exception_index
         assert final_audit["actor"] == "reviewer"
         assert final_audit["outcome"] == ("approved" if decision == "approve" else "rejected")
-        saved = peer.lookup_exception_request(draft_id, exception_index=0)
+        saved = peer.lookup_exception_request(draft_id, exception_index=exception_index)
         assert saved.approval_level is required
         assert saved.escalated_at is not None
         assert saved.status is (
