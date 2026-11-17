@@ -34,9 +34,10 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from . import audit, demo_seed
-from .exception_authority import routed_exception_level
+from .exception_authority import authorize_exception_tier
 from .exception_decisions import (
     EscalationPersistenceError,
+    authorize_exception_namespace,
     decide_portal_exception,
     escalate_all_draft_exceptions,
     escalate_draft_exceptions,
@@ -978,38 +979,68 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
         draft_id: str,
         *,
         exception_index: int,
-        actor_id: str,
+        auth_context: PlannerAuthContext,
         approved: bool,
         notes: str | None = None,
     ) -> ExceptionRequest:
-        """Approve or reject an exception request tied to a draft."""
+        """Authorize and decide against live routing under one serialized operation."""
 
-        requests = self.exception_requests_by_draft_id.get(draft_id)
-        if requests is None or exception_index < 0 or exception_index >= len(requests):
-            raise KeyError(f"No exception request {exception_index} found for draft '{draft_id}'.")
-        target = requests[exception_index]
-        target.ensure_decidable()
-        if approved:
-            target.approve(approver_id=actor_id, level=routed_exception_level(target), notes=notes)
-            outcome = "approved"
-        else:
-            target.reject()
-            outcome = "rejected"
-        metadata: dict[str, object] = {
-            "exception_type": target.type.value,
-            "exception_index": exception_index,
-            "status": target.status.value,
-        }
-        if notes is not None:
-            metadata["notes"] = notes
-        self.security.audit_log.record(
-            event_type=AuditEventType.EXCEPTION,
-            actor=actor_id,
-            subject=draft_id,
-            outcome=outcome,
-            metadata=metadata,
-        )
-        self._persist_state()
+        authorize_exception_namespace(self, draft_id, auth_context)
+        requests = self.exception_requests_by_draft_id.get(draft_id, [])
+        snapshot = [_copy_exception_request(item) for item in requests]
+        audit_count = len(self.security.audit_log.events)
+        denial: HTTPException | None = None
+        try:
+            escalate_draft_exceptions(self, draft_id, persist=False)
+            if exception_index < 0 or exception_index >= len(requests):
+                raise KeyError(
+                    f"No exception request {exception_index} found for draft '{draft_id}'."
+                )
+            target = requests[exception_index]
+            target.ensure_decidable()
+            try:
+                level = authorize_exception_tier(
+                    auth_context,
+                    target,
+                    security=self.security,
+                    # Save routing and denial audit together below, while still locked.
+                    persist_audit=lambda: None,
+                    draft_id=draft_id,
+                    exception_index=exception_index,
+                )
+            except HTTPException as exc:
+                if exc.status_code != status.HTTP_403_FORBIDDEN:
+                    raise
+                denial = exc
+            if denial is None:
+                if approved:
+                    target.approve(approver_id=auth_context.subject, level=level, notes=notes)
+                    outcome = "approved"
+                else:
+                    target.reject()
+                    outcome = "rejected"
+                metadata: dict[str, object] = {
+                    "exception_type": target.type.value,
+                    "exception_index": exception_index,
+                    "status": target.status.value,
+                }
+                if notes is not None:
+                    metadata["notes"] = notes
+                self.security.audit_log.record(
+                    event_type=AuditEventType.EXCEPTION,
+                    actor=auth_context.subject,
+                    subject=draft_id,
+                    outcome=outcome,
+                    metadata=metadata,
+                )
+            # Avoid a read failure after a successful snapshot commit.
+            self._persist_state(refresh=False)
+        except Exception:
+            requests[:] = snapshot
+            del self.security.audit_log.events[audit_count:]
+            raise
+        if denial is not None:
+            raise denial
         return _copy_exception_request(target)
 
     @_serialized_store_operation

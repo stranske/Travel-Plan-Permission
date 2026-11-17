@@ -4307,6 +4307,84 @@ def test_manager_review_refresh_only_after_changes_requested(status) -> None:
 
 
 @pytest.mark.parametrize("decision", ["approve", "reject"])
+@pytest.mark.parametrize("escalations", [1, 2], ids=["director", "board"])
+def test_exception_decision_reauthorizes_concurrent_escalation(
+    monkeypatch, tmp_path, decision, escalations
+) -> None:
+    """A manager's stale read cannot authorize a concurrently escalated decision."""
+    _set_bootstrap_runtime_env(monkeypatch)
+    _set_tier_entitlements(monkeypatch, {})
+    state_path = tmp_path / "concurrent-escalation.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    peer = PlannerProposalStore(state_path=state_path)
+    client = TestClient(create_app(store))
+    draft_id, _ = _create_portal_draft(client)
+    creator = _bootstrap_auth_header(subject="traveler", permissions=(Permission.CREATE,))
+    _seed_tiered_exception(
+        client, draft_id, creator, exception_type="advance_booking", amount="250"
+    )
+    manager = _bootstrap_auth_header(subject="manager", permissions=(Permission.APPROVE,))
+    read_complete, resume = threading.Event(), threading.Event()
+    decide = store.decide_exception_request
+    responses, errors = [], []
+
+    def pause_before_decision(*args, **kwargs):
+        # This hook runs outside the serialized method, at the old read/write gap.
+        stale = store.lookup_exception_request(draft_id, exception_index=0)
+        assert stale.approval_level is ExceptionApprovalLevel.MANAGER
+        read_complete.set()
+        assert resume.wait(5), "concurrent escalation did not finish"
+        return decide(*args, **kwargs)
+
+    monkeypatch.setattr(store, "decide_exception_request", pause_before_decision)
+
+    def manager_decision():
+        try:
+            responses.append(_decide_exception(client, draft_id, 0, manager, decision=decision))
+        except Exception as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=manager_decision)
+    thread.start()
+    try:
+        assert read_complete.wait(5), "decision did not reach the read/write gap"
+        peer.lookup_exception_request(draft_id, exception_index=0)  # refresh the peer
+        for _ in range(escalations):
+            pending = peer.exception_requests_by_draft_id[draft_id][0]
+            pending.requested_at = datetime.now(UTC) - timedelta(hours=49)
+            if pending.escalated_at is not None:
+                pending.escalated_at = pending.requested_at
+            peer.escalate_exception_requests(draft_id)
+        required = (
+            ExceptionApprovalLevel.DIRECTOR if escalations == 1 else ExceptionApprovalLevel.BOARD
+        )
+        assert peer.exception_requests_by_draft_id[draft_id][0].approval_level is required
+        resume.set()
+        thread.join(5)
+        assert not thread.is_alive() and not errors
+        assert len(responses) == 1
+        assert responses[0].status_code == 403, responses[0].text
+        # Read raw/restarted state before any listing can trigger another escalation.
+        saved = peer.lookup_exception_request(draft_id, exception_index=0)
+        assert saved.approval_level is required
+        assert saved.status is ExceptionStatus.ESCALATED
+        assert saved.approval is None
+        denials = [event for event in peer.list_audit_events() if event.outcome == "denied"]
+        assert len(denials) == 1
+        assert denials[0].actor == "manager"
+        assert denials[0].metadata["required_level"] == required.value
+        assert not any(
+            event.outcome in {"approved", "rejected"} for event in peer.list_audit_events()
+        )
+    finally:
+        resume.set()
+        thread.join(5)
+        client.close()
+        store.close()
+        peer.close()
+
+
+@pytest.mark.parametrize("decision", ["approve", "reject"])
 def test_exception_escalation_before_authorization(monkeypatch, tmp_path, decision) -> None:
     """Overdue routing persists even when the old manager authority is denied."""
     _set_bootstrap_runtime_env(monkeypatch)

@@ -9,13 +9,20 @@ import sqlite3
 import subprocess
 import sys
 import threading
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
+from travel_plan_permission import http_service
 from travel_plan_permission.http_service import _PORTAL_MAX_DRAFTS, PlannerProposalStore
+from travel_plan_permission.models import (
+    ExceptionApprovalLevel,
+    ExceptionRequest,
+    ExceptionStatus,
+    ExceptionType,
+)
 from travel_plan_permission.persistence import (
     JsonPortalStateStore,
     SQLitePortalStateStore,
@@ -26,6 +33,8 @@ from travel_plan_permission.persistence.resolver import (
     PORTAL_BACKEND_ENV,
     PORTAL_DATABASE_URL_ENV,
 )
+from travel_plan_permission.planner_auth import PlannerAuthContext, PlannerAuthMode
+from travel_plan_permission.security import EXCEPTION_TIER_ENTITLEMENT_ENV_VAR, Permission
 
 
 def _draft_payload(answers: dict[str, object]) -> dict[str, object]:
@@ -909,6 +918,179 @@ def test_shared_service_operation_preserves_concurrent_writers(tmp_path):
     first.close()
     second.close()
     reopened.close()
+
+
+@pytest.mark.parametrize("approved", [False, True], ids=["reject", "approve"])
+def test_exception_decision_serializes_two_sqlite_stores(tmp_path, monkeypatch, approved):
+    """A peer cannot refresh/escalate between live tier authorization and commit."""
+    path = tmp_path / "serialized-exceptions.sqlite3"
+    first = PlannerProposalStore(state_path=path)
+    second = PlannerProposalStore(state_path=path)
+    first.exception_requests_by_draft_id["draft"] = [
+        ExceptionRequest(
+            type=ExceptionType.ADVANCE_BOOKING,
+            justification="Documented business need requires this travel exception. " * 2,
+            requestor="traveler",
+            amount="250",
+            requested_at=datetime.now(UTC) - timedelta(hours=49),
+        )
+    ]
+    first._persist_state()
+    monkeypatch.setenv(EXCEPTION_TIER_ENTITLEMENT_ENV_VAR, '{"director": "director"}')
+    auth = PlannerAuthContext(
+        subject="director",
+        permissions=(Permission.APPROVE,),
+        provider="google",
+        expires_at=None,
+        auth_mode=PlannerAuthMode.BOOTSTRAP_TOKEN,
+    )
+    authorized, resume_decision, resume_peer = (threading.Event() for _ in range(3))
+    observed = queue.Queue()
+    errors, decisions = [], []
+    authorize = http_service.authorize_exception_tier
+    connect = sqlite3.connect
+    load_peer = second._load_state
+    save = MagicMock(wraps=first.store.save_snapshot)
+    monkeypatch.setattr(first.store, "save_snapshot", save)
+
+    def pause_after_authorization(*args, **kwargs):
+        level = authorize(*args, **kwargs)
+        assert level is ExceptionApprovalLevel.DIRECTOR
+        authorized.set()
+        assert resume_decision.wait(5), "decision was not released"
+        return level
+
+    class ObservedLock:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def execute(self, statement):
+            if statement == "BEGIN IMMEDIATE":
+                self.handle.execute("PRAGMA busy_timeout=0")
+                try:
+                    return self.handle.execute(statement)
+                except sqlite3.OperationalError as exc:
+                    if exc.sqlite_errorcode != sqlite3.SQLITE_BUSY:
+                        raise
+                    observed.put("contended")
+                    if not resume_peer.wait(5):
+                        raise RuntimeError("decision did not release service ownership") from exc
+                    self.handle.execute("PRAGMA busy_timeout=30000")
+            return self.handle.execute(statement)
+
+        def close(self):
+            self.handle.close()
+
+    def observe_connect(database, *args, **kwargs):
+        handle = connect(database, *args, **kwargs)
+        if threading.current_thread() is peer and str(database).endswith(".service-lock.sqlite3"):
+            return ObservedLock(handle)
+        return handle
+
+    def observe_peer_load():
+        observed.put("loaded")
+        load_peer()
+
+    def decide():
+        try:
+            decisions.append(
+                first.decide_exception_request(
+                    "draft",
+                    exception_index=0,
+                    auth_context=auth,
+                    approved=approved,
+                    notes="Reviewed",
+                )
+            )
+        except Exception as exc:
+            errors.append(exc)
+
+    def escalate():
+        try:
+            second.escalate_exception_requests("draft")
+        except Exception as exc:
+            errors.append(exc)
+
+    monkeypatch.setattr(http_service, "authorize_exception_tier", pause_after_authorization)
+    monkeypatch.setattr(sqlite3, "connect", observe_connect)
+    monkeypatch.setattr(second, "_load_state", observe_peer_load)
+    decision, peer = threading.Thread(target=decide), threading.Thread(target=escalate)
+    try:
+        decision.start()
+        assert authorized.wait(5), "decision did not authorize the live tier"
+        assert save.call_count == 0, "escalation was persisted separately from the decision"
+        peer.start()
+        assert observed.get(timeout=5) == "contended", "peer refreshed inside the decision"
+        resume_decision.set()
+        decision.join(5)
+        assert not decision.is_alive() and not errors
+        assert save.call_count == 1
+        resume_peer.set()
+        peer.join(5)
+        assert not peer.is_alive() and not errors
+        assert observed.get(timeout=5) == "loaded"
+        saved = second.exception_requests_by_draft_id["draft"][0]
+        assert saved == decisions[0]
+        assert saved.approval_level is ExceptionApprovalLevel.DIRECTOR
+        assert saved.status is (ExceptionStatus.APPROVED if approved else ExceptionStatus.REJECTED)
+        if approved:
+            assert saved.approval.approver_id == "director"
+            assert saved.approval.level is ExceptionApprovalLevel.DIRECTOR
+        assert [event.outcome for event in second.security.audit_log.events] == [
+            "escalated",
+            "approved" if approved else "rejected",
+        ]
+    finally:
+        resume_decision.set()
+        resume_peer.set()
+        for thread in (decision, peer):
+            if thread.ident is not None:
+                thread.join(5)
+        first.close()
+        second.close()
+
+
+@pytest.mark.parametrize("outcome", ["approve", "reject", "deny"])
+def test_exception_decision_persistence_failure_rolls_back_draft(tmp_path, monkeypatch, outcome):
+    """A failed transaction restores every escalation, decision, and audit event."""
+    path = tmp_path / "exception-rollback.sqlite3"
+    store = PlannerProposalStore(state_path=path)
+    request = ExceptionRequest(
+        type=ExceptionType.ADVANCE_BOOKING,
+        justification="Documented business need requires this travel exception. " * 2,
+        requestor="traveler",
+        amount="250",
+        requested_at=datetime.now(UTC) - timedelta(hours=49),
+    )
+    requests = [request, request.model_copy(deep=True)]
+    store.exception_requests_by_draft_id["draft"] = requests
+    store._persist_state()
+    before = store._serialize_state()
+    persisted_before = store.store.load_snapshot()
+    monkeypatch.setenv(EXCEPTION_TIER_ENTITLEMENT_ENV_VAR, '{"director": "director"}')
+    auth = PlannerAuthContext(
+        subject="manager" if outcome == "deny" else "director",
+        permissions=(Permission.APPROVE,),
+        provider="google",
+        expires_at=None,
+        auth_mode=PlannerAuthMode.BOOTSTRAP_TOKEN,
+    )
+
+    def fail_audit_write(*_args, **_kwargs):
+        # Fail after the request records have been written, inside the SQL transaction.
+        raise OSError("audit persistence unavailable")
+
+    monkeypatch.setattr(store.store, "_upsert_singleton", fail_audit_write)
+    try:
+        with pytest.raises(OSError, match="audit persistence unavailable"):
+            store.decide_exception_request(
+                "draft", exception_index=0, auth_context=auth, approved=outcome != "reject"
+            )
+        assert store.exception_requests_by_draft_id["draft"] is requests
+        assert store._serialize_state() == before
+        assert store.store.load_snapshot() == persisted_before
+    finally:
+        store.close()
 
 
 def test_separate_service_processes_preserve_concurrent_drafts(tmp_path):
