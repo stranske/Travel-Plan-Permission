@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 from travel_plan_permission import http_service
 from travel_plan_permission.http_service import _PORTAL_MAX_DRAFTS, PlannerProposalStore
@@ -22,6 +23,7 @@ from travel_plan_permission.models import (
     ExceptionRequest,
     ExceptionStatus,
     ExceptionType,
+    InvalidExceptionTransition,
 )
 from travel_plan_permission.persistence import (
     JsonPortalStateStore,
@@ -1086,6 +1088,90 @@ def test_exception_decision_persistence_failure_rolls_back_draft(tmp_path, monke
             store.decide_exception_request(
                 "draft", exception_index=0, auth_context=auth, approved=outcome != "reject"
             )
+        assert store.exception_requests_by_draft_id["draft"] is requests
+        assert store._serialize_state() == before
+        assert store.store.load_snapshot() == persisted_before
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("approved", [False, True], ids=["reject", "approve"])
+@pytest.mark.parametrize(
+    ("failure", "error"),
+    [
+        ("missing_request", KeyError),
+        ("final_request", InvalidExceptionTransition),
+        ("authorization", HTTPException),
+        ("decision_audit", RuntimeError),
+    ],
+)
+def test_exception_decision_error_restores_overdue_siblings(
+    tmp_path, monkeypatch, approved, failure, error
+):
+    """Errors after in-memory escalation must leave the entire draft unchanged."""
+    store = PlannerProposalStore(state_path=tmp_path / "decision-error.sqlite3")
+    request = ExceptionRequest(
+        type=ExceptionType.ADVANCE_BOOKING,
+        justification="Documented business need requires this travel exception. " * 2,
+        requestor="traveler",
+        amount="250",
+        requested_at=datetime.now(UTC) - timedelta(hours=49),
+    )
+    target = request.model_copy(deep=True)
+    if failure == "final_request":
+        target.reject()
+    requests = [request, target]
+    store.exception_requests_by_draft_id["draft"] = requests
+    store.security.audit_log.record(
+        event_type=http_service.AuditEventType.EXCEPTION,
+        actor="traveler",
+        subject="draft",
+        outcome="requested",
+    )
+    store._persist_state()
+    before = store._serialize_state()
+    persisted_before = store.store.load_snapshot()
+    save = MagicMock(wraps=store.store.save_snapshot)
+    monkeypatch.setattr(store.store, "save_snapshot", save)
+    monkeypatch.setenv(
+        EXCEPTION_TIER_ENTITLEMENT_ENV_VAR,
+        (
+            '{"director": "invalid-tier"}'
+            if failure == "authorization"
+            else '{"director": "director"}'
+        ),
+    )
+    auth = PlannerAuthContext(
+        subject="director",
+        permissions=(Permission.APPROVE,),
+        provider="google",
+        expires_at=None,
+        auth_mode=PlannerAuthMode.BOOTSTRAP_TOKEN,
+    )
+    record = store.security.audit_log.record
+    outcomes = []
+
+    def observe_audit(**kwargs):
+        outcomes.append(kwargs["outcome"])
+        record(**kwargs)
+        if failure == "decision_audit" and kwargs["outcome"] in {"approved", "rejected"}:
+            raise RuntimeError("decision audit unavailable")
+
+    monkeypatch.setattr(store.security.audit_log, "record", observe_audit)
+    try:
+        with pytest.raises(error) as caught:
+            store.decide_exception_request(
+                "draft",
+                exception_index=2 if failure == "missing_request" else 1,
+                auth_context=auth,
+                approved=approved,
+            )
+        if failure == "authorization":
+            assert caught.value.status_code == 503
+        assert outcomes.count("escalated") == (1 if failure == "final_request" else 2)
+        if failure == "decision_audit":
+            assert outcomes[-1] == ("approved" if approved else "rejected")
+        save.assert_not_called()
         assert store.exception_requests_by_draft_id["draft"] is requests
         assert store._serialize_state() == before
         assert store.store.load_snapshot() == persisted_before
