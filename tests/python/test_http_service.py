@@ -4332,19 +4332,20 @@ async def test_exception_decision_reauthorizes_concurrent_escalation(
             requestor="traveler",
         ),
     )
-    # Keep each request on its caller's loop so the thread handshake does not
-    # depend on TestClient's background-loop socket wakeups.
-    client = httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=create_app(store)), base_url="http://testserver"
-    )
+    app = create_app(store)
 
     async def request_decision(headers):
-        return await client.post(
-            f"/portal/admin/exceptions/{draft_id}/0/decision?actor_role=approver",
-            headers=headers,
-            data={"decision": decision, "notes": "Tier authority check."},
-            follow_redirects=False,
-        )
+        # Create and close each client on the loop making its request. The
+        # manager thread and the entitled reviewer run on different loops.
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            return await client.post(
+                f"/portal/admin/exceptions/{draft_id}/0/decision?actor_role=approver",
+                headers=headers,
+                data={"decision": decision, "notes": "Tier authority check."},
+                follow_redirects=False,
+            )
 
     manager = _bootstrap_auth_header(subject="manager", permissions=(Permission.APPROVE,))
     read_complete, resume = threading.Event(), threading.Event()
@@ -4490,7 +4491,6 @@ async def test_exception_decision_reauthorizes_concurrent_escalation(
     finally:
         resume.set()
         thread.join(5)
-        await client.aclose()
         store.close()
         peer.close()
 

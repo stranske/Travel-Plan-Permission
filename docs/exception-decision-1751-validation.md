@@ -455,3 +455,49 @@ create `.git/index.lock` on the read-only filesystem. Commit the test and this
 validation record from a writable checkout of the existing PR branch.
 Automatic approval review rejected the `needs-human` label and results comment with
 `MCP tool call requires approval, but approval policy is never`.
+
+## Follow-up: keep concurrency clients on their owning loops
+
+Reviewed the recent commits and confirmed that the serialized implementation,
+portal delegation, eight-case regression, and deliberate-break evidence are
+already present. The named-test checkbox in PR #1754 remains stale despite
+the plain targeted command passing.
+
+The named regression now creates and closes an HTTPX client within each
+request's event loop. The manager thread and the entitled reviewer share the
+ASGI application and SQLite-backed store, while each owns its client lifecycle.
+The deterministic pause, live authorization, snapshot, audit, and restart
+assertions remain in place.
+
+Verification:
+
+- [x] `python3 -m pytest tests/python/test_http_service.py::test_exception_decision_reauthorizes_concurrent_escalation -q -m "not slow"`:
+  **8 passed**, without selector patches or `PYTHONPATH` overrides.
+- [x] Black formatting and the required repository-wide check: **242 files**
+  pass. Ruff and `git diff --check` also pass.
+- [ ] Full-file acceptance: the ordinary invocation timed out after 30 seconds
+  in the existing synchronous client tests. A direct socket probe confirms
+  TCP socket creation raises `PermissionError: [Errno 1] Operation not permitted`.
+
+`git add -- tests/python/test_http_service.py` failed because `.git/index.lock`
+cannot be created on the read-only filesystem. The Python change remains
+uncommitted on the existing PR branch. Automatic approval review rejected both
+the verified named-test checkbox update and the `needs-human` label with
+`MCP tool call requires approval, but approval policy is never`.
+
+The completed full-file diagnostic run used the previously documented temporary
+selector workaround:
+
+```sh
+PYTHONPATH=/tmp/tpp-1751-loop:src timeout 150 python3 -m pytest tests/python/test_http_service.py -q -m "not slow"
+```
+
+It returned **222 passed, 7 failed** in 96.12 seconds. The failures remain the
+JWKS HTTP-server test and six Uvicorn restart cases: TCP socket creation or
+Unix-socket binding raises `PermissionError: [Errno 1] Operation not permitted`.
+Full-file acceptance remains unchecked. No tests were disabled beyond the
+required marker. PR #1754 was verified open and ready for review (`draft=false`).
+
+Automatic approval review also rejected the results comment with the same
+approval-policy error, so the remote reconciliation and blocker report remain
+unpublished.
