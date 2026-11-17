@@ -9,6 +9,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -17,6 +18,7 @@ import pytest
 from fastapi import HTTPException
 
 from travel_plan_permission import http_service
+from travel_plan_permission.http_contract_models import PortalReceiptBinding
 from travel_plan_permission.http_service import _PORTAL_MAX_DRAFTS, PlannerProposalStore
 from travel_plan_permission.models import (
     ExceptionApprovalLevel,
@@ -1050,6 +1052,80 @@ def test_exception_decision_serializes_two_sqlite_stores(tmp_path, monkeypatch, 
                 thread.join(5)
         first.close()
         second.close()
+
+
+@pytest.mark.parametrize("approved", [False, True], ids=["reject", "approve"])
+@pytest.mark.parametrize("mismatch", [None, "owner_mode", "owner_provider", "owner_namespace"])
+def test_exception_decision_checks_live_namespace(tmp_path, monkeypatch, approved, mismatch):
+    """The store enforces namespace isolation even when called without the HTTP boundary."""
+    store = PlannerProposalStore(state_path=tmp_path / "decision-namespace.sqlite3")
+    binding = PortalReceiptBinding(
+        owner_mode=PlannerAuthMode.BOOTSTRAP_TOKEN.value,
+        owner_provider="google",
+        owner_namespace="google",
+        owner_subject="traveler",
+        handoff_id="handoff",
+        snapshot_version="v1",
+        snapshot_sha256="snapshot",
+        prepared_at=datetime.now(UTC),
+    )
+    draft = store.save_portal_draft({}, receipt_binding=binding)
+    # Keep this store's cached binding stale while a peer updates persisted state.
+    peer = PlannerProposalStore(state_path=store.state_path)
+    try:
+        request = ExceptionRequest(
+            type=ExceptionType.ADVANCE_BOOKING,
+            justification="Documented business need requires this travel exception. " * 2,
+            requestor="traveler",
+            amount="250",
+            requested_at=datetime.now(UTC) - timedelta(hours=49),
+        )
+        peer.exception_requests_by_draft_id[draft.draft_id] = [request]
+        if mismatch is not None:
+            foreign_values = {
+                "owner_mode": PlannerAuthMode.OIDC.value,
+                "owner_provider": "microsoft",
+                "owner_namespace": "foreign-namespace",
+            }
+            live_binding = binding.model_copy(update={mismatch: foreign_values[mismatch]})
+            peer.portal_drafts_by_id[draft.draft_id] = replace(draft, receipt_binding=live_binding)
+        peer._persist_state()
+        before = peer._serialize_state()
+        persisted_before = peer.store.load_snapshot()
+        save = MagicMock(wraps=store.store.save_snapshot)
+        monkeypatch.setattr(store.store, "save_snapshot", save)
+        monkeypatch.setenv(EXCEPTION_TIER_ENTITLEMENT_ENV_VAR, '{"director": "director"}')
+        auth = PlannerAuthContext(
+            subject="director",
+            permissions=(Permission.APPROVE,),
+            provider="google",
+            expires_at=None,
+            auth_mode=PlannerAuthMode.BOOTSTRAP_TOKEN,
+        )
+        if mismatch is not None:
+            with pytest.raises(HTTPException) as caught:
+                store.decide_exception_request(
+                    draft.draft_id, exception_index=0, auth_context=auth, approved=approved
+                )
+            assert caught.value.status_code == 404
+            assert caught.value.detail == "Exception request not found."
+            save.assert_not_called()
+            assert store._serialize_state() == before
+            assert peer.store.load_snapshot() == persisted_before
+        else:
+            # Approvers need the namespace and tier; the traveler's subject may differ.
+            result = store.decide_exception_request(
+                draft.draft_id, exception_index=0, auth_context=auth, approved=approved
+            )
+            assert result.status is (
+                ExceptionStatus.APPROVED if approved else ExceptionStatus.REJECTED
+            )
+            assert result.approval_level is ExceptionApprovalLevel.DIRECTOR
+            assert save.call_count == 1
+            assert peer.lookup_exception_request(draft.draft_id, exception_index=0) == result
+    finally:
+        store.close()
+        peer.close()
 
 
 @pytest.mark.parametrize("outcome", ["approve", "reject", "deny"])
