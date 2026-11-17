@@ -4328,6 +4328,15 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
     read_complete, resume = threading.Event(), threading.Event()
     decide = store.decide_exception_request
     responses, errors = [], []
+    committed_snapshots = []
+    initial_audits = store._serialize_state()["audit_events"]
+    save_snapshot = store.store.save_snapshot
+
+    def capture_snapshot(snapshot, *, replace=False):
+        save_snapshot(snapshot, replace=replace)
+        committed_snapshots.append(deepcopy(snapshot))
+
+    monkeypatch.setattr(store.store, "save_snapshot", capture_snapshot)
 
     def pause_before_decision(*args, **kwargs):
         # This hook runs outside the serialized method, at the old read/write gap.
@@ -4375,7 +4384,26 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
         assert not thread.is_alive() and not errors
         assert len(responses) == 1
         assert responses[0].status_code == 403, responses[0].text
-        # Read raw/restarted state before any listing can trigger another escalation.
+        # Routing and the denial must commit together, without a separate save
+        # for overdue escalation or an intermediate snapshot authorizing a manager.
+        assert len(committed_snapshots) == 1
+        committed = committed_snapshots[0]
+        persisted = committed["exception_requests_by_draft_id"][draft_id][0]
+        assert persisted["approval_level"] == required.value
+        assert persisted["status"] == ExceptionStatus.ESCALATED.value
+        assert persisted["approval"] is None
+        assert committed["audit_events"][: len(initial_audits)] == initial_audits
+        assert [event["outcome"] for event in committed["audit_events"][len(initial_audits) :]] == [
+            *(["escalated"] * escalations),
+            "denied",
+        ]
+        # Inspect a fresh store before any listing can repair unpersisted routing
+        # or audits. Its entire state must match the single committed snapshot.
+        restarted = PlannerProposalStore(state_path=state_path)
+        try:
+            assert restarted._serialize_state() == committed
+        finally:
+            restarted.close()
         saved = peer.lookup_exception_request(draft_id, exception_index=0)
         assert saved.approval_level is required
         assert saved.status is ExceptionStatus.ESCALATED

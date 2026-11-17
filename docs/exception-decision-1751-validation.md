@@ -275,3 +275,63 @@ uncommitted. Automatic approval review also rejected the results comment and
 from a writable checkout of the existing PR branch, publish the checklist
 reconciliation and evidence, and rerun the full HTTP file where sockets are
 permitted before completing acceptance.
+
+## Follow-up: atomic denial snapshots in the named regression
+
+Strengthened `test_exception_decision_reauthorizes_concurrent_escalation` to
+observe actual snapshot commits by the deciding store. Each of its eight cases
+requires exactly one write containing the final routed tier, no decision,
+unchanged prior audits, all peer and in-lock escalation audits, and the denial.
+A newly opened store must reproduce that entire snapshot before any listing
+can repair missing routing or audit state.
+
+Verified this additional atomicity assertion by temporarily changing the
+in-lock escalation from `persist=False` to `persist=True`. All four overdue
+cases fail at the new assertion with `assert 2 == 1`; the HTTP denial itself
+still succeeds, so the new assertion detects a previously uncovered separate
+write. Restored the production source byte-for-byte in a `finally` block.
+The earlier required remove-escalation-and-authorization mutation remains
+documented above; this follow-up checks the distinct single-commit invariant.
+
+Validation:
+
+```text
+PYTHONPATH=/tmp/tpp-1751-loop:src timeout 120 python3 -m pytest tests/python/test_http_service.py::test_exception_decision_reauthorizes_concurrent_escalation tests/python/test_portal_state_store.py -q -m "not slow"
+96 passed (8 named cases and 88 state-store cases)
+
+PYTHONPATH=/tmp/tpp-1751-loop:src timeout 90 python3 -m pytest tests/python/test_http_service.py::test_exception_decision_reauthorizes_concurrent_escalation -q -m "not slow"
+8 passed after restoring production source
+```
+
+The plain named invocation timed out after 40 seconds awaiting event-loop
+wakeups. Passing runs use the temporary selector workaround documented above;
+no repository event-loop configuration or test assertions were disabled.
+Black formatting and its required repository-wide check pass for all 242 files.
+Ruff and `git diff --check` pass, and production source has no retained mutation.
+
+- [x] Named concurrent-escalation regression verified with atomic snapshot checks.
+- [x] Separate-write mutation fails; restored implementation passes.
+- [ ] Whole HTTP file passes with socket operations permitted.
+
+Automatic approval review rejected the PR-body checklist reconciliation with
+`MCP tool call requires approval, but approval policy is never`. The named-test
+and prior deliberate-break checkboxes could not be reconciled remotely.
+
+The full HTTP run completed with **222 passed, 7 failed** in 91.80 seconds:
+
+```sh
+PYTHONPATH=/tmp/tpp-1751-loop:src timeout 180 python3 -m pytest tests/python/test_http_service.py -q -m "not slow"
+```
+
+The failures remain the JWKS HTTP-server case and six Uvicorn restart cases;
+TCP socket creation or Unix-socket binding raises
+`PermissionError: [Errno 1] Operation not permitted`. Full-file acceptance stays
+unchecked. No failing tests were skipped or disabled.
+
+The commit attempt failed at `git add` because `.git/index.lock` cannot be
+created on the read-only filesystem. The test and validation changes remain
+uncommitted on `codex/issue-1751`. Automatic approval review also rejected the
+`needs-human` label and results comment with the same approval-policy error. Commit these files
+from a writable checkout of the existing PR branch and rerun the full HTTP
+file where socket operations are permitted. PR #1754 remains open and ready
+for review (`draft=false`).
