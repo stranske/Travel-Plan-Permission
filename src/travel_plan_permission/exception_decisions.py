@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, status
 
-from .exception_authority import authorize_exception_tier
 from .models import ExceptionRequest, InvalidExceptionTransition
 from .planner_auth import PlannerAuthContext
 from .portal_receipts import identity_namespace
@@ -106,16 +105,12 @@ def escalate_all_draft_exceptions(proposal_store: PlannerProposalStore) -> None:
         raise EscalationPersistenceError(str(exc)) from exc
 
 
-def decide_portal_exception(
+def authorize_exception_namespace(
     proposal_store: PlannerProposalStore,
     draft_id: str,
-    *,
-    exception_index: int,
     auth_context: PlannerAuthContext,
-    approved: bool,
-    notes: str | None,
 ) -> None:
-    """Authorize the bound namespace and routed tier before deciding."""
+    """Reject callers outside the draft's bound identity namespace."""
 
     draft = proposal_store.lookup_portal_draft(draft_id)
     if draft is not None and draft.receipt_binding is not None:
@@ -130,31 +125,26 @@ def decide_portal_exception(
                 detail="Exception request not found.",
             )
 
-    # Refresh once before authorization; never raise the tier after it succeeds.
-    proposal_store.escalate_exception_requests(draft_id)
-    try:
-        pending = proposal_store.lookup_exception_request(
-            draft_id,
-            exception_index=exception_index,
-        )
-    except KeyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Exception request not found.",
-        ) from exc
-    authorize_exception_tier(
-        auth_context,
-        pending,
-        security=proposal_store.security,
-        persist_audit=proposal_store.persist_audit_events,
-        draft_id=draft_id,
-        exception_index=exception_index,
-    )
+
+def decide_portal_exception(
+    proposal_store: PlannerProposalStore,
+    draft_id: str,
+    *,
+    exception_index: int,
+    auth_context: PlannerAuthContext,
+    approved: bool,
+    notes: str | None,
+) -> None:
+    """Delegate namespace authorization, tier authorization, and the decision atomically."""
+
+    # Conceal foreign requests before accessing exceptions; the store rechecks
+    # the binding after acquiring its serialized operation lock.
+    authorize_exception_namespace(proposal_store, draft_id, auth_context)
     try:
         proposal_store.decide_exception_request(
             draft_id,
             exception_index=exception_index,
-            actor_id=auth_context.subject,
+            auth_context=auth_context,
             approved=approved,
             notes=notes,
         )

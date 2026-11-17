@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import html
 import json
 import os
@@ -4304,6 +4305,204 @@ def test_manager_review_refresh_only_after_changes_requested(status) -> None:
         assert store.lookup_manager_review(before.review_id) == refreshed
     else:
         assert refreshed == before
+
+
+@pytest.mark.parametrize("decision", ["approve", "reject"])
+@pytest.mark.parametrize("escalations", [1, 2], ids=["director", "board"])
+@pytest.mark.parametrize("defer_escalation", [False, True], ids=["routed", "overdue"])
+@pytest.mark.parametrize("exception_index", [0, 1], ids=["first-request", "second-request"])
+@pytest.mark.parametrize("anyio_backend", ["asyncio"])
+@pytest.mark.anyio
+async def test_exception_decision_reauthorizes_concurrent_escalation(
+    monkeypatch, tmp_path, decision, escalations, defer_escalation, exception_index
+) -> None:
+    """A stale read cannot authorize routing changed or made overdue by a peer."""
+    _set_bootstrap_runtime_env(monkeypatch)
+    _set_tier_entitlements(monkeypatch, {})
+    state_path = tmp_path / "concurrent-escalation.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    peer = PlannerProposalStore(state_path=state_path)
+    # Keep another pending request beside the target to detect index mix-ups.
+    draft_id = store.save_portal_draft(_portal_form_payload()).draft_id
+    for _ in range(2):
+        store.create_exception_request(
+            draft_id,
+            http_service.ExceptionRequest(
+                type=http_service.ExceptionType.ADVANCE_BOOKING,
+                amount="250",
+                justification="Documented business need for this routed exception tier. " * 2,
+                requestor="traveler",
+            ),
+        )
+    sibling_index = 1 - exception_index
+    sibling = store.lookup_exception_request(draft_id, exception_index=sibling_index).model_dump(
+        mode="json"
+    )
+    app = create_app(store)
+
+    async def request_decision(headers):
+        # Create and close each client on the loop making its request. The
+        # manager thread and the entitled reviewer run on different loops.
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            return await client.post(
+                f"/portal/admin/exceptions/{draft_id}/{exception_index}/decision?actor_role=approver",
+                headers=headers,
+                data={"decision": decision, "notes": "Tier authority check."},
+                follow_redirects=False,
+            )
+
+    manager = _bootstrap_auth_header(subject="manager", permissions=(Permission.APPROVE,))
+    read_complete, resume = threading.Event(), threading.Event()
+    decide = store.decide_exception_request
+    responses, errors = [], []
+    committed_snapshots = []
+    authorizations = []
+    authorize = http_service.authorize_exception_tier
+    initial_audits = store._serialize_state()["audit_events"]
+    save_snapshot = store.store.save_snapshot
+
+    def capture_snapshot(snapshot, *, replace=False):
+        save_snapshot(snapshot, replace=replace)
+        committed_snapshots.append(deepcopy(snapshot))
+
+    monkeypatch.setattr(store.store, "save_snapshot", capture_snapshot)
+
+    def authorize_live_target(auth_context, target, **kwargs):
+        assert target is store.exception_requests_by_draft_id[draft_id][exception_index]
+        authorizations.append((auth_context.subject, target.approval_level, store._operation_depth))
+        return authorize(auth_context, target, **kwargs)
+
+    monkeypatch.setattr(http_service, "authorize_exception_tier", authorize_live_target)
+
+    def pause_before_decision(*args, **kwargs):
+        # This hook runs outside the serialized method, at the old read/write gap.
+        stale = store.lookup_exception_request(draft_id, exception_index=exception_index)
+        assert stale.approval_level is ExceptionApprovalLevel.MANAGER
+        assert (
+            authorize(
+                kwargs["auth_context"],
+                stale,
+                security=store.security,
+                persist_audit=store.persist_audit_events,
+                draft_id=draft_id,
+                exception_index=exception_index,
+            )
+            is ExceptionApprovalLevel.MANAGER
+        )
+        read_complete.set()
+        assert resume.wait(5), "concurrent escalation did not finish"
+        return decide(*args, **kwargs)
+
+    monkeypatch.setattr(store, "decide_exception_request", pause_before_decision)
+
+    def manager_decision():
+        try:
+            responses.append(asyncio.run(request_decision(manager)))
+        except Exception as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=manager_decision)
+    thread.start()
+    try:
+        assert read_complete.wait(5), "decision did not reach the read/write gap"
+        peer.lookup_exception_request(draft_id, exception_index=exception_index)  # refresh the peer
+        for step in range(escalations):
+            pending = peer.exception_requests_by_draft_id[draft_id][exception_index]
+            pending.requested_at = datetime.now(UTC) - timedelta(hours=49)
+            if pending.escalated_at is not None:
+                pending.escalated_at = pending.requested_at
+            if defer_escalation and step == escalations - 1:
+                # Persist the overdue clock without routing it. The deciding
+                # store must apply this last escalation inside its own lock.
+                peer._persist_state()
+            else:
+                peer.escalate_exception_requests(draft_id)
+        required = (
+            ExceptionApprovalLevel.DIRECTOR if escalations == 1 else ExceptionApprovalLevel.BOARD
+        )
+        persisted_level = (
+            ExceptionApprovalLevel.MANAGER if escalations == 1 else ExceptionApprovalLevel.DIRECTOR
+        )
+        assert peer.exception_requests_by_draft_id[draft_id][exception_index].approval_level is (
+            persisted_level if defer_escalation else required
+        )
+        resume.set()
+        thread.join(5)
+        assert not thread.is_alive() and not errors
+        assert len(responses) == 1
+        assert responses[0].status_code == 403, responses[0].text
+        assert authorizations == [("manager", required, 1)]
+        # Routing and the denial must commit together, without a separate save
+        # for overdue escalation or an intermediate snapshot authorizing a manager.
+        assert len(committed_snapshots) == 1
+        committed = committed_snapshots[0]
+        persisted = committed["exception_requests_by_draft_id"][draft_id][exception_index]
+        assert persisted["approval_level"] == required.value
+        assert persisted["status"] == ExceptionStatus.ESCALATED.value
+        assert persisted["approval"] is None
+        assert committed["exception_requests_by_draft_id"][draft_id][sibling_index] == sibling
+        assert committed["audit_events"][: len(initial_audits)] == initial_audits
+        assert [event["outcome"] for event in committed["audit_events"][len(initial_audits) :]] == [
+            *(["escalated"] * escalations),
+            "denied",
+        ]
+        # Inspect a fresh store before any listing can repair unpersisted routing
+        # or audits. Its entire state must match the single committed snapshot.
+        restarted = PlannerProposalStore(state_path=state_path)
+        try:
+            assert restarted._serialize_state() == committed
+        finally:
+            restarted.close()
+        saved = peer.lookup_exception_request(draft_id, exception_index=exception_index)
+        assert saved.approval_level is required
+        assert saved.status is ExceptionStatus.ESCALATED
+        assert saved.approval is None
+        denials = [event for event in peer.list_audit_events() if event.outcome == "denied"]
+        assert len(denials) == 1
+        assert denials[0].actor == "manager"
+        assert denials[0].metadata["required_level"] == required.value
+        assert denials[0].metadata["exception_index"] == exception_index
+        assert not any(
+            event.outcome in {"approved", "rejected"} for event in peer.list_audit_events()
+        )
+        # A denied stale caller must release coordination so the live tier can
+        # decide the same request, retaining the denial and escalation history.
+        monkeypatch.setattr(store, "decide_exception_request", decide)
+        _set_tier_entitlements(monkeypatch, {"reviewer": required.value})
+        reviewer = _bootstrap_auth_header(subject="reviewer", permissions=(Permission.APPROVE,))
+        assert (await request_decision(reviewer)).status_code == 303
+        assert authorizations == [("manager", required, 1), ("reviewer", required, 1)]
+        assert len(committed_snapshots) == 2
+        finalized = committed_snapshots[-1]
+        assert finalized["audit_events"][:-1] == committed["audit_events"]
+        assert finalized["exception_requests_by_draft_id"][draft_id][sibling_index] == sibling
+        final_audit = finalized["audit_events"][-1]
+        assert final_audit["metadata"]["exception_index"] == exception_index
+        assert final_audit["actor"] == "reviewer"
+        assert final_audit["outcome"] == ("approved" if decision == "approve" else "rejected")
+        saved = peer.lookup_exception_request(draft_id, exception_index=exception_index)
+        assert saved.approval_level is required
+        assert saved.escalated_at is not None
+        assert saved.status is (
+            ExceptionStatus.APPROVED if decision == "approve" else ExceptionStatus.REJECTED
+        )
+        if decision == "approve":
+            assert saved.approval.approver_id == "reviewer"
+            assert saved.approval.level is required
+        else:
+            assert saved.approval is None
+        restarted = PlannerProposalStore(state_path=state_path)
+        try:
+            assert restarted._serialize_state() == finalized
+        finally:
+            restarted.close()
+    finally:
+        resume.set()
+        thread.join(5)
+        store.close()
+        peer.close()
 
 
 @pytest.mark.parametrize("decision", ["approve", "reject"])
