@@ -4464,9 +4464,10 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
     finalized_store.close()
 
 
+@pytest.mark.parametrize("subject", ["director", "manager"])
 @pytest.mark.parametrize("decision", ["approve", "reject"])
 def test_exception_decision_persistence_failure_rolls_back(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, decision: str
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, subject: str, decision: str
 ) -> None:
     """Persistence failure during decide_exception_request rolls back escalation, decision, and audit."""
     _set_bootstrap_runtime_env(monkeypatch)
@@ -4489,20 +4490,30 @@ def test_exception_decision_persistence_failure_rolls_back(
     def fail_persistence(*_args, **_kwargs) -> None:
         raise OSError("state storage unavailable")
 
-    director_auth = http_service.PlannerAuthContext(
-        subject="director",
+    caller_auth = http_service.PlannerAuthContext(
+        subject=subject,
         permissions=(Permission.APPROVE,),
         provider="bootstrap-token",
         expires_at=None,
         auth_mode=http_service.PlannerAuthMode.BOOTSTRAP_TOKEN,
     )
+    with pytest.raises(ValueError, match="requires auth_context or actor_id"):
+        store.decide_exception_request("draft", exception_index=0, approved=True)
+    with pytest.raises(ValueError, match="actor_id must match auth_context.subject"):
+        store.decide_exception_request(
+            "draft",
+            exception_index=0,
+            actor_id="other-actor",
+            auth_context=caller_auth,
+            approved=True,
+        )
     with monkeypatch.context() as patch:
         patch.setattr(store, "_persist_state", fail_persistence)
         with pytest.raises(OSError, match="state storage unavailable"):
             store.decide_exception_request(
                 "draft",
                 exception_index=0,
-                auth_context=director_auth,
+                auth_context=caller_auth,
                 approved=decision == "approve",
                 notes="Rollback check",
             )

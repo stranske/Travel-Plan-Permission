@@ -995,6 +995,8 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
                 expires_at=None,
                 auth_mode=PlannerAuthMode.BOOTSTRAP_TOKEN,
             )
+        elif actor_id is not None and actor_id != auth_context.subject:
+            raise ValueError("actor_id must match auth_context.subject when both are provided.")
         resolved_actor = auth_context.subject
         requests = self.exception_requests_by_draft_id.get(draft_id)
         if requests is None or exception_index < 0 or exception_index >= len(requests):
@@ -1109,7 +1111,8 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
         self.store.save_snapshot(snapshot, replace=True)
         self._database_snapshot = deepcopy(self.store.load_snapshot() if refresh else snapshot)
 
-    persist_audit_events = _persist_state
+    def persist_audit_events(self, *, refresh: bool = True) -> None:
+        self._persist_state(refresh=refresh)
 
     @_serialized_store_operation
     def record_artifact_download(

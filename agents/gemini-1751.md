@@ -40,8 +40,8 @@ tests/python/test_http_service.py ....                                   [100%]
 
 ```text
 $ python3 -m pytest tests/python/test_http_service.py -q
-227 passed, 14 warnings in 62.38s (0:01:02)
+229 passed, 14 warnings in 39.14s
 
 $ python3 -m pytest tests/python/test_portal_state_store.py -q
-61 passed, 13 warnings in 2.59s
+61 passed, 13 warnings in 1.89s
 ```
