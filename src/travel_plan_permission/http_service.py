@@ -34,7 +34,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from . import audit, demo_seed
-from .exception_authority import routed_exception_level
+from .exception_authority import authorize_exception_tier, routed_exception_level
 from .exception_decisions import (
     EscalationPersistenceError,
     decide_portal_exception,
@@ -978,38 +978,78 @@ class PlannerProposalStore(PortalReceiptStoreMixin):
         draft_id: str,
         *,
         exception_index: int,
-        actor_id: str,
+        actor_id: str | None = None,
+        auth_context: PlannerAuthContext | None = None,
         approved: bool,
         notes: str | None = None,
     ) -> ExceptionRequest:
         """Approve or reject an exception request tied to a draft."""
 
+        if auth_context is None:
+            if actor_id is None:
+                raise ValueError("decide_exception_request requires auth_context or actor_id.")
+            auth_context = PlannerAuthContext(
+                subject=actor_id,
+                permissions=(Permission.APPROVE,),
+                provider="bootstrap-token",
+                expires_at=None,
+                auth_mode=PlannerAuthMode.BOOTSTRAP_TOKEN,
+            )
+        resolved_actor = auth_context.subject
         requests = self.exception_requests_by_draft_id.get(draft_id)
         if requests is None or exception_index < 0 or exception_index >= len(requests):
             raise KeyError(f"No exception request {exception_index} found for draft '{draft_id}'.")
-        target = requests[exception_index]
-        target.ensure_decidable()
-        if approved:
-            target.approve(approver_id=actor_id, level=routed_exception_level(target), notes=notes)
-            outcome = "approved"
-        else:
-            target.reject()
-            outcome = "rejected"
-        metadata: dict[str, object] = {
-            "exception_type": target.type.value,
-            "exception_index": exception_index,
-            "status": target.status.value,
-        }
-        if notes is not None:
-            metadata["notes"] = notes
-        self.security.audit_log.record(
-            event_type=AuditEventType.EXCEPTION,
-            actor=actor_id,
-            subject=draft_id,
-            outcome=outcome,
-            metadata=metadata,
-        )
-        self._persist_state()
+        prior_requests = [item.model_copy(deep=True) for item in requests]
+        prior_audit_count = len(self.security.audit_log.events)
+        denial_persisted = False
+
+        def _persist_denial_audit() -> None:
+            nonlocal denial_persisted
+            self.persist_audit_events()
+            denial_persisted = True
+
+        try:
+            escalate_draft_exceptions(self, draft_id, persist=False)
+            target = requests[exception_index]
+            target.ensure_decidable()
+            authorize_exception_tier(
+                auth_context,
+                target,
+                security=self.security,
+                persist_audit=_persist_denial_audit,
+                draft_id=draft_id,
+                exception_index=exception_index,
+            )
+            if approved:
+                target.approve(
+                    approver_id=resolved_actor,
+                    level=routed_exception_level(target),
+                    notes=notes,
+                )
+                outcome = "approved"
+            else:
+                target.reject()
+                outcome = "rejected"
+            metadata: dict[str, object] = {
+                "exception_type": target.type.value,
+                "exception_index": exception_index,
+                "status": target.status.value,
+            }
+            if notes is not None:
+                metadata["notes"] = notes
+            self.security.audit_log.record(
+                event_type=AuditEventType.EXCEPTION,
+                actor=resolved_actor,
+                subject=draft_id,
+                outcome=outcome,
+                metadata=metadata,
+            )
+            self._persist_state()
+        except Exception:
+            if not denial_persisted:
+                requests[:] = prior_requests
+                del self.security.audit_log.events[prior_audit_count:]
+            raise
         return _copy_exception_request(target)
 
     @_serialized_store_operation

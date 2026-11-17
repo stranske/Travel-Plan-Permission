@@ -4346,6 +4346,159 @@ def test_exception_escalation_before_authorization(monkeypatch, tmp_path, decisi
         assert finalized.approval.approver_id == "director"
 
 
+@pytest.mark.parametrize("decision", ["approve", "reject"])
+@pytest.mark.parametrize(
+    "escalated_level",
+    [ExceptionApprovalLevel.DIRECTOR, ExceptionApprovalLevel.BOARD],
+    ids=["director", "board"],
+)
+def test_exception_decision_reauthorizes_concurrent_escalation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    decision: str,
+    escalated_level: ExceptionApprovalLevel,
+) -> None:
+    """Pause between pre-decision read and locked commit while a concurrent store escalates."""
+    _set_bootstrap_runtime_env(monkeypatch)
+    monkeypatch.delenv(EXCEPTION_TIER_ENTITLEMENT_ENV_VAR, raising=False)
+    state_path = tmp_path / "concurrent-escalation.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    peer_store = PlannerProposalStore(state_path=state_path)
+    client = TestClient(create_app(store))
+    draft_id, _ = _create_portal_draft(client)
+    creator = _bootstrap_auth_header(subject="traveler", permissions=(Permission.CREATE,))
+    _seed_tiered_exception(
+        client, draft_id, creator, exception_type="advance_booking", amount="250"
+    )
+    assert (
+        store.lookup_exception_request(draft_id, exception_index=0).approval_level
+        is ExceptionApprovalLevel.MANAGER
+    )
+
+    read_reached = threading.Event()
+    escalation_committed = threading.Event()
+    peer_errors: list[BaseException] = []
+    original_lookup_draft = store.lookup_portal_draft
+
+    def pause_before_commit(target_draft_id: str):
+        draft = original_lookup_draft(target_draft_id)
+        read_reached.set()
+        assert escalation_committed.wait(timeout=5)
+        return draft
+
+    def concurrent_escalator() -> None:
+        try:
+            assert read_reached.wait(timeout=5)
+            peer_store._load_state()
+            peer_request = peer_store.exception_requests_by_draft_id[draft_id][0]
+            peer_request.requested_at = datetime.now(UTC) - timedelta(hours=49)
+            peer_store.escalate_exception_requests(draft_id)
+            if escalated_level is ExceptionApprovalLevel.BOARD:
+                peer_request = peer_store.exception_requests_by_draft_id[draft_id][0]
+                peer_request.escalated_at = datetime.now(UTC) - timedelta(hours=49)
+                peer_store._persist_state()
+        except BaseException as exc:  # pragma: no cover — surfaced via assertion
+            peer_errors.append(exc)
+        finally:
+            escalation_committed.set()
+
+    manager = _bootstrap_auth_header(subject="manager", permissions=(Permission.APPROVE,))
+    worker = threading.Thread(target=concurrent_escalator)
+    worker.start()
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(store, "lookup_portal_draft", pause_before_commit)
+            denied = _decide_exception(client, draft_id, 0, manager, decision=decision)
+    finally:
+        worker.join(timeout=5)
+    assert not peer_errors
+
+    assert denied.status_code == 403
+    live = store.exception_requests_by_draft_id[draft_id][0]
+    assert live.status is ExceptionStatus.ESCALATED
+    assert live.approval_level is escalated_level
+    assert live.approval is None
+    restored = PlannerProposalStore(state_path=state_path)
+    persisted = restored.exception_requests_by_draft_id[draft_id][0]
+    assert persisted.model_dump() == live.model_dump()
+    denials = [event for event in restored.list_audit_events() if event.outcome == "denied"]
+    assert len(denials) == 1
+    assert denials[0].actor == "manager"
+    assert denials[0].metadata["required_level"] == escalated_level.value
+
+    _set_tier_entitlements(monkeypatch, {"entitled-approver": escalated_level.value})
+    entitled = _bootstrap_auth_header(
+        subject="entitled-approver", permissions=(Permission.APPROVE,)
+    )
+    allowed = _decide_exception(client, draft_id, 0, entitled, decision=decision)
+    assert allowed.status_code == 303
+    finalized = PlannerProposalStore(state_path=state_path).exception_requests_by_draft_id[
+        draft_id
+    ][0]
+    assert finalized.status is (
+        ExceptionStatus.APPROVED if decision == "approve" else ExceptionStatus.REJECTED
+    )
+    if decision == "approve":
+        assert finalized.approval is not None
+        assert finalized.approval.approver_id == "entitled-approver"
+        assert finalized.approval.level is escalated_level
+    store.close()
+    peer_store.close()
+    restored.close()
+
+
+@pytest.mark.parametrize("decision", ["approve", "reject"])
+def test_exception_decision_persistence_failure_rolls_back(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, decision: str
+) -> None:
+    """Persistence failure during decide_exception_request rolls back escalation, decision, and audit."""
+    _set_bootstrap_runtime_env(monkeypatch)
+    _set_tier_entitlements(monkeypatch, {"director": "director"})
+    state_path = tmp_path / "decision-rollback.sqlite3"
+    store = PlannerProposalStore(state_path=state_path)
+    request = http_service.ExceptionRequest(
+        type=http_service.ExceptionType.ADVANCE_BOOKING,
+        amount="250",
+        justification="Time-sensitive business travel requires an exception. " * 2,
+        requestor="traveler",
+        requested_at=datetime.now(UTC) - timedelta(hours=49),
+    )
+    store.exception_requests_by_draft_id["draft"] = [request]
+    store._persist_state()
+    before_request = request.model_dump()
+    before_events = list(store.security.audit_log.events)
+    before_state = store._serialize_state()
+
+    def fail_persistence(*_args, **_kwargs) -> None:
+        raise OSError("state storage unavailable")
+
+    director_auth = http_service.PlannerAuthContext(
+        subject="director",
+        permissions=(Permission.APPROVE,),
+        provider="bootstrap-token",
+        expires_at=None,
+        auth_mode=http_service.PlannerAuthMode.BOOTSTRAP_TOKEN,
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(store, "_persist_state", fail_persistence)
+        with pytest.raises(OSError, match="state storage unavailable"):
+            store.decide_exception_request(
+                "draft",
+                exception_index=0,
+                auth_context=director_auth,
+                approved=decision == "approve",
+                notes="Rollback check",
+            )
+
+    assert store.exception_requests_by_draft_id["draft"][0].model_dump() == before_request
+    assert store.security.audit_log.events == before_events
+    assert store._serialize_state() == before_state
+    reopened = PlannerProposalStore(state_path=state_path)
+    assert reopened._serialize_state() == before_state
+    store.close()
+    reopened.close()
+
+
 @pytest.mark.parametrize("surface", ["draft", "admin"])
 def test_exception_listing_escalates_and_persists(monkeypatch, tmp_path, surface) -> None:
     """Review listings refresh all requests, preserve finals and honor the SLA anchor."""

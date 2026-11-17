@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, status
 
-from .exception_authority import authorize_exception_tier
 from .models import ExceptionRequest, InvalidExceptionTransition
 from .planner_auth import PlannerAuthContext
 from .portal_receipts import identity_namespace
@@ -130,31 +129,12 @@ def decide_portal_exception(
                 detail="Exception request not found.",
             )
 
-    # Refresh once before authorization; never raise the tier after it succeeds.
-    proposal_store.escalate_exception_requests(draft_id)
-    try:
-        pending = proposal_store.lookup_exception_request(
-            draft_id,
-            exception_index=exception_index,
-        )
-    except KeyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Exception request not found.",
-        ) from exc
-    authorize_exception_tier(
-        auth_context,
-        pending,
-        security=proposal_store.security,
-        persist_audit=proposal_store.persist_audit_events,
-        draft_id=draft_id,
-        exception_index=exception_index,
-    )
     try:
         proposal_store.decide_exception_request(
             draft_id,
             exception_index=exception_index,
             actor_id=auth_context.subject,
+            auth_context=auth_context,
             approved=approved,
             notes=notes,
         )
