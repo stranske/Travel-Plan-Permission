@@ -96,3 +96,63 @@ Commit `tests/python/test_portal_state_store.py` and this record from a writable
 checkout of the existing PR branch. Publish the validation evidence and rerun
 `python3 -m pytest tests/python/test_http_service.py -q -m "not slow"` where socket
 operations are permitted before marking full-file acceptance complete.
+
+## Follow-up: concurrent overdue routing
+
+The named concurrency regression now covers both a peer persisting an escalated
+tier and a peer persisting an overdue request whose next escalation must happen
+inside the deciding store's serialized operation. Each scenario covers director
+and board routing, for both approval and rejection: eight cases in total.
+
+This closes a test gap: the original four cases still pass if only the in-lock
+escalation call is removed. The new cases require that call as well as live tier
+authorization.
+
+- [x] Verify the combined store implementation, including rollback, namespace
+  isolation, and two-store serialization: all 86 state-store tests pass.
+- [x] Verify the expanded named regression: all eight cases pass.
+- [x] Deliberately remove only the in-lock escalation call: the four overdue
+  cases fail, while the four already-routed cases pass. Director cases return
+  303 instead of 403; board cases retain director routing instead of board.
+- [x] Deliberately remove both in-lock escalation and tier authorization: all
+  eight cases fail because manager decisions return 303 instead of 403.
+- [x] Restore the original production source and rerun: all eight cases pass.
+  `git diff --exit-code -- src/travel_plan_permission/http_service.py` confirms
+  no retained production mutation.
+- [ ] Verify the whole HTTP test file passes in an environment permitting sockets.
+
+These follow-up runs use `PYTHONPATH=/tmp/tpp-1751-loop:src` and `-m "not slow"`.
+The normal invocation stalls because this sandbox denies socketpair sends used
+to wake the event loop. A temporary `sitecustomize.py`, outside the repository,
+bounds selector waits to 10 ms without changing application code or test assertions:
+
+```python
+import selectors
+
+_select = selectors.DefaultSelector.select
+
+
+def _polling_select(self, timeout=None):
+    return _select(self, 0.01 if timeout is None else min(timeout, 0.01))
+
+
+selectors.DefaultSelector.select = _polling_select
+```
+
+The required Black check passes for all 242 Python files. Ruff and
+`git diff --check` pass as well.
+
+The follow-up whole-file run returned **222 passed, 7 failed** in 99.10 seconds.
+The JWKS HTTP-server test fails because TCP socket creation is denied; the six
+Uvicorn restart cases fail because Unix-socket binding is denied. Each reports
+`PermissionError: [Errno 1] Operation not permitted`. Full-file acceptance
+remains unchecked; no failing tests were skipped or disabled.
+
+The commit attempt is still blocked: `git add` cannot create `.git/index.lock`
+because `.git` is read-only. The expanded HTTP regression and this follow-up
+record remain uncommitted on `codex/issue-1751`.
+
+GitHub rejected the follow-up results comment, verified-task checkbox updates,
+and `needs-human` label with `MCP tool call requires approval, but approval
+policy is never`. No remote checklist update was applied. PR #1754 was verified
+open and ready for review (`draft=false`).

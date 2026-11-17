@@ -4308,10 +4308,11 @@ def test_manager_review_refresh_only_after_changes_requested(status) -> None:
 
 @pytest.mark.parametrize("decision", ["approve", "reject"])
 @pytest.mark.parametrize("escalations", [1, 2], ids=["director", "board"])
+@pytest.mark.parametrize("defer_escalation", [False, True], ids=["routed", "overdue"])
 def test_exception_decision_reauthorizes_concurrent_escalation(
-    monkeypatch, tmp_path, decision, escalations
+    monkeypatch, tmp_path, decision, escalations, defer_escalation
 ) -> None:
-    """A manager's stale read cannot authorize a concurrently escalated decision."""
+    """A stale read cannot authorize routing changed or made overdue by a peer."""
     _set_bootstrap_runtime_env(monkeypatch)
     _set_tier_entitlements(monkeypatch, {})
     state_path = tmp_path / "concurrent-escalation.sqlite3"
@@ -4349,16 +4350,26 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
     try:
         assert read_complete.wait(5), "decision did not reach the read/write gap"
         peer.lookup_exception_request(draft_id, exception_index=0)  # refresh the peer
-        for _ in range(escalations):
+        for step in range(escalations):
             pending = peer.exception_requests_by_draft_id[draft_id][0]
             pending.requested_at = datetime.now(UTC) - timedelta(hours=49)
             if pending.escalated_at is not None:
                 pending.escalated_at = pending.requested_at
-            peer.escalate_exception_requests(draft_id)
+            if defer_escalation and step == escalations - 1:
+                # Persist the overdue clock without routing it. The deciding
+                # store must apply this last escalation inside its own lock.
+                peer._persist_state()
+            else:
+                peer.escalate_exception_requests(draft_id)
         required = (
             ExceptionApprovalLevel.DIRECTOR if escalations == 1 else ExceptionApprovalLevel.BOARD
         )
-        assert peer.exception_requests_by_draft_id[draft_id][0].approval_level is required
+        persisted_level = (
+            ExceptionApprovalLevel.MANAGER if escalations == 1 else ExceptionApprovalLevel.DIRECTOR
+        )
+        assert peer.exception_requests_by_draft_id[draft_id][0].approval_level is (
+            persisted_level if defer_escalation else required
+        )
         resume.set()
         thread.join(5)
         assert not thread.is_alive() and not errors
