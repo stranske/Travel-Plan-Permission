@@ -4375,16 +4375,23 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
         is ExceptionApprovalLevel.MANAGER
     )
 
+    pre_decision_read = threading.Event()
     read_reached = threading.Event()
     escalation_committed = threading.Event()
     peer_errors: list[BaseException] = []
     original_lookup_draft = store.lookup_portal_draft
+    original_decide = store.decide_exception_request
 
-    def pause_before_commit(target_draft_id: str):
+    def track_pre_decision_read(target_draft_id: str):
         draft = original_lookup_draft(target_draft_id)
+        pre_decision_read.set()
+        return draft
+
+    def pause_before_commit(*args, **kwargs):
+        assert pre_decision_read.is_set()
         read_reached.set()
         assert escalation_committed.wait(timeout=5)
-        return draft
+        return original_decide(*args, **kwargs)
 
     def concurrent_escalator() -> None:
         try:
@@ -4407,7 +4414,8 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
     worker.start()
     try:
         with monkeypatch.context() as patch:
-            patch.setattr(store, "lookup_portal_draft", pause_before_commit)
+            patch.setattr(store, "lookup_portal_draft", track_pre_decision_read)
+            patch.setattr(store, "decide_exception_request", pause_before_commit)
             denied = _decide_exception(client, draft_id, 0, manager, decision=decision)
     finally:
         worker.join(timeout=5)
@@ -4426,15 +4434,23 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
     assert denials[0].actor == "manager"
     assert denials[0].metadata["required_level"] == escalated_level.value
 
-    _set_tier_entitlements(monkeypatch, {"entitled-approver": escalated_level.value})
+    entitlements = {"entitled-approver": escalated_level.value}
+    if escalated_level is ExceptionApprovalLevel.BOARD:
+        entitlements["director"] = ExceptionApprovalLevel.DIRECTOR.value
+    _set_tier_entitlements(monkeypatch, entitlements)
+    if escalated_level is ExceptionApprovalLevel.BOARD:
+        director = _bootstrap_auth_header(subject="director", permissions=(Permission.APPROVE,))
+        director_denied = _decide_exception(client, draft_id, 0, director, decision=decision)
+        assert director_denied.status_code == 403
+        assert store.exception_requests_by_draft_id[draft_id][0].approval is None
+
     entitled = _bootstrap_auth_header(
         subject="entitled-approver", permissions=(Permission.APPROVE,)
     )
     allowed = _decide_exception(client, draft_id, 0, entitled, decision=decision)
     assert allowed.status_code == 303
-    finalized = PlannerProposalStore(state_path=state_path).exception_requests_by_draft_id[
-        draft_id
-    ][0]
+    finalized_store = PlannerProposalStore(state_path=state_path)
+    finalized = finalized_store.exception_requests_by_draft_id[draft_id][0]
     assert finalized.status is (
         ExceptionStatus.APPROVED if decision == "approve" else ExceptionStatus.REJECTED
     )
@@ -4445,6 +4461,7 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
     store.close()
     peer_store.close()
     restored.close()
+    finalized_store.close()
 
 
 @pytest.mark.parametrize("decision", ["approve", "reject"])

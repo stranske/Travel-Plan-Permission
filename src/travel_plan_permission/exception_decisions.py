@@ -133,7 +133,6 @@ def decide_portal_exception(
         proposal_store.decide_exception_request(
             draft_id,
             exception_index=exception_index,
-            actor_id=auth_context.subject,
             auth_context=auth_context,
             approved=approved,
             notes=notes,
