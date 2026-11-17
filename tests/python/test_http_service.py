@@ -4329,6 +4329,8 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
     decide = store.decide_exception_request
     responses, errors = [], []
     committed_snapshots = []
+    authorizations = []
+    authorize = http_service.authorize_exception_tier
     initial_audits = store._serialize_state()["audit_events"]
     save_snapshot = store.store.save_snapshot
 
@@ -4338,10 +4340,28 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
 
     monkeypatch.setattr(store.store, "save_snapshot", capture_snapshot)
 
+    def authorize_live_target(auth_context, target, **kwargs):
+        assert target is store.exception_requests_by_draft_id[draft_id][0]
+        authorizations.append((auth_context.subject, target.approval_level, store._operation_depth))
+        return authorize(auth_context, target, **kwargs)
+
+    monkeypatch.setattr(http_service, "authorize_exception_tier", authorize_live_target)
+
     def pause_before_decision(*args, **kwargs):
         # This hook runs outside the serialized method, at the old read/write gap.
         stale = store.lookup_exception_request(draft_id, exception_index=0)
         assert stale.approval_level is ExceptionApprovalLevel.MANAGER
+        assert (
+            authorize(
+                kwargs["auth_context"],
+                stale,
+                security=store.security,
+                persist_audit=store.persist_audit_events,
+                draft_id=draft_id,
+                exception_index=0,
+            )
+            is ExceptionApprovalLevel.MANAGER
+        )
         read_complete.set()
         assert resume.wait(5), "concurrent escalation did not finish"
         return decide(*args, **kwargs)
@@ -4384,6 +4404,7 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
         assert not thread.is_alive() and not errors
         assert len(responses) == 1
         assert responses[0].status_code == 403, responses[0].text
+        assert authorizations == [("manager", required, 1)]
         # Routing and the denial must commit together, without a separate save
         # for overdue escalation or an intermediate snapshot authorizing a manager.
         assert len(committed_snapshots) == 1
@@ -4423,6 +4444,7 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
         assert (
             _decide_exception(client, draft_id, 0, reviewer, decision=decision).status_code == 303
         )
+        assert authorizations == [("manager", required, 1), ("reviewer", required, 1)]
         assert len(committed_snapshots) == 2
         finalized = committed_snapshots[-1]
         assert finalized["audit_events"][:-1] == committed["audit_events"]

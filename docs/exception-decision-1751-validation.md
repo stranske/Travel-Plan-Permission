@@ -373,3 +373,43 @@ cases fail because TCP socket creation or Unix-socket binding raises
 
 The results comment was also rejected by automatic approval review with the
 same approval-policy error. PR #1754 was rechecked: open, `draft=false`.
+
+## Follow-up: prove authorization occurs inside serialization
+
+Strengthened the named concurrency regression to establish successful manager
+authorization against the initial read before releasing the peer. The production
+authorization is then observed separately: it must receive the live stored
+request at serialized-operation depth one, first for the denied manager and
+then for the entitled reviewer. This explicitly verifies the lock boundary in
+addition to the existing HTTP outcomes and atomic snapshot assertions.
+
+- [x] Named regression and complete state-store file: **96 passed**.
+- [x] Remove the decision decorator in a temporary pytest plugin outside the
+  repository: **8 failed**, because authorization runs at depth zero.
+- [x] Rerun without that plugin: **8 passed**. Production source is unchanged.
+- [x] Black formatting and repository-wide check: **242 files** pass; Ruff and
+  `git diff --check` pass.
+
+Passing HTTP runs use the temporary selector workaround already documented
+above (`PYTHONPATH=/tmp/tpp-1751-loop:src`); all runs use `-m "not slow"`.
+The plain named invocation still stalls because socket sends are denied and
+was interrupted. No failing tests were skipped or disabled.
+
+The commit attempt failed because `.git/index.lock` cannot be created on the
+read-only filesystem. The test changes remain uncommitted on `codex/issue-1751`.
+Automatic approval review rejected both the PR checkbox reconciliation and
+`needs-human` label with `MCP tool call requires approval, but approval policy
+is never`. The remote checklist remains unchanged; PR #1754 is open and ready
+for review (`draft=false`).
+
+The full-file run completed with **222 passed, 7 failed** in 93.54 seconds:
+
+```sh
+PYTHONPATH=/tmp/tpp-1751-loop:src timeout 180 python3 -m pytest tests/python/test_http_service.py -q -m "not slow"
+```
+
+The JWKS HTTP-server test and six Uvicorn restart cases fail at TCP socket
+creation or Unix-socket binding with `PermissionError: [Errno 1] Operation not
+permitted`.
+
+- [ ] Full-file acceptance: rerun with socket operations permitted.
