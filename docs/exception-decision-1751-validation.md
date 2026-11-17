@@ -413,3 +413,45 @@ creation or Unix-socket binding with `PermissionError: [Errno 1] Operation not
 permitted`.
 
 - [ ] Full-file acceptance: rerun with socket operations permitted.
+
+## Follow-up: run the named regression without a selector workaround
+
+Converted the named regression to AnyIO with HTTPX's in-process ASGI transport.
+The pending request is seeded through public store operations. The manager's
+HTTP request runs on its own thread and event loop, preserving the deterministic
+pause while the peer SQLite store escalates. The entitled reviewer's HTTP request
+runs on the test loop. All existing authorization, lock depth, atomic snapshot,
+audit, and restart assertions remain in place.
+
+- [x] Named regression passes without `PYTHONPATH` overrides or selector patches:
+  `python3 -m pytest tests/python/test_http_service.py::test_exception_decision_reauthorizes_concurrent_escalation -q -m "not slow"`
+  returns **8 passed**.
+- [x] Temporarily removing in-lock escalation and tier authorization returns
+  **8 failed**, each with `assert 303 == 403`. Production source was restored
+  byte-for-byte in `finally`; the command above then returns **8 passed** again.
+- [x] Complete state-store file: **88 passed**, using the previously documented
+  temporary selector workaround for its existing HTTP client cases.
+- [x] Black formatted the changed test; the repository check passed for all
+  **242 files** with `BLACK_NUM_WORKERS=1` to avoid forbidden worker sockets.
+  Ruff and `git diff --check` pass.
+
+The ordinary whole-file command stalled and was terminated after 25 seconds.
+Its other `TestClient` cases still depend on denied socket wakeups.
+
+The completed whole-file run used the existing temporary selector workaround:
+
+```sh
+PYTHONPATH=/tmp/tpp-1751-loop:src timeout 180 python3 -m pytest tests/python/test_http_service.py -q -m "not slow"
+```
+
+It returned **222 passed, 7 failed** in 95.12 seconds. The JWKS HTTP-server
+case and six Uvicorn restart cases fail because socket creation or Unix-socket
+binding raises `PermissionError: [Errno 1] Operation not permitted`.
+
+- [ ] Full-file acceptance: rerun with socket operations permitted.
+
+The commit is blocked: `git add -- tests/python/test_http_service.py` cannot
+create `.git/index.lock` on the read-only filesystem. Commit the test and this
+validation record from a writable checkout of the existing PR branch.
+Automatic approval review rejected the `needs-human` label and results comment with
+`MCP tool call requires approval, but approval policy is never`.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import html
 import json
 import os
@@ -4309,7 +4310,9 @@ def test_manager_review_refresh_only_after_changes_requested(status) -> None:
 @pytest.mark.parametrize("decision", ["approve", "reject"])
 @pytest.mark.parametrize("escalations", [1, 2], ids=["director", "board"])
 @pytest.mark.parametrize("defer_escalation", [False, True], ids=["routed", "overdue"])
-def test_exception_decision_reauthorizes_concurrent_escalation(
+@pytest.mark.parametrize("anyio_backend", ["asyncio"])
+@pytest.mark.anyio
+async def test_exception_decision_reauthorizes_concurrent_escalation(
     monkeypatch, tmp_path, decision, escalations, defer_escalation
 ) -> None:
     """A stale read cannot authorize routing changed or made overdue by a peer."""
@@ -4318,12 +4321,31 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
     state_path = tmp_path / "concurrent-escalation.sqlite3"
     store = PlannerProposalStore(state_path=state_path)
     peer = PlannerProposalStore(state_path=state_path)
-    client = TestClient(create_app(store))
-    draft_id, _ = _create_portal_draft(client)
-    creator = _bootstrap_auth_header(subject="traveler", permissions=(Permission.CREATE,))
-    _seed_tiered_exception(
-        client, draft_id, creator, exception_type="advance_booking", amount="250"
+    # Seed the pending request through public store operations.
+    draft_id = store.save_portal_draft(_portal_form_payload()).draft_id
+    store.create_exception_request(
+        draft_id,
+        http_service.ExceptionRequest(
+            type=http_service.ExceptionType.ADVANCE_BOOKING,
+            amount="250",
+            justification="Documented business need for this routed exception tier. " * 2,
+            requestor="traveler",
+        ),
     )
+    # Keep each request on its caller's loop so the thread handshake does not
+    # depend on TestClient's background-loop socket wakeups.
+    client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(store)), base_url="http://testserver"
+    )
+
+    async def request_decision(headers):
+        return await client.post(
+            f"/portal/admin/exceptions/{draft_id}/0/decision?actor_role=approver",
+            headers=headers,
+            data={"decision": decision, "notes": "Tier authority check."},
+            follow_redirects=False,
+        )
+
     manager = _bootstrap_auth_header(subject="manager", permissions=(Permission.APPROVE,))
     read_complete, resume = threading.Event(), threading.Event()
     decide = store.decide_exception_request
@@ -4370,7 +4392,7 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
 
     def manager_decision():
         try:
-            responses.append(_decide_exception(client, draft_id, 0, manager, decision=decision))
+            responses.append(asyncio.run(request_decision(manager)))
         except Exception as exc:
             errors.append(exc)
 
@@ -4441,9 +4463,7 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
         monkeypatch.setattr(store, "decide_exception_request", decide)
         _set_tier_entitlements(monkeypatch, {"reviewer": required.value})
         reviewer = _bootstrap_auth_header(subject="reviewer", permissions=(Permission.APPROVE,))
-        assert (
-            _decide_exception(client, draft_id, 0, reviewer, decision=decision).status_code == 303
-        )
+        assert (await request_decision(reviewer)).status_code == 303
         assert authorizations == [("manager", required, 1), ("reviewer", required, 1)]
         assert len(committed_snapshots) == 2
         finalized = committed_snapshots[-1]
@@ -4470,7 +4490,7 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
     finally:
         resume.set()
         thread.join(5)
-        client.close()
+        await client.aclose()
         store.close()
         peer.close()
 
