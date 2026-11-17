@@ -925,8 +925,11 @@ def test_shared_service_operation_preserves_concurrent_writers(tmp_path):
 
 
 @pytest.mark.parametrize("approved", [False, True], ids=["reject", "approve"])
-def test_exception_decision_serializes_two_sqlite_stores(tmp_path, monkeypatch, approved):
-    """A peer cannot refresh/escalate between live tier authorization and commit."""
+@pytest.mark.parametrize("peer_action", ["escalate", "decide"])
+def test_exception_decision_serializes_two_sqlite_stores(
+    tmp_path, monkeypatch, approved, peer_action
+):
+    """A peer must refresh routing and finality after the first decision commits."""
     path = tmp_path / "serialized-exceptions.sqlite3"
     first = PlannerProposalStore(state_path=path)
     second = PlannerProposalStore(state_path=path)
@@ -940,6 +943,9 @@ def test_exception_decision_serializes_two_sqlite_stores(tmp_path, monkeypatch, 
         )
     ]
     first._persist_state()
+    assert second.lookup_exception_request("draft", exception_index=0).status is (
+        ExceptionStatus.PENDING
+    )
     monkeypatch.setenv(EXCEPTION_TIER_ENTITLEMENT_ENV_VAR, '{"director": "director"}')
     auth = PlannerAuthContext(
         subject="director",
@@ -955,7 +961,9 @@ def test_exception_decision_serializes_two_sqlite_stores(tmp_path, monkeypatch, 
     connect = sqlite3.connect
     load_peer = second._load_state
     save = MagicMock(wraps=first.store.save_snapshot)
+    peer_save = MagicMock(wraps=second.store.save_snapshot)
     monkeypatch.setattr(first.store, "save_snapshot", save)
+    monkeypatch.setattr(second.store, "save_snapshot", peer_save)
 
     def pause_after_authorization(*args, **kwargs):
         level = authorize(*args, **kwargs)
@@ -1009,16 +1017,28 @@ def test_exception_decision_serializes_two_sqlite_stores(tmp_path, monkeypatch, 
         except Exception as exc:
             errors.append(exc)
 
-    def escalate():
+    def peer_operation():
         try:
-            second.escalate_exception_requests("draft")
+            if peer_action == "escalate":
+                second.escalate_exception_requests("draft")
+            else:
+                # Both stores cached a pending request. The losing decision
+                # must observe finality under the lock and preserve the winner.
+                with pytest.raises(InvalidExceptionTransition, match="already"):
+                    second.decide_exception_request(
+                        "draft",
+                        exception_index=0,
+                        auth_context=auth,
+                        approved=not approved,
+                        notes="Competing decision",
+                    )
         except Exception as exc:
             errors.append(exc)
 
     monkeypatch.setattr(http_service, "authorize_exception_tier", pause_after_authorization)
     monkeypatch.setattr(sqlite3, "connect", observe_connect)
     monkeypatch.setattr(second, "_load_state", observe_peer_load)
-    decision, peer = threading.Thread(target=decide), threading.Thread(target=escalate)
+    decision, peer = threading.Thread(target=decide), threading.Thread(target=peer_operation)
     try:
         decision.start()
         assert authorized.wait(5), "decision did not authorize the live tier"
@@ -1033,6 +1053,7 @@ def test_exception_decision_serializes_two_sqlite_stores(tmp_path, monkeypatch, 
         peer.join(5)
         assert not peer.is_alive() and not errors
         assert observed.get(timeout=5) == "loaded"
+        peer_save.assert_not_called()
         saved = second.exception_requests_by_draft_id["draft"][0]
         assert saved == decisions[0]
         assert saved.approval_level is ExceptionApprovalLevel.DIRECTOR

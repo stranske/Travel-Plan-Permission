@@ -211,3 +211,67 @@ never`. The verified checklist above is the local handoff; remote checkboxes
 were not changed. Commit these test and validation changes in a writable
 checkout, publish the reconciliation, and rerun the full HTTP file where
 sockets are permitted before checking off full-file acceptance.
+
+## Follow-up: competing decisions across SQLite stores
+
+Reviewed commits `f514412` through `2b2f70a` before continuing. The first
+unchecked implementation task is already implemented and verified; the
+remote implementation and named-test checkboxes need reconciliation.
+
+Extended `test_exception_decision_serializes_two_sqlite_stores` with a
+competing decision, starting from a cached pending request in each store.
+The second store demonstrably contends for the SQLite operation lock while
+the first pauses after live tier authorization. After the first commits,
+the second refreshes the finalized request and raises
+`InvalidExceptionTransition` without writing another snapshot or audit.
+Both winning approval and winning rejection are covered.
+
+Verification:
+
+```text
+python3 -m pytest tests/python/test_portal_state_store.py::test_exception_decision_serializes_two_sqlite_stores -q -m "not slow"
+4 passed
+
+PYTHONPATH=/tmp/tpp-1751-loop:src timeout 120 python3 -m pytest tests/python/test_http_service.py::test_exception_decision_reauthorizes_concurrent_escalation tests/python/test_portal_state_store.py -q -m "not slow"
+96 passed (8 named concurrency cases and 88 state-store cases)
+```
+
+The combined run uses the temporary selector workaround documented above;
+the four targeted SQLite serialization cases pass without it. The plain
+named-test invocation timed out at 45 seconds awaiting event-loop wakeups.
+No production mutation was needed; previous break/restore evidence remains
+applicable. Black formatted the changed test file and its required
+repository-wide check passed for all 242 files. Ruff passed as well.
+
+Reconciled checklist based on verified implementation and existing evidence:
+
+- [x] Serialized store operation with live tier authorization and rollback.
+- [x] Portal delegation with namespace checks.
+- [x] Deterministic concurrency and two-SQLite-store serialization tests.
+- [x] Named concurrent-escalation regression: eight cases pass.
+- [x] Deliberate break and restoration: recorded in prior sections.
+- [ ] Entire HTTP test file passes in an environment permitting sockets.
+
+Automatic approval review rejected the PR-body reconciliation with
+`MCP tool call requires approval, but approval policy is never`.
+The remote checkboxes remain unchanged.
+
+The full-file run completed:
+
+```text
+PYTHONPATH=/tmp/tpp-1751-loop:src timeout 180 python3 -m pytest tests/python/test_http_service.py -q -m "not slow"
+7 failed, 222 passed in 98.97s
+```
+
+The seven failures are the JWKS HTTP-server case (TCP socket creation) and
+six Uvicorn restart cases (Unix-socket binding), each blocked by
+`PermissionError: [Errno 1] Operation not permitted`. Full-file acceptance
+remains unchecked. No tests were disabled beyond the required marker.
+
+The commit attempt failed at `git add`: `.git/index.lock` cannot be created
+on the read-only filesystem. The test changes and this record remain
+uncommitted. Automatic approval review also rejected the results comment and
+`needs-human` label with the same approval-policy error. Commit the two files
+from a writable checkout of the existing PR branch, publish the checklist
+reconciliation and evidence, and rerun the full HTTP file where sockets are
+permitted before completing acceptance.
