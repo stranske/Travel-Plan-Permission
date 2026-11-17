@@ -335,3 +335,41 @@ uncommitted on `codex/issue-1751`. Automatic approval review also rejected the
 from a writable checkout of the existing PR branch and rerun the full HTTP
 file where socket operations are permitted. PR #1754 remains open and ready
 for review (`draft=false`).
+
+## Follow-up: authorized decision after concurrent denial
+
+Extended the named concurrency regression to complete the same request after
+the stale manager is denied. In all eight cases, a reviewer entitled to the
+live director or board tier can approve or reject. The test checks one
+additional snapshot, preservation of all escalation and denial audits, the
+authenticated deciding actor and approval tier, and agreement with a reopened
+SQLite store. This verifies that denial releases coordination and leaves the
+request usable by its actual reviewer.
+
+- [x] Expanded named regression: **8 passed**.
+- [x] Entire state-store file: **88 passed**.
+- [x] Black formatting and repository-wide check: **242 files** pass; Ruff and
+  `git diff --check` pass.
+
+The named and state-store runs use the temporary selector workaround documented
+above, with `PYTHONPATH=/tmp/tpp-1751-loop:src` and `-m "not slow"`. The plain
+named invocation stalled and was interrupted; the plain state-store run also
+stalled and was interrupted before the workaround rerun. No repository test
+was skipped or disabled beyond `not slow`.
+
+The commit is blocked: `git add -- tests/python/test_http_service.py` cannot
+create `.git/index.lock` on the read-only filesystem. The test change remains
+uncommitted on the existing PR branch. Automatic approval review rejected the
+PR checklist update and `needs-human` label with
+`MCP tool call requires approval, but approval policy is never`.
+
+The full HTTP file, also run with that workaround, completed with **222 passed,
+7 failed** in 95.00 seconds. The JWKS HTTP-server case and six Uvicorn restart
+cases fail because TCP socket creation or Unix-socket binding raises
+`PermissionError: [Errno 1] Operation not permitted`.
+
+- [ ] Whole HTTP file passes: rerun where the required socket operations are
+  permitted before marking full-file acceptance complete.
+
+The results comment was also rejected by automatic approval review with the
+same approval-policy error. PR #1754 was rechecked: open, `draft=false`.

@@ -4415,6 +4415,36 @@ def test_exception_decision_reauthorizes_concurrent_escalation(
         assert not any(
             event.outcome in {"approved", "rejected"} for event in peer.list_audit_events()
         )
+        # A denied stale caller must release coordination so the live tier can
+        # decide the same request, retaining the denial and escalation history.
+        monkeypatch.setattr(store, "decide_exception_request", decide)
+        _set_tier_entitlements(monkeypatch, {"reviewer": required.value})
+        reviewer = _bootstrap_auth_header(subject="reviewer", permissions=(Permission.APPROVE,))
+        assert (
+            _decide_exception(client, draft_id, 0, reviewer, decision=decision).status_code == 303
+        )
+        assert len(committed_snapshots) == 2
+        finalized = committed_snapshots[-1]
+        assert finalized["audit_events"][:-1] == committed["audit_events"]
+        final_audit = finalized["audit_events"][-1]
+        assert final_audit["actor"] == "reviewer"
+        assert final_audit["outcome"] == ("approved" if decision == "approve" else "rejected")
+        saved = peer.lookup_exception_request(draft_id, exception_index=0)
+        assert saved.approval_level is required
+        assert saved.escalated_at is not None
+        assert saved.status is (
+            ExceptionStatus.APPROVED if decision == "approve" else ExceptionStatus.REJECTED
+        )
+        if decision == "approve":
+            assert saved.approval.approver_id == "reviewer"
+            assert saved.approval.level is required
+        else:
+            assert saved.approval is None
+        restarted = PlannerProposalStore(state_path=state_path)
+        try:
+            assert restarted._serialize_state() == finalized
+        finally:
+            restarted.close()
     finally:
         resume.set()
         thread.join(5)
