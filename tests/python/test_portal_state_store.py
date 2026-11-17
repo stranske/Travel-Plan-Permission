@@ -1177,6 +1177,7 @@ def test_exception_decision_persistence_failure_rolls_back_draft(tmp_path, monke
     [
         ("missing_request", KeyError),
         ("final_request", InvalidExceptionTransition),
+        ("escalation_audit", RuntimeError),
         ("authorization", HTTPException),
         ("decision_audit", RuntimeError),
     ],
@@ -1230,6 +1231,8 @@ def test_exception_decision_error_restores_overdue_siblings(
     def observe_audit(**kwargs):
         outcomes.append(kwargs["outcome"])
         record(**kwargs)
+        if failure == "escalation_audit" and kwargs["outcome"] == "escalated":
+            raise RuntimeError("escalation audit unavailable")
         if failure == "decision_audit" and kwargs["outcome"] in {"approved", "rejected"}:
             raise RuntimeError("decision audit unavailable")
 
@@ -1244,13 +1247,92 @@ def test_exception_decision_error_restores_overdue_siblings(
             )
         if failure == "authorization":
             assert caught.value.status_code == 503
-        assert outcomes.count("escalated") == (1 if failure == "final_request" else 2)
+        expected_escalations = 1 if failure in {"final_request", "escalation_audit"} else 2
+        assert outcomes.count("escalated") == expected_escalations
         if failure == "decision_audit":
             assert outcomes[-1] == ("approved" if approved else "rejected")
         save.assert_not_called()
         assert store.exception_requests_by_draft_id["draft"] is requests
         assert store._serialize_state() == before
         assert store.store.load_snapshot() == persisted_before
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("outcome", ["approve", "reject", "deny"])
+def test_exception_decision_keeps_committed_state_when_refresh_would_fail(
+    tmp_path, monkeypatch, outcome
+):
+    """A read outage after commit cannot roll back a saved decision or denial audit."""
+    store = PlannerProposalStore(state_path=tmp_path / "decision-post-commit.sqlite3")
+    request = ExceptionRequest(
+        type=ExceptionType.ADVANCE_BOOKING,
+        justification="Documented business need requires this travel exception. " * 2,
+        requestor="traveler",
+        amount="250",
+        requested_at=datetime.now(UTC) - timedelta(hours=49),
+    )
+    store.exception_requests_by_draft_id["draft"] = [request]
+    store._persist_state()
+    monkeypatch.setenv(EXCEPTION_TIER_ENTITLEMENT_ENV_VAR, '{"director": "director"}')
+    auth = PlannerAuthContext(
+        subject="manager" if outcome == "deny" else "director",
+        permissions=(Permission.APPROVE,),
+        provider="google",
+        expires_at=None,
+        auth_mode=PlannerAuthMode.BOOTSTRAP_TOKEN,
+    )
+    save = store.store.save_snapshot
+    load = store.store.load_snapshot
+    committed_snapshots = []
+
+    def save_then_lose_read_access(snapshot, **kwargs):
+        save(snapshot, **kwargs)
+        committed_snapshots.append(snapshot)
+
+    def fail_post_commit_load():
+        if committed_snapshots:
+            raise OSError("post-commit read unavailable")
+        return load()
+
+    try:
+        with monkeypatch.context() as failure:
+            failure.setattr(store.store, "save_snapshot", save_then_lose_read_access)
+            failure.setattr(store.store, "load_snapshot", fail_post_commit_load)
+            if outcome == "deny":
+                with pytest.raises(HTTPException) as caught:
+                    store.decide_exception_request(
+                        "draft", exception_index=0, auth_context=auth, approved=True
+                    )
+                assert caught.value.status_code == 403
+            else:
+                result = store.decide_exception_request(
+                    "draft", exception_index=0, auth_context=auth, approved=outcome == "approve"
+                )
+                assert result == store.exception_requests_by_draft_id["draft"][0]
+
+        assert len(committed_snapshots) == 1
+        assert store._serialize_state() == committed_snapshots[0]
+        assert store._database_snapshot == committed_snapshots[0]
+        restored = PlannerProposalStore(state_path=store.state_path)
+        try:
+            assert restored._serialize_state() == committed_snapshots[0]
+        finally:
+            restored.close()
+        saved = store.exception_requests_by_draft_id["draft"][0]
+        assert saved.approval_level is ExceptionApprovalLevel.DIRECTOR
+        assert (
+            saved.status
+            is {
+                "approve": ExceptionStatus.APPROVED,
+                "reject": ExceptionStatus.REJECTED,
+                "deny": ExceptionStatus.ESCALATED,
+            }[outcome]
+        )
+        assert [event.outcome for event in store.security.audit_log.events] == [
+            "escalated",
+            {"approve": "approved", "reject": "rejected", "deny": "denied"}[outcome],
+        ]
     finally:
         store.close()
 
