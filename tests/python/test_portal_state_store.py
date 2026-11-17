@@ -1158,15 +1158,46 @@ def test_exception_decision_persistence_failure_rolls_back_draft(tmp_path, monke
         # Fail after the request records have been written, inside the SQL transaction.
         raise OSError("audit persistence unavailable")
 
-    monkeypatch.setattr(store.store, "_upsert_singleton", fail_audit_write)
     try:
-        with pytest.raises(OSError, match="audit persistence unavailable"):
-            store.decide_exception_request(
-                "draft", exception_index=0, auth_context=auth, approved=outcome != "reject"
-            )
+        with monkeypatch.context() as failure:
+            failure.setattr(store.store, "_upsert_singleton", fail_audit_write)
+            with pytest.raises(OSError, match="audit persistence unavailable"):
+                store.decide_exception_request(
+                    "draft", exception_index=0, auth_context=auth, approved=outcome != "reject"
+                )
         assert store.exception_requests_by_draft_id["draft"] is requests
         assert store._serialize_state() == before
         assert store.store.load_snapshot() == persisted_before
+
+        # A retry must acquire the released lock and commit exactly one set of
+        # escalation/decision audits, including when the decision is denied.
+        if outcome == "deny":
+            with pytest.raises(HTTPException) as caught:
+                store.decide_exception_request(
+                    "draft", exception_index=0, auth_context=auth, approved=True
+                )
+            assert caught.value.status_code == 403
+        else:
+            result = store.decide_exception_request(
+                "draft", exception_index=0, auth_context=auth, approved=outcome == "approve"
+            )
+            assert result.status is (
+                ExceptionStatus.APPROVED if outcome == "approve" else ExceptionStatus.REJECTED
+            )
+        assert [event.outcome for event in store.security.audit_log.events] == [
+            "escalated",
+            "escalated",
+            {"approve": "approved", "reject": "rejected", "deny": "denied"}[outcome],
+        ]
+        assert all(
+            request.approval_level is ExceptionApprovalLevel.DIRECTOR
+            for request in store.exception_requests_by_draft_id["draft"]
+        )
+        restored = PlannerProposalStore(state_path=path)
+        try:
+            assert restored._serialize_state() == store._serialize_state()
+        finally:
+            restored.close()
     finally:
         store.close()
 

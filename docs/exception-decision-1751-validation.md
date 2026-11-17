@@ -156,3 +156,58 @@ GitHub rejected the follow-up results comment, verified-task checkbox updates,
 and `needs-human` label with `MCP tool call requires approval, but approval
 policy is never`. No remote checklist update was applied. PR #1754 was verified
 open and ready for review (`draft=false`).
+
+## Follow-up: retry after transaction rollback
+
+Reviewed commits `f514412` through `471fb5c`: the combined store operation,
+portal delegation, concurrency tests, and prior deliberate-break evidence are
+already present. The first unchecked implementation task is implemented and
+verified; its remote checkbox is stale.
+
+Extended `test_exception_decision_persistence_failure_rolls_back_draft` to retry
+after restoring audit persistence. Approval, rejection, and denied authority
+must each acquire the released operation lock, persist the overdue sibling
+routing and exactly one set of audit events, and agree with a reopened store.
+The three targeted retry cases pass without the selector workaround.
+
+Verified reconciliation for the PR body:
+
+- [x] Combined serialized store operation with live authorization and rollback.
+- [x] Portal delegation with namespace checks.
+- [x] Deterministic concurrent escalation and two-store serialization tests.
+- [x] Named concurrency regression: eight cases pass.
+- [x] Deliberate break and restoration: evidence is recorded in the preceding
+  sections from prior iterations; no production mutation remains.
+- [ ] Entire HTTP test file passes: still blocked by sandbox socket permissions.
+
+Validation in this follow-up:
+
+```text
+python3 -m pytest tests/python/test_portal_state_store.py::test_exception_decision_persistence_failure_rolls_back_draft -q -m "not slow"
+3 passed
+
+PYTHONPATH=/tmp/tpp-1751-loop:src timeout 120 python3 -m pytest tests/python/test_http_service.py::test_exception_decision_reauthorizes_concurrent_escalation tests/python/test_portal_state_store.py -q -m "not slow"
+94 passed (8 concurrency cases and all 86 state-store cases)
+
+PYTHONPATH=/tmp/tpp-1751-loop:src timeout 180 python3 -m pytest tests/python/test_http_service.py -q -m "not slow"
+7 failed, 222 passed in 87.60s
+```
+
+The full-file failures remain the JWKS HTTP-server test (TCP socket creation)
+and six Uvicorn restart cases (Unix-socket binding), each reporting
+`PermissionError: [Errno 1] Operation not permitted`. The unmodified invocations
+stall at event-loop wakeups and were interrupted; the successful combined run
+and completed full-file run use the temporary selector workaround documented
+above. No repository test was skipped or disabled beyond `not slow`.
+
+Black formatting and its required repository-wide check pass (242 files).
+Ruff and `git diff --check` pass. `git add` fails because `.git/index.lock`
+cannot be created on the read-only filesystem, so this follow-up remains
+uncommitted on the existing `codex/issue-1751` branch.
+
+Automatic approval review rejected the PR-body reconciliation and the
+`needs-human` label: `MCP tool call requires approval, but approval policy is
+never`. The verified checklist above is the local handoff; remote checkboxes
+were not changed. Commit these test and validation changes in a writable
+checkout, publish the reconciliation, and rerun the full HTTP file where
+sockets are permitted before checking off full-file acceptance.
