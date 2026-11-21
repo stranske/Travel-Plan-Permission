@@ -81,7 +81,7 @@ comply with everything → auto-approved, zero violations).
 ```bash
 PYTHONHASHSEED=0 pytest tests/baseline/                            # full suite
 pytest tests/baseline/test_golden.py --force-regen                # re-bless after an intended change
-BASELINE_REFRESH_REPORT=1 pytest tests/baseline/test_coverage_manifest.py  # refresh report
+BASELINE_REFRESH_REPORT=1 pytest tests/baseline/test_coverage_manifest.py::test_generated_baseline_report_detects_drift  # refresh report
 ```
 
 ## Invariants enforced

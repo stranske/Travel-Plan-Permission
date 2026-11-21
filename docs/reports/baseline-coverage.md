@@ -1,7 +1,7 @@
 # Travel-Plan-Permission baseline coverage manifest
 
-- Input parameters: **26**
-- Exercised by a scenario: **9** (34.6%)
+- Input parameters: **25**
+- Exercised by a scenario: **18** (72.0%)
 - Observed read at runtime: **0**
 
 ## Priority parameters

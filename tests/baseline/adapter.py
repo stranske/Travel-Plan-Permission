@@ -257,11 +257,19 @@ def run_scenario(scenario: dict[str, Any], base_request: dict[str, Any]) -> dict
         # Combined escalation signal
         "requires_escalation": int(bool(blocking_violations) or n_flagged > 0),
     }
-    # Per-rule pass flags (stable rule_id set from config).
-    for r in results:
-        flat[f"policy.{r.rule_id}.passed"] = int(r.passed)
+    flat.update(policy_rule_flags(results))
 
     return flat
+
+
+def policy_rule_flags(results: list[Any]) -> dict[str, float]:
+    """Return the measured pass flag for every policy result.
+
+    Keeping this conversion at the adapter boundary makes the coverage catalog
+    observe the supported ``PolicyEngine.validate`` entry point rather than a
+    duplicated rule implementation in the test layer.
+    """
+    return {f"policy.{result.rule_id}.passed": int(result.passed) for result in results}
 
 
 def metric_names() -> list[str]:
