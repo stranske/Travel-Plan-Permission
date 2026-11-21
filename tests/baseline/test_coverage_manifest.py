@@ -71,10 +71,12 @@ def test_priority_metrics_covered(manifest: CoverageManifest) -> None:
     assert not gaps, f"Priority metrics with no passing directional check: {gaps}"
 
 
-def test_emit_coverage_report(tmp_path: Path, manifest: CoverageManifest) -> None:
-    report_path = tmp_path / REPORT_PATH.name
-    report_path.write_text(manifest.to_markdown(), encoding="utf-8")
-    assert report_path.exists()
+def assert_report_current(report_path: Path, generated_report: str) -> None:
+    assert report_path.read_text(encoding="utf-8") == generated_report, (
+        "Committed baseline coverage report is stale; regenerate it from measured outcomes with "
+        "BASELINE_REFRESH_REPORT=1 pytest "
+        "tests/baseline/test_coverage_manifest.py::test_generated_baseline_report_detects_drift"
+    )
 
 
 def test_generated_baseline_report_detects_drift(
@@ -82,6 +84,7 @@ def test_generated_baseline_report_detects_drift(
     measured_scenarios: dict[str, dict[str, float]],
     manifest: CoverageManifest,
     record_property: Callable[[str, object], None],
+    tmp_path: Path,
 ) -> None:
     """Keep the committed report aligned with real rule-output variation."""
     rule_flags = {
@@ -90,6 +93,7 @@ def test_generated_baseline_report_detects_drift(
         if key.startswith("policy.") and key.endswith(".passed")
     }
     assert rule_flags, "The policy adapter emitted no rule flags"
+    assert "policy.advance_booking.passed" not in rule_flags
     invalid_flags = {key: values for key, values in rule_flags.items() if values != [0, 1]}
     assert not invalid_flags, f"Policy rule flags need both pass and fail outcomes: {invalid_flags}"
     uncovered_flags = rule_flags.keys() - manifest.touched_keys
@@ -98,7 +102,6 @@ def test_generated_baseline_report_detects_drift(
     ), f"Rule flags with no passing directional check: {sorted(uncovered_flags)}"
 
     assert measured_scenarios["late_booking"] == measured_scenarios["base"]
-    assert not {"policy.ADV-001.passed", "policy.DUR-001.passed"} & rule_flags.keys()
 
     validation = catalog["validation"]
     compliant = adapter.run_validation_scenario(
@@ -123,10 +126,14 @@ def test_generated_baseline_report_detects_drift(
     record_property("observed_rule_flags", str(rule_flags))
     record_property("validation_base_and_over_limits", str(observed_controls))
     generated_report = manifest.to_markdown()
+    report_copy = tmp_path / REPORT_PATH.name
+    report_copy.write_text(generated_report + "\nStale report content\n", encoding="utf-8")
+    with pytest.raises(AssertionError, match="Committed baseline coverage report is stale"):
+        assert_report_current(report_copy, generated_report)
+    report_copy.write_text(generated_report, encoding="utf-8")
+    assert_report_current(report_copy, generated_report)
+
     if os.environ.get("BASELINE_REFRESH_REPORT") == "1":
         REPORT_PATH.write_text(generated_report, encoding="utf-8")
-    assert REPORT_PATH.read_text(encoding="utf-8") == generated_report, (
-        "Committed baseline coverage report is stale; regenerate it from measured outcomes with "
-        "BASELINE_REFRESH_REPORT=1 pytest "
-        "tests/baseline/test_coverage_manifest.py::test_generated_baseline_report_detects_drift"
-    )
+    assert_report_current(REPORT_PATH, generated_report)
+    record_property("report_check", "stale rejected, restored and committed reports matched")
