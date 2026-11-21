@@ -115,6 +115,28 @@ scenarios:
     patch:
       - {op: set_context, field: fare_evidence_attached, value: false}
 
+  # Each of the following inputs crosses one policy boundary.  They make the
+  # advisory outputs measured rather than merely listed in the runtime schema.
+  - id: driving_cost_over_flight
+    patch:
+      - {op: set_context, field: driving_cost, value: 400}
+
+  - id: too_few_hotel_comparisons
+    patch:
+      - {op: set_context, field: comparable_hotels, value: [120]}
+
+  - id: local_overnight_near_office
+    patch:
+      - {op: set_context, field: distance_from_office_miles, value: 20}
+
+  - id: per_diem_for_provided_meals
+    patch:
+      - {op: set_context, field: meals_provided, value: true}
+
+  - id: unitemized_third_party_payment
+    patch:
+      - {op: set_context, field: third_party_payments, value: [{description: Sponsor-paid hotel, itemized: false}]}
+
   # A flagged high expense AND three blocking policy breaches: fare overage,
   # business cabin, missing evidence. Exercises the combined escalation signal.
   - id: many_violations
@@ -152,6 +174,24 @@ directionals:
     metric: approval.n_auto_approved
     direction: decrease
     enforce: true
+  - id: fare_comparison_flag_varies
+    scenario: fare_far_over_lowest
+    control: base
+    metric: policy.fare_comparison.passed
+    direction: decrease
+    enforce: true
+  - id: cabin_class_flag_varies
+    scenario: premium_cabin_short_haul
+    control: base
+    metric: policy.cabin_class.passed
+    direction: decrease
+    enforce: true
+  - id: fare_evidence_flag_varies
+    scenario: missing_fare_evidence
+    control: base
+    metric: policy.fare_evidence.passed
+    direction: decrease
+    enforce: true
   # A large meals expense trips the category review rule -> flagged.
   - id: large_meals_flags_report
     scenario: meals_over_review_limit
@@ -179,6 +219,42 @@ directionals:
     control: base
     metric: policy.blocking_violation_count
     direction: increase
+    enforce: true
+  - id: non_reimbursable_flag_varies
+    scenario: non_reimbursable_item
+    control: base
+    metric: policy.non_reimbursable.passed
+    direction: decrease
+    enforce: true
+  - id: driving_vs_flying_flag_varies
+    scenario: driving_cost_over_flight
+    control: base
+    metric: policy.driving_vs_flying.passed
+    direction: decrease
+    enforce: true
+  - id: hotel_comparison_flag_varies
+    scenario: too_few_hotel_comparisons
+    control: base
+    metric: policy.hotel_comparison.passed
+    direction: decrease
+    enforce: true
+  - id: local_overnight_flag_varies
+    scenario: local_overnight_near_office
+    control: base
+    metric: policy.local_overnight.passed
+    direction: decrease
+    enforce: true
+  - id: meal_per_diem_flag_varies
+    scenario: per_diem_for_provided_meals
+    control: base
+    metric: policy.meal_per_diem.passed
+    direction: decrease
+    enforce: true
+  - id: third_party_paid_flag_varies
+    scenario: unitemized_third_party_payment
+    control: base
+    metric: policy.third_party_paid.passed
+    direction: decrease
     enforce: true
   # Legacy booking dates no longer create a duplicate policy-lite verdict.
   - id: late_booking_leaves_violations_unchanged
