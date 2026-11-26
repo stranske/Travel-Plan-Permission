@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
+from datetime import date, datetime
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -513,6 +514,26 @@ def verify_portal_receipt(
     return observed
 
 
+def _portal_handoff_answers() -> dict[str, object]:
+    answers = _load_packaged_fixture("portal_handoff.json")
+    shift = date.today() - date.fromisoformat(str(answers["booking_date"]))
+    for field in ("booking_date", "depart_date", "return_date"):
+        answers[field] = (date.fromisoformat(str(answers[field])) + shift).isoformat()
+    for field in (
+        "flight_pref_outbound.depart_time",
+        "flight_pref_outbound.arrive_time",
+        "flight_pref_return.depart_time",
+        "flight_pref_return.arrive_time",
+    ):
+        flight_time = datetime.fromisoformat(str(answers[field])) + shift
+        answers[field] = flight_time.isoformat(timespec="minutes")
+    answers["event_dates"] = " - ".join(
+        (datetime.strptime(value, "%m/%d/%Y") + shift).strftime("%m/%d/%Y")
+        for value in str(answers["event_dates"]).split(" - ")
+    )
+    return answers
+
+
 def _record_portal_decision(*, transport: Transport, timeout: float) -> PortalReceipt:
     manager_token = os.getenv("TPP_MANAGER_TOKEN", "").strip()
     if not manager_token:
@@ -531,7 +552,7 @@ def _record_portal_decision(*, transport: Transport, timeout: float) -> PortalRe
             body={
                 "handoff_id": handoff_id,
                 "snapshot_version": version,
-                "answers": _load_packaged_fixture("portal_handoff.json"),
+                "answers": _portal_handoff_answers(),
             },
             timeout=timeout,
         )
