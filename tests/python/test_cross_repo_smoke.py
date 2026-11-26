@@ -5,7 +5,7 @@ import inspect
 import json
 import os
 import textwrap
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -880,8 +880,8 @@ def test_cross_repo_smoke_cli_accepts_explicit_state_path(
 def test_cross_repo_smoke_reads_real_manager_decision(tmp_path, monkeypatch):
     class FrozenDate(date):
         @classmethod
-        def today(cls) -> date:
-            return date(2027, 1, 15)
+        def today(cls) -> FrozenDate:
+            return cls(2027, 1, 15)
 
     monkeypatch.setattr(validation, "date", FrozenDate)
     monkeypatch.setattr(cross_repo_smoke, "date", FrozenDate, raising=False)
@@ -896,6 +896,49 @@ def test_cross_repo_smoke_reads_real_manager_decision(tmp_path, monkeypatch):
     assert result.portal_receipt.decision == "approved"
     assert result.portal_receipt.decision_at is not None
     assert result.portal_receipt.review_id and result.portal_receipt.execution_id
+
+
+@pytest.mark.parametrize(
+    "today",
+    [
+        date(
+            2026, 11, 26
+        ),  # Date when the old static 2026-12-02 fixture dropped below 7-day notice.
+        date(2029, 2, 28),  # Far-future month/year boundary.
+    ],
+)
+def test_portal_handoff_answers_computes_relative_dates_in_isolation(today: date) -> None:
+    raw_fixture = cross_repo_smoke._load_packaged_fixture("portal_handoff.json")
+    for date_field in (
+        "booking_date",
+        "depart_date",
+        "return_date",
+        "event_dates",
+        "flight_pref_outbound.depart_time",
+        "flight_pref_outbound.arrive_time",
+        "flight_pref_return.depart_time",
+        "flight_pref_return.arrive_time",
+    ):
+        assert date_field not in raw_fixture
+
+    answers = cross_repo_smoke._portal_handoff_answers(today)
+
+    expected_depart = today + timedelta(days=45)
+    expected_return = expected_depart + timedelta(days=4)
+    expected_event_start = expected_depart + timedelta(days=1)
+    expected_event_end = expected_depart + timedelta(days=3)
+
+    assert answers["booking_date"] == (today - timedelta(days=21)).isoformat()
+    assert answers["depart_date"] == expected_depart.isoformat()
+    assert answers["return_date"] == expected_return.isoformat()
+    assert (date.fromisoformat(str(answers["depart_date"])) - today).days >= 7
+    assert (
+        answers["event_dates"] == f"{expected_event_start:%m/%d/%Y} - {expected_event_end:%m/%d/%Y}"
+    )
+    assert answers["flight_pref_outbound.depart_time"] == f"{expected_depart.isoformat()}T07:15"
+    assert answers["flight_pref_outbound.arrive_time"] == f"{expected_depart.isoformat()}T09:40"
+    assert answers["flight_pref_return.depart_time"] == f"{expected_return.isoformat()}T18:10"
+    assert answers["flight_pref_return.arrive_time"] == f"{expected_return.isoformat()}T20:30"
 
 
 def test_portal_smoke_submits_after_static_travel_dates_lose_required_notice(
