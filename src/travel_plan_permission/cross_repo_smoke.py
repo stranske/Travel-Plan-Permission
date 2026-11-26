@@ -7,7 +7,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, timedelta
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -118,6 +118,46 @@ def _load_json(path: Traversable | Path) -> dict[str, object]:
 
 def _load_packaged_fixture(name: str) -> dict[str, object]:
     return _load_json(_FIXTURE_ROOT / name)
+
+
+def _portal_handoff_answers(today: date) -> dict[str, object]:
+    depart_date = today + timedelta(days=45)
+    return_date = depart_date + timedelta(days=4)
+    event_start = depart_date + timedelta(days=1)
+    event_end = depart_date + timedelta(days=3)
+    answers = _load_packaged_fixture("portal_handoff.json")
+    answers.update(
+        {
+            "booking_date": (today - timedelta(days=21)).isoformat(),
+            "depart_date": depart_date.isoformat(),
+            "return_date": return_date.isoformat(),
+            "event_dates": f"{event_start:%m/%d/%Y} - {event_end:%m/%d/%Y}",
+            "flight_pref_outbound.depart_time": f"{depart_date.isoformat()}T07:15",
+            "flight_pref_outbound.arrive_time": f"{depart_date.isoformat()}T09:40",
+            "flight_pref_return.depart_time": f"{return_date.isoformat()}T18:10",
+            "flight_pref_return.arrive_time": f"{return_date.isoformat()}T20:30",
+        }
+    )
+    return answers
+
+
+def _proposal_submission_trip_plan(today: date) -> dict[str, object]:
+    trip_plan = _load_packaged_fixture("proposal_submission.json")
+    depart_date = today + timedelta(days=45)
+    return_date = depart_date + timedelta(days=3)
+    trip_plan["departure_date"] = depart_date.isoformat()
+    trip_plan["return_date"] = return_date.isoformat()
+    expenses = trip_plan.get("expenses")
+    if isinstance(expenses, list):
+        trip_plan["expenses"] = [
+            (
+                {**item, "expense_date": depart_date.isoformat()}
+                if isinstance(item, dict) and "expense_date" in item
+                else item
+            )
+            for item in expenses
+        ]
+    return trip_plan
 
 
 def _object_field(payload: dict[str, object], field: str, *, context: str) -> dict[str, object]:
@@ -514,26 +554,6 @@ def verify_portal_receipt(
     return observed
 
 
-def _portal_handoff_answers() -> dict[str, object]:
-    answers = _load_packaged_fixture("portal_handoff.json")
-    shift = date.today() - date.fromisoformat(str(answers["booking_date"]))
-    for field in ("booking_date", "depart_date", "return_date"):
-        answers[field] = (date.fromisoformat(str(answers[field])) + shift).isoformat()
-    for field in (
-        "flight_pref_outbound.depart_time",
-        "flight_pref_outbound.arrive_time",
-        "flight_pref_return.depart_time",
-        "flight_pref_return.arrive_time",
-    ):
-        flight_time = datetime.fromisoformat(str(answers[field])) + shift
-        answers[field] = flight_time.isoformat(timespec="minutes")
-    answers["event_dates"] = " - ".join(
-        (datetime.strptime(value, "%m/%d/%Y") + shift).strftime("%m/%d/%Y")
-        for value in str(answers["event_dates"]).split(" - ")
-    )
-    return answers
-
-
 def _record_portal_decision(*, transport: Transport, timeout: float) -> PortalReceipt:
     manager_token = os.getenv("TPP_MANAGER_TOKEN", "").strip()
     if not manager_token:
@@ -552,7 +572,7 @@ def _record_portal_decision(*, transport: Transport, timeout: float) -> PortalRe
             body={
                 "handoff_id": handoff_id,
                 "snapshot_version": version,
-                "answers": _portal_handoff_answers(),
+                "answers": _portal_handoff_answers(date.today()),
             },
             timeout=timeout,
         )
@@ -626,7 +646,7 @@ def run_cross_repo_smoke(
     """Run the cross-repo smoke through the live planner-facing HTTP transport."""
 
     request_payload, response_payload = _validate_trip_planner_contracts(trip_planner_root)
-    trip_plan = _load_packaged_fixture("proposal_submission.json")
+    trip_plan = _proposal_submission_trip_plan(date.today())
     proposal_request = _proposal_request_from_trip_planner_fixture(request_payload)
     trip_id = _string_field(proposal_request, "trip_id", context="planner proposal request")
     trip_plan["trip_id"] = trip_id
