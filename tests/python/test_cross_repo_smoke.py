@@ -877,11 +877,18 @@ def test_cross_repo_smoke_cli_accepts_explicit_state_path(
     assert state_path.exists()
 
 
-def test_cross_repo_smoke_reads_real_manager_decision(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "run_date",
+    [date(2026, 11, 26), date(2027, 1, 15)],
+    ids=["inside-booking-window", "past-departure"],
+)
+def test_cross_repo_smoke_reads_real_manager_decision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run_date: date
+) -> None:
     class FrozenDate(date):
         @classmethod
         def today(cls) -> date:
-            return date(2027, 1, 15)
+            return run_date
 
     monkeypatch.setattr(validation, "date", FrozenDate)
     monkeypatch.setattr(cross_repo_smoke, "date", FrozenDate, raising=False)
