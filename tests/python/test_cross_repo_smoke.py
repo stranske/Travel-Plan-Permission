@@ -5,7 +5,7 @@ import inspect
 import json
 import os
 import textwrap
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import travel_plan_permission.cross_repo_smoke as cross_repo_smoke
+import travel_plan_permission.validation as validation
 from travel_plan_permission.cross_repo_smoke import (
     CrossRepoSmokeError,
     _assert_status_contract,
@@ -888,6 +889,28 @@ def test_cross_repo_smoke_reads_real_manager_decision(tmp_path, monkeypatch):
     assert result.portal_receipt.decision == "approved"
     assert result.portal_receipt.decision_at is not None
     assert result.portal_receipt.review_id and result.portal_receipt.execution_id
+
+
+def test_portal_smoke_submits_after_static_travel_dates_lose_required_notice(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FixedDate(date):
+        @classmethod
+        def today(cls) -> FixedDate:
+            # The old December 2 departure was six days away. Policy requires seven.
+            return cls(2026, 11, 26)
+
+    monkeypatch.setattr(cross_repo_smoke, "date", FixedDate, raising=False)
+    monkeypatch.setattr(validation, "date", FixedDate)
+    _configure_live_smoke_env(monkeypatch, tmp_path / "portal-dates.sqlite3")
+
+    receipt = cross_repo_smoke._record_portal_decision(
+        transport=_LivePlannerTransport(), timeout=10.0
+    )
+
+    assert receipt.state == "decision_recorded"
+    assert receipt.decision == "approved"
 
 
 def test_cross_repo_smoke_rejects_missing_manager_decision(tmp_path, monkeypatch):
