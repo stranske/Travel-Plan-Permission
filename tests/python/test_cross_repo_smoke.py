@@ -878,6 +878,13 @@ def test_cross_repo_smoke_cli_accepts_explicit_state_path(
 
 
 def test_cross_repo_smoke_reads_real_manager_decision(tmp_path, monkeypatch):
+    class FrozenDate(date):
+        @classmethod
+        def today(cls) -> date:
+            return date(2027, 1, 15)
+
+    monkeypatch.setattr(validation, "date", FrozenDate)
+    monkeypatch.setattr(cross_repo_smoke, "date", FrozenDate, raising=False)
     root = tmp_path / "trip-planner"
     _write_trip_planner_contracts(root)
     state_path = tmp_path / "decisions.sqlite3"

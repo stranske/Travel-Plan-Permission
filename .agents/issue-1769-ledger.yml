@@ -1,0 +1,170 @@
+version: 1
+issue: 1769
+base: main
+branch: codex/issue-1769
+tasks:
+  - id: task-01
+    title: Fix the source failure affecting `tests/python/test_cross_repo_smoke.py`
+      identified by the linked `Python CI / python 3.13` log.
+    status: doing
+    started_at: '2026-11-26T05:22:26Z'
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-02
+    title: 'Retrieve the failing job log from the linked Python CI run (verify: confirm
+      completion in repo)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-03
+    title: 'identify the exception (verify: confirm completion in repo)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-04
+    title: 'traceback shared by the failing cross_repo_smoke tests. (verify: tests
+      pass)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-05
+    title: 'Fix the root cause in the source version of test_cross_repo_smoke.py or
+      the module it exercises so the seven smoke tests pass under Python 3.13. (verify:
+      tests pass)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-06
+    title: 'Investigate (verify: confirm completion in repo)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-07
+    title: 'fix the failure of test_restart_read_fails_closed_without_replaying_writes[snapshot_sha256]
+      if it has a cause separate from the other smoke test failures. (verify: confirm
+      completion in repo)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-08
+    title: Add or extend a regression test reproducing the failure using `pytest`
+      or `node --test`, whichever the source uses.
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-09
+    title: 'Add a pytest regression test that reproduces the identified root cause,
+      such as the OSError path, (verify: confirm completion in repo)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-10
+    title: 'fails before the fix. (verify: confirm completion in repo)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-11
+    title: Verify the new regression test passes after the fix by running pytest on
+      tests/python/test_cross_repo_smoke.py under Python 3.13.
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-12
+    title: '`Python CI / python 3.13` passes on regenerated sync PR stranske/Travel-Plan-Permission#1767,
+      verified with `gh run view <run-id>`, and the repository''s test command passes
+      locally.'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-13
+    title: Reintroducing the reported behavior makes the regression test fail; reverting
+      that deliberate break makes it pass.
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-14
+    title: The next sync-core round classifies stranske/Travel-Plan-Permission#1767
+      without this finding.
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-15
+    title: Fix the failure named in the title (`Python CI / python 3.13`) at its source;
+      the failing check's log is linked under Evidence and the sync PR is stranske/Travel-Plan-Permission#1767.
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-16
+    title: Add or extend a test that reproduces the failure and passes after the fix
+      (`pytest` or `node --test`, whichever the source uses).
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-17
+    title: Let `.github/workflows/maint-68-sync-consumer-repos.yml` regenerate the
+      consumer after fixing the source (Implementation Notes), and the criterion that
+      `Python CI / python 3.13` passes on the regenerated sync PR. (The agent cannot
+      modify protected `.github/workflows/*.yml` files, cannot retry or trigger CI
+      pipelines, and cannot control when the sync workflow regenerates the PR in the
+      consumer repo. If the root cause lives in the workflow file, the agent cannot
+      fix it. | Limit the agent to fixing the source files and the test, and have
+      a human trigger or await the sync run and verify CI on stranske/Travel-Plan-Permission#1767.
+      If the workflow file needs changes, flag them for a human.)
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-18
+    title: 'Acceptance: The next sync-core round classifies stranske/Travel-Plan-Permission#1767
+      without this finding. (This depends on an external process (sync-core rounds)
+      that the agent cannot run, observe, or influence. | Mark it as a post-merge
+      human verification step, not an agent-completable criterion.)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-19
+    title: 'Acceptance: Reintroducing the reported behavior makes the regression test
+      fail; reverting that deliberate break makes it pass. (This is a manual mutation-testing
+      procedure. An agent can run it locally, but it is not a persistent deliverable
+      and is hard to verify afterward. | Ask the agent to include in the PR description
+      the output of a test run that fails with the fix reverted and passes with it
+      applied.)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
