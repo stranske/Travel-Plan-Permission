@@ -5,7 +5,7 @@ import inspect
 import json
 import os
 import textwrap
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import travel_plan_permission.cross_repo_smoke as cross_repo_smoke
+import travel_plan_permission.validation as validation
 from travel_plan_permission.cross_repo_smoke import (
     CrossRepoSmokeError,
     _assert_status_contract,
@@ -877,6 +878,13 @@ def test_cross_repo_smoke_cli_accepts_explicit_state_path(
 
 
 def test_cross_repo_smoke_reads_real_manager_decision(tmp_path, monkeypatch):
+    class FrozenDate(date):
+        @classmethod
+        def today(cls) -> date:
+            return date(2027, 1, 15)
+
+    monkeypatch.setattr(validation, "date", FrozenDate)
+    monkeypatch.setattr(cross_repo_smoke, "date", FrozenDate, raising=False)
     root = tmp_path / "trip-planner"
     _write_trip_planner_contracts(root)
     state_path = tmp_path / "decisions.sqlite3"
