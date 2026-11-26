@@ -32,5 +32,6 @@ The next sync-core round classifies #1767 without the `tests/python/test_cross_r
 
 ## Notes
 
-- After this evidence was collected, maint-68 restaged #1767 again to head 62f3438. Gate run 45772782907 on that head holds on the same `delivery_not_sealed:staging` seal precondition, the normal restage cycle. It is not a test regression.
+- After this evidence was collected, maint-68 restaged #1767 again to head `62f3438361278f09be40ba36427a034fb5d8980e`. Gate run 45772782907 on that head first held on the same `delivery_not_sealed:staging` seal precondition. Attempt 2 then concluded **success** (2026-11-26T07:11:09Z) with no failed jobs. `Python CI / python 3.13` job 139750003642 gave `1691 passed, 4 skipped, 3 xfailed`, and `test_cross_repo_smoke_reads_real_manager_decision` PASSED. The log has 0 lines matching `CrossRepoSmokeError|HTTP 409`. So the fix holds across a second regeneration.
+- The sync-core round ledger is local to the owner's workspace and is not readable from the CI runner. The AC3 rows above cover head 410d6c5. No ledger row was checked for head 62f3438.
 - The closer-core revive comment said the wake condition held because of "1 success run" of `pr-00-gate.yml`. That run was 45768248453 on branch `codex/issue-1768`, not on #1767. The park-triage probe counts Gate successes repo-wide, not on the target PR, so it can wake an issue before its stated condition (Gate success on #1767) holds. Here #1767 went green within minutes anyway.
