@@ -141,6 +141,25 @@ def _portal_handoff_answers(today: date) -> dict[str, object]:
     return answers
 
 
+def _proposal_submission_trip_plan(today: date) -> dict[str, object]:
+    trip_plan = _load_packaged_fixture("proposal_submission.json")
+    depart_date = today + timedelta(days=45)
+    return_date = depart_date + timedelta(days=3)
+    trip_plan["departure_date"] = depart_date.isoformat()
+    trip_plan["return_date"] = return_date.isoformat()
+    expenses = trip_plan.get("expenses")
+    if isinstance(expenses, list):
+        trip_plan["expenses"] = [
+            (
+                {**item, "expense_date": depart_date.isoformat()}
+                if isinstance(item, dict) and "expense_date" in item
+                else item
+            )
+            for item in expenses
+        ]
+    return trip_plan
+
+
 def _object_field(payload: dict[str, object], field: str, *, context: str) -> dict[str, object]:
     value = payload.get(field)
     if not isinstance(value, dict):
@@ -627,7 +646,7 @@ def run_cross_repo_smoke(
     """Run the cross-repo smoke through the live planner-facing HTTP transport."""
 
     request_payload, response_payload = _validate_trip_planner_contracts(trip_planner_root)
-    trip_plan = _load_packaged_fixture("proposal_submission.json")
+    trip_plan = _proposal_submission_trip_plan(date.today())
     proposal_request = _proposal_request_from_trip_planner_fixture(request_payload)
     trip_id = _string_field(proposal_request, "trip_id", context="planner proposal request")
     trip_plan["trip_id"] = trip_id

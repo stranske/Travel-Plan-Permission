@@ -963,6 +963,56 @@ def test_portal_smoke_submits_after_static_travel_dates_lose_required_notice(
     assert receipt.decision == "approved"
 
 
+@pytest.mark.parametrize(
+    "today",
+    [
+        date(2026, 11, 26),
+        date(2028, 1, 15),  # After the packaged proposal_submission.json 2027-06-15 date expires.
+    ],
+)
+def test_proposal_submission_trip_plan_computes_relative_dates_in_isolation(today: date) -> None:
+    trip_plan = cross_repo_smoke._proposal_submission_trip_plan(today)
+
+    expected_depart = today + timedelta(days=45)
+    expected_return = expected_depart + timedelta(days=3)
+
+    assert trip_plan["departure_date"] == expected_depart.isoformat()
+    assert trip_plan["return_date"] == expected_return.isoformat()
+    assert (date.fromisoformat(str(trip_plan["departure_date"])) - today).days >= 7
+    expenses = trip_plan["expenses"]
+    assert isinstance(expenses, list) and expenses
+    assert isinstance(expenses[0], dict)
+    assert expenses[0]["expense_date"] == expected_depart.isoformat()
+
+
+def test_cross_repo_smoke_survives_after_static_proposal_and_portal_dates_expire(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FutureDate(date):
+        @classmethod
+        def today(cls) -> FutureDate:
+            # Past both the old 2026-12-02 portal fixture and the 2027-06-15 proposal fixture.
+            return cls(2028, 1, 15)
+
+    monkeypatch.setattr(cross_repo_smoke, "date", FutureDate, raising=False)
+    monkeypatch.setattr(validation, "date", FutureDate)
+    root = tmp_path / "trip-planner"
+    _write_trip_planner_contracts(root)
+    state_path = tmp_path / "future-dates.sqlite3"
+    _configure_live_smoke_env(monkeypatch, state_path)
+
+    result = run_cross_repo_smoke(
+        trip_planner_root=root,
+        state_path=state_path,
+        transport=_LivePlannerTransport(),
+    )
+
+    assert result.trip_state_persisted is True
+    assert result.portal_receipt.state == "decision_recorded"
+    assert result.portal_receipt.decision == "approved"
+
+
 def test_cross_repo_smoke_rejects_missing_manager_decision(tmp_path, monkeypatch):
     root = tmp_path / "trip-planner"
     _write_trip_planner_contracts(root)
