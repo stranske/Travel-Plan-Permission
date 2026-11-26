@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
+from datetime import date, timedelta
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -117,6 +118,27 @@ def _load_json(path: Traversable | Path) -> dict[str, object]:
 
 def _load_packaged_fixture(name: str) -> dict[str, object]:
     return _load_json(_FIXTURE_ROOT / name)
+
+
+def _portal_handoff_answers(today: date) -> dict[str, object]:
+    depart_date = today + timedelta(days=45)
+    return_date = depart_date + timedelta(days=4)
+    event_start = depart_date + timedelta(days=1)
+    event_end = depart_date + timedelta(days=3)
+    answers = _load_packaged_fixture("portal_handoff.json")
+    answers.update(
+        {
+            "booking_date": (today - timedelta(days=21)).isoformat(),
+            "depart_date": depart_date.isoformat(),
+            "return_date": return_date.isoformat(),
+            "event_dates": f"{event_start:%m/%d/%Y} - {event_end:%m/%d/%Y}",
+            "flight_pref_outbound.depart_time": f"{depart_date.isoformat()}T07:15",
+            "flight_pref_outbound.arrive_time": f"{depart_date.isoformat()}T09:40",
+            "flight_pref_return.depart_time": f"{return_date.isoformat()}T18:10",
+            "flight_pref_return.arrive_time": f"{return_date.isoformat()}T20:30",
+        }
+    )
+    return answers
 
 
 def _object_field(payload: dict[str, object], field: str, *, context: str) -> dict[str, object]:
@@ -531,7 +553,7 @@ def _record_portal_decision(*, transport: Transport, timeout: float) -> PortalRe
             body={
                 "handoff_id": handoff_id,
                 "snapshot_version": version,
-                "answers": _load_packaged_fixture("portal_handoff.json"),
+                "answers": _portal_handoff_answers(date.today()),
             },
             timeout=timeout,
         )
