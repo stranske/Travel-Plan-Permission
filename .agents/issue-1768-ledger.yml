@@ -1,0 +1,184 @@
+version: 1
+issue: 1768
+base: main
+branch: codex/issue-1768
+tasks:
+  - id: task-01
+    title: Fix the source failure causing `Python CI / python 3.14` to fail in `tests/python/test_cross_repo_smoke.py`,
+      using the linked log.
+    status: doing
+    started_at: '2026-11-26T05:22:58Z'
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-02
+    title: 'Retrieve the linked CI job log (verify: confirm completion in repo)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-03
+    title: 'identify the root-cause exception (verify: confirm completion in repo)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-04
+    title: 'traceback shared by the eight failing tests in test_cross_repo_smoke.py.
+      (verify: tests pass)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-05
+    title: 'Fix the identified root cause (verify: confirm completion in repo)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-06
+    title: 'which is likely a Python 3.14 behavior change around OSError handling
+      (verify: confirm completion in repo)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-07
+    title: _(4 further sub-tasks elided; split this issue)_
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-08
+    title: Add or extend a regression test for the reported failure using `pytest`
+      or `node --test`, whichever the source uses.
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-09
+    title: 'Add a pytest regression test in tests/python/ that reproduces the root-cause
+      behavior, such as the OSError handling path, directly (verify: tests pass)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-10
+    title: 'in isolation. (verify: confirm completion in repo)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-11
+    title: 'Confirm the new regression test fails when the fix is reverted (verify:
+      confirm completion in repo)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-12
+    title: 'passes when the fix is applied. (verify: confirm completion in repo)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-13
+    title: '`Python CI / python 3.14` passes on regenerated sync PR stranske/Travel-Plan-Permission#1767,
+      verified with `gh run view <run-id>`, and the repository''s test command passes
+      locally.'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-14
+    title: Reintroducing the reported behavior makes the regression test fail; reverting
+      that change restores a passing result.
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-15
+    title: The next sync-core round classifies stranske/Travel-Plan-Permission#1767
+      without this finding.
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-16
+    title: Fix the failure named in the title (`Python CI / python 3.14`) at its source;
+      the failing check's log is linked under Evidence and the sync PR is stranske/Travel-Plan-Permission#1767.
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-17
+    title: Add or extend a test that reproduces the failure and passes after the fix
+      (`pytest` or `node --test`, whichever the source uses).
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-18
+    title: 'Acceptance: `Python CI / python 3.14` passes on regenerated sync PR stranske/Travel-Plan-Permission#1767,
+      verified with `gh run view <run-id>` (The agent cannot retry or re-trigger CI
+      pipelines. The regeneration is done by `.github/workflows/maint-68-sync-consumer-repos.yml`,
+      which is protected and cannot be modified. The agent also works in the source
+      repo, not on the consumer sync PR in Travel-Plan-Permission. | Make the agent-verifiable
+      criterion that the repository''s pytest suite passes locally on Python 3.14.
+      Treat the sync PR check and the next sync-core round as post-merge checks for
+      a human or automation to confirm.)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-19
+    title: 'Acceptance: The next sync-core round classifies stranske/Travel-Plan-Permission#1767
+      without this finding. (This depends on an external scheduled process the agent
+      cannot trigger or observe. | Move it to a separate Post-merge verification (human)
+      note and out of the agent''s checklist.)'
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-20
+    title: "Deliberate-break \u2192 revert: reintroduce the reported behavior, confirm\
+      \ the test fails, then revert. (This is a manual verification procedure, not\
+      \ a deliverable. An agent can run it locally, but it leaves no artifact in the\
+      \ pull request. | Rephrase it as an objective check: the regression test fails\
+      \ against the pre-fix code (for example via `git stash` or a pre-fix commit)\
+      \ and passes against the fixed code.)"
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []
+  - id: task-21
+    title: Possible need to change the synced source in `stranske/Workflows` as opposed
+      to the consumer repo. (The Scope says the file is synced from `stranske/Workflows`
+      by a workflow the agent cannot modify. If the fix belongs in a file under `.github/workflows/`,
+      it is out of reach. The agent may also lack access to the consumer repo. | State
+      explicitly which repository the agent should edit, and confirm that the fix
+      lives in non-workflow files (tests/python/ or the library code).)
+    status: todo
+    started_at: null
+    finished_at: null
+    commit: ''
+    notes: []

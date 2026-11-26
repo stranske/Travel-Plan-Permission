@@ -5,7 +5,7 @@ import inspect
 import json
 import os
 import textwrap
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -880,8 +880,8 @@ def test_cross_repo_smoke_cli_accepts_explicit_state_path(
 def test_cross_repo_smoke_reads_real_manager_decision(tmp_path, monkeypatch):
     class FrozenDate(date):
         @classmethod
-        def today(cls) -> date:
-            return date(2027, 1, 15)
+        def today(cls) -> FrozenDate:
+            return cls(2027, 1, 15)
 
     monkeypatch.setattr(validation, "date", FrozenDate)
     monkeypatch.setattr(cross_repo_smoke, "date", FrozenDate, raising=False)
@@ -896,6 +896,121 @@ def test_cross_repo_smoke_reads_real_manager_decision(tmp_path, monkeypatch):
     assert result.portal_receipt.decision == "approved"
     assert result.portal_receipt.decision_at is not None
     assert result.portal_receipt.review_id and result.portal_receipt.execution_id
+
+
+@pytest.mark.parametrize(
+    "today",
+    [
+        date(
+            2026, 11, 26
+        ),  # Date when the old static 2026-12-02 fixture dropped below 7-day notice.
+        date(2029, 2, 28),  # Far-future month/year boundary.
+    ],
+)
+def test_portal_handoff_answers_computes_relative_dates_in_isolation(today: date) -> None:
+    raw_fixture = cross_repo_smoke._load_packaged_fixture("portal_handoff.json")
+    for date_field in (
+        "booking_date",
+        "depart_date",
+        "return_date",
+        "event_dates",
+        "flight_pref_outbound.depart_time",
+        "flight_pref_outbound.arrive_time",
+        "flight_pref_return.depart_time",
+        "flight_pref_return.arrive_time",
+    ):
+        assert date_field not in raw_fixture
+
+    answers = cross_repo_smoke._portal_handoff_answers(today)
+
+    expected_depart = today + timedelta(days=45)
+    expected_return = expected_depart + timedelta(days=4)
+    expected_event_start = expected_depart + timedelta(days=1)
+    expected_event_end = expected_depart + timedelta(days=3)
+
+    assert answers["booking_date"] == (today - timedelta(days=21)).isoformat()
+    assert answers["depart_date"] == expected_depart.isoformat()
+    assert answers["return_date"] == expected_return.isoformat()
+    assert (date.fromisoformat(str(answers["depart_date"])) - today).days >= 7
+    assert (
+        answers["event_dates"] == f"{expected_event_start:%m/%d/%Y} - {expected_event_end:%m/%d/%Y}"
+    )
+    assert answers["flight_pref_outbound.depart_time"] == f"{expected_depart.isoformat()}T07:15"
+    assert answers["flight_pref_outbound.arrive_time"] == f"{expected_depart.isoformat()}T09:40"
+    assert answers["flight_pref_return.depart_time"] == f"{expected_return.isoformat()}T18:10"
+    assert answers["flight_pref_return.arrive_time"] == f"{expected_return.isoformat()}T20:30"
+
+
+def test_portal_smoke_submits_after_static_travel_dates_lose_required_notice(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FixedDate(date):
+        @classmethod
+        def today(cls) -> FixedDate:
+            # The old December 2 departure was six days away. Policy requires seven.
+            return cls(2026, 11, 26)
+
+    monkeypatch.setattr(cross_repo_smoke, "date", FixedDate, raising=False)
+    monkeypatch.setattr(validation, "date", FixedDate)
+    _configure_live_smoke_env(monkeypatch, tmp_path / "portal-dates.sqlite3")
+
+    receipt = cross_repo_smoke._record_portal_decision(
+        transport=_LivePlannerTransport(), timeout=10.0
+    )
+
+    assert receipt.state == "decision_recorded"
+    assert receipt.decision == "approved"
+
+
+@pytest.mark.parametrize(
+    "today",
+    [
+        date(2026, 11, 26),
+        date(2028, 1, 15),  # After the packaged proposal_submission.json 2027-06-15 date expires.
+    ],
+)
+def test_proposal_submission_trip_plan_computes_relative_dates_in_isolation(today: date) -> None:
+    trip_plan = cross_repo_smoke._proposal_submission_trip_plan(today)
+
+    expected_depart = today + timedelta(days=45)
+    expected_return = expected_depart + timedelta(days=3)
+
+    assert trip_plan["departure_date"] == expected_depart.isoformat()
+    assert trip_plan["return_date"] == expected_return.isoformat()
+    assert (date.fromisoformat(str(trip_plan["departure_date"])) - today).days >= 7
+    expenses = trip_plan["expenses"]
+    assert isinstance(expenses, list) and expenses
+    assert isinstance(expenses[0], dict)
+    assert expenses[0]["expense_date"] == expected_depart.isoformat()
+
+
+def test_cross_repo_smoke_survives_after_static_proposal_and_portal_dates_expire(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FutureDate(date):
+        @classmethod
+        def today(cls) -> FutureDate:
+            # Past both the old 2026-12-02 portal fixture and the 2027-06-15 proposal fixture.
+            return cls(2028, 1, 15)
+
+    monkeypatch.setattr(cross_repo_smoke, "date", FutureDate, raising=False)
+    monkeypatch.setattr(validation, "date", FutureDate)
+    root = tmp_path / "trip-planner"
+    _write_trip_planner_contracts(root)
+    state_path = tmp_path / "future-dates.sqlite3"
+    _configure_live_smoke_env(monkeypatch, state_path)
+
+    result = run_cross_repo_smoke(
+        trip_planner_root=root,
+        state_path=state_path,
+        transport=_LivePlannerTransport(),
+    )
+
+    assert result.trip_state_persisted is True
+    assert result.portal_receipt.state == "decision_recorded"
+    assert result.portal_receipt.decision == "approved"
 
 
 def test_cross_repo_smoke_rejects_missing_manager_decision(tmp_path, monkeypatch):
