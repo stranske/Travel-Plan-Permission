@@ -54,11 +54,11 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.repository == 'stranske/Travel-Plan-Permission' &&
-      github.ref == 'refs/heads/codex/tpp-reusable-13-pilot' &&
+      github.ref == 'refs/heads/codex/tpp-reusable-13-fallback-trial' &&
       inputs.run_tpp_trip_planner_pilot
     permissions:
       contents: read
-    uses: stranske/Workflows/.github/workflows/reusable-13-cross-repo-smoke.yml@c96e0ab40b5b696561aaec3133b44d4472e3313f
+    uses: stranske/Workflows/.github/workflows/reusable-13-cross-repo-smoke.yml@82dd6c4deaa2158b86616b4bd4e774753444b2b1
     with:
       dependency_repo: stranske/trip-planner
       # The runner also checks this against the receiver's native pin file.
@@ -67,5 +67,3 @@ jobs:
         timeout --kill-after=10s 6m pipx run --spec uv==0.10.3 uv run
         --no-project --python 3.14 --with .
         bash .github/scripts/tpp-trip-planner-smoke-pilot.sh
-    secrets:
-      CROSS_REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
