@@ -23,6 +23,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      run_tpp_trip_planner_pilot:
+        description: Run the fixed Travel-Plan-Permission / trip-planner smoke on the pilot branch
+        type: boolean
+        default: false
 
 jobs:
   cross-repo-smoke:
@@ -43,3 +48,24 @@ jobs:
       run_command: ${{ vars.CROSS_REPO_SMOKE_RUN_COMMAND }}
     secrets:
       CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
+
+  tpp-trip-planner-pilot:
+    name: TPP and trip-planner pilot
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'stranske/Travel-Plan-Permission' &&
+      github.ref == 'refs/heads/codex/tpp-reusable-13-pilot' &&
+      inputs.run_tpp_trip_planner_pilot
+    permissions:
+      contents: read
+    uses: stranske/Workflows/.github/workflows/reusable-13-cross-repo-smoke.yml@c96e0ab40b5b696561aaec3133b44d4472e3313f
+    with:
+      dependency_repo: stranske/trip-planner
+      # The runner also checks this against the receiver's native pin file.
+      dependency_ref: e0f90435302134fec36256640ca19009ff8204dd
+      run_command: >-
+        timeout --kill-after=10s 6m pipx run --spec uv==0.10.3 uv run
+        --no-project --python 3.14 --with .
+        bash .github/scripts/tpp-trip-planner-smoke-pilot.sh
+    secrets:
+      CROSS_REPO_TOKEN: ${{ github.token }}
